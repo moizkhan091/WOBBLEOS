@@ -20,7 +20,15 @@ const brain: AskBrainRecord[] = [
   { slug: "do-not-say", title: "Do Not Say", area: "do-not-say", content: "No generic AI agency hype." },
 ];
 const memory: AskMemoryChunk[] = [{ id: "mem_1", content: "Teach-first content wins.", trustLevel: "founder_core", tags: ["content"] }];
-const sources: AskSourceRef[] = [{ id: "src_1", title: "AI OS course", sourceType: "transcript", trustLevel: "tier_2_approved_expert" }];
+const sources: AskSourceRef[] = [
+  {
+    id: "src_1",
+    title: "AI OS course",
+    sourceType: "transcript",
+    trustLevel: "tier_2_approved_expert",
+    chunks: [{ id: "sourcechunk_1", content: "AI OS needs context, data, skills, routines, permissions, APIs, and cadence." }],
+  },
+];
 
 describe("classifyIntent", () => {
   it("classifies content generation, research, decisions, and questions", () => {
@@ -42,6 +50,27 @@ describe("buildAskContext", () => {
     expect(ctx.citations.map((c) => c.kind)).toEqual(["memory", "source"]);
     expect(ctx.systemPrompt).toContain("Do-not-say rules");
     expect(ctx.systemPrompt).toContain("insufficient");
+  });
+
+  it("includes approved source chunk text in the evidence prompt, not only source titles", () => {
+    const ctx = buildAskContext({
+      question: "What did the AI OS course teach us?",
+      brain,
+      memory: [],
+      sources: [
+        {
+          ...sources[0],
+          chunks: [
+            {
+              id: "sourcechunk_1",
+              content: "A serious AI OS is built from context, data, skills, routines, permissions, APIs, and cadence.",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(ctx.systemPrompt).toContain("A serious AI OS is built from context, data, skills, routines, permissions, APIs, and cadence.");
   });
 });
 
@@ -84,6 +113,18 @@ describe("askWobble - question intent", () => {
     expect(result.answer.citations).toHaveLength(2);
     expect(result.answer.modelRunId).toBe("modelrun_1");
     expect(audit.some((a) => a.eventType === "ask.answered")).toBe(true);
+  });
+
+  it("sends approved source chunk evidence into the provider prompt", async () => {
+    const runProvider = vi.fn<NonNullable<AskWobbleDeps["runProvider"]>>(async () => ({
+      text: "Here is the answer [2].",
+      run: { id: "modelrun_1" },
+    }));
+    await askWobble({ question: "What did the course teach us?" }, deps({ runProvider }));
+
+    expect(runProvider).toHaveBeenCalledTimes(1);
+    const providerInput = runProvider.mock.calls[0]?.[0];
+    expect(providerInput?.messages[0]?.content).toContain("AI OS needs context, data, skills, routines, permissions, APIs, and cadence.");
   });
 
   it("STILL calls the model when evidence is thin (to explain the gap), marking insufficiency", async () => {

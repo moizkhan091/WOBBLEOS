@@ -702,3 +702,37 @@ Verification:
 Next suggested action:
 
 - Build Chunk 11: Ask WOBBLE V1. It should retrieve WOBBLE Brain + approved sources/memory with citations, exclude unapproved sources, call the provider adapter through `runTextProvider(...)`, and return evidence/citations instead of canned answers.
+
+---
+
+## 2026-06-30 - Codex - Chunk 11 Source Evidence Depth Fix
+
+Context:
+
+- Moiz asked Codex to audit Claude's Chunk 11 instead of trusting the handoff. Full `npm run verify` passed, but the audit found a real depth issue: Ask WOBBLE fetched approved source records, yet the LLM prompt only received source titles/metadata, not attached `source_chunks.content`.
+- Root cause: `defaultRetrieveSources(...)` in `src/lib/ask/index.ts` called `listApprovedSourcesForJobs(...)` only, and `buildAskContext(...)` in `src/lib/domain/ask.ts` rendered source citations from title labels. Source chunk APIs already existed in Chunk 09; Ask WOBBLE simply was not hydrating/including them.
+
+Files changed:
+
+- `src/lib/domain/ask.ts` - added `AskSourceChunkRef`, `AskSourceRef.chunks`, source chunk evidence counting, and evidence rendering that includes full memory text plus approved source chunk excerpts. Source records with no chunks now explicitly tell the model they are insufficient for factual claims until chunks are ingested.
+- `src/lib/ask/index.ts` - default source retrieval now hydrates approved sources with `listSourceChunks(source.id, { limit: sourceChunkLimit ?? 3 })`; API input supports optional `sourceChunkLimit` (1-10).
+- `tests/ask.test.ts` - added regression coverage proving approved source chunk text appears in the evidence prompt and reaches the provider prompt.
+
+Behavior now:
+
+- Ask WOBBLE question path uses Brain + memory chunk text + approved source chunk text, not just source titles.
+- Approved source metadata without chunks is still visible as metadata, but is not treated as substantive evidence for factual claims.
+- Chunk 11 remains a router/command surface. It still does not fake content/research/media jobs until downstream chunks are available.
+- Founder architecture rule: Ask WOBBLE must stay dynamically connected to live OS data. Future sources, memory, social analytics, website/SEO stats, blog/keyword/backlink data, invoices, presentation assets, and module outputs should become queryable through approved data connectors/retrieval, not by manually rewriting Ask WOBBLE prompts or hardcoding strategy. Ask WOBBLE is the "godfather" command surface/conductor: it reads current context, suggests next steps, routes jobs, and asks for approval before risky/public/expensive actions.
+
+Verification:
+
+- TDD red step confirmed: `npm run test -- tests/ask.test.ts` failed because source chunk content was missing from the prompt.
+- Focused test after implementation: `npm run test -- tests/ask.test.ts` passed, 11/11.
+- Full local gate: `npm run verify` passed.
+- Details: typecheck passed, 16 test files passed, 104/104 tests passed, Next build passed.
+
+Next suggested action:
+
+- Commit only the Chunk 11 fix files and this handoff entry. Leave any unrelated local tracker rewrite untouched unless intentionally committing it.
+- Optional live test after approval: use local `.env` without printing secrets, ensure `settings.model_roles.ask_wobble` and `provider_connections.openrouter` exist in Postgres, then POST `/api/ask` with a tiny prompt and confirm `model_runs` + `ask.answered`.

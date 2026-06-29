@@ -2,7 +2,7 @@ import { z } from "zod";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { listMemoryRecords, retrieveMemoryContext } from "@/lib/memory";
-import { listApprovedSourcesForJobs } from "@/lib/sources";
+import { listApprovedSourcesForJobs, listSourceChunks } from "@/lib/sources";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { enqueueJob } from "@/lib/jobs";
 import {
@@ -35,6 +35,7 @@ export const askWobbleSchema = z.object({
   founder: z.string().trim().min(1).optional(),
   memoryLimit: z.number().int().min(1).max(50).optional(),
   sourceLimit: z.number().int().min(1).max(50).optional(),
+  sourceChunkLimit: z.number().int().min(1).max(10).optional(),
 });
 
 export type AskWobbleInput = z.input<typeof askWobbleSchema>;
@@ -116,7 +117,7 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
   // ---- question intent -> grounded answer path ----
   const retrieveBrain = deps.retrieveBrain ?? defaultRetrieveBrain;
   const retrieveMemory = deps.retrieveMemory ?? ((q: string) => defaultRetrieveMemory(q, parsed.memoryLimit));
-  const retrieveSources = deps.retrieveSources ?? (() => defaultRetrieveSources(parsed.sourceLimit));
+  const retrieveSources = deps.retrieveSources ?? (() => defaultRetrieveSources(parsed.sourceLimit, parsed.sourceChunkLimit));
   const runProvider = deps.runProvider ?? defaultRunProvider;
 
   const [brain, memory, sources] = await Promise.all([retrieveBrain(), retrieveMemory(parsed.question), retrieveSources()]);
@@ -157,9 +158,19 @@ async function defaultRetrieveMemory(question: string, limit?: number): Promise<
   return chunks.map((c) => ({ id: c.id, content: c.content, trustLevel: c.trustLevel, tags: c.tags }));
 }
 
-async function defaultRetrieveSources(limit?: number): Promise<AskSourceRef[]> {
+async function defaultRetrieveSources(limit?: number, chunkLimit?: number): Promise<AskSourceRef[]> {
   const rows = await listApprovedSourcesForJobs({ limit: limit ?? 8 });
-  return rows.map((s) => ({ id: s.id, title: s.title, sourceType: s.sourceType, trustLevel: s.trustLevel }));
+  const chunksBySource = await Promise.all(
+    rows.map((source) => listSourceChunks(source.id, { limit: chunkLimit ?? 3 })),
+  );
+
+  return rows.map((s, index) => ({
+    id: s.id,
+    title: s.title,
+    sourceType: s.sourceType,
+    trustLevel: s.trustLevel,
+    chunks: chunksBySource[index].map((chunk) => ({ id: chunk.id, content: chunk.content })),
+  }));
 }
 
 async function defaultRunProvider(input: { role: string; module: string; messages: ProviderMessage[] }) {

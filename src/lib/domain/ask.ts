@@ -85,6 +85,12 @@ export interface AskSourceRef {
   title: string;
   sourceType: string;
   trustLevel: string;
+  chunks?: AskSourceChunkRef[];
+}
+
+export interface AskSourceChunkRef {
+  id: string;
+  content: string;
 }
 
 export interface AskCitation {
@@ -124,6 +130,41 @@ export function computeConfidence(evidenceCount: number, hasHighTrust: boolean):
   return "medium";
 }
 
+function countSourceChunks(sources: AskSourceRef[]): number {
+  return sources.reduce((total, source) => total + (source.chunks?.length ?? 0), 0);
+}
+
+function sourceHasChunkEvidence(source: AskSourceRef): boolean {
+  return (source.chunks?.length ?? 0) > 0;
+}
+
+function buildEvidenceBlock(memory: AskMemoryChunk[], sources: AskSourceRef[]): string {
+  const lines: string[] = [];
+  let citationNumber = 1;
+
+  for (const chunk of memory) {
+    lines.push(`[${citationNumber}] (memory:${chunk.id}) trust=${chunk.trustLevel}`);
+    lines.push(`Content: ${truncate(chunk.content, 1200)}`);
+    citationNumber += 1;
+  }
+
+  for (const source of sources) {
+    lines.push(`[${citationNumber}] (source:${source.id}) ${source.title} | type=${source.sourceType} | trust=${source.trustLevel}`);
+
+    if (source.chunks?.length) {
+      for (const chunk of source.chunks) {
+        lines.push(`Chunk ${chunk.id}: ${truncate(chunk.content, 1200)}`);
+      }
+    } else {
+      lines.push("Source metadata is approved, but no source chunks are attached yet. Treat this source as insufficient for factual claims until chunks are ingested.");
+    }
+
+    citationNumber += 1;
+  }
+
+  return lines.join("\n");
+}
+
 export interface BuildAskContextInput {
   question: string;
   brain: AskBrainRecord[];
@@ -142,16 +183,16 @@ export interface AskContext {
 }
 
 export function buildAskContext(input: BuildAskContextInput): AskContext {
-  const evidenceCount = input.memory.length + input.sources.length;
+  const sourceChunkCount = countSourceChunks(input.sources);
+  const evidenceCount = input.memory.length + sourceChunkCount;
   const hasHighTrust =
-    input.memory.some((m) => HIGH_TRUST.has(m.trustLevel)) || input.sources.some((s) => HIGH_TRUST.has(s.trustLevel));
+    input.memory.some((m) => HIGH_TRUST.has(m.trustLevel)) ||
+    input.sources.some((s) => sourceHasChunkEvidence(s) && HIGH_TRUST.has(s.trustLevel));
   const citations = buildCitations(input.memory, input.sources);
 
   const brainBlock =
     input.brain.map((b) => `- ${b.title} (${b.area}): ${b.content}`).join("\n") || "(no core WOBBLE Brain loaded)";
-  const evidenceBlock = citations.length
-    ? citations.map((c, i) => `[${i + 1}] (${c.kind}:${c.id}) ${c.label}`).join("\n")
-    : "(no approved evidence retrieved)";
+  const evidenceBlock = citations.length ? buildEvidenceBlock(input.memory, input.sources) : "(no approved evidence retrieved)";
 
   const systemPrompt = [
     "You are WOBBLE OS answering for the founders. Use ONLY the WOBBLE Brain and the approved evidence below. Do not invent sources or facts.",
