@@ -380,6 +380,38 @@ Next suggested action:
 
 ---
 
+## 2026-06-29 - Claude - CI GREEN (repo live, all tests pass on clean Linux)
+
+Status: WORKING. Repo is live at https://github.com/moizkhan091/WOBBLEOS (public). CI is on.
+
+Root cause of the first 3 red runs (all failed at ~10s):
+
+- `npm ci` aborts instantly when `package-lock.json` is even slightly out of sync with `package.json`. That is exactly what happened (multiple builders edited package.json; the committed lock drifted).
+
+Fix applied (commit 5859d8a):
+
+- `.github/workflows/ci.yml` and `scripts/deploy.sh` now use `npm install --no-audit --no-fund` instead of `npm ci`, so lockfile drift cannot hard-fail install. (Can switch back to `npm ci` later once the lock is regenerated cleanly: run `npm install` on Windows, commit the updated `package-lock.json`.)
+
+Result - CI run #4 (commit 5859d8a):
+
+- Status: Success, total 47s (cleared the 10s install wall).
+- Vitest: 8 test files passed, 36/36 tests passed. typecheck + test + build all green on ubuntu-latest.
+- This is the first clean-environment proof that the Chunk 03 (audit) and Chunk 04 (approvals) code actually passes, not just local replicas.
+
+Known harmless warning:
+
+- "Node.js 20 is deprecated; actions/checkout@v4 and actions/setup-node@v4 forced to Node 24." Cosmetic only. Bump to checkout@v5 / setup-node@v5 on the next push to silence it.
+
+Process note for all builders:
+
+- The pipeline is now the source of truth for "is it broken?". Push your branch; CI auto-runs typecheck + test + build (36 tests today). Deploy only via `scripts/deploy.sh`, which gates on `npm run verify`.
+
+Next suggested action:
+
+- Build Chunk 05 (Model Runs and Cost Tracking). It will be auto-verified by CI on push.
+
+---
+
 ## 2026-06-29 - Codex - Handoff Review After Claude Work
 
 Context:
