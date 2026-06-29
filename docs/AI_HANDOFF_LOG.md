@@ -736,3 +736,11 @@ Next suggested action:
 
 - Commit only the Chunk 11 fix files and this handoff entry. Leave any unrelated local tracker rewrite untouched unless intentionally committing it.
 - Optional live test after approval: use local `.env` without printing secrets, ensure `settings.model_roles.ask_wobble` and `provider_connections.openrouter` exist in Postgres, then POST `/api/ask` with a tiny prompt and confirm `model_runs` + `ask.answered`.
+
+Live test attempt:
+
+- Local `.env` exists and has `DATABASE_URL` plus `OPENROUTER_API_KEY` variable names present; values were not printed.
+- `npm run db:migrate` could not proceed because Postgres connection failed.
+- Root cause confirmed with a sanitized `pg` connectivity check: `ECONNREFUSED` on `::1:5432` and `127.0.0.1:5432`.
+- Docker is not installed/available (`docker` command not found), and no local PostgreSQL Windows service was found.
+- Therefore the live `/api/ask` OpenRouter test is blocked until local Postgres is installed/started or `DATABASE_URL` points to a reachable Postgres database with pgvector. This is an environment blocker, not a Chunk 11 code failure.
