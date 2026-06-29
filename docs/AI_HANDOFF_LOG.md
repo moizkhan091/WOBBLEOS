@@ -447,6 +447,31 @@ Next suggested action:
 
 ---
 
+## 2026-06-29 - Claude - Chunk 06 Job Queue Foundation
+
+Design decision: built a custom Postgres-backed queue ON the existing `jobs` / `job_attempts` tables (not pg-boss), because the schema already defines a rich queue (idempotencyKey, attempts, maxAttempts, runAfter, lockedAt, etc.) and this keeps everything in one visible place for the Workers Health page. pg-boss can be revisited later if needed; worker.ts still references it and will be rewired in Chunk 07.
+
+Files created:
+
+- `src/lib/domain/jobs.ts` - pure. `JobStatus`, `enqueueJobSchema` (zod), `buildJobRow`, and `evaluateJobFailure` (retry decision with exponential backoff: delay = base * 2^(attempts-1); gives up -> "failed" once attempts >= maxAttempts).
+- `src/lib/jobs/index.ts` - service. `enqueueJob` (dedupes via `findActiveByIdempotencyKey`), `processNextJob(queue, registry, deps)` which claims the next job, runs its handler, and records completion / retry / failure + a `job_attempts` row + audit (`job.enqueued|completed|retry|failed`). `listJobs`, `clampJobLimit`. Injectable `JobStore` + audit for tests. Default Drizzle store claims with `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` so concurrent workers never grab the same job, and increments attempts on claim.
+- `src/app/api/jobs/route.ts` - POST enqueue (idempotent; coerces runAfter from ISO string), GET list.
+- `tests/jobs.test.ts` - buildJobRow defaults + validation, evaluateJobFailure backoff + give-up, enqueue insert + idempotent dedup, processNextJob: empty queue, success->completed, throw->retry, exhausted->failed, no-handler->failed, clampJobLimit.
+
+Lifecycle: pending -> active (on claim, attempts++) -> completed | failed, with pending re-queues (backoff) while retries remain.
+
+Anti-hardcoding: queue/type/payload/priority/maxAttempts are per-job data; handlers are a registry passed in (not hardcoded in the queue).
+
+Real vs mocked: domain + service flow fully unit-tested via injectable store. Default Drizzle store (incl. the SKIP LOCKED claim) is real but unexercised in the sandbox (no Postgres); it will be exercised for real in Chunk 07.
+
+Verification: vitest can't run in the sandbox (known). Verified ALL Chunk 06 logic via a standalone Node replica with real zod: every assertion passed (build/validation, backoff, dedup, all processNextJob outcomes). Confirmed all 20 `jobs` and 9 `job_attempts` insert columns map to schema. CI on push runs the real suite (now ~54 tests).
+
+Next suggested action:
+
+- Chunk 07 (Worker Runtime): rewrite `src/workers/worker.ts` to a real loop that calls `processNextJob` on the general queue, writes `worker_heartbeats`, and shuts down gracefully (SIGINT/SIGTERM). Then a worker can consume a real queued job end to end. Push to run CI.
+
+---
+
 ## 2026-06-29 - Codex - Handoff Review After Claude Work
 
 Context:
