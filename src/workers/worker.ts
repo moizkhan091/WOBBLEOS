@@ -1,42 +1,60 @@
-﻿import { PgBoss } from "pg-boss";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { runWorker } from "@/lib/workers/runtime";
+import { generalRegistry } from "@/lib/workers/registry";
+import { writeHeartbeat, writeHeartbeatFile } from "@/lib/workers/heartbeat";
+import { closeDb } from "@/db";
 
-const storageRoot = process.env.STORAGE_ROOT ?? path.join(process.cwd(), "storage");
-const heartbeatPath = path.join(storageRoot, "temp", "worker-heartbeat.json");
-const connectionString = process.env.DATABASE_URL;
+/**
+ * Chunk 07: General worker entrypoint (`npm run worker`).
+ *
+ * Runs OUTSIDE Next.js as its own Node process. It polls the `general` queue,
+ * runs registered job handlers via the runtime loop, writes heartbeats (DB +
+ * file), and shuts down cleanly on SIGINT/SIGTERM.
+ */
 
-async function writeHeartbeat(state: string) {
-  await mkdir(path.dirname(heartbeatPath), { recursive: true });
-  await writeFile(heartbeatPath, JSON.stringify({ state, at: new Date().toISOString() }, null, 2));
+const WORKER_NAME = "general";
+const WORKER_TYPE = "general";
+
+let stopping = false;
+const requestStop = () => {
+  stopping = true;
+};
+process.on("SIGINT", requestStop);
+process.on("SIGTERM", requestStop);
+
+async function heartbeat(status: string, currentJobId?: string): Promise<void> {
+  await writeHeartbeatFile(status);
+  if (process.env.DATABASE_URL) {
+    try {
+      await writeHeartbeat({ workerName: WORKER_NAME, workerType: WORKER_TYPE, status, currentJobId });
+    } catch (error) {
+      console.error("failed to write DB heartbeat:", error instanceof Error ? error.message : error);
+    }
+  }
 }
 
-async function main() {
-  await writeHeartbeat("booting");
-
-  if (!connectionString) {
-    await writeHeartbeat("missing_database_url");
+async function main(): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    await writeHeartbeatFile("missing_database_url");
+    console.error("DATABASE_URL is not set; worker cannot process jobs.");
+    process.exit(1);
     return;
   }
 
-  const boss = new PgBoss(connectionString);
+  console.log(`[worker:${WORKER_NAME}] starting`);
+  const { processedCount } = await runWorker({
+    queue: WORKER_NAME,
+    registry: generalRegistry,
+    shouldStop: () => stopping,
+    heartbeat,
+  });
 
-  const shutdown = async () => {
-    await writeHeartbeat("stopping");
-    await boss.stop();
-    await writeHeartbeat("stopped");
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  await boss.start();
-  await writeHeartbeat("running");
+  await closeDb();
+  console.log(`[worker:${WORKER_NAME}] stopped after processing ${processedCount} job(s)`);
+  process.exit(0);
 }
 
 main().catch(async (error) => {
-  await writeHeartbeat(`error:${error instanceof Error ? error.message : "unknown"}`);
+  await writeHeartbeatFile(`error:${error instanceof Error ? error.message : "unknown"}`);
+  console.error("[worker] fatal:", error);
   process.exit(1);
 });
-

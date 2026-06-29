@@ -472,6 +472,31 @@ Next suggested action:
 
 ---
 
+## 2026-06-29 - Claude - Chunk 07 Worker Runtime Foundation
+
+Files created:
+
+- `src/lib/workers/registry.ts` - job-type -> handler map (`generalRegistry` with `noop` and `test.echo`), plus `getHandler`, `hasHandler`, `knownJobTypes`. Handlers are data; new job types (content/research/media) register here, not in the queue.
+- `src/lib/workers/heartbeat.ts` - `buildHeartbeatRow` (deterministic id `heartbeat_<workerName>`), `writeHeartbeat` (DB upsert via onConflictDoUpdate on the PK - one row per worker, read by the future Workers Health page), `isHeartbeatStale` (offline detection), and `writeHeartbeatFile` (keeps the existing `/api/health/worker` file route working).
+- `src/lib/workers/runtime.ts` - `runWorker(opts)` poll loop: heartbeat -> `processNextJob` -> heartbeat(jobId) or idle-sleep, until `shouldStop()`; writes a final "stopped" heartbeat and returns processedCount. `process`/`heartbeat`/`sleep`/`shouldStop` injectable for tests.
+
+Files changed:
+
+- `src/workers/worker.ts` - rewritten from the pg-boss skeleton into the real general worker entrypoint: polls the `general` queue via `runWorker` + `generalRegistry`, writes DB + file heartbeats, closes the DB pool, and stops cleanly on SIGINT/SIGTERM. pg-boss is no longer imported anywhere in `src/` (the dependency remains in package.json, unused).
+- `tests/workers.test.ts` - registry known/unknown resolution, heartbeat row + staleness, and the runWorker loop (processes a job then idles, stops on signal, emits start + per-job + final "stopped" heartbeats).
+
+How Chunk 06 + 07 close together: `npm run worker` now starts a process that claims real queued jobs (`processNextJob` with `FOR UPDATE SKIP LOCKED`), runs the handler, records completion/retry/failure, and heartbeats - i.e. a worker consumes a real queued job end to end. Manual local test (needs Postgres): `npm run db:migrate`, start `npm run worker`, POST a job to `/api/jobs` with `type:"test.echo"`, watch it complete in `jobs` + `job_attempts` and the heartbeat update.
+
+Anti-hardcoding: queue name + registry are inputs; no worker logic lives in Next.js routes; heartbeats are real (no fake status).
+
+Verification: vitest can't run in the sandbox (known). Verified ALL Chunk 07 logic via a Node replica: registry resolution, heartbeat build + staleness, and the full runWorker loop (start/per-job/stopped heartbeats, processedCount). Confirmed `closeDb` is exported, no pg-boss imports remain in `src/`, and all 9 `worker_heartbeats` columns map to schema. CI on push runs the real suite (now ~58 tests).
+
+Next suggested action:
+
+- Chunk 09 (Source Library backend) or Chunk 10 (Memory/Brain backend) next per the recommended sequence (08 Provider Adapter Registry is also a candidate to unblock Ask WOBBLE/Content). Push to run CI.
+
+---
+
 ## 2026-06-29 - Codex - Handoff Review After Claude Work
 
 Context:
