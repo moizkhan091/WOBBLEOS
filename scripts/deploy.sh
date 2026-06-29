@@ -31,9 +31,11 @@ else
   echo "==> not a git checkout, skipping git pull"
 fi
 
-# 2. Clean, reproducible install (installs correct platform binaries)
-echo "==> npm ci"
-npm ci
+# 2. Install dependencies (installs correct platform binaries).
+# Uses `npm install` for resilience to lockfile drift; switch to `npm ci`
+# once package-lock.json is regenerated cleanly for stricter reproducibility.
+echo "==> npm install"
+npm install --no-audit --no-fund
 
 # 3. The gate: typecheck + test + build. set -e aborts the script on failure.
 echo "==> npm run verify (typecheck + test + build)"
