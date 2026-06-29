@@ -1,0 +1,188 @@
+00:00:00 - 00:00:43
+All right, guys. I've been getting a lot of questions about what an AI operating system is, what the methodology and the framework is. Uh, is it a business model? Is it a it's a way of doing business? And so, in this video, I just want to do a full clarification of the model itself of the what I'm I'm really calling it a methodology and approach to business. And in this video, I want to answer a lot of your questions around what it is, how it works, the key components of it. I've even thought
+
+00:00:22 - 00:01:02
+through and added in things like key KPIs that you need to be watching as an AIOS practitioner or business owner who's using this methodology so that you have some sort of direction to be moving towards with your AIOS to say, "Hey, is this actually providing any value to my business?" So, if you guys are new to the channel and don't know who I am, my name is Lee Moly and I've been building AI businesses for the past 3 years. I've got an agency, I've done info, I've done
+
+00:00:41 - 00:01:30
+SAS, I've built a content business around this YouTube channel as well. I've also been in business for 7 years and this stuff is by far the most exciting thing I've ever seen as a business owner when it comes to allowing me to do more with less to get more stuff done in my business. I've put this into practice over the past 3 weeks and built my own AI operating system using claude code which we'll go into in a second. Uh that allows me to have this workspace that not only takes a lot of
+
+00:01:05 - 00:01:49
+work off my plate, but also gives me a place to get way more work done in a far more compressed timeline, just a much more efficient workspace for me to do work as an entrepreneur. So, there's a bunch of components to this. I'm going to walk you through the methodology here and hopefully answer some questions for you guys and hopefully convince a bunch of you founders that this really is the future. It is here right now and you can choose to adopt it and see some of the incredible benefits of it now before
+
+00:01:28 - 00:02:17
+everyone else catches on or you can sit around and be a skeptic and not do anything with it and that's on you. So, the first thing you need to understand with an AI operating system or AIOS is that it is not a business model. It is an business methodology, a way of approaching business, a way of running your business, not a model itself. So I like to put a a kind of a cube diagram. So this is your business model and that's the thing that actually creates the value, the thing you're selling. You
+
+00:01:53 - 00:02:56
+have to either hire people who are able to deliver a service for you or you have a product. We have something that generates value for your clients. And what AIOS is is not a replacement for that. Like this could be ecom, SMA, whatever you whatever you business you run, but it is instead an a layer around it. So this is your model and this is your AIOS. So it's like an AI wrapper around your business that is built up in what I call layers and not leaps. So that's the first thing to understand is that this
+
+00:02:24 - 00:03:12
+is starts off with a very light layer around your business and after like the weeks of work that I've been doing, you get layers and layers and layers towards this very thick wrapper around your business that allows you to control it through places like uh your phone if you choose to. So for example, right now I have my Telegram set up on my iPhone which is connected to my claude code setup on my laptop and this allows me to be able to connect to my Claude code setup when I'm away. I was away at a
+
+00:02:48 - 00:03:29
+concert over the weekend and I was able to work essentially like I was at home but through my telegram when I need to because it's connected to this cloud code workspace which we'll get to in explaining in a second. But the idea is that you have the business model and then you have the wrapper around it and by building up these layers and layers and layers but allows you to not only take stuff off your plate with each layer that you wrap around it. You know each layer that goes around is able to
+
+00:03:08 - 00:04:02
+take off uh say another searching up data function or a specific task that you have to do or task that your team does. you can start to add these layers on until eventually you have something that has taken a lot of the workload off your plate and allows you to do much more work much faster which is another key benefit of it. And so one of the key things you need to understand is that this is not chat GBT. This is something entirely different an entirely different beast and it is infinitely more powerful than this. And
+
+00:03:36 - 00:04:21
+one thing that I'll point out a great example is when you're using chat or claude you must be so sick and tired of having to constantly paste your things like here's no this is what my business is about. This is what we do. These are my people. That sort of stuff is completely eliminated by just stage one of what I'm going to talk about here today. when you add these layers of say context around your business. So it does need to ask you questions. It fully knows who your team is, what you do,
+
+00:03:58 - 00:04:43
+what your products and services are. It has access to all of your business data in one place. So it can uh write reports for you, but it can also just be aware of okay, where are we numbers wise in relation to the strategy that I know that we're trying to execute. These things is just such a massive productivity boost as an entrepreneur, as a founder. And when it's scaled out to your teams gets even more powerful as well. So it is not chatb it is not some little chatbot you go to a website to
+
+00:04:20 - 00:05:18
+chat to. It is an AI business operating system that can both automate as in take things off your plate but also augment and augment being helping you to do things faster and in a much more efficient way as a founder or for your team members as well because of its ability to fully understand your business to help you to automate tasks and to augment the ones that you still need to do. This is the future of business. You may not see it right now, but this will be extremely obvious in the next 6 to 12 months that this was
+
+00:04:49 - 00:05:29
+where it was going all along and you can choose to listen now. I mean, I'm trying to tell you that I'm getting insane amounts of productivity out of this. I've done full videos on how I'm using this to automate up to 60 to 70% of my tasks as an entrepreneur, which I'll link in the description if you want to watch after this. But this is where it's going. And the entrepreneurs who make the most money are going to be the ones with the thickest layer around their business. that gives them as much
+
+00:05:09 - 00:05:54
+bandwidth as possible to go after new initiatives, particularly as things start to change more and more and more and more. Like the the the business landscape is going to change so fast because of this stuff and the rate that AI is improving. If you are a business owner who is spending all of their time trapped in what I call the operator trap, you're spending all of this time in the business rather than able to work on it, then you are going to be absolutely wrecked when things start to move even faster and you have no
+
+00:05:32 - 00:06:40
+bandwidth to move on it. So there's a very powerful diagram that I'll give to you guys here that uh will really I think resonate with a lot of you because I mean I've lived it. I think every entrepreneur right now is basically living some form of it. And that is what I call kind of like the bandwidth trap or the operator trap. So right now this is your bandwidth as an entrepreneur. And for most of us we are spending like 80% on stuff that must do or like in the business in the ITB in the business and
+
+00:06:05 - 00:07:08
+then we have this little bit here our 20% of extra discretionary time working uh on the business OTB and so this is like new stuff like launching a new market launching a new product improving a product uh launching a new channel, launching a new ad campaign, anything that's new that'll actually start to grow your business rather than just keeping it like maintaining it. And the reason most people's businesses aren't growing, and I can speak to this myself as well, is because you are too much in this bucket
+
+00:06:37 - 00:07:41
+and not enough in this one. And what the AIOS model is is presenting to founders is a way to rebalance this and get this moved all the way down to here instead of it being all so maybe this is 20% or 15 or 10 and then working on the business and actually dropping new features and new products and new campaigns and we can get this up to 80%. And suddenly your business will start growing much much faster. Okay. And so you may be wondering why now and what actually is this whole claude code thing? How does it work? So, a little
+
+00:07:10 - 00:08:01
+bit of context on that. We have this incredible tool called clawed code. It is a coding tool, but it is not necessarily one that you need to you can think of it just as a really really smart AI agent that anyone can use and it can explain how to use anything to you. That is really the So, you can just call it like Claude. Just call it Claude, right? It's just a really really smart Claude smart plus smart plus. It's really really smart claude that you have to use a little bit differently from
+
+00:07:35 - 00:08:32
+your typical claude but at the end of the day it's a very very smart version of claude and what people like myself are doing is giving it a workspace giving it an environment on your computer where you basically have a whole bunch of file folders and files inside it and stuff like this. So you have the context about your business in here so it knows who you are. You have sort of a database integration pulling all your data in which we'll touch on in a second. It has a bunch of your repeatable workflows,
+
+00:08:04 - 00:08:47
+things that you have told it about, like, hey, this is how I do a certain task. So, it knows how to repeat that for you. And in here, you've got a couple different kind of chats with Claude code open where you're working on different things. So, you usually be working in these different uh sessions. So, one here I might be working on content. One here I'm building out a new funnel. One here I'm working on uh making maybe making some thumbnails. Or this one here I'm working on a a report
+
+00:08:25 - 00:09:15
+to send to my staff as a briefing. Then up here you're able to see some of the files that it's creating. Use it in an IDE or in an integrated development environment or there's also a way to use the claw desktop app which is much simpler for nontechnical founders and I can do a tutorial on that if you guys want that but I know it might seem a little bit confusing guys but just stick with me here. It's basically Claude that has access to a file, a set of files and folders that you put in there very deliberately. And
+
+00:08:50 - 00:09:37
+then Claude is able to help you to use that context and build things on top of it so that you have this very powerful kind of chat session with Claude code and it can access things and take actions for you, search the web, build things. Incredibly powerful. So that's kind of what the base of an AIOS is at the moment. And this is happening now because we've had kind of the aligning of claude code getting really smart. We had very smart models come out recently, Opus 4.6. We've also seen the explosion
+
+00:09:13 - 00:10:03
+of things called skills skills. And these are like little little docs or little folders that you can get Claude to create which document like a workflow something that you want to teach it. I could teach it or borrow a skill from someone else about how to make really good thumbnails. And then when I ask Claude in here, hey, can you make me a thumbnail? It'll open up and read that skill that either I created or someone else did and it'll be able to help me walk through creating a thumbnail with
+
+00:09:39 - 00:10:18
+AI image generators or or whatnot. These are really a key piece of why this thing is chosen to take off right now. So, if this stuff sounds a bit confusing to you guys, I can do a simple breakdown for nontechnical founders. Just to really understand the shape of this, what it actually looks like in practice, I can't really do it on a whiteboard. I'd have to do a little tutorial for you guys. But that's what this is and why this stuff is happening right now and why this AI operating system thing is kind
+
+00:09:58 - 00:10:45
+of inevitable because this is possible right now and it's only going to get better. Over the past seven days, I decided to use my freed up bandwidth that I've got from automating a bunch of my tasks to run a new webinar. I did in seven days. I was able to plan out the entire webinar, create an offer, do the slides, uh set up the infrastructure and the funnel, plan and film a bunch of YouTube videos, drive traffic to it, and was able to generate a million New Zealand dollars in revenue over just 7
+
+00:10:22 - 00:11:04
+days because I focused all of this bandwidth that I had at a new initiative. And that's something that most business owners would take 1 2 3 months to put together because they don't have the bandwidth that I was able to clear up thanks to a system like this. Okay, so that's kind of like the north star of at least the first phase of setting up your AIOS, which is to identify, as we'll go into a second, to identify what's blocking up that bandwidth and how can you get it freed
+
+00:10:43 - 00:11:39
+up. And then once you've got it freed up, it's pouring it all into new initiatives that's actually going to grow your business. So in order to build something that allows you to free up that bandwidth, you need to build it up in layers. And so the first layer is, we can probably go back to having a little box diagram here. The first layer around it needs to be what I call context. So like we said to have a system that can actually run your business or do a lot of the work for you, it needs to know about your
+
+00:11:11 - 00:12:06
+business. So first step is context. Who you are, what you sell, uh what your values are, who your team is, all of that core context that you would expect a business strategist to also understand if it was going to help you. Then we have the next layer around it which is data. This is what I call your context OS and your data a so once you've got your core context it knows about the business there uh the data around it is then okay where are you in relation to because in here you'll also have your strategy what
+
+00:11:38 - 00:12:31
+is our strategy for this quarter or this year or both then you have the data added in on top of it which is like your uh Google sheets it might be your stripe it might be your uh bitly as I have connected all these data sources need to be plugged into one place that the AI is able to query and So you I have complete access to all of my data now. What's given me an investigation into the connection between Bitly clicks, YouTube videos posted, and revenue. It can go and pull that data and do an analysis
+
+00:12:04 - 00:12:56
+for me. You can get full reports very quickly. But it knows now not only the context of the business, but the data that tells it sort of quantitatively where are you in relation to your goals, where are you in relation to the strategy you're trying to execute. And this is what I I find is the really powerful layer that adds on even more context about business and where it is. Then what I like to do is add on top of that what I call the intelligence layer. So intelligence is all of your meetings
+
+00:12:33 - 00:13:14
+um and everything that's happening across the organization. For me that comes in two forms. It's connecting to my Fireflies which is my meeting recorder which tracks every single meeting that happens in my business every day. It logs it into a database that I store locally and then allows me to easily chat and query over those like hey what happened over the past week in these meetings giving me a report. That's just one part of it. Uh there's also Slack. I'll pull every single Slack
+
+00:12:54 - 00:13:48
+message and store it in the database that I'm always able to query, hey, what happened in Slack over the past 30 days. It can run an analysis or what what did this person say in Slack uh 2 weeks ago? I can get all of that precision information whenever I need it. But more importantly, sets me up for what I call my daily brief. And this is a very powerful part of my system. And I get a 5 to 10 page PDF every morning and a nice short summary via Telegram in my daily brief channel, which I can show you right now. And here
+
+00:13:19 - 00:14:12
+I have my daily brief channel. It's here. And I get every morning like I did today, a uh image that has been generated that shows me the full funnel breakdown and the key data there. Gives me a daily brief. Tells me a story about my business of everything that happened over the past day. How many calls were analyzed? 80 calls were analyzed over six different streams of my business. And then it was able to write a story based off everything that happened. So key signals, the things I need to be
+
+00:13:47 - 00:14:36
+aware of, um any stats or interesting revenue moments, strategic insights, it does a spot analysis across my whole business, uh opportunities to look for content ideas because a lot of my stuff is content based. And then also I get my full PDF report here, which is available for me whenever I want and I can read through it. It gives me a much deeper breakdown of the analysis across all of my meetings, across different departments, different businesses. And that is an extremely powerful part that
+
+00:14:12 - 00:14:57
+ties everything together here because in order to get this, you need to have full context of the con context of your business. It needs to know the data and be able to pull that report. So it's looking at the data over the past 24 hours. And it needs to be connected in to all of my meetings and what happened across Slack. So that gives me a very powerful daily brief in the morning. And that's really a a powerful three-part stack that I found not only for myself, but for people in my program that I'm
+
+00:14:34 - 00:15:30
+teaching to do this as well. It's one of the most valuable first checkpoints you get as a founder when you're applying the operating system because this represents a ton of daily admin that gets off your plate. Knowing what's happening in your business, knowing the numbers, knowing what happened over the past 24 hours is essential. Okay. Then we get to what I call the automate layer. And so I'll go back to to blue here. And so the next layer around this, there's automating or just automate. And this is where you
+
+00:15:01 - 00:15:54
+do what I call a task audit. And I actually have it on the back of this whiteboard here. So I've done an audit of all of the tasks that I do across different parts of my business um in my content business. These are all the tasks that I'm responsible for my agency, my education business, my software and SAS uh portfolio. And these are the things I've automated that I've just been talking about like uh context and telegram and data OS and daily brief and things like that. So you do a a task
+
+00:15:30 - 00:16:28
+audit where you break down these different tasks that you have by business or by responsibility and then you're able to look at okay which ones of those can I actually start to uh get rid of. Oh for example here I have a number of 83 tasks here and so I'm trying to get to about 60 to 70% which is 54 of these being crossed off uh being automated or heavily augmented for me. And this is what I instruct all business owners to do once they have this base is now okay which of these tasks can I start to automate first
+
+00:15:59 - 00:16:44
+which are going to free up the most bandwidth. Going back to that bandwidth thing we are trying to get this line to move back. So the first thing is just a a daily brief helps you to move it back here a bit. Get some admin off your plate and then with every one of those tasks that you're able to automate you can start to shave them off more and more more and more. And I know for you as a founder you're probably like hella I can't I can't automate things. I don't know how to do this. And you'd actually
+
+00:16:21 - 00:17:11
+be shocked about just how easy with the right setup and with the right base of context this claude code. Well, I can talk about the claude code setup in a second. But by setting it up on claw code, which is essentially like a very smart AI assistant, you can do it as a non-technical person with the right instructions and with the right plug-and-play modules as well because these things can be passed around. So, if I create something that works for me, I'm able to give it to other people in the form of like a plugin or an install.
+
+00:16:46 - 00:17:32
+And that's what I've been releasing through my accelerator to a lot of the people who are in my program there because for each of these steps like context, data, intelligence, daily brief, these are all packageable into a nice little install that you can put into yours. So I've chained them together into kind of a 1 2 3 4 5 6 7 8 and you just kind of chain them together and you ask Claude Code to help you install them and within a few days you've got your own Claude Code AIOS system set up and then you're able to
+
+00:17:09 - 00:17:59
+start automating different tasks on top of it. Uh now there's things called uh like what I call a /explore command and this is really really powerful for nontechnical founders. Once you have this base built up, you go, "Hey, I am doing this certain task that I'm sure you know about because you know everything about my business/explore. I want to try to automate this. Can you help me figure it out?" And Claude Code is so smart that it can go and well, using this, it'll be instructed to go
+
+00:17:34 - 00:18:19
+and search the web. It'll search the codebase and search everything within your business that it's aware of. And it will help you just go step by step through figuring out what a potential automation or solution would be for one of those tasks. And before you know it, you've built layers and layers and layers and layers of tasks that are helping you to either augment or automate certain tasks. And this is how you increase that bandwidth so that you have more and more free time to be able
+
+00:17:57 - 00:18:33
+to pour into something. And so that's the automation step, which is figuring out what am I doing? How can I use Claude to help me figure out how to automate that now that it knows everything? Getting things set up on schedule so that every day or every few hours something happens. Those are called chron jobs and something you can set up to do work for you automatically. Once you've kind of given structure to the task for the AI to do, you can set it up on an automation to run at certain
+
+00:18:15 - 00:19:10
+intervals. And then going through this process of exploring and automating or augmenting things will get you very very far to expanding out this bar right now. And I'm in the process of doing this also as you saw with the the task on the board on the other side. And then there is the final layer after you've automated and freed up this bandwidth. Yay, we've got our bandwidth back. It's the final layer that I put on which is called uh build which is I mean you as a as as a founder
+
+00:18:42 - 00:19:29
+you get to use this either hey I've got all this bandwidth now I want to just like enjoy my life like I don't want to feel like this is a job I'm not just going to put a whole bunch of work back on there you can choose to either build or enjoy I guess is the other option uh to enjoy that bandwidth and have your business running without you running around like a headless chicken all the time and that entirely depends on who you are as a founder and where you're at with with your life but personally I'm
+
+00:19:06 - 00:19:48
+using that extra bandwidth to be able to pour into building new things, new initiatives that are actually going to drive growth in the business. Stuff I've been wanting to do for a long time, but I didn't have the bandwidth to do because I was so stuck in the business that I wasn't able to work on the business. And this, I think, is really going to change the lives of thousands and thousands of entrepreneurs when they feel this bandwidth freed up. And let's not forget, you've also built this
+
+00:19:27 - 00:20:15
+incredibly powerful workstation. Like I said, I was able to do a million dollars in seven days by using this workstation to just crunch through tasks at speeds that I've never been able to do before as an entrepreneur. And I'm quite technical. I can sort of see both sides. I can do creative tasks, development tasks. I can create content. I can make plans and roll those out to teams. So, I've already been pretty good at a lot of that stuff. And this is just insane. When you have this bandwidth plus the
+
+00:19:51 - 00:20:42
+system plus the workspace, it really is going to separate the winners from losers in business over the next few years. Because the people who have this set up who to do and take a lot of work off their plate and then be able to have this workspace that is fully contextualized and can search the web, it can build things for you. can access all the APIs like I have it connected to my kit API, my calendarly API. I have it connected to Versell so I can build and deploy things easily. I have it connected to um all of my data
+
+00:20:17 - 00:21:02
+sources. So it just has access to everything I need it to and it can set up things, monitor things, build things out for me faster than I've ever been able to do before, right? And so one thing that I also want to touch on is what I call the three KPIs of uh the AIOS methodologies because we need to know what we're actually shooting towards here because without a clear goal, we're just going to be wandering around and never achieve something specific. So if we're specific about what we're trying to achieve, then we
+
+00:20:40 - 00:21:35
+have a better chance of actually achieving that, right? That's kind of how goals work. So are the three KPIs? The first one is away from desk autonomy. And this is the sort of delegation to the phone thing. How much capability can I squeeze into this so that I do not have to be at home all the time? I do not have to be at the at the desk to do this. Now, I tested this the other day. I went out for last Sunday or Sunday before that. Uh we rented some cars. We went for a drive. Went to visit some
+
+00:21:10 - 00:21:51
+penguins here in Cape Town. And I tried to see how much I could get done on my phone. And I was able to get basically everything I was doing at home or here on my computer, I was able to do while I was away because if you have your Telegram set up or your away from desk setup done correctly and you have the right files and workflows and augmented workflows set up, then you can do it from your phone even when you're away. So, I was really blown away. And that's part of kind of part of this is that you
+
+00:21:31 - 00:22:18
+need to test that occasionally. You need to say, right, I'm going to go I might even do it this week is like try to run my business from the beach and see how much see what's actually missing from your Telegram or away from desk setup. And so testing this from time to time to see just how much you can get done when you're away from your desk and if you can go away for the weekend and not take your laptop with you and does your business blow up. Is there anything that doesn't work? And
+
+00:21:54 - 00:22:51
+that's a really key test and a key KPI like am I able to get 100% of my work done when I'm away from my desk. The next one is task automation percentage. So going back to that bandwidth bar, remember how far can we get this bar down here from the original. So that's the percentage like I'm going for 60 to 70% of mine um over the next 30 days. I made a video on that as I said that'll be linked in the description. But you want to be setting a kind of KPI here of where am I in relation to where I started. How many of
+
+00:22:24 - 00:23:15
+these tasks am I actually automating or heavily augmenting so that I don't have to do all of it or as much of it myself anymore? And then the final one is really important one revenue per employee. This has become a very sexy metric in the age of AI and this is the new flex. It's not how many people you have, it's what's the revenue per employee. And that's a really great indicator of how efficient you're being with AI use within your organization. And I'm going to make a video about it
+
+00:22:50 - 00:23:38
+soon. But there there is seriously a bloodbath coming to the small business world in terms of the number of people in companies, the headcount, how many employees a small business actually needs to run. Because a lot of this stuff is is the benefit of small businesses right now. If you're a big company, maybe you got hundreds and hundreds or thousands of people to be able to set up a clawed code workspace like this like I'm talking about that you as a founder or you as your team are able to use to get more done. It is not
+
+00:23:14 - 00:24:02
+really suitable for companies with ERP systems or kind of clunky legacy software. It is the benefit of the small business who can be nimble, can sort of drop their old tech stack, can move over to new things easily, can very freely connect APIs up to their existing platforms and softwares that they use and pulling that all into one place to allow them to get more stuff done in this kind of very customized and flexible way is the benefit of small businesses. And as a result, basically everyone that I'm helping to do this is
+
+00:23:38 - 00:24:30
+like, well, I'm I'm serious going to have to reconsider a lot of my hires and I think there's a bud bath coming. So revenue per employee should be going up for you as an entrepreneur. either just the revenue going up regardless and the employees staying still or the revenue staying still and the employees going down or a bit of both, you know. All right, so the piece you're probably asking now is how do I start? Now, if I'm honest, there is a ton to cover here and I've only really just
+
+00:24:04 - 00:24:46
+been scratching the surface cuz I'm kind of limited in this medium. Um, but to put it all together into a much clearer kind of package for you guys end to end with better examples, better screenshots and stuff of what I'm actually doing in my AIOS, how I've set that up, I put together a full free training for you guys, which is like 2 hours long. You guys will be able to sign up to it in the description below. And that's been the best way I found to educate as many people as possible on this um in a in a
+
+00:24:25 - 00:25:17
+more interactive way. So you guys can chat to me. I can answer your questions and things like that. So full free training for founders looking to get into building uh their claude code AI operating system so that they can be at the front foot of this new revolution and how business is done. And you can choose to listen to me, you can choose to ignore it, but AGI is here. I called that recently. AGI is here meaning artificial general intelligence meaning you have some form of AI that is as capable or better than a human and
+
+00:24:51 - 00:25:33
+basically any kind of uh role in this case digital based roles. Claude code is that it can be trained to do anything you want it to. Anything is automatable. You just have to ask Claude. Now, we're in a different world and I'd love to bring you guys into it. So, if you want to sign up to that free training, that's going to be in the description below. We had an excellent turnout last time. People loved it and I've got a lot of people onto this wave of building an AI operating system for their business. So,
+
+00:25:12 - 00:25:54
+I'm Le Mley, guys. Thank you so much for watching. There'll be more videos. If you want specific things talked about in my next one, please comment down there below. And of course, subscribe to the channel so that you can stay in the loop on AIOS like this and everything around it. If you want to check out that video of me explaining how I'm automating 60 to 70% of my task with my AIOS, you can check that out up here. Uh that'll take you there. That's all for the video, guys. Thank you so much for watching.
+
+00:25:32 - 00:25:35
+I'll see you in the next one.

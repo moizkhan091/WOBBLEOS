@@ -1,0 +1,453 @@
+import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, varchar, vector } from "drizzle-orm/pg-core";
+
+const id = () => text("id").primaryKey();
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
+const metadata = () => jsonb("metadata").$type<Record<string, unknown>>().notNull().default({});
+
+export const founderProfiles = pgTable("founder_profiles", {
+  id: id(),
+  displayName: varchar("display_name", { length: 80 }).notNull(),
+  role: varchar("role", { length: 120 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  approvalDefault: boolean("approval_default").notNull().default(false),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const authSessions = pgTable("auth_sessions", {
+  id: id(),
+  sessionTokenHash: text("session_token_hash").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const settings = pgTable("settings", {
+  id: id(),
+  key: varchar("key", { length: 120 }).notNull(),
+  scope: varchar("scope", { length: 64 }).notNull().default("global"),
+  value: jsonb("value").$type<Record<string, unknown>>().notNull().default({}),
+  description: text("description"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const jobs = pgTable("jobs", {
+  id: id(),
+  queue: varchar("queue", { length: 80 }).notNull(),
+  type: varchar("type", { length: 120 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  priority: integer("priority").notNull().default(0),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  idempotencyKey: varchar("idempotency_key", { length: 160 }),
+  linkedModule: varchar("linked_module", { length: 80 }),
+  linkedEntityType: varchar("linked_entity_type", { length: 80 }),
+  linkedEntityId: text("linked_entity_id"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  runAfter: timestamp("run_after", { withTimezone: true }),
+  lockedAt: timestamp("locked_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  failedAt: timestamp("failed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const jobAttempts = pgTable("job_attempts", {
+  id: id(),
+  jobId: text("job_id").notNull(),
+  attemptNumber: integer("attempt_number").notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  error: text("error"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+});
+
+export const workerHeartbeats = pgTable("worker_heartbeats", {
+  id: id(),
+  workerName: varchar("worker_name", { length: 120 }).notNull(),
+  workerType: varchar("worker_type", { length: 80 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("online"),
+  currentJobId: text("current_job_id"),
+  heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const sourceTrustLevels = pgTable("source_trust_levels", {
+  id: id(),
+  slug: varchar("slug", { length: 80 }).notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  priority: integer("priority").notNull(),
+  description: text("description").notNull(),
+  canUpdateBrain: boolean("can_update_brain").notNull().default(false),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const sources = pgTable("sources", {
+  id: id(),
+  title: text("title").notNull(),
+  sourceType: varchar("source_type", { length: 80 }).notNull(),
+  url: text("url"),
+  trustLevel: varchar("trust_level", { length: 80 }).notNull().default("tier_4_experimental"),
+  approvalStatus: varchar("approval_status", { length: 32 }).notNull().default("pending"),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  discoveredBy: varchar("discovered_by", { length: 120 }),
+  addedBy: varchar("added_by", { length: 120 }),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const files = pgTable("files", {
+  id: id(),
+  path: text("path").notNull(),
+  fileType: varchar("file_type", { length: 80 }).notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  linkedEntityType: varchar("linked_entity_type", { length: 80 }),
+  linkedEntityId: text("linked_entity_id"),
+  createdBy: varchar("created_by", { length: 120 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  approvalState: varchar("approval_state", { length: 32 }).notNull().default("not_required"),
+  sizeBytes: numeric("size_bytes"),
+  checksum: text("checksum"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const sourceChunks = pgTable("source_chunks", {
+  id: id(),
+  sourceId: text("source_id").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const memoryRecords = pgTable("memory_records", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  title: text("title").notNull(),
+  memoryTier: varchar("memory_tier", { length: 32 }).notNull(),
+  area: varchar("area", { length: 80 }).notNull(),
+  content: text("content").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  sourceId: text("source_id"),
+  confidence: numeric("confidence"),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const memoryChunks = pgTable("memory_chunks", {
+  id: id(),
+  memoryRecordId: text("memory_record_id"),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  memoryTier: varchar("memory_tier", { length: 32 }).notNull(),
+  trustLevel: varchar("trust_level", { length: 48 }).notNull(),
+  sourceId: text("source_id"),
+  parentEntityId: text("parent_entity_id"),
+  entityType: varchar("entity_type", { length: 64 }),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  archived: boolean("archived").notNull().default(false),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  sourceTimestamp: timestamp("source_timestamp", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const memoryUpdateProposals = pgTable("memory_update_proposals", {
+  id: id(),
+  proposedMemory: text("proposed_memory").notNull(),
+  reason: text("reason").notNull(),
+  sourceId: text("source_id"),
+  affectedArea: varchar("affected_area", { length: 80 }).notNull(),
+  confidence: numeric("confidence"),
+  approvalId: text("approval_id"),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  rejectedBy: varchar("rejected_by", { length: 120 }),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const approvals = pgTable("approvals", {
+  id: id(),
+  approvalType: varchar("approval_type", { length: 80 }).notNull(),
+  entityType: varchar("entity_type", { length: 80 }).notNull(),
+  entityId: text("entity_id").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  riskLevel: varchar("risk_level", { length: 32 }).notNull().default("normal"),
+  requestedBy: varchar("requested_by", { length: 120 }),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  rejectedBy: varchar("rejected_by", { length: 120 }),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+  approvalAction: varchar("approval_action", { length: 80 }),
+  confirmationRequired: boolean("confirmation_required").notNull().default(false),
+  confirmationCompleted: boolean("confirmation_completed").notNull().default(false),
+  notes: text("notes"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const approvalActions = pgTable("approval_actions", {
+  id: id(),
+  slug: varchar("slug", { length: 80 }).notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  description: text("description").notNull(),
+  riskLevel: varchar("risk_level", { length: 32 }).notNull().default("normal"),
+  requiresConfirmation: boolean("requires_confirmation").notNull().default(false),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const contentPackets = pgTable("content_packets", {
+  id: id(),
+  platform: varchar("platform", { length: 80 }).notNull(),
+  format: varchar("format", { length: 80 }).notNull(),
+  objective: text("objective").notNull(),
+  targetAudience: text("target_audience").notNull(),
+  angle: text("angle").notNull(),
+  hook: text("hook"),
+  mainCopy: text("main_copy"),
+  carouselSlides: jsonb("carousel_slides").$type<Array<Record<string, unknown>>>().notNull().default([]),
+  caption: text("caption"),
+  cta: text("cta"),
+  designDirection: text("design_direction"),
+  sourceIdsUsed: jsonb("source_ids_used").$type<string[]>().notNull().default([]),
+  insightIdsUsed: jsonb("insight_ids_used").$type<string[]>().notNull().default([]),
+  memoryChunksUsed: jsonb("memory_chunks_used").$type<string[]>().notNull().default([]),
+  evidenceSummary: text("evidence_summary"),
+  claimRiskLevel: varchar("claim_risk_level", { length: 32 }).notNull().default("low"),
+  proofRequired: boolean("proof_required").notNull().default(false),
+  qualityStatus: varchar("quality_status", { length: 32 }).notNull().default("not_reviewed"),
+  approvalStatus: varchar("approval_status", { length: 32 }).notNull().default("draft"),
+  n8nHandoffStatus: varchar("n8n_handoff_status", { length: 32 }).notNull().default("not_sent"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const contentVersions = pgTable("content_versions", {
+  id: id(),
+  contentPacketId: text("content_packet_id").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  changeReason: text("change_reason"),
+  createdBy: varchar("created_by", { length: 120 }).notNull(),
+  createdAt: createdAt(),
+});
+
+export const qualityReviews = pgTable("quality_reviews", {
+  id: id(),
+  entityType: varchar("entity_type", { length: 80 }).notNull(),
+  entityId: text("entity_id").notNull(),
+  usefulness: integer("usefulness").notNull(),
+  originality: integer("originality").notNull(),
+  brandFit: integer("brand_fit").notNull(),
+  clarity: integer("clarity").notNull(),
+  aggressionControl: integer("aggression_control").notNull(),
+  proofStrength: integer("proof_strength").notNull(),
+  postWorthiness: varchar("post_worthiness", { length: 32 }).notNull(),
+  passed: boolean("passed").notNull(),
+  notes: text("notes"),
+  createdAt: createdAt(),
+});
+
+export const modelRuns = pgTable("model_runs", {
+  id: id(),
+  provider: varchar("provider", { length: 64 }).notNull(),
+  model: varchar("model", { length: 128 }).notNull(),
+  role: varchar("role", { length: 64 }).notNull(),
+  module: varchar("module", { length: 64 }).notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  estimatedCost: numeric("estimated_cost"),
+  actualCost: numeric("actual_cost"),
+  latencyMs: integer("latency_ms"),
+  status: varchar("status", { length: 32 }).notNull(),
+  error: text("error"),
+  linkedEntityType: varchar("linked_entity_type", { length: 80 }),
+  linkedEntityId: text("linked_entity_id"),
+  providerRunId: text("provider_run_id"),
+  createdAt: createdAt(),
+});
+
+export const providerRuns = pgTable("provider_runs", {
+  id: id(),
+  provider: varchar("provider", { length: 80 }).notNull(),
+  operation: varchar("operation", { length: 120 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  requestMetadata: jsonb("request_metadata").$type<Record<string, unknown>>().notNull().default({}),
+  responseMetadata: jsonb("response_metadata").$type<Record<string, unknown>>(),
+  estimatedCost: numeric("estimated_cost"),
+  actualCost: numeric("actual_cost"),
+  latencyMs: integer("latency_ms"),
+  error: text("error"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const auditLogs = pgTable("audit_logs", {
+  id: id(),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  module: varchar("module", { length: 64 }).notNull(),
+  entityType: varchar("entity_type", { length: 80 }),
+  entityId: text("entity_id"),
+  actor: varchar("actor", { length: 80 }),
+  modelRunId: text("model_run_id"),
+  costEstimate: numeric("cost_estimate"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+});
+
+export const webhookEndpoints = pgTable("webhook_endpoints", {
+  id: id(),
+  name: varchar("name", { length: 120 }).notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  url: text("url").notNull(),
+  secretRefName: varchar("secret_ref_name", { length: 120 }).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const webhookEvents = pgTable("webhook_events", {
+  id: id(),
+  endpointId: text("endpoint_id"),
+  direction: varchar("direction", { length: 32 }).notNull(),
+  eventType: varchar("event_type", { length: 120 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 160 }),
+  signatureVerified: boolean("signature_verified").notNull().default(false),
+  replayProtected: boolean("replay_protected").notNull().default(false),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  response: jsonb("response").$type<Record<string, unknown>>(),
+  failureReason: text("failure_reason"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const deadLetters = pgTable("dead_letters", {
+  id: id(),
+  sourceType: varchar("source_type", { length: 80 }).notNull(),
+  sourceId: text("source_id").notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  reason: text("reason").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  retryCount: integer("retry_count").notNull().default(0),
+  status: varchar("status", { length: 32 }).notNull().default("open"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const budgetCaps = pgTable("budget_caps", {
+  id: id(),
+  category: varchar("category", { length: 80 }).notNull(),
+  period: varchar("period", { length: 32 }).notNull(),
+  amount: numeric("amount").notNull(),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  maxBatchSize: integer("max_batch_size"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const automations = pgTable("automations", {
+  id: id(),
+  name: varchar("name", { length: 160 }).notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  triggerType: varchar("trigger_type", { length: 80 }).notNull(),
+  schedule: varchar("schedule", { length: 120 }),
+  n8nWorkflowId: varchar("n8n_workflow_id", { length: 160 }),
+  workerQueue: varchar("worker_queue", { length: 80 }),
+  status: varchar("status", { length: 32 }).notNull().default("paused"),
+  killSwitchKey: varchar("kill_switch_key", { length: 120 }),
+  lastSuccessfulRunAt: timestamp("last_successful_run_at", { withTimezone: true }),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const automationRuns = pgTable("automation_runs", {
+  id: id(),
+  automationId: text("automation_id").notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+});
+
+export const backupRuns = pgTable("backup_runs", {
+  id: id(),
+  backupType: varchar("backup_type", { length: 80 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  storagePath: text("storage_path"),
+  sizeBytes: numeric("size_bytes"),
+  checksum: text("checksum"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  createdAt: createdAt(),
+});
+
+export const providerConnections = pgTable("provider_connections", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  label: varchar("label", { length: 160 }).notNull(),
+  providerType: varchar("provider_type", { length: 80 }).notNull(),
+  credentialKeyName: varchar("credential_key_name", { length: 120 }).notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  allowedModules: jsonb("allowed_modules").$type<string[]>().notNull().default([]),
+  permissionMode: varchar("permission_mode", { length: 80 }).notNull().default("read_write"),
+  costCategory: varchar("cost_category", { length: 80 }).notNull(),
+  healthStatus: varchar("health_status", { length: 32 }).notNull().default("unknown"),
+  referenceDocPath: text("reference_doc_path"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const promptSkills = pgTable("prompt_skills", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  trigger: text("trigger").notNull(),
+  version: integer("version").notNull().default(1),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  goal: text("goal").notNull(),
+  promptBody: text("prompt_body").notNull(),
+  rules: jsonb("rules").$type<string[]>().notNull().default([]),
+  referencePaths: jsonb("reference_paths").$type<string[]>().notNull().default([]),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});

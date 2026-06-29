@@ -1,0 +1,128 @@
+00:00:00 - 00:00:52
+A few days ago, I hosted a mastermind in Cape Town, South Africa, where I welcomed six founders into the villa and I walked them through how to use and understand code and more importantly, how to set it up as an AI operating system for their business. I really wanted to put myself to the test of can I take completely nontechnical people from all sorts of different business models and backgrounds and get them to set up an AI operating system on flawed code and not only be able to grasp the concepts and get it set up for
+
+00:00:26 - 00:01:08
+themselves, but also by the end of it be able to use it for themselves. and I'd be confident that I could let them now go and work on it and kind of take the training rules off and know that they were still going to be making progress with building the operating system when they left the doors. And so in this video, I'm going to be breaking down how the day went, uh, the exact sort of sections and training that I took them through and the results that we got at the end for each of these nontechnical
+
+00:00:48 - 00:01:32
+founders. And just quickly, if you guys are new to the channel and don't know who I am, my name is Liam Mley and I've been building AI businesses for the past 3 years. an AI agency, Warning AI, where we build AI systems for NBA teams, Fortune 500s, and uh publicly traded companies as well. Also got the education business. And I'm also building an AI SAS portfolio at the moment. And here on this channel, I've been teaching people how to understand AI and use it to build businesses or to
+
+00:01:10 - 00:01:57
+scale their business for the past 3 years. That's a bit of context on me. And as of right now, my main focus is on teaching business owners how to set up an AI operating system for their business using Claw Code, like I've been able to do over the past month. And the reason I'm so obsessed about doing this now, and if you're watching this video, maybe you're kind of curious about Claude Code, you've heard about it before, or you're interested in as a as a business owner to get some sort of
+
+00:01:34 - 00:02:20
+operating system where AI does a lot of the work. And that's really what I'm most fascinated about right now because I've been seeing the insane results in my own business where this AI operating system concept that I've or business methodology approach to business that I've come up with is essentially a wrapper around whatever business model you've had. And so it's a lot to explain right now, but you'll get it as we as we go through this video. But I wanted to put myself to the test of yeah, sure,
+
+00:01:57 - 00:02:37
+it's cool that I've been able to do it for myself, but obviously building AI businesses for the past few years and doing AI consulting and development for some of the biggest brands in the world. Of course, I can do it. And yeah, sure, that's cool. But what about the millions and millions of business owners out there who could benefit from something like this as well, which is essentially like an AI workspace that can replace all of your AI tools, replace a lot of your software stack as well. It can
+
+00:02:17 - 00:03:03
+allow you as a founder to get so much more done in so much less time and also allow you to either automate or heavily AI augment basically everything you do within the business. So, you free up a lot of time and bandwidth for yourself through this cloud code AI operating system or AIOS that I'm setting up for the founders who came to the workshop. While cla code may sound like a coding tool and one of the tricky things about this cloud code revolution in business that's going on is that it scares a lot
+
+00:02:40 - 00:03:24
+of founders off and saying oh cloud code sounds like coding tool sounds like I need to be technical first and foremost no you don't need to be and and I think what I'm going to cover in this video will prove that to you but it's more of like a general purpose like super agent and if you know what you're doing if you have the right methodology to apply that to your business you as the founder can be incredibly empowered and to have a lot of stuff taken off your plate and have this incredibly powerful AI
+
+00:03:02 - 00:03:48
+companion that can basically help you to do things across the entire business much faster. And then when scaled out to your teams, it is incredibly hard to compete with people who are running these kinds of things right now. And so that was why I wanted to get out of a get out of my get out of my office, get out of the room, get out from behind the keyboard and and actually help some founders in person and see if I can apply this to all the different types of businesses. Now, what kinds of businesses came, what were the founders,
+
+00:03:25 - 00:04:14
+what were the backgrounds and so on. So firstly, we had Timo who exited his influencer marketing agency for, I believe, £30 million. And so he was there, he was a co-work user, but he wasn't yet a Claude code user. Um, so I was trying to kind of convert him. And then secondly, we had Adrian, who definitely a lot more AI fluent, but he wasn't yet using Claude code. He has a design business doing websites and and designs for businesses. And then we had Brian and his wife an and they had uh a
+
+00:03:50 - 00:04:39
+venture studio that has a portfolio of e-commerce and SAS businesses inside of it. Ann had watched some of my previous AIOS kind of cla code operating system videos here on YouTube. So she was dabbling in cold code already but Brian had not yet made the jump. And then we had Lionus who was an AI agency owner particularly a voice AI agency owner who was using co-work at the time and so again he was another person I was trying to convert and see the light that uh called code is far more powerful especially for founders than co-work and
+
+00:04:15 - 00:05:04
+then we had Richard who was a founder of an e-learning platform in South Africa and he was a heavy AI user but also had not yet made the jump over to board code. And then finally we had Cibble and he was the least technical of the bunch. Um he was a chatbt user from time to time on his laptop and he was a owner of a holiday brokerages business in Johannesburg in South Africa. And so as you can see I really had my work cut out for me. I had a very broad range of businesses and this was intentional. Put
+
+00:04:39 - 00:05:23
+out a little story on Instagram and got over 50 responses of business owners who were ready to fly out or already in Cape Town for this. And honestly I got my cord code operating system to pick them for me. I said here's my criteria. I want to get as broad of a range of technical ability as possible, but also a broad a range of different business types and business models as possible to prove that I can take this stuff and apply it and really put myself in the deep end on getting this stuff applied
+
+00:05:01 - 00:05:46
+and trained up and kind of get them to the end of it where they understand it and they're using it and they're ready to go on their own. So, that's the room, but what did we actually do? What what what was the the curriculum or the the workshop that I was walking them through for that day? Well, I was starting off firstly with an intro round of intros of course getting everyone acquainted with who each other are and what businesses they run. Secondly, I wanted to go through a bunch of theory. There's a lot
+
+00:05:23 - 00:06:08
+of kind of key like that that concept of a business model being in the middle uh and your AI operating system being around it. So, it's not a business model in itself. It's a it's a universal kind of wrapper and layer around a business model that you can apply with code. And in this theory section, I went deep on not just what this AI operating system model is, but why it's so important that they take action on it now. like the downwards pressure on prices of services and products that we're going to see
+
+00:05:46 - 00:06:33
+over the next 12 to 24 months and why it's it's not even optional. It's not even a question of whether or not you need to take action on the stuff which because of the downwards pressure on prices due to AI and the exact stuff that I'm teaching in they need to be able to drop those costs as quickly as possible so that they can make the most of the margin that's left as things really shrink down into who knows where we end up in 24 36 months when this stuff really hits the economy uh in in
+
+00:06:10 - 00:06:52
+full force. And so giving them a picture of not only what they're going to be building and the structure and how it works, but also why they need to take action now and and making them see the big picture. And that's where I find founders really need to to realize, no, hey, hey, I need to I need to listen to this. I need to tune in and I need to free up my bandwidth and and I walk them through the whole kind of operator trap that I explain, which is that most founders are spending 80% or more of
+
+00:06:31 - 00:07:16
+their time working in the business, not on the business. And with a system like this, you can finally start to free up your bandwidth and give yourself more and more time to work on the business. And in a time where you don't we don't really know what business is going to look like in the next 24 to 30 36 months. We don't know what's around the corner. We don't know what new innovation or new model is coming to destroy your industry or or or eat away your margins. In a time when things are
+
+00:06:54 - 00:07:38
+changing so quickly, you need more bandwidth than ever to work on the business. And the only ones who are going to survive ultimately are the the business owners who have the most bandwidth and the most powerful set of tools to allow them to pursue the pivots and sort of execute on the pivots that are needed to survive. they're going to be the ones who are still around because they've been able to pivot very quickly and they have the bandwidth to actually apply your pivot. Because if you're
+
+00:07:15 - 00:08:07
+already struggling as a business owner just to keep make ends meet these days when the downward pressure of those that AI affecting the the prices in your industry comes in and suddenly your margins get even skinnier and you don't have any any room to work on the business, you're working all in the business. Then how are you supposed to pivot? Like where where is your free bandwidth to pivot? you're going to burn yourself out and just like crumble in the face of the amount of change that is
+
+00:07:41 - 00:08:23
+coming for the vast majority of industries. And I'd go as far as to say it's coming for every industry, whether it's it's physical stuff and the robots coming or it's or it's digital and you have the the agents coming. So after the theory, it was time to get into getting their environment set up. Now, this was a very much a learning experience for me because I've I've only ever done it online or done it through my program and teaching people how to do it there. And
+
+00:08:02 - 00:08:51
+so for myself and Emil, my a good friend and actually ex-member of my program gone on to do incredible things in AI space. Uh he's also an expert on the stuff and he's been helping me um to do these these workshops. And so Emil and I had to teach uh these seven founders how to download cursor, how to get claude code installed, how to uh get the correct setup dialed in, how to guide them through setting up my starter kit template, which gives you the right structure and base for your claude code
+
+00:08:27 - 00:09:12
+operating system. And it was quite hectic for me and him to be running around kind of helicoptering helping people get through different blocks. We had Windows users and I haven't had to deal with Windows users yet. So in real time having to refine the process and methodology by which I like roll this out and and get founders who are using different operating systems or different technical abilities how I explain each of these little micro steps. So it was a massive learning experience for me. Um
+
+00:08:49 - 00:09:28
+and each of the hiccups we had to kind of iron out as we went. But now it's great for me going into this next one where we're going to be hosting it here in Bali. And you guys, there'll be an application form down below if you guys are interested in any of the Bali mastermind for I'll be doing these setups and installs for another few small batches of founders here. So that'll be in the description if you guys are interested in applying for that. I'm here in uh in Bali at the
+
+00:09:09 - 00:09:57
+moment. That whole process of getting them set up on cursive with Claude code with my starter kit all ready to go for the next phase. Uh that was a a quite a hectic one and I'm hoping to get that smoothed out next time. And then the section after that is the most important part of the entire claude code or AI operating system process which is getting your context OS set up. And so I gave them my uh downloadable kind of plug-in module plug-and-play module from my program on context OS and I was able
+
+00:09:33 - 00:10:13
+to pass it into the WhatsApp group for them. They used the install command that I've created and then the context OS installer gave them a bunch of different options on how they can get all of their business context into the system. You're probably familiar with using cord to chatb. You're constantly pasting in information to give it the full picture. you will never have to do that again when you set up something like this. And so that was like the aha moment for them. That's the first win that I can
+
+00:09:53 - 00:10:38
+get them. And so the options that the context OS install takes them through is hey do you want to do this via a questionnaire? It can ask you questions back and forth. Do you want to give me uh import a bunch of documents, put it in the import folder and I'll analyze it. That's usually the fastest way. Just importing a bunch of documents and it'll analyze it and create the relevant docs inside. Do you just want to paste some information in? Do you want to go and give me your website URL and I'll pull
+
+00:10:15 - 00:11:03
+that? Do you want to as as some people did go on to chat GPT export your chat GPT memory and bring that over just dumping as much information as possible into that uh chat with code then as part of the install it shapes it up and figures out what different documents need to go where and then finalizes the context OS structure that's optimal for their business and that is a massive win and we got everyone through that uh very easily and from there the plan was to take them into the next section which is
+
+00:10:39 - 00:11:27
+called a data OS or data operating system that involves pulling all of your business data into one place creating a local database and then being able to create what I call like a mission control or a dashboard that you can look at every morning to give you the clear uh metrics and overall health of your business, which is incredibly helpful for me. But because we were short on time, I wanted to get them to the point where they could walk through a solving a specific business problem or automating a specific thing themselves
+
+00:11:03 - 00:11:58
+using what I call my explore command or explore. And this is a great way that once you have your business contextualized, you can even as as kind of a step before that there's these two things that help nontechnical founders to understand uh or to walk through the process of uh identifying stuff to build identifying automations to create or workflows to create too heavily augmented task for them. And that is uh the brainstorm and the export command. If you don't understand commands are basically like a a prompt template that
+
+00:11:31 - 00:12:19
+I give to them that they can get called code to run if you know what you want. My most common workflow is to use slashexplore and it will walk me through hey figuring out if I just have a a a fragment of an idea of like hey it would be cool if we could do this. It walks you through as a as a non-technical founder. Okay well let's define exactly what you want. Let me analyze the workspace that we have currently. Let's see what other uh what it would look like to build this in. Let me go and
+
+00:11:55 - 00:12:37
+search the web and figure out the best way of doing this from a technical standpoint. And then chord code literally just does it all for you until you get to the end and you're given an expiration document. then you're able to pass that over and get that built using a several command. But I wanted to walk them through that and show them that they can explore their own ideas that they want to build into their workspace to automate their own work or to heavily augment it. Um, so that's the explore
+
+00:12:16 - 00:12:59
+command. Now in in a guy like Cybles's case, he didn't even know where to start. So there's a a step before that called/brainstorm brainstorm command which looks at the context of the business that had just loaded in and then says, "Hey, well like yeah, let's brainstorm like how would you like this? This could be cool." So it sounds like you use in his case he uses Zoho and was like why don't we just get a Zoho integration going and then he was able to walk through step by step by
+
+00:12:38 - 00:13:25
+step as a completely non-technical person who at best uses a bit of chat GBT here and there. He was able to go through that brainstorm and then explore process and get to the end of that process of having fully integrated his Zoho system with his cord code where he no longer has to go to Zoho to look at it. And I think we've got a clip of him doing his first his first basically chat with the Zoho system and he was asking about unpaid invoices which is an important thing for him to know and he
+
+00:13:01 - 00:13:47
+was able to chat from claude code and ask how many unpaid invoices are there at queried Zoho and came back and told him and that was really the like aha moment for him and that's just one example of the kinds of outcomes these people are able to get with this workshop in just like 8 hours. uh they got to the end there's uh Richard got to the point where he was able to do a massive search of the web and then synthesize all that information given the context we built up about his business to create a beautiful report
+
+00:13:24 - 00:14:11
+that would have taken him hours and hours and hours to do um of doing a competitor analysis for potential acquisitions. Brian was able to create an integration into his uh financial platform so that he could automate this report making that he did which required him pulling all of these transactions and reconciling them which is going to save him hours as well. And we have guys like Lionus who want to get more heavily into content and he was able to create an automated system to analyze competitors and give him content ideas
+
+00:13:47 - 00:14:38
+uh that he can set up to go on a on a weekly or even daily basis. So this was really the huge success moment for me uh of seeing and really realizing the massive potential of these kinds of AI operating systems using claude code for businesses and that I was able to grab a whole bunch of people from all different areas and sit them down in a room and walk them through my methodology and teach them the theory, get them to see why they need this so much. Most importantly, by the end of it, I felt
+
+00:14:13 - 00:14:54
+like I could take the training rules off and that they when they left, I trained them that just ask Claude with these frameworks and with these like commands that I've given you. You can just ask Cord and it will help you to do it. And seeing the results of those kind of capstone projects like the capstone of the work that were done at that workshop, what was the final result that they got? And each of them had this explore-based workflow that they'd gotten to the end of and being able to
+
+00:14:33 - 00:15:25
+create a new system for their business. That made all of the work worth it for me. And so I'm super excited to run more of these in future. I'm super bullish on this just for founders in general that like I I was kind of in the back of mind wondering is this really something that the nontechnical founder had a chance of using. Could they really tap into some of this insane productivity and and automation capability that I have with my system and being able to see that mapped over to not just the sort of AI
+
+00:14:59 - 00:15:44
+fluent people, but people who are really just just getting into AI and even on the lower end of of digital literacy. So massive win for founders. I'm so excited to run some more of these. Like I said, if you guys are interested in coming out here to Bali and doing a workshop with myself and Emil and getting your AI operating system set up, we're taking all of the learnings from that last session and we're going to be trying to push deeper and deeper and deeper in with each of our sessions that we do.
+
+00:15:22 - 00:16:08
+Probably going to do two. So make sure you go and apply down there. Hope that was eye opening or helpful for you guys. If you are maybe a nontechnical founder feeling on the outside of this and being like, "Oh, I need to have a tech team to do this." No, you don't. you seriously can do it yourself with the right framework and with the right prompts and and commands. This stuff is something that's accessible to even the least technical of us. So, be happy for that because it's it's a massive win for us.
+
+00:15:45 - 00:16:29
+So, I'm so excited to keep bringing this to founders. I'm so excited to see how far this goes. We literally just at the start of this stuff, but AI operating systems are the future of business. AGI is here and it's up to you if you want to be ones to benefit from it in these early stages. So, thanks for watching guys. Guys, if you want to check out another video from me breaking down how I plan to automate 60 to 70% of my current tasks in my business with this kind of system, you can check that out
+
+00:16:07 - 00:16:17
+up here. But that is all for the video, guys. Thank you so much for watching. I'll see you the next one.

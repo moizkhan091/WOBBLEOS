@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=neue-montreal@400,500,700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#06070A;color:#F2F4F1;font-family:'General Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .lucide{width:1em;height:1em;stroke-width:1.7;display:block}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.10);border-radius:20px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.18)}
+  ::-webkit-scrollbar-track{background:transparent}
+  input,textarea{font-family:inherit}
+  @keyframes wobFloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-2.4%,-3%) scale(1.04)}}
+  @keyframes wobFloat2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3%,2.4%) scale(1.06)}}
+  @keyframes wobPulse{0%,100%{opacity:.55}50%{opacity:1}}
+  @keyframes wobSpin{to{transform:rotate(360deg)}}
+  @keyframes wobIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(120% 120% at 78% -10%, #0d1206 0%, #08090C 38%, #06070A 100%)">
+  <div style="position:absolute;width:62vmax;height:62vmax;right:-14vmax;top:-22vmax;border-radius:50%;background:radial-gradient(circle at 38% 34%, rgba(184,255,44,0.16), rgba(184,255,44,0.05) 34%, transparent 60%);filter:blur(8px);animation:wobFloat 18s ease-in-out infinite;opacity:{{ orbOpacity }}"></div>
+  <div style="position:absolute;width:34vmax;height:34vmax;right:2vmax;top:2vmax;border-radius:50%;background:radial-gradient(circle at 36% 30%, #20240f, #0a0b06 58%, #070707 78%);box-shadow:inset 0 0 90px rgba(0,0,0,0.7), 0 0 120px -10px rgba(184,255,44,0.20);animation:wobFloat 18s ease-in-out infinite;opacity:{{ orbOpacity }}"></div>
+  <div style="position:absolute;width:30vmax;height:30vmax;left:-10vmax;bottom:-12vmax;border-radius:50%;background:radial-gradient(circle at 50% 50%, rgba(37,99,255,0.10), transparent 62%);filter:blur(10px);animation:wobFloat2 24s ease-in-out infinite;opacity:{{ orbOpacity }}"></div>
+  <div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1.4px);background-size:30px 30px;mask-image:radial-gradient(120% 90% at 75% 10%, #000 0%, transparent 70%);-webkit-mask-image:radial-gradient(120% 90% at 75% 10%, #000 0%, transparent 70%);opacity:.5"></div>
+</div>
+
+<div style="position:relative;z-index:1;height:100vh;width:100vw;display:flex;overflow:hidden">
+
+  <!-- SIDEBAR -->
+  <aside style="width:262px;flex:none;height:100%;padding:18px 14px;display:flex;flex-direction:column;gap:14px;border-right:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012));backdrop-filter:blur(26px) saturate(130%);-webkit-backdrop-filter:blur(26px) saturate(130%)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px 2px">
+      <div style="font-family:'General Sans';font-weight:600;font-size:25px;letter-spacing:-0.04em;line-height:1">wobble<span style="color:#B8FF2C">.</span></div>
+      <div style="font-size:9px;letter-spacing:0.22em;color:rgba(242,244,241,0.4);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 6px;font-weight:500">OS</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px;overflow-y:auto;flex:1;padding:2px 2px 10px;margin:0 -2px">
+      <sc-for list="{{ navGroups }}" as="grp" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:9.5px;letter-spacing:0.2em;color:rgba(242,244,241,0.32);font-weight:600;padding:0 10px 4px">{{ grp.label }}</div>
+          <sc-for list="{{ grp.items }}" as="it" hint-placeholder-count="4">
+            <button onClick="{{ it.go }}" style="{{ it.style }}">
+              <span style="font-size:16px;color:{{ it.iconColor }};display:inline-flex;flex:none"><i data-lucide="{{ it.icon }}"></i></span>
+              <span style="flex:1;text-align:left;font-size:13px;font-weight:{{ it.weight }};letter-spacing:-0.01em">{{ it.label }}</span>
+              <sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}">
+                <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;border:1px solid rgba(184,255,44,0.18);background:linear-gradient(135deg, rgba(184,255,44,0.10), rgba(184,255,44,0.02))">
+      <span style="width:8px;height:8px;border-radius:50%;background:#B8FF2C;box-shadow:0 0 10px #B8FF2C;animation:wobPulse 2.4s ease-in-out infinite;flex:none"></span>
+      <div style="flex:1;line-height:1.25">
+        <div style="font-size:11.5px;font-weight:600">All systems nominal</div>
+        <div style="font-size:10px;color:rgba(242,244,241,0.45)">8/9 workers · n8n live</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div style="flex:1;height:100%;display:flex;flex-direction:column;min-width:0">
+
+    <!-- TOPBAR -->
+    <header style="flex:none;height:62px;padding:0 22px;display:flex;align-items:center;gap:16px;border-bottom:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.008));backdrop-filter:blur(22px) saturate(130%);-webkit-backdrop-filter:blur(22px) saturate(130%)">
+      <button onClick="{{ openCmd }}" style="display:flex;align-items:center;gap:10px;width:330px;max-width:38%;padding:9px 13px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);color:rgba(242,244,241,0.5);cursor:pointer;text-align:left">
+        <span style="font-size:15px;display:inline-flex"><i data-lucide="search"></i></span>
+        <span style="flex:1;font-size:12.5px">Ask WOBBLE or jump to anything…</span>
+        <span style="font-size:10px;border:1px solid rgba(255,255,255,0.14);border-radius:5px;padding:2px 5px;font-weight:600">⌘K</span>
+      </button>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:11px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03)">
+        <span style="font-size:13px;color:#B8FF2C;display:inline-flex"><i data-lucide="activity"></i></span>
+        <span style="font-size:11px;font-weight:600;color:rgba(242,244,241,0.8)">92% eff</span>
+      </div>
+      <button onClick="{{ toggleMaster }}" title="Master kill switch" style="{{ masterBtnStyle }}">
+        <span style="font-size:14px;display:inline-flex"><i data-lucide="power"></i></span>
+        <span style="font-size:11px;font-weight:600">{{ masterLabel }}</span>
+      </button>
+      <button onClick="{{ quickCapture }}" title="Quick-capture to Memory" style="display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:11px;border:1px solid rgba(184,255,44,0.22);background:linear-gradient(135deg,rgba(184,255,44,0.12),rgba(184,255,44,0.02));color:#B8FF2C;font-size:12px;font-weight:600;cursor:pointer">
+        <span style="font-size:15px;display:inline-flex"><i data-lucide="plus"></i></span>Capture
+      </button>
+      <button style="position:relative;width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.75);display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <span style="font-size:16px;display:inline-flex"><i data-lucide="bell"></i></span>
+        <span style="position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;background:#FF6B00;color:#0A0A0A;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">3</span>
+      </button>
+      <div style="width:1px;height:26px;background:rgba(255,255,255,0.10)"></div>
+      <button onClick="{{ openSwitch }}" title="Switch founder — requires PIN" style="display:flex;align-items:center;gap:10px;padding:5px 11px 5px 5px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);cursor:pointer">
+        <span style="{{ signedIn.avatarStyle }}">{{ signedIn.initials }}</span>
+        <span style="line-height:1.2;text-align:left">
+          <span style="display:block;font-size:11.5px;font-weight:600;color:#F2F4F1">{{ signedIn.full }}</span>
+          <span style="display:block;font-size:9.5px;color:rgba(242,244,241,0.42)">{{ signedIn.role }} · signed in</span>
+        </span>
+        <span style="font-size:12px;color:rgba(242,244,241,0.4);display:inline-flex;margin-left:1px"><i data-lucide="lock"></i></span>
+      </button>
+    </header>
+
+    <!-- SCROLL CONTENT -->
+    <main style="flex:1;overflow-y:auto;padding:26px 30px 50px">
+      <!-- PAGE HEADER -->
+      <div style="display:flex;align-items:flex-start;gap:18px;margin-bottom:22px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+            <span style="font-size:18px;color:#B8FF2C;display:inline-flex"><i data-lucide="{{ view.icon }}"></i></span>
+            <span style="font-size:11px;letter-spacing:0.14em;color:rgba(242,244,241,0.4);font-weight:500">{{ view.group }}</span>
+          </div>
+          <h1 style="margin:0;font-family:'Neue Montreal','General Sans';font-weight:500;font-size:32px;letter-spacing:-0.025em;line-height:1.04">{{ view.title }}</h1>
+          <p style="margin:7px 0 0;font-size:13.5px;color:rgba(242,244,241,0.5);max-width:640px;line-height:1.5">{{ view.tagline }}</p>
+        </div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;padding-top:4px">
+          <sc-for list="{{ view.actions }}" as="a" hint-placeholder-count="2">
+            <button onClick="{{ a.onClick }}" style="{{ a.style }}"><span style="font-size:14px;display:inline-flex"><i data-lucide="{{ a.icon }}"></i></span>{{ a.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- ============ COMMAND CENTER ============ -->
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+
+          <!-- Ask hero -->
+          <div style="{{ S.glass }};padding:22px 24px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <span style="font-size:17px;color:#B8FF2C;display:inline-flex"><i data-lucide="sparkles"></i></span>
+              <div style="font-size:14px;font-weight:600">Ask WOBBLE</div>
+              <span style="font-size:11px;color:rgba(242,244,241,0.42)">— your command line into the whole OS</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <div style="flex:1;display:flex;align-items:center;gap:11px;padding:13px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.22)">
+                <span style="font-size:16px;color:rgba(242,244,241,0.45);display:inline-flex"><i data-lucide="terminal"></i></span>
+                <span style="font-size:13.5px;color:rgba(242,244,241,0.42)">e.g. “Draft Q3 LinkedIn series from the latest pricing research”</span>
+              </div>
+              <button onClick="{{ goAsk }}" style="display:flex;align-items:center;gap:8px;padding:13px 20px;border-radius:14px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:{{ limeGlow }}">Run<span style="font-size:15px;display:inline-flex"><i data-lucide="corner-down-left"></i></span></button>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
+              <sc-for list="{{ quickPrompts }}" as="q" hint-placeholder-count="4">
+                <button onClick="{{ goAsk }}" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.7);font-size:12px;cursor:pointer">
+                  <span style="font-size:12px;color:#B8FF2C;display:inline-flex"><i data-lucide="{{ q.icon }}"></i></span>{{ q.label }}
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- KPI strip -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+              <div style="{{ S.card }};padding:16px 17px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+                  <span style="font-size:11.5px;color:rgba(242,244,241,0.5);font-weight:500;letter-spacing:0.01em">{{ k.label }}</span>
+                  <span style="font-size:15px;color:{{ k.iconColor }};display:inline-flex"><i data-lucide="{{ k.icon }}"></i></span>
+                </div>
+                <div style="font-family:'Neue Montreal','General Sans';font-size:30px;font-weight:500;letter-spacing:-0.02em;line-height:1">{{ k.value }}</div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:9px">
+                  <span style="font-size:11px;font-weight:600;color:{{ k.deltaColor }}">{{ k.delta }}</span>
+                  <span style="font-size:10.5px;color:rgba(242,244,241,0.38)">{{ k.sub }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- Golden workflow -->
+          <div style="{{ S.glass }};padding:20px 22px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font-size:15px;color:#B8FF2C;display:inline-flex"><i data-lucide="workflow"></i></span>
+                <div style="font-size:14px;font-weight:600">Golden Workflow</div>
+              </div>
+              <div style="font-size:11px;color:rgba(242,244,241,0.42)">source → learning → strategy → content → review → approval → handoff</div>
+            </div>
+            <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px">
+              <sc-for list="{{ pipeline }}" as="p" hint-placeholder-count="7">
+                <div style="display:flex;align-items:center;flex:1;min-width:0">
+                  <div style="{{ p.cardStyle }}">
+                    <span style="font-size:18px;color:{{ p.color }};display:inline-flex;margin-bottom:9px"><i data-lucide="{{ p.icon }}"></i></span>
+                    <div style="font-size:11.5px;font-weight:600;line-height:1.2;margin-bottom:6px">{{ p.name }}</div>
+                    <div style="font-family:'Neue Montreal','General Sans';font-size:21px;font-weight:500;line-height:1">{{ p.count }}</div>
+                    <div style="font-size:10px;color:rgba(242,244,241,0.42);margin-top:2px">{{ p.status }}</div>
+                  </div>
+                  <sc-if value="{{ p.arrow }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size:14px;color:rgba(242,244,241,0.25);padding:0 3px;flex:none;display:inline-flex"><i data-lucide="chevron-right"></i></span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- Two-column row -->
+          <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:18px">
+            <!-- Approvals queue -->
+            <div style="{{ S.glass }};padding:20px 22px;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="font-size:15px;color:#B8FF2C;display:inline-flex"><i data-lucide="badge-check"></i></span>
+                  <div style="font-size:14px;font-weight:600">Awaiting your approval</div>
+                  <span style="font-size:11px;font-weight:700;color:#0A0A0A;background:#B8FF2C;border-radius:7px;padding:2px 7px">{{ approvalCount }}</span>
+                </div>
+                <button onClick="{{ goApprovals }}" style="font-size:12px;color:rgba(242,244,241,0.55);background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px">Open queue<span style="font-size:13px;display:inline-flex"><i data-lucide="arrow-right"></i></span></button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ approvalsPreview }}" as="ap" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:13px;padding:13px 14px;border-radius:14px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.025)">
+                    <span style="width:34px;height:34px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;color:{{ ap.color }};border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04)"><i data-lucide="{{ ap.icon }}"></i></span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:13px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ap.title }}</div>
+                      <div style="font-size:11px;color:rgba(242,244,241,0.45);margin-top:2px">{{ ap.module }} · {{ ap.agent }} · {{ ap.time }}</div>
+                    </div>
+                    <span style="{{ ap.confStyle }}">{{ ap.confidence }}</span>
+                    <button onClick="{{ ap.approve }}" title="Approve" style="width:32px;height:32px;flex:none;border-radius:9px;border:none;background:#B8FF2C;color:#0A0A0A;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px"><i data-lucide="check"></i></button>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ noApprovals }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:26px;text-align:center;color:rgba(242,244,241,0.4);font-size:12.5px">Queue clear. Every output is approved or handed off. ✓</div>
+                </sc-if>
+              </div>
+            </div>
+
+            <!-- Right rail -->
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <div style="{{ S.glass }};padding:18px 20px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                  <div style="display:flex;align-items:center;gap:9px"><span style="font-size:15px;color:#B8FF2C;display:inline-flex"><i data-lucide="cpu"></i></span><div style="font-size:14px;font-weight:600">Live workers</div></div>
+                  <span style="font-size:11px;color:rgba(242,244,241,0.45)">8 / 9 online</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ workersPreview }}" as="w" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:11px">
+                      <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{ w.dot }};box-shadow:0 0 8px {{ w.dot }}"></span>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:12.5px;font-weight:500">{{ w.name }}</div>
+                        <div style="font-size:10.5px;color:rgba(242,244,241,0.42)">{{ w.task }}</div>
+                      </div>
+                      <span style="font-size:11px;color:rgba(242,244,241,0.5);font-variant-numeric:tabular-nums">{{ w.load }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="{{ S.glass }};padding:18px 20px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                  <div style="display:flex;align-items:center;gap:9px"><span style="font-size:15px;color:#B8FF2C;display:inline-flex"><i data-lucide="receipt"></i></span><div style="font-size:14px;font-weight:600">Spend · this month</div></div>
+                  <span style="font-size:11px;font-weight:600;color:#B8FF2C">−12%</span>
+                </div>
+                <div style="font-family:'Neue Montreal','General Sans';font-size:28px;font-weight:500;letter-spacing:-0.02em;line-height:1;margin-bottom:14px">$4,210<span style="font-size:13px;color:rgba(242,244,241,0.4);font-family:'General Sans'"> / $6,000</span></div>
+                <div style="display:flex;align-items:flex-end;gap:4px;height:46px">
+                  <sc-for list="{{ spendBars }}" as="b" hint-placeholder-count="14">
+                    <div style="flex:1;border-radius:3px 3px 1px 1px;background:{{ b.color }};height:{{ b.h }}"></div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ CHAT (Ask WOBBLE) ============ -->
+      <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ S.glass }};padding:0;display:flex;flex-direction:column;height:calc(100vh - 200px);min-height:440px;overflow:hidden">
+          <div style="flex:1;overflow-y:auto;padding:24px 26px;display:flex;flex-direction:column;gap:18px">
+            <sc-for list="{{ chat }}" as="m" hint-placeholder-count="3">
+              <div style="{{ m.rowStyle }}">
+                <sc-if value="{{ m.isWob }}" hint-placeholder-val="{{ true }}">
+                  <span style="width:30px;height:30px;flex:none;border-radius:9px;background:radial-gradient(circle at 36% 30%, #20240f, #0a0b06);border:1px solid rgba(184,255,44,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;color:#B8FF2C"><i data-lucide="sparkles"></i></span>
+                </sc-if>
+                <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:none;padding:16px 18px;border-top:1px solid rgba(255,255,255,0.08);display:flex;gap:11px;align-items:center;background:rgba(0,0,0,0.18)">
+            <input value="{{ draft }}" onInput="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="Ask WOBBLE anything across the OS…" style="flex:1;padding:13px 16px;border-radius:13px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:#F2F4F1;font-size:13.5px;outline:none">
+            <button onClick="{{ send }}" style="display:flex;align-items:center;gap:7px;padding:13px 19px;border-radius:13px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:{{ limeGlow }}">Send<span style="font-size:14px;display:inline-flex"><i data-lucide="corner-down-left"></i></span></button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ FEED ============ -->
+      <sc-if value="{{ isFeed }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <sc-if value="{{ view.hasStats }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px">
+              <sc-for list="{{ view.stats }}" as="k" hint-placeholder-count="4">
+                <div style="{{ S.card }};padding:16px 17px">
+                  <div style="font-size:11.5px;color:rgba(242,244,241,0.5);font-weight:500;margin-bottom:11px">{{ k.label }}</div>
+                  <div style="font-family:'Neue Montreal','General Sans';font-size:27px;font-weight:500;letter-spacing:-0.02em;line-height:1">{{ k.value }}</div>
+                  <div style="font-size:10.5px;color:rgba(242,244,241,0.4);margin-top:7px">{{ k.sub }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="{{ S.glass }};padding:8px 10px">
+            <sc-for list="{{ view.feed }}" as="f" hint-placeholder-count="6">
+              <div style="display:flex;gap:15px;padding:15px 14px;border-bottom:1px solid rgba(255,255,255,0.055)">
+                <span style="width:38px;height:38px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;color:{{ f.color }};border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04)"><i data-lucide="{{ f.icon }}"></i></span>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:13.5px;font-weight:600">{{ f.title }}</span>
+                    <span style="{{ f.tagStyle }}">{{ f.tag }}</span>
+                  </div>
+                  <div style="font-size:12px;color:rgba(242,244,241,0.5);margin-top:4px;line-height:1.5">{{ f.body }}</div>
+                  <div style="font-size:10.5px;color:rgba(242,244,241,0.38);margin-top:6px">{{ f.meta }}</div>
+                </div>
+                <span style="font-size:11px;color:rgba(242,244,241,0.4);flex:none;white-space:nowrap">{{ f.time }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ LIBRARY ============ -->
+      <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:16px">
+          <sc-for list="{{ view.cards }}" as="c" hint-placeholder-count="6">
+            <div style="{{ S.card }};padding:0;overflow:hidden;cursor:pointer">
+              <div style="height:128px;position:relative;background:{{ c.thumb }};display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(255,255,255,0.07)">
+                <span style="font-size:24px;color:rgba(242,244,241,0.55);display:inline-flex"><i data-lucide="{{ c.icon }}"></i></span>
+                <span style="position:absolute;left:11px;top:11px;font-family:monospace;font-size:9.5px;letter-spacing:0.06em;color:rgba(242,244,241,0.45);text-transform:uppercase">{{ c.kind }}</span>
+                <span style="{{ c.tagStyle }}">{{ c.tag }}</span>
+              </div>
+              <div style="padding:14px 15px">
+                <div style="font-size:13.5px;font-weight:600;line-height:1.3">{{ c.title }}</div>
+                <div style="font-size:11px;color:rgba(242,244,241,0.46);margin-top:6px">{{ c.meta }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ============ BOARD ============ -->
+      <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:15px;overflow-x:auto;padding-bottom:8px;align-items:flex-start">
+          <sc-for list="{{ view.columns }}" as="col" hint-placeholder-count="5">
+            <div style="flex:1;min-width:248px;{{ S.glassSoft }};padding:14px 13px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:13px;padding:0 3px">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ col.color }};flex:none"></span>
+                <span style="font-size:12.5px;font-weight:600">{{ col.name }}</span>
+                <span style="font-size:11px;color:rgba(242,244,241,0.4);margin-left:auto">{{ col.count }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="3">
+                  <div style="padding:13px 14px;border-radius:13px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)">
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+                      <span style="{{ c.tagStyle }}">{{ c.tag }}</span>
+                    </div>
+                    <div style="font-size:12.5px;font-weight:600;line-height:1.35">{{ c.title }}</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:11px">
+                      <span style="width:20px;height:20px;border-radius:6px;background:{{ c.agentColor }};color:#0A0A0A;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ c.agentInit }}</span>
+                      <span style="font-size:10.5px;color:rgba(242,244,241,0.45)">{{ c.meta }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ============ APPROVALS ============ -->
+      <sc-if value="{{ isApprovals }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:13px">
+          <sc-for list="{{ approvals }}" as="ap" hint-placeholder-count="4">
+            <div style="{{ S.glass }};padding:20px 22px;display:flex;gap:18px;align-items:flex-start">
+              <span style="width:44px;height:44px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:19px;color:{{ ap.color }};border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04)"><i data-lucide="{{ ap.icon }}"></i></span>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+                  <span style="font-size:15px;font-weight:600">{{ ap.title }}</span>
+                  <span style="{{ ap.confStyle }}">{{ ap.confidence }} confidence</span>
+                </div>
+                <div style="font-size:12.5px;color:rgba(242,244,241,0.55);line-height:1.55;max-width:680px">{{ ap.summary }}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+                  <span style="font-size:11px;color:rgba(242,244,241,0.42);display:flex;align-items:center;gap:5px"><span style="font-size:13px;display:inline-flex"><i data-lucide="boxes"></i></span>{{ ap.module }}</span>
+                  <span style="color:rgba(255,255,255,0.18)">·</span>
+                  <span style="font-size:11px;color:rgba(242,244,241,0.42);display:flex;align-items:center;gap:5px"><span style="font-size:13px;display:inline-flex"><i data-lucide="bot"></i></span>{{ ap.agent }}</span>
+                  <span style="color:rgba(255,255,255,0.18)">·</span>
+                  <span style="font-size:11px;color:rgba(242,244,241,0.42)">{{ ap.time }}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;flex:none;width:148px">
+                <button onClick="{{ ap.approve }}" style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border-radius:11px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:12.5px;font-weight:600;cursor:pointer">Approve as {{ actingFounder.initials }}</button>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ ap.reject }}" style="flex:1;padding:10px;border-radius:11px;border:1px solid rgba(255,107,0,0.35);background:rgba(255,107,0,0.08);color:#FF6B00;font-size:12px;font-weight:600;cursor:pointer">Reject</button>
+                  <button style="flex:1;padding:10px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.7);font-size:12px;font-weight:600;cursor:pointer">Edit</button>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noApprovals }}" hint-placeholder-val="{{ false }}">
+            <div style="{{ S.glass }};padding:60px;text-align:center">
+              <span style="font-size:34px;color:#B8FF2C;display:inline-flex;justify-content:center;margin-bottom:14px"><i data-lucide="check-check"></i></span>
+              <div style="font-size:16px;font-weight:600">Approval queue clear</div>
+              <div style="font-size:13px;color:rgba(242,244,241,0.45);margin-top:6px">Every AI output is either approved or handed to n8n. Attribution logged to the audit trail.</div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- ============ OPS ============ -->
+      <sc-if value="{{ isOps }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <sc-if value="{{ view.hasKills }}" hint-placeholder-val="{{ false }}">
+            <div style="{{ S.glass }};padding:18px 20px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:15px"><span style="font-size:15px;color:#FF6B00;display:inline-flex"><i data-lucide="octagon-alert"></i></span><div style="font-size:14px;font-weight:600">Kill switches &amp; controls</div></div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <sc-for list="{{ killSwitches }}" as="k" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:13px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.025)">
+                    <div style="flex:1">
+                      <div style="font-size:12.5px;font-weight:600">{{ k.label }}</div>
+                      <div style="font-size:10.5px;color:rgba(242,244,241,0.42);margin-top:2px">{{ k.desc }}</div>
+                    </div>
+                    <button onClick="{{ k.toggle }}" style="{{ k.switchStyle }}"><span style="{{ k.knobStyle }}"></span></button>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <div style="{{ S.glass }};padding:8px 10px">
+            <div style="display:flex;padding:11px 16px 12px;font-size:10.5px;letter-spacing:0.08em;color:rgba(242,244,241,0.38);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.07)">
+              <span style="flex:1">{{ view.colName }}</span>
+              <span style="width:130px">STATUS</span>
+              <span style="width:120px">{{ view.colMid }}</span>
+              <span style="width:90px;text-align:right">{{ view.colEnd }}</span>
+            </div>
+            <sc-for list="{{ view.rows }}" as="r" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">
+                <div style="flex:1;display:flex;align-items:center;gap:12px;min-width:0">
+                  <span style="width:34px;height:34px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;color:{{ r.color }};border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04)"><i data-lucide="{{ r.icon }}"></i></span>
+                  <div style="min-width:0">
+                    <div style="font-size:13px;font-weight:600">{{ r.name }}</div>
+                    <div style="font-size:10.5px;color:rgba(242,244,241,0.42)">{{ r.sub }}</div>
+                  </div>
+                </div>
+                <div style="width:130px"><span style="{{ r.statusStyle }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.dot }};box-shadow:0 0 7px {{ r.dot }}"></span>{{ r.status }}</span></div>
+                <div style="width:120px;font-size:12px;color:rgba(242,244,241,0.6)">{{ r.mid }}</div>
+                <div style="width:90px;text-align:right;font-size:12px;color:rgba(242,244,241,0.6);font-variant-numeric:tabular-nums">{{ r.end }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ PROGRESS ============ -->
+      <sc-if value="{{ isProgress }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:13px">
+          <sc-for list="{{ view.tracks }}" as="t" hint-placeholder-count="5">
+            <div style="{{ S.card }};padding:18px 20px">
+              <div style="display:flex;align-items:center;gap:13px;margin-bottom:13px">
+                <span style="width:38px;height:38px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;color:{{ t.color }};border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04)"><i data-lucide="{{ t.icon }}"></i></span>
+                <div style="flex:1">
+                  <div style="font-size:13.5px;font-weight:600">{{ t.name }}</div>
+                  <div style="font-size:11px;color:rgba(242,244,241,0.45);margin-top:2px">{{ t.meta }}</div>
+                </div>
+                <span style="font-family:'Neue Montreal','General Sans';font-size:20px;font-weight:500">{{ t.pct }}%</span>
+              </div>
+              <div style="height:7px;border-radius:5px;background:rgba(255,255,255,0.07);overflow:hidden">
+                <div style="height:100%;width:{{ t.pct }}%;border-radius:5px;background:{{ t.barColor }};box-shadow:0 0 10px -2px {{ t.barColor }}"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ============ COSTS ============ -->
+      <sc-if value="{{ isCosts }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px">
+            <div style="{{ S.glass }};padding:20px 22px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <div style="font-size:13px;color:rgba(242,244,241,0.55);font-weight:500">Total spend · June</div>
+                <span style="font-size:11px;font-weight:600;color:#B8FF2C">−12% vs May</span>
+              </div>
+              <div style="font-family:'Neue Montreal','General Sans';font-size:40px;font-weight:500;letter-spacing:-0.025em;line-height:1;margin-bottom:18px">$4,210<span style="font-size:15px;color:rgba(242,244,241,0.4);font-family:'General Sans'"> of $6,000 budget</span></div>
+              <div style="display:flex;align-items:flex-end;gap:5px;height:120px">
+                <sc-for list="{{ spendBars }}" as="b" hint-placeholder-count="14">
+                  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+                    <div style="border-radius:4px 4px 1px 1px;background:{{ b.color }};height:{{ b.h }}"></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="{{ S.glass }};padding:20px 22px">
+              <div style="font-size:13px;color:rgba(242,244,241,0.55);font-weight:500;margin-bottom:16px">By service</div>
+              <div style="display:flex;flex-direction:column;gap:15px">
+                <sc-for list="{{ costRows }}" as="c" hint-placeholder-count="5">
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+                      <span style="font-size:12.5px;font-weight:500;display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:3px;background:{{ c.color }}"></span>{{ c.name }}</span>
+                      <span style="font-size:12.5px;color:rgba(242,244,241,0.7);font-variant-numeric:tabular-nums">{{ c.amount }}</span>
+                    </div>
+                    <div style="height:6px;border-radius:4px;background:rgba(255,255,255,0.07);overflow:hidden"><div style="height:100%;width:{{ c.pct }};background:{{ c.color }};border-radius:4px"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ SETTINGS ============ -->
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:840px">
+          <sc-for list="{{ view.sections }}" as="sec" hint-placeholder-count="3">
+            <div style="{{ S.glass }};padding:20px 22px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:16px"><span style="font-size:15px;color:#B8FF2C;display:inline-flex"><i data-lucide="{{ sec.icon }}"></i></span><div style="font-size:14px;font-weight:600">{{ sec.name }}</div></div>
+              <div style="display:flex;flex-direction:column">
+                <sc-for list="{{ sec.items }}" as="it" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.055)">
+                    <div style="flex:1">
+                      <div style="font-size:12.5px;font-weight:600">{{ it.label }}</div>
+                      <div style="font-size:11px;color:rgba(242,244,241,0.42);margin-top:2px">{{ it.desc }}</div>
+                    </div>
+                    <span style="font-size:12px;color:rgba(242,244,241,0.6)">{{ it.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+
+  <!-- MODALS -->
+  <sc-if value="{{ modal }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(4,5,8,0.6);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)">
+
+      <!-- ADD / CAPTURE -->
+      <sc-if value="{{ modalAdd }}" hint-placeholder-val="{{ true }}">
+        <div style="{{ S.glass }};width:480px;max-width:100%;padding:24px 26px;animation:wobIn .22s ease">
+          <div style="display:flex;align-items:center;gap:11px;margin-bottom:4px">
+            <span style="width:36px;height:36px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#B8FF2C;border:1px solid rgba(184,255,44,0.25);background:rgba(184,255,44,0.08)"><i data-lucide="{{ modalIcon }}"></i></span>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:600">{{ modalTitle }}</div>
+              <div style="font-size:11px;color:rgba(242,244,241,0.45)">Saved as {{ signedIn.full }} · logged to audit</div>
+            </div>
+            <button onClick="{{ closeModal }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.6);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px"><i data-lucide="x"></i></button>
+          </div>
+          <div style="margin-top:16px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.04em;color:rgba(242,244,241,0.5);margin-bottom:7px">TITLE</div>
+            <input value="{{ addTitle }}" onInput="{{ onAddTitle }}" placeholder="What should WOBBLE remember?" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:#F2F4F1;font-size:13.5px;outline:none">
+          </div>
+          <div style="margin-top:14px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.04em;color:rgba(242,244,241,0.5);margin-bottom:7px">NOTE / CONTEXT <span style="font-weight:400;color:rgba(242,244,241,0.32)">(optional)</span></div>
+            <textarea value="{{ addNote }}" onInput="{{ onAddNote }}" placeholder="Add detail, source, or why this matters…" rows="3" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:#F2F4F1;font-size:13px;outline:none;resize:vertical;line-height:1.5"></textarea>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+            <button onClick="{{ closeModal }}" style="padding:11px 18px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.75);font-size:12.5px;font-weight:600;cursor:pointer">Cancel</button>
+            <button onClick="{{ submitAdd }}" style="display:flex;align-items:center;gap:7px;padding:11px 18px;border-radius:11px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:{{ limeGlow }}"><span style="font-size:14px;display:inline-flex"><i data-lucide="plus"></i></span>Add to {{ modalModuleName }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- SWITCH FOUNDER (PIN) -->
+      <sc-if value="{{ modalSwitch }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ S.glass }};width:430px;max-width:100%;padding:24px 26px;animation:wobIn .22s ease">
+          <div style="display:flex;align-items:center;gap:11px;margin-bottom:4px">
+            <span style="width:36px;height:36px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#B8FF2C;border:1px solid rgba(184,255,44,0.25);background:rgba(184,255,44,0.08)"><i data-lucide="shield-check"></i></span>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:600">Switch founder</div>
+              <div style="font-size:11px;color:rgba(242,244,241,0.45)">One shared login. Confirm who's at the keyboard with your private PIN.</div>
+            </div>
+            <button onClick="{{ closeModal }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.6);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px"><i data-lucide="x"></i></button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+            <sc-for list="{{ switchFounders }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.select }}" style="{{ f.rowStyle }}">
+                <span style="{{ f.avStyle }}">{{ f.initials }}</span>
+                <span style="flex:1;text-align:left;line-height:1.25">
+                  <span style="display:block;font-size:13px;font-weight:600">{{ f.full }}</span>
+                  <span style="display:block;font-size:10.5px;color:rgba(242,244,241,0.45)">{{ f.role }}</span>
+                </span>
+                <sc-if value="{{ f.cur }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:9.5px;font-weight:600;color:rgba(242,244,241,0.5);border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:2px 7px">{{ f.curLabel }}</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.04em;color:rgba(242,244,241,0.5);margin-bottom:7px">FOUNDER PIN</div>
+            <input value="{{ pin }}" onInput="{{ onPin }}" type="password" inputmode="numeric" placeholder="••••" maxlength="4" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);color:#F2F4F1;font-size:16px;letter-spacing:0.4em;outline:none;text-align:center">
+          </div>
+          <sc-if value="{{ pinErrorShow }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:11.5px;color:#FF6B00"><span style="font-size:13px;display:inline-flex"><i data-lucide="alert-triangle"></i></span>{{ pinError }}</div>
+          </sc-if>
+          <button onClick="{{ submitPin }}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:18px;padding:12px;border-radius:12px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:13px;font-weight:600;cursor:pointer;box-shadow:{{ limeGlow }}"><span style="font-size:15px;display:inline-flex"><i data-lucide="log-in"></i></span>Sign in</button>
+        </div>
+      </sc-if>
+
+    </div>
+  </sc-if>
+
+  <!-- TOAST -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:11px;padding:13px 19px;border-radius:14px;border:1px solid rgba(184,255,44,0.3);background:rgba(20,24,12,0.85);backdrop-filter:blur(20px);box-shadow:0 20px 50px -20px rgba(0,0,0,0.8);animation:wobIn .3s ease">
+      <span style="font-size:16px;color:#B8FF2C;display:inline-flex"><i data-lucide="check-circle-2"></i></span>
+      <span style="font-size:13px;font-weight:500">{{ toast }}</span>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;glassBlur&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:12,&quot;min&quot;:0,&quot;max&quot;:40,&quot;step&quot;:2,&quot;tsType&quot;:&quot;number&quot;},&quot;orbMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ambient&quot;,&quot;vivid&quot;,&quot;off&quot;],&quot;default&quot;:&quot;ambient&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accentLevel&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;subtle&quot;,&quot;moderate&quot;,&quot;bold&quot;],&quot;default&quot;:&quot;moderate&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = {
+    active: 'home',
+    founder: 'mv',
+    draft: '',
+    toast: null,
+    chat: [
+      { role:'wob', text:"Morning. Overnight I logged 14 new sources, drafted the Q3 LinkedIn series, and rendered the brand explainer cut. 5 items are waiting on a founder. Want the rundown?" },
+      { role:'user', text:"What's the highest-leverage thing waiting on me right now?" },
+      { role:'wob', text:"The Q3 LinkedIn thought-leadership series (12 posts, 94% confidence). It's built on this week's pricing-teardown research and is the only blocker on the Northwind content handoff. Approve it and n8n schedules the whole quarter." },
+    ],
+    approvals: [
+      { id:'a1', title:'Q3 LinkedIn thought-leadership series', type:'content', icon:'pen-tool', color:'#B8FF2C', module:'Content Command Center', agent:'Scribe-01', confidence:'94%', conf:94, time:'8m ago', summary:'12 posts derived from the latest pricing-teardown research. Hooks A/B-tested against past top performers; CTA routes to the new offer. Self-review passed brand-voice and claims checks.' },
+      { id:'a2', title:'Pricing teardown — competitor X new tier', type:'research', icon:'radar', color:'#2563FF', module:'Research Radar', agent:'Radar-03', confidence:'88%', conf:88, time:'34m ago', summary:'Competitor launched a $99 mid-tier undercutting our Pro by 18%. Brief covers feature gaps, likely positioning response, and 3 counter-offers for the Offer Lab.' },
+      { id:'a3', title:'Client AIOS playbook v2 — Northwind', type:'strategy', icon:'building-2', color:'#B8FF2C', module:'Client AIOS Lab', agent:'Strategist-02', confidence:'91%', conf:91, time:'1h ago', summary:'Updated automation playbook adds an inbound-triage worker and a weekly digest. Projected to reclaim ~11 founder-hours/week. Ready for client-facing handoff.' },
+      { id:'a4', title:'Cold outbound sequence — SaaS founders', type:'offer', icon:'tag', color:'#FF6B00', module:'Offer Lab', agent:'Closer-01', confidence:'79%', conf:79, time:'2h ago', summary:'5-touch sequence for seed-stage SaaS founders. Confidence below threshold — claims in touch #3 need a founder gut-check before this can be handed off.' },
+      { id:'a5', title:'Brand explainer video — 60s cut', type:'media', icon:'clapperboard', color:'#B8FF2C', module:'Media Studio', agent:'Director-01', confidence:'86%', conf:86, time:'3h ago', summary:'60-second explainer rendered in 1080p with VO and captions. Matches the "Make work wobble." campaign. Isolated render job, no impact on web compute.' },
+    ],
+    master: false,
+    kills: { media:false, outbound:false, autopublish:true, scraping:false },
+    userItems: { memory:[], brain:[], sources:[], presentations:[], audit:[] },
+    modal: null, addTitle:'', addNote:'', pinFounder:null, pin:'', pinError:'',
+  };
+
+  stripeA='repeating-linear-gradient(135deg,#11140b,#11140b 9px,#0c0f08 9px,#0c0f08 18px)';
+  stripeB='repeating-linear-gradient(135deg,#0b1018,#0b1018 9px,#080c12 9px,#080c12 18px)';
+
+  founders = [
+    { id:'ar', initials:'AR', full:'Aarav Rao', role:'CEO', color:'#B8FF2C', pin:'2741' },
+    { id:'ks', initials:'KS', full:'Kira Sol', role:'CPO', color:'#2563FF', pin:'5093' },
+    { id:'mv', initials:'MV', full:'Mara Vance', role:'COO', color:'#FF6B00', pin:'1188' },
+    { id:'jp', initials:'JP', full:'Jonah Pike', role:'CTO', color:'#EAF2FF', pin:'6402' },
+  ];
+
+  nav = [
+    { label:'WORKSPACE', items:[
+      { id:'home', label:'Command Center', icon:'layout-dashboard' },
+      { id:'ask', label:'Ask WOBBLE', icon:'sparkles' },
+      { id:'brain', label:'WOBBLE Brain', icon:'brain' },
+    ]},
+    { label:'PIPELINE', items:[
+      { id:'radar', label:'Research Radar', icon:'radar' },
+      { id:'sources', label:'Source Library', icon:'library' },
+      { id:'learning', label:'Learning Engine', icon:'graduation-cap' },
+      { id:'content', label:'Content Command', icon:'pen-tool' },
+      { id:'media', label:'Media Studio', icon:'clapperboard' },
+      { id:'presentations', label:'Presentation Maker', icon:'presentation' },
+    ]},
+    { label:'STRATEGY', items:[
+      { id:'decision', label:'Decision Room', icon:'scale' },
+      { id:'offers', label:'Offer Lab', icon:'tag' },
+      { id:'clients', label:'Client AIOS Lab', icon:'building-2' },
+    ]},
+    { label:'OPERATIONS', items:[
+      { id:'automations', label:'Automations', icon:'workflow' },
+      { id:'approvals', label:'Approvals', icon:'badge-check' },
+      { id:'workers', label:'Workers', icon:'cpu' },
+      { id:'handoff', label:'n8n Handoff', icon:'webhook' },
+    ]},
+    { label:'SYSTEM', items:[
+      { id:'memory', label:'Memory', icon:'database' },
+      { id:'costs', label:'Costs', icon:'receipt' },
+      { id:'audit', label:'Audit Log', icon:'scroll-text' },
+      { id:'backup', label:'Backup & Restore', icon:'hard-drive' },
+      { id:'settings', label:'Settings', icon:'settings' },
+    ]},
+  ];
+
+  // ---- content config per module ----
+  meta = {
+    home:{ group:'WORKSPACE', title:'Command Center', icon:'layout-dashboard', tagline:'One pane of glass over the entire WOBBLE workforce — research, content, media, decisions, and the founder approvals that gate it all.' },
+    ask:{ group:'WORKSPACE', title:'Ask WOBBLE', icon:'sparkles', tagline:'A direct line into the OS. Ask across every module, kick off the golden workflow, or interrogate memory in natural language.' },
+    brain:{ group:'WORKSPACE', title:'WOBBLE Brain', icon:'brain', tagline:'The shared knowledge core — everything the workforce has learned, embedded and retrievable.' },
+    radar:{ group:'PIPELINE', title:'Research Radar', icon:'radar', tagline:'Continuous signal scan across markets, competitors and culture. Surfaced, scored and ready to feed learning.' },
+    sources:{ group:'PIPELINE', title:'Source Library', icon:'library', tagline:'Every captured source, document and asset. Company materials are never auto-deleted.' },
+    learning:{ group:'PIPELINE', title:'Learning Engine', icon:'graduation-cap', tagline:'How raw research becomes structured knowledge the workforce can act on.' },
+    content:{ group:'PIPELINE', title:'Content Command', icon:'pen-tool', tagline:'Every piece of content from idea to handoff. Nothing publishes without a founder.' },
+    media:{ group:'PIPELINE', title:'Media Studio', icon:'clapperboard', tagline:'Video and visual production. Render jobs are isolated from web and API compute.' },
+    presentations:{ group:'PIPELINE', title:'Presentation Maker', icon:'presentation', tagline:'Turn research, decisions and content into investor updates, client pitches and brand decks — drafted by the workforce, approved by a founder.' },
+    decision:{ group:'STRATEGY', title:'Decision Room', icon:'scale', tagline:'Where strategy is debated, scored and committed. Each decision keeps its reasoning trail.' },
+    offers:{ group:'STRATEGY', title:'Offer Lab', icon:'tag', tagline:'Design, test and iterate offers. Low-confidence experiments never reach a founder cold.' },
+    clients:{ group:'STRATEGY', title:'Client AIOS Lab', icon:'building-2', tagline:'Build and ship AI operating systems for clients — the same engine, pointed outward.' },
+    automations:{ group:'OPERATIONS', title:'Automations', icon:'workflow', tagline:'Recurring jobs and triggers that keep the OS moving while you sleep.' },
+    approvals:{ group:'OPERATIONS', title:'Approvals', icon:'badge-check', tagline:'The single gate. Every output here cleared self-review — your decision is logged with explicit attribution.' },
+    workers:{ group:'OPERATIONS', title:'Workers', icon:'cpu', tagline:'Persistent worker processes running outside the web lifecycle. Live load, queue and health.' },
+    handoff:{ group:'OPERATIONS', title:'n8n Handoff', icon:'webhook', tagline:'The bridge to execution — HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery.' },
+    memory:{ group:'SYSTEM', title:'Memory', icon:'database', tagline:'Long-term recall across the workforce. What WOBBLE remembers, and why.' },
+    costs:{ group:'SYSTEM', title:'Costs', icon:'receipt', tagline:'Spend across every model, render and service — against budget, in real time.' },
+    audit:{ group:'SYSTEM', title:'Audit Log', icon:'scroll-text', tagline:'Immutable record of every action, approval and system event with founder attribution.' },
+    backup:{ group:'SYSTEM', title:'Backup & Restore', icon:'hard-drive', tagline:'Point-in-time snapshots. Company assets are never auto-deleted.' },
+    settings:{ group:'SYSTEM', title:'Settings', icon:'settings', tagline:'Models, security, secrets and operational controls for the whole OS.' },
+  };
+
+  glow(){ const lvl=this.props.accentLevel||'moderate'; return lvl==='bold'?'0 0 28px -4px rgba(184,255,44,0.65)':lvl==='subtle'?'0 0 12px -6px rgba(184,255,44,0.35)':'0 0 18px -4px rgba(184,255,44,0.5)'; }
+
+  go(id){ return ()=>this.setState({active:id}); }
+  setToast(t){ this.setState({toast:t}); clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:null}),2600); }
+
+  // ---- add / capture ----
+  openAdd(id){ this.setState({modal:{type:'add',module:id}, addTitle:'', addNote:''}); }
+  closeModal(){ this.setState({modal:null, pin:'', pinError:'', pinFounder:null}); }
+  submitAdd(){
+    const id=this.state.modal && this.state.modal.module; if(!id) return;
+    const title=(this.state.addTitle||'').trim(); if(!title) return;
+    const note=(this.state.addNote||'').trim();
+    const f=this.founders.find(x=>x.id===this.state.founder);
+    let item;
+    if(id==='sources'){ item={ icon:'file-text', kind:'NOTE', title, meta:'Added by '+f.full+' · just now', thumb:this.stripeA, ...this.tag('NEW','#B8FF2C') }; }
+    else if(id==='presentations'){ item={ icon:'presentation', kind:'DECK · draft', title, meta:'Started by '+f.full+' · just now', thumb:this.stripeB, ...this.tag('DRAFT','#B8FF2C') }; }
+    else { item={ icon:'plus', color:'#B8FF2C', title, ...this.tag(id==='brain'?'ADDED':'PINNED','#B8FF2C'), body: note||'Captured manually by a founder.', meta:'Added by '+f.full, time:'just now' }; }
+    const audit={ icon:'plus-circle', color:'#B8FF2C', title:'Added to '+this.meta[id].title+': '+title, ...this.tag('CAPTURE','#B8FF2C'), body: note||'Manual founder entry.', meta:'Founder: '+f.full+' · immutable', time:'just now' };
+    this.setState(s=>({ userItems:{...s.userItems, [id]:[item,...(s.userItems[id]||[])], audit:[audit,...s.userItems.audit]}, modal:null, addTitle:'', addNote:'' }));
+    this.setToast('Added to '+this.meta[id].title+' by '+f.full);
+  }
+
+  // ---- secure identity (one shared login, PIN per founder, no impersonation) ----
+  openSwitch(){ this.setState({modal:{type:'switch'}, pinFounder:null, pin:'', pinError:''}); }
+  selectPinFounder(id){ this.setState({pinFounder:id, pinError:''}); }
+  submitPin(){
+    const pf=this.state.pinFounder;
+    if(!pf){ this.setState({pinError:'Select who is at the keyboard.'}); return; }
+    if((this.state.pin||'').length!==4){ this.setState({pinError:'Enter your 4-digit founder PIN.'}); return; }
+    const f=this.founders.find(x=>x.id===pf);
+    if(this.state.pin!==f.pin){ this.setState({pinError:'PIN incorrect — you can only sign in as yourself.'}); return; }
+    const audit={ icon:'log-in', color:'#2563FF', title:'Founder signed in: '+f.full, ...this.tag('SESSION','#2563FF'), body:'Identity confirmed with private PIN. Subsequent approvals attributed to this founder.', meta:'Founder: '+f.full, time:'just now' };
+    this.setState(s=>({founder:pf, modal:null, pin:'', pinError:'', pinFounder:null, userItems:{...s.userItems, audit:[audit,...s.userItems.audit]}}));
+    this.setToast('Signed in as '+f.full+' · '+f.role);
+  }
+  onPin(e){ this.setState({pin:(e.target.value||'').replace(/\D/g,'').slice(0,4)}); }
+
+  approve(id){ return ()=>{ const f=this.founders.find(x=>x.id===this.state.founder); this.setState(s=>({approvals:s.approvals.filter(a=>a.id!==id)})); this.setToast('Approved by '+f.full+' · handed to n8n · logged to audit'); }; }
+  reject(id){ return ()=>{ this.setState(s=>({approvals:s.approvals.filter(a=>a.id!==id)})); this.setToast('Rejected · returned to agent for revision'); }; }
+
+  toggleMaster(){ this.setState(s=>({master:!s.master})); this.setToast(this.state.master?'Master switch re-engaged — workforce resuming':'MASTER KILL — all workers paused'); }
+  toggleKill(k){ return ()=>{ this.setState(s=>({kills:{...s.kills,[k]:!s.kills[k]}})); }; }
+
+  onDraft(e){ this.setState({draft:e.target.value}); }
+  onKey(e){ if(e.key==='Enter') this.send(); }
+  send(){ const t=(this.state.draft||'').trim(); if(!t) return; const reply="Got it — routing that through the golden workflow. I'll draft against current research, self-review for brand voice and claims, and drop it in your approval queue. Nothing ships without your sign-off."; this.setState(s=>({chat:[...s.chat,{role:'user',text:t},{role:'wob',text:reply}],draft:''})); }
+
+  componentDidMount(){ this._li(); }
+  componentDidUpdate(){ this._li(); }
+  _li(){ try{ window.lucide && window.lucide.createIcons(); }catch(e){} }
+
+  tag(text,color){ return { tag:text, tagStyle:'font-size:9.5px;font-weight:600;letter-spacing:0.04em;padding:3px 7px;border-radius:6px;color:'+color+';background:'+color+'1f;border:1px solid '+color+'3a' }; }
+  confChip(c){ const col=c>=85?'#B8FF2C':c>=80?'#EAF2FF':'#FF6B00'; return 'font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:7px;color:'+(c>=85?'#0A0A0A':col)+';background:'+(c>=85?'#B8FF2C':col+'1f')+';border:1px solid '+col+'55'; }
+
+  buildView(id){
+    const m=this.meta[id]; const T=(t,c)=>this.tag(t,c);
+    const actDraft={ label:'New', icon:'plus', style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:'+this.glow() };
+    const actGhost=(l,i)=>({ label:l, icon:i, style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.8);font-size:12.5px;font-weight:600;cursor:pointer' });
+    const actAdd=(mod,l)=>({ label:l, icon:'plus', onClick:()=>this.openAdd(mod), style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:'+this.glow() });
+    const v={ ...m, archetype:'', actions:[] };
+
+    if(id==='radar'){ v.archetype='feed'; v.actions=[actGhost('Filter','sliders-horizontal'),actDraft];
+      v.feed=[
+        {icon:'trending-up',color:'#FF6B00',title:'Competitor X launches $99 mid-tier',tag:'HIGH SIGNAL',...T('HIGH SIGNAL','#FF6B00'),body:'Undercuts our Pro by 18%. Pricing page rewritten, new comparison table. Likely targeting our seed-stage segment.',meta:'Source: competitor site · Radar-03 · score 0.91',time:'34m ago'},
+        {icon:'message-square',color:'#B8FF2C',title:'Founder sentiment shift: "AI employees" framing',tag:'TREND',...T('TREND','#B8FF2C'),body:'3 large founder communities adopting the "hire vs build" language this week. Aligns with our positioning — opportunity to lead the conversation.',meta:'Source: 4 communities · Radar-01 · score 0.84',time:'2h ago'},
+        {icon:'newspaper',color:'#2563FF',title:'New regulation draft on AI disclosure',tag:'WATCH',...T('WATCH','#2563FF'),body:'Early-stage policy draft would require labeling AI-generated outbound. Low near-term risk; flagged for Decision Room.',meta:'Source: policy tracker · Radar-02 · score 0.62',time:'5h ago'},
+        {icon:'star',color:'#B8FF2C',title:'Case study opportunity: Northwind +11h/wk',tag:'OPPORTUNITY',...T('OPPORTUNITY','#B8FF2C'),body:'Client AIOS results strong enough to anchor a flagship case study and a content series.',meta:'Source: Client AIOS Lab · score 0.88',time:'1d ago'},
+      ]; }
+
+    else if(id==='memory'){ v.archetype='feed'; v.hasStats=true; v.actions=[actGhost('Search','search'),actAdd('memory','Add memory')];
+      v.stats=[{label:'Memories',value:'48.2k'},{label:'Embeddings',value:'1.4M'},{label:'Recall hit-rate',value:'96%'},{label:'Last consolidation',value:'2h ago'}];
+      v.feed=[
+        {icon:'pin',color:'#B8FF2C',title:'Brand voice: confident, sharp, never corporate',tag:'CORE',...T('CORE','#B8FF2C'),body:'Pinned by Aarav. Applied to every content + outbound self-review.',meta:'Pinned memory · referenced 312 times',time:'Always'},
+        {icon:'building-2',color:'#2563FF',title:'Northwind prefers Tuesday digests, no calls',tag:'CLIENT',...T('CLIENT','#2563FF'),body:'Learned from 6 weeks of engagement signals.',meta:'Client AIOS Lab · confidence 0.93',time:'3d ago'},
+        {icon:'tag',color:'#FF6B00',title:'Touch #3 outbound claims need founder review',tag:'GUARDRAIL',...T('GUARDRAIL','#FF6B00'),body:'Auto-derived guardrail after a prior reject. Keeps low-confidence claims out of approvals.',meta:'Derived from audit · self-set',time:'1w ago'},
+      ]; }
+
+    else if(id==='audit'){ v.archetype='feed'; v.actions=[actGhost('Export','download')];
+      v.feed=[
+        {icon:'badge-check',color:'#B8FF2C',title:'Approved: Brand explainer video 60s',tag:'APPROVAL',...T('APPROVAL','#B8FF2C'),body:'Mara Vance approved · handed to n8n job #4821.',meta:'Founder: M. Vance · immutable',time:'12m ago'},
+        {icon:'webhook',color:'#2563FF',title:'n8n handoff delivered · 200 OK',tag:'HANDOFF',...T('HANDOFF','#2563FF'),body:'Idempotency key accepted, HMAC verified, 1 retry.',meta:'job #4820 · 412ms',time:'18m ago'},
+        {icon:'x-circle',color:'#FF6B00',title:'Rejected: outbound sequence v1',tag:'REJECT',...T('REJECT','#FF6B00'),body:'Returned to Closer-01 for claim revision.',meta:'Founder: K. Sol',time:'2h ago'},
+        {icon:'power',color:'#EAF2FF',title:'Kill switch toggled: auto-publish OFF',tag:'CONTROL',...T('CONTROL','#EAF2FF'),body:'Manual control change recorded.',meta:'Founder: J. Pike',time:'5h ago'},
+      ]; }
+
+    else if(id==='brain'){ v.archetype='feed'; v.hasStats=true; v.actions=[actGhost('Re-index','refresh-cw'),actAdd('brain','Add knowledge')];
+      v.stats=[{label:'Knowledge nodes',value:'12.8k',sub:'+340 this week'},{label:'Domains',value:'9'},{label:'Avg confidence',value:'0.89'},{label:'Stale flagged',value:'21'}];
+      v.feed=[
+        {icon:'sparkles',color:'#B8FF2C',title:'Synthesized: pricing-objection handling',tag:'NEW',...T('NEW','#B8FF2C'),body:'Merged 14 sources into a single playbook node now feeding Offer Lab + outbound.',meta:'Learning Engine · 0.92',time:'1h ago'},
+        {icon:'link',color:'#2563FF',title:'Linked: Northwind results ↔ case-study template',tag:'LINK',...T('LINK','#2563FF'),body:'New edge enables auto-drafting of the flagship case study.',meta:'auto-linked',time:'4h ago'},
+      ]; }
+
+    else if(id==='sources'){ v.archetype='library'; v.actions=[actGhost('Filter','sliders-horizontal'),actAdd('sources','Add source')];
+      const th=['repeating-linear-gradient(135deg,#11140b,#11140b 9px,#0c0f08 9px,#0c0f08 18px)','repeating-linear-gradient(135deg,#0b1018,#0b1018 9px,#080c12 9px,#080c12 18px)','repeating-linear-gradient(135deg,#161009,#161009 9px,#100b06 9px,#100b06 18px)'];
+      v.cards=[
+        {icon:'file-text',kind:'PDF',title:'Competitor X pricing teardown',meta:'18 pages · captured by Radar-03',thumb:th[0],...T('NEW','#B8FF2C')},
+        {icon:'globe',kind:'WEB',title:'AI workforce market report 2026',meta:'Web clip · 4.2k words',thumb:th[1],...T('SOURCE','#2563FF')},
+        {icon:'mic',kind:'AUDIO',title:'Founder interview — Northwind CEO',meta:'42 min · transcribed',thumb:th[2],...T('CLIENT','#FF6B00')},
+        {icon:'table',kind:'DATA',title:'Outbound performance dataset',meta:'CSV · 8.1k rows',thumb:th[1],...T('INTERNAL','#EAF2FF')},
+        {icon:'file-text',kind:'DOC',title:'Brand guidelines v3',meta:'Locked · never auto-deleted',thumb:th[0],...T('PROTECTED','#B8FF2C')},
+        {icon:'image',kind:'IMG',title:'Campaign visual references',meta:'24 assets',thumb:th[2],...T('MEDIA','#FF6B00')},
+      ]; }
+
+    else if(id==='media'){ v.archetype='library'; v.actions=[actGhost('Render queue','loader'),actDraft];
+      const th=['repeating-linear-gradient(135deg,#11140b,#11140b 9px,#0c0f08 9px,#0c0f08 18px)','repeating-linear-gradient(135deg,#0b1018,#0b1018 9px,#080c12 9px,#080c12 18px)'];
+      v.cards=[
+        {icon:'play-circle',kind:'VIDEO · 60s',title:'Brand explainer — "Make work wobble"',meta:'1080p · awaiting approval',thumb:th[0],...T('REVIEW','#B8FF2C')},
+        {icon:'play-circle',kind:'VIDEO · 15s',title:'LinkedIn teaser cut',meta:'Rendering · 72%',thumb:th[1],...T('RENDERING','#2563FF')},
+        {icon:'image',kind:'CAROUSEL',title:'Pricing comparison carousel',meta:'8 frames · drafted',thumb:th[0],...T('DRAFT','#EAF2FF')},
+        {icon:'volume-2',kind:'AUDIO',title:'Podcast intro VO',meta:'WOBBLE voice · approved',thumb:th[1],...T('DONE','#B8FF2C')},
+      ]; }
+
+    else if(id==='presentations'){ v.archetype='library'; v.actions=[actGhost('Templates','layout-template'),actAdd('presentations','New presentation')];
+      const th=[this.stripeA,this.stripeB];
+      v.cards=[
+        {icon:'presentation',kind:'DECK · 14',title:'WOBBLE investor update — Q2',meta:'Built by Scribe-01 · awaiting approval',thumb:th[0],...T('REVIEW','#B8FF2C')},
+        {icon:'presentation',kind:'DECK · 9',title:'Client pitch — Meridian Health',meta:'Draft · 9 slides',thumb:th[1],...T('DRAFT','#2563FF')},
+        {icon:'presentation',kind:'DECK · 22',title:'"Make work wobble" brand deck',meta:'Approved · exported PDF + PPTX',thumb:th[0],...T('DONE','#B8FF2C')},
+        {icon:'layout-template',kind:'TEMPLATE',title:'Sales one-pager template',meta:'Reusable · 4 layouts',thumb:th[1],...T('TEMPLATE','#EAF2FF')},
+      ]; }
+
+    else if(id==='clients'){ v.archetype='library'; v.actions=[actDraft];
+      const th=['repeating-linear-gradient(135deg,#0b1018,#0b1018 9px,#080c12 9px,#080c12 18px)','repeating-linear-gradient(135deg,#11140b,#11140b 9px,#0c0f08 9px,#0c0f08 18px)'];
+      v.cards=[
+        {icon:'building-2',kind:'CLIENT AIOS',title:'Northwind Logistics',meta:'Live · +11h/wk reclaimed',thumb:th[0],...T('LIVE','#B8FF2C')},
+        {icon:'building-2',kind:'CLIENT AIOS',title:'Meridian Health',meta:'Onboarding · week 2',thumb:th[1],...T('SETUP','#2563FF')},
+        {icon:'building-2',kind:'CLIENT AIOS',title:'Atlas Freight',meta:'Playbook in review',thumb:th[0],...T('REVIEW','#FF6B00')},
+      ]; }
+
+    else if(id==='content'){ v.archetype='board'; v.actions=[actDraft];
+      v.columns=[
+        {name:'Ideas',color:'#EAF2FF',count:6,cards:[{...T('LINKEDIN','#2563FF'),title:'Why "hire vs build" is the wrong AI debate',agentInit:'S1',agentColor:'#B8FF2C',meta:'Scribe-01'},{...T('BLOG','#EAF2FF'),title:'Anatomy of an AI employee',agentInit:'S1',agentColor:'#B8FF2C',meta:'Scribe-01'}]},
+        {name:'Drafting',color:'#2563FF',count:3,cards:[{...T('SERIES','#2563FF'),title:'Pricing-objection thread (5 posts)',agentInit:'S2',agentColor:'#2563FF',meta:'Scribe-02'}]},
+        {name:'Self-review',color:'#FF6B00',count:2,cards:[{...T('CLAIMS','#FF6B00'),title:'Case study: Northwind results',agentInit:'S1',agentColor:'#B8FF2C',meta:'voice ✓ claims …'}]},
+        {name:'Approval',color:'#B8FF2C',count:1,cards:[{...T('READY','#B8FF2C'),title:'Q3 LinkedIn series (12)',agentInit:'S1',agentColor:'#B8FF2C',meta:'94% · waiting'}]},
+        {name:'Handed off',color:'#7a7f74',count:4,cards:[{...T('SCHEDULED','#7a7f74'),title:'June newsletter',agentInit:'S2',agentColor:'#2563FF',meta:'n8n #4801'}]},
+      ]; }
+
+    else if(id==='decision'){ v.archetype='board'; v.actions=[actDraft];
+      v.columns=[
+        {name:'Open',color:'#FF6B00',count:2,cards:[{...T('PRICING','#FF6B00'),title:'Respond to Competitor X $99 tier?',agentInit:'ST',agentColor:'#FF6B00',meta:'3 options scored'},{...T('GTM','#2563FF'),title:'Lead the "AI employee" narrative?',agentInit:'ST',agentColor:'#2563FF',meta:'awaiting founder'}]},
+        {name:'Deliberating',color:'#2563FF',count:1,cards:[{...T('HIRING','#EAF2FF'),title:'Add a 5th worker class?',agentInit:'ST',agentColor:'#B8FF2C',meta:'cost modeled'}]},
+        {name:'Committed',color:'#B8FF2C',count:3,cards:[{...T('DONE','#B8FF2C'),title:'Ship Northwind case study',agentInit:'AR',agentColor:'#B8FF2C',meta:'by A. Rao'}]},
+      ]; }
+
+    else if(id==='offers'){ v.archetype='board'; v.actions=[actDraft];
+      v.columns=[
+        {name:'Hypotheses',color:'#EAF2FF',count:4,cards:[{...T('SEED','#2563FF'),title:'Founder-led onboarding sprint',agentInit:'C1',agentColor:'#FF6B00',meta:'Closer-01'}]},
+        {name:'Testing',color:'#2563FF',count:2,cards:[{...T('A/B','#2563FF'),title:'$99 starter vs free trial',agentInit:'C1',agentColor:'#FF6B00',meta:'412 in test'}]},
+        {name:'Winning',color:'#B8FF2C',count:1,cards:[{...T('WINNER','#B8FF2C'),title:'AIOS audit → retainer',agentInit:'C1',agentColor:'#FF6B00',meta:'+34% conv'}]},
+        {name:'Retired',color:'#7a7f74',count:5,cards:[{...T('KILLED','#7a7f74'),title:'Lifetime deal',agentInit:'C1',agentColor:'#FF6B00',meta:'low LTV'}]},
+      ]; }
+
+    else if(id==='learning'){ v.archetype='progress'; v.actions=[actGhost('Sources','library')];
+      v.tracks=[
+        {icon:'trending-up',color:'#B8FF2C',barColor:'#B8FF2C',name:'Competitive pricing intelligence',meta:'14 sources → 1 playbook node',pct:92},
+        {icon:'message-square',color:'#2563FF',barColor:'#2563FF',name:'Founder-community sentiment model',meta:'streaming · 4 communities',pct:68},
+        {icon:'building-2',color:'#FF6B00',barColor:'#FF6B00',name:'Client AIOS pattern library',meta:'3 clients · generalizing',pct:54},
+        {icon:'tag',color:'#EAF2FF',barColor:'#EAF2FF',name:'Offer-objection handling',meta:'consolidated last night',pct:88},
+      ]; }
+
+    else if(id==='automations'){ v.archetype='ops'; v.actions=[actDraft]; v.hasKills=true;
+      v.colName='AUTOMATION'; v.colMid='LAST RUN'; v.colEnd='RUNS';
+      v.rows=[
+        {icon:'radar',color:'#B8FF2C',name:'Overnight research scan',sub:'every day · 02:00',status:'Active',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'2h ago',end:'412'},
+        {icon:'graduation-cap',color:'#2563FF',name:'Knowledge consolidation',sub:'every 6h',status:'Active',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'2h ago',end:'1.2k'},
+        {icon:'pen-tool',color:'#EAF2FF',name:'Weekly content batch',sub:'Mondays · 06:00',status:'Active',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'3d ago',end:'48'},
+        {icon:'receipt',color:'#FF6B00',name:'Cost guardrail check',sub:'hourly',status:'Active',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'12m ago',end:'3.1k'},
+        {icon:'tag',color:'#7a7f74',name:'Outbound auto-send',sub:'on approval',status:'Paused',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'—',end:'0'},
+      ]; }
+
+    else if(id==='workers'){ v.archetype='ops'; v.actions=[actGhost('Scale','plus')];
+      v.colName='WORKER'; v.colMid='QUEUE'; v.colEnd='LOAD';
+      v.rows=[
+        {icon:'radar',color:'#B8FF2C',name:'Radar-03',sub:'research scanner',status:'Running',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'2 jobs',end:'34%'},
+        {icon:'pen-tool',color:'#B8FF2C',name:'Scribe-01',sub:'content writer',status:'Running',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'1 job',end:'61%'},
+        {icon:'graduation-cap',color:'#2563FF',name:'Learner-01',sub:'knowledge synth',status:'Running',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'4 jobs',end:'78%'},
+        {icon:'clapperboard',color:'#FF6B00',name:'Director-01',sub:'media render · isolated',status:'Rendering',dot:'#2563FF',statusStyle:this._st('#2563FF'),mid:'1 job',end:'92%'},
+        {icon:'building-2',color:'#EAF2FF',name:'Strategist-02',sub:'client AIOS',status:'Running',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'idle',end:'8%'},
+        {icon:'tag',color:'#7a7f74',name:'Closer-01',sub:'outbound',status:'Offline',dot:'#7a7f74',statusStyle:this._st('#7a7f74'),mid:'—',end:'—'},
+      ]; }
+
+    else if(id==='handoff'){ v.archetype='ops'; v.actions=[actGhost('Dead letters','inbox')]; v.hasKills=true;
+      v.colName='WEBHOOK ENDPOINT'; v.colMid='LATENCY'; v.colEnd='24H';
+      v.rows=[
+        {icon:'webhook',color:'#B8FF2C',name:'content.publish',sub:'HMAC · idempotent',status:'Healthy',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'412ms',end:'48 ✓'},
+        {icon:'webhook',color:'#B8FF2C',name:'media.distribute',sub:'HMAC · isolated',status:'Healthy',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'1.2s',end:'12 ✓'},
+        {icon:'webhook',color:'#2563FF',name:'outbound.send',sub:'replay-protected',status:'Paused',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'—',end:'0'},
+        {icon:'alert-triangle',color:'#FF6B00',name:'crm.sync',sub:'1 in dead-letter',status:'Retry',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'timeout',end:'1 ✗'},
+      ]; }
+
+    else if(id==='settings'||id==='backup'){ v.archetype='settings';
+      if(id==='settings'){ v.actions=[actGhost('Docs','book-open')];
+        v.sections=[
+          {icon:'cpu',name:'Model configuration',items:[{label:'Primary model',desc:'Reasoning + strategy',value:'Claude (Opus class)'},{label:'Draft model',desc:'High-volume content',value:'Fast tier'},{label:'Embeddings',desc:'pgvector store',value:'1536-dim'}]},
+          {icon:'shield',name:'Security & access',items:[{label:'Login',desc:'One shared founder login',value:'SSO · enabled'},{label:'Approval attribution',desc:'Captured on every decision',value:'Required'},{label:'Secrets',desc:'Environment variables only',value:'12 stored'}]},
+          {icon:'sliders-horizontal',name:'Operational thresholds',items:[{label:'Self-review confidence gate',desc:'Below this never reaches approvals',value:'80%'},{label:'Monthly budget',desc:'Hard guardrail',value:'$6,000'}]},
+        ];
+      } else { v.actions=[{ label:'Snapshot now', icon:'save', style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:none;background:#B8FF2C;color:#0A0A0A;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:'+this.glow() }];
+        v.sections=[
+          {icon:'hard-drive',name:'Recent snapshots',items:[{label:'Auto-snapshot · 06:00',desc:'Full OS state · 2.4 GB',value:'Restore'},{label:'Auto-snapshot · 00:00',desc:'Full OS state · 2.4 GB',value:'Restore'},{label:'Manual · pre-migration',desc:'by J. Pike · 2.3 GB',value:'Restore'}]},
+          {icon:'shield-check',name:'Retention policy',items:[{label:'Company assets',desc:'Never auto-deleted',value:'Protected'},{label:'Snapshot retention',desc:'Rolling window',value:'30 days'}]},
+        ];
+      }
+    }
+    const ua=this.state.userItems[id];
+    if(ua && ua.length){ if(v.cards) v.cards=[...ua,...v.cards]; else if(v.feed) v.feed=[...ua,...v.feed]; }
+    return v;
+  }
+
+  _st(c){ return 'display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:'+c+';padding:4px 9px;border-radius:7px;background:'+c+'14;border:1px solid '+c+'33'; }
+
+  renderVals(){
+    const A=this.state.active;
+    const acting=this.founders.find(f=>f.id===this.state.founder)||this.founders[0];
+    const blur=(this.props.glassBlur==null?24:this.props.glassBlur);
+    const orbMode=this.props.orbMode||'ambient';
+    const orbOpacity= orbMode==='off'?0 : orbMode==='vivid'?1 : 0.62;
+    const glassBase='position:relative;backdrop-filter:blur('+blur+'px) saturate(135%);-webkit-backdrop-filter:blur('+blur+'px) saturate(135%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.13), 0 26px 54px -30px rgba(0,0,0,0.85)';
+    const S={
+      glass:'border-radius:22px;border:1px solid rgba(255,255,255,0.10);background:linear-gradient(152deg,rgba(255,255,255,0.072),rgba(255,255,255,0.022));'+glassBase,
+      glassSoft:'border-radius:18px;border:1px solid rgba(255,255,255,0.07);background:linear-gradient(152deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015));backdrop-filter:blur('+blur+'px) saturate(130%);-webkit-backdrop-filter:blur('+blur+'px) saturate(130%)',
+      card:'border-radius:18px;border:1px solid rgba(255,255,255,0.085);background:linear-gradient(152deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018));'+glassBase,
+    };
+
+    // nav
+    const navGroups=this.nav.map(g=>({ label:g.label, items:g.items.map(it=>{
+      const on=it.id===A;
+      let badge=null,badgeStyle='';
+      if(it.id==='approvals' && this.state.approvals.length){ badge=String(this.state.approvals.length); badgeStyle='font-size:10px;font-weight:700;color:#0A0A0A;background:#B8FF2C;border-radius:6px;padding:1px 6px'; }
+      if(it.id==='workers'){ badge='8/9'; badgeStyle='font-size:9.5px;font-weight:600;color:rgba(242,244,241,0.5);background:rgba(255,255,255,0.06);border-radius:6px;padding:2px 6px'; }
+      return { label:it.label, icon:it.icon, go:this.go(it.id), weight:on?'600':'500',
+        iconColor:on?'#B8FF2C':'rgba(242,244,241,0.55)',
+        style:'display:flex;align-items:center;gap:11px;width:100%;padding:9px 11px;border-radius:11px;cursor:pointer;text-align:left;border:1px solid '+(on?'rgba(184,255,44,0.22)':'transparent')+';background:'+(on?'linear-gradient(135deg,rgba(184,255,44,0.13),rgba(184,255,44,0.03))':'transparent')+';color:'+(on?'#F2F4F1':'rgba(242,244,241,0.66)')+';transition:background .15s',
+        badge, badgeStyle };
+    })}));
+
+    const signedIn={ ...acting, avatarStyle:'width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#0A0A0A;background:'+acting.color };
+
+    // modal values
+    const modal=this.state.modal;
+    const modalAdd=!!(modal && modal.type==='add');
+    const modalSwitch=!!(modal && modal.type==='switch');
+    const mm = modalAdd ? this.meta[modal.module] : null;
+    const switchFounders=this.founders.map(f=>{ const sel=this.state.pinFounder===f.id; const cur=this.state.founder===f.id; return { initials:f.initials, full:f.full, role:f.role, cur, curLabel: cur?'current session':'', select:()=>this.selectPinFounder(f.id),
+      rowStyle:'display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;cursor:pointer;text-align:left;width:100%;border:1px solid '+(sel?'rgba(184,255,44,0.45)':'rgba(255,255,255,0.08)')+';background:'+(sel?'linear-gradient(135deg,rgba(184,255,44,0.13),rgba(184,255,44,0.03))':'rgba(255,255,255,0.025)'),
+      avStyle:'width:34px;height:34px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:'+f.color+';background:rgba(255,255,255,0.06);border:1.5px solid '+f.color }; });
+
+    const out={ S, navGroups, signedIn, actingFounder:acting, orbOpacity, limeGlow:this.glow(),
+      toast:this.state.toast, draft:this.state.draft,
+      openCmd:this.go('ask'), goAsk:this.go('ask'), goApprovals:this.go('approvals'),
+      openSwitch:()=>this.openSwitch(), quickCapture:()=>this.openAdd('memory'), closeModal:()=>this.closeModal(),
+      modal:!!modal, modalAdd, modalSwitch,
+      modalTitle: mm?('Add to '+mm.title):'', modalIcon: mm?mm.icon:'plus', modalModuleName: mm?mm.title:'',
+      addTitle:this.state.addTitle, addNote:this.state.addNote,
+      onAddTitle:(e)=>this.setState({addTitle:e.target.value}), onAddNote:(e)=>this.setState({addNote:e.target.value}),
+      submitAdd:()=>this.submitAdd(),
+      switchFounders, pin:this.state.pin, pinError:this.state.pinError, pinErrorShow:!!this.state.pinError,
+      onPin:(e)=>this.onPin(e), submitPin:()=>this.submitPin(),
+      toggleMaster:()=>this.toggleMaster(),
+      masterLabel:this.state.master?'KILLED':'Live',
+      masterBtnStyle:'display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:11px;cursor:pointer;font-weight:600;border:1px solid '+(this.state.master?'rgba(255,107,0,0.5)':'rgba(255,255,255,0.10)')+';background:'+(this.state.master?'rgba(255,107,0,0.14)':'rgba(255,255,255,0.03)')+';color:'+(this.state.master?'#FF6B00':'rgba(242,244,241,0.75)'),
+      isHome:A==='home', isChat:A==='ask',
+    };
+
+    // view + archetype flags
+    if(A==='home'){
+      out.view={ ...this.meta.home, actions:[{label:'Customize',icon:'layout-grid',style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.8);font-size:12.5px;font-weight:600;cursor:pointer'}] };
+      out.quickPrompts=[{icon:'pen-tool',label:'Draft this week\u2019s content'},{icon:'radar',label:'Summarize overnight research'},{icon:'tag',label:'Spin up a new offer test'},{icon:'receipt',label:'Where is spend trending?'}];
+      out.kpis=[
+        {label:'AI employees',value:'12',icon:'users',iconColor:'#B8FF2C',delta:'+3',deltaColor:'#B8FF2C',sub:'this month'},
+        {label:'Tasks completed · 7d',value:'1,842',icon:'check-check',iconColor:'#B8FF2C',delta:'+24%',deltaColor:'#B8FF2C',sub:'vs last wk'},
+        {label:'Approvals pending',value:String(this.state.approvals.length),icon:'badge-check',iconColor:'#FF6B00',delta:'gate',deltaColor:'#FF6B00',sub:'awaiting you'},
+        {label:'Efficiency',value:'92%',icon:'activity',iconColor:'#B8FF2C',delta:'+18%',deltaColor:'#B8FF2C',sub:'self-review pass'},
+        {label:'Workers online',value:'8/9',icon:'cpu',iconColor:'#2563FF',delta:'1 offline',deltaColor:'rgba(242,244,241,0.4)',sub:'Closer-01'},
+      ];
+      const pc=(name,icon,count,status,color,arrow,hot)=>({name,icon,count,status,color,arrow,
+        cardStyle:'flex:1;min-width:104px;padding:14px 13px;border-radius:15px;text-align:left;border:1px solid '+(hot?'rgba(184,255,44,0.3)':'rgba(255,255,255,0.08)')+';background:'+(hot?'linear-gradient(160deg,rgba(184,255,44,0.13),rgba(184,255,44,0.03))':'rgba(255,255,255,0.025)') });
+      out.pipeline=[
+        pc('Source','search',14,'active','#2563FF',true,false),
+        pc('Learning','graduation-cap',6,'processing','#2563FF',true,false),
+        pc('Strategy','scale',3,'drafting','#EAF2FF',true,false),
+        pc('Content','pen-tool',9,'in production','#EAF2FF',true,false),
+        pc('Review','scan-eye',4,'reviewing','#FF6B00',true,false),
+        pc('Approval','badge-check',this.state.approvals.length,'waiting','#B8FF2C',true,true),
+        pc('Handoff','webhook',2,'dispatching','#B8FF2C',false,false),
+      ];
+      out.approvalCount=this.state.approvals.length;
+      out.approvalsPreview=this.state.approvals.slice(0,4).map(a=>({ ...a, approve:this.approve(a.id), confStyle:this.confChip(a.conf) }));
+      out.noApprovals=this.state.approvals.length===0;
+      out.workersPreview=[
+        {name:'Scribe-01',task:'Drafting LinkedIn series',load:'61%',dot:'#B8FF2C'},
+        {name:'Radar-03',task:'Scanning competitor pricing',load:'34%',dot:'#B8FF2C'},
+        {name:'Learner-01',task:'Consolidating knowledge',load:'78%',dot:'#B8FF2C'},
+        {name:'Director-01',task:'Rendering · isolated',load:'92%',dot:'#2563FF'},
+        {name:'Closer-01',task:'Offline',load:'—',dot:'#7a7f74'},
+      ];
+    } else if(A==='ask'){
+      out.view={ ...this.meta.ask, actions:[{label:'Clear',icon:'eraser',style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.8);font-size:12.5px;font-weight:600;cursor:pointer'}] };
+      out.chat=this.state.chat.map(m=>{ const wob=m.role==='wob'; return { ...m, isWob:wob,
+        rowStyle:'display:flex;gap:12px;align-items:flex-start;'+(wob?'':'flex-direction:row-reverse'),
+        bubbleStyle:'max-width:74%;padding:13px 16px;border-radius:16px;font-size:13.5px;line-height:1.55;'+(wob?'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);color:#F2F4F1':'background:linear-gradient(135deg,rgba(184,255,44,0.16),rgba(184,255,44,0.06));border:1px solid rgba(184,255,44,0.28);color:#F2F4F1') }; });
+      out.onDraft=(e)=>this.onDraft(e); out.onKey=(e)=>this.onKey(e); out.send=()=>this.send();
+    } else {
+      const v=this.buildView(A); out.view=v;
+      out.isFeed=v.archetype==='feed'; out.isLibrary=v.archetype==='library'; out.isBoard=v.archetype==='board';
+      out.isOps=v.archetype==='ops'; out.isProgress=v.archetype==='progress'; out.isSettings=v.archetype==='settings';
+      out.isApprovals=A==='approvals'; out.isCosts=A==='costs';
+      if(A==='approvals'){ out.view={ ...this.meta.approvals, actions:[{label:'Review oldest',icon:'history',style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.8);font-size:12.5px;font-weight:600;cursor:pointer'}] };
+        out.approvals=this.state.approvals.map(a=>({ ...a, approve:this.approve(a.id), reject:this.reject(a.id), confStyle:this.confChip(a.conf) }));
+        out.noApprovals=this.state.approvals.length===0; }
+      if(A==='costs'){ out.view={ ...this.meta.costs, actions:[{label:'Export',icon:'download',style:'display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:rgba(242,244,241,0.8);font-size:12.5px;font-weight:600;cursor:pointer'}] };
+        out.costRows=[
+          {name:'LLM tokens',amount:'$1,980',pct:'72%',color:'#B8FF2C'},
+          {name:'Media render',amount:'$1,140',pct:'42%',color:'#FF6B00'},
+          {name:'n8n execution',amount:'$520',pct:'22%',color:'#2563FF'},
+          {name:'Embeddings',amount:'$340',pct:'15%',color:'#EAF2FF'},
+          {name:'Storage',amount:'$230',pct:'10%',color:'#7a7f74'},
+        ];
+      }
+      if(v.hasKills){
+        const defs=[
+          {k:'media',label:'Media render',desc:'Pause all video/visual jobs'},
+          {k:'outbound',label:'Outbound send',desc:'Halt cold sequences'},
+          {k:'autopublish',label:'Auto-publish',desc:'Require manual publish'},
+          {k:'scraping',label:'Source scraping',desc:'Stop new captures'},
+        ];
+        out.killSwitches=defs.map(d=>{ const onv=this.state.kills[d.k]; return { label:d.label, desc:d.desc, toggle:this.toggleKill(d.k),
+          switchStyle:'width:42px;height:24px;border-radius:13px;border:none;cursor:pointer;position:relative;flex:none;transition:background .18s;background:'+(onv?'#B8FF2C':'rgba(255,255,255,0.14)'),
+          knobStyle:'position:absolute;top:3px;left:'+(onv?'21px':'3px')+';width:18px;height:18px;border-radius:50%;background:'+(onv?'#0A0A0A':'#F2F4F1')+';transition:left .18s' }; });
+      }
+    }
+
+    // shared spend bars (home + costs)
+    const heights=[40,55,48,62,58,70,52,66,74,60,80,72,88,68];
+    out.spendBars=heights.map((h,i)=>({ h:h+'%', color: i>=12?'#B8FF2C':'rgba(184,255,44,0.32)' }));
+    return out;
+  }
+}
+</script>
+</body>
+</html>

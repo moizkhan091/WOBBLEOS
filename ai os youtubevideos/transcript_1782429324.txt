@@ -1,0 +1,152 @@
+00:00:00 - 00:00:57
+What is up people? I'm back and I have some mega mega source to share with you guys today. So, uh you've read the title. Uh this is about selling AIOS or AI operating systems as a service where I think the market is hitting and I just want to give you kind of my read on the market right now. I'd had to kind of take a step back from YouTube for a bit and I mean it's just getting so crazy, man. Like I made the video a while back like AGI is here. Um, and I got clowned a little bit for it, but like more and
+
+00:00:29 - 00:01:24
+more people now, people a lot smarter and I guess more successful than me are saying the same thing now. So, I hope uh that's helping to corroborate my position. Um, I've been going for long walks, getting a bit of sun, uh, and trying to wrap my head around this thing, not only for my sake on how I want to position my business moving forward, what we want to do at Morningside, what I want to do with my accelerator, and how I want to train people in different ways. It's times like these when things get really
+
+00:00:57 - 00:01:52
+really crazy, there's two responses. You can either just like put the pedal to the metal and go hard or you can take a step back and be like, what's the the bigger picture or the trends going on here? And in this video, I want to just like boil down some of those trends for you guys, give you maybe a bit of clarity and confidence as we go into this next era of the AI agency and AI transformation boom. And it really is just the the pulling together all the different threads that we've been
+
+00:01:24 - 00:02:30
+working on for the past um few years really. So it's a great time to be in this business and uh I just want to start with that really. So first things first uh what we are seeing right now is a fundamental shift in the way that we do automation for businesses and how we do AI transformation. Um, I remember way back when I started it was using uh text completion models, Da Vinci 003 and wrapping things around them to try and make a chat clone for businesses and adding in custom context. That was like
+
+00:01:57 - 00:02:51
+what I was doing back in the early 2023 when I was doing this for businesses and consulting on them as well. And we've gone down a direction where you do a an audit, you do a big consulting project for a company, you get the lay of the land, you understand what solutions they they need and then you'd go from an audit into a development phase. And like we are still doing this with our clients at Morningside where we've got all this backed up like a road map that we did for clients and now we just have a big
+
+00:02:24 - 00:03:13
+sequence of work that we're working our way through and like build after build after build. Um, but there's a I think we're going to see this kind of flip on its head in that these systems typically are kind of standalone or it's an agent that you build or an automation that you build that has to kind of hook into different v various data sources that might be pulling in if you're putting it on NAT or make or whatever it is where you're integrating into existing platforms. It's pulling that data in and
+
+00:02:49 - 00:03:36
+it's trying to contextualize the agent as much as possible. And so they're kind of like what you could call point solutions and that they like target a specific point and we are automating a specific process or part of a business and trying to get as much context for it to work as possible. That has definitely worked. But I honestly think that is just scratching the surface of what's to come for businesses and that there's this massive jump. I've just finished a workshop on my accelerator
+
+00:03:12 - 00:03:59
+where I was explaining this. I seriously think we've been scratching the surface. And a lot of the work that if you're a business owner and you've been really investing in AI, you're going to hate me for saying this, but I honestly think a lot of the work that's been done by AI agencies to this point has been uh it will be uprooted and completely changed in this next phase that we're heading into. Um, and that is a a good thing all around. Maybe not for the businesses who
+
+00:03:36 - 00:04:19
+are a few hundred grand deep in investments, but they're definitely going to be further along the lines and they're still going to benefit from it. They're definitely taking the steps they need to. So, it's not a complete waste, but we've been doing it basically the hard way for quite a long time now. And this flipping it on its head is what I've seen from I've been installing these claw code AI operating systems for businesses in person. I did a mastermind in Cape Town um where I was there with
+
+00:03:58 - 00:04:42
+like seven different founders of all different backgrounds and types and levels of technical ability as well, seeing how to set them up, see how this thing can kind of flex and change to different business types. I did another one here in Bali as well. So, I've been on the front lines. That's kind of why I've been a little bit out of the out of the picture uh recently because I wanted to get hands- on with the stuff. I wanted to see within my own business. I wanted to see with these other companies
+
+00:04:20 - 00:05:14
+I've been working with as well and these other founders um what the the shape of this is moving forward. And what I'm seeing is a a flipping of the entire model of AI automation from these point solutions where you kind of top down to what you could kind of call it bottom up where in order to speed up the auditing in order to speed up the development you need to start first and foremost with some kind of contextualized base or workspace or operating system an AI operating system like I've been saying
+
+00:04:47 - 00:05:32
+and once you have that base and in the case for these setups that I've been doing for founders is it's the right template to start with. It's at the right folder structures. It's getting their chat GPT or clawed history in most cases. Pulling all of that, exporting it, baking it into what I'll call a context OS. First step on the rung, and this is basically stopping them having to copy and paste all the context around when they're using chat GPT or Claude. That is by pulling all of that in and
+
+00:05:10 - 00:06:00
+giving the contextualized workspace a base. And then on top of that base, it's plugging in their connections to different platforms that they use. It might be their Stripe, might be their CRM, it might be their Facebook ads, um might be the Google Analytics. plugging in all of this so that not only do they have a contextualized workspace but they have the ability to pull in additional information via custom skills and then also on top of that being able to write back up to them as well. not only being
+
+00:05:35 - 00:06:24
+able to pull in data but for founders being able to write up and actually operate their whole business like I I run my whole business from in code now within cursive um because I have everything plugged in and it knows everything about me I don't actually use the interfaces at all and there's there's all sorts of ramifications of that for B2B SAS which I talked about in previous videos which I'll I'll link up here when you have that contextualized base and when you have the integrations
+
+00:05:58 - 00:06:55
+on top uh then the pathway to automation is is just like so far. It's It's shrunk down so much. Um, as I've made a a bunch of commands that I've I've taught to my community and and used in these workshops like explore where I go /explore and it's this command that walks them through multiple phases of helping the founder to figure out what they want. It's like /explore. Uh I want to be able to automate the obvious ones are like the sales pipeline was like the preparation for calls or I want to
+
+00:06:27 - 00:07:20
+automate um the the preparation of reports in certain days of the week or I want to heavily augment or make an augmented workflow. Um that's going to say help me on thumbnail generation or it's going to help me go through my weekly planning at the end of the week. So there's augmented and then there's auto automations, but with the right claw code setup or or AIOS setup with the context and the integrations, you are able to put the power in the hands of the founder or as I'll touch on
+
+00:06:54 - 00:07:39
+in a bit in a very interesting way, put it back in the hands of the agency owner. And there's a whole spectrum of different ways you can deliver this and make money on it. But in the case where you're setting up for the founder of someone who's a bit more technically inclined and wants to learn the stuff that getting the context set up, getting the integration set up and then teaching them how to use the workflows of /explore, help me figure out what I want to do. Okay, now I need to make a
+
+00:07:17 - 00:08:00
+technical implementation plan, break it up into a couple different chunks, implement them one after the other, and then go through and test that. Once you can kind of teach the founder on top of that context and integrations, the workflows, that's really what I've been focusing on on in those masterminds I've been doing is can you just get them a base where they understand what this is, it understands the business, it understands them, and you teach them those workflows, and then it's just
+
+00:07:39 - 00:08:22
+anything that they can think of, they're feeding in, and that they're off to the races. And it's really really an awesome awesome thing to see like that when they get that and they just they're just going and they are going once they're going. But that is a fundamentally different way of looking at at approaching automation. It's that bottomup way of doing it and that if you just think if you give enough the coding agent enough context and you give it the right integrations and API keys then
+
+00:08:00 - 00:08:52
+it's just a case of asking it what it wants and then you get all sorts of other other issues down the line or other problems to solve such as like ROI tracking uh figuring out what automations are firing and when what agents are being used and when how can you prescribe uh certain amounts of value like how long did that automated task take on average like starting to quantify the ROI and and really tracking things becomes a really interesting opportunity. for agencies as you as you do these kinds of systems. And then
+
+00:08:25 - 00:09:13
+there's the the whole spectrum of delivery of a system like this and where you as an agency can fit in, what offers you can make, how you can squeeze yourself into the market. And I've been explaining it to my accelerator in terms of like teaching people to fish. One thing you guys will know or or learn very quickly if you were to go the route of, hey, this thing's so awesome. I can figure out how to use claude code on cursor and I can do these things. Uh I'm just going to teach other founders to do
+
+00:08:50 - 00:09:47
+it. And there are going to be in the down the end that that post is kind of funny. So it's the like Airbnb kind of like Airbnb uh NPC artwork. Um sorry, but uh there's just the spectrum of how you can deliver this. The first being like I'm going to teach them and because if they're a bit more technical or or they're more curious. a lot of the early adopter kind of digital marketing agency owners, ecom owners, these people are digitally native and they've probably been playing
+
+00:09:18 - 00:10:07
+around with AI already. But I will say that there is a training offer here. There's 100% a training offer. A lot of guys in my community are doing flyyous like Tyler, some one of my community members who just been absolutely crushing it, doing flyyous. Um, poor dude's been hopping on the workshops in the in the accelerator like 3:00 a.m. in a hotel room um tuning in. He's just absolutely smashing it. but he's going out in person doing these inerson installs uh with a founder sitting down
+
+00:09:43 - 00:10:26
+going through that process like I've been doing at my masterminds with the context and the integrations and he's actually getting them to build like while they're there as part of the setup fee is the context to integrations and then also solving their first big problem. So it's like let's get clear about one problem that I can help solve and get the like it's hard to communicate what one of these systems is to a business owner. So, if you can just say, "Look, I know it's going to sound
+
+00:10:05 - 00:10:52
+complicated, but by the end of it, we're going to solve this problem for you, a big one, and then hopefully you can see the value, and then you'll trust me to keep moving with this." You can go out in person and do trainings and teach like set up an AIOS for a business, train the founder how to do it, like I've been doing at these masterminds. Uh, but then you've essentially taught them how to fish. And if you if you're wanting to do God's work and just share this stuff all all over the world, then
+
+00:10:28 - 00:11:16
+then sure, that's good. But I can tell you firsthand from me teaching people to fish with this stuff. Uh there's there's got to be like a like an impossible challenge meme in there. It's like not to go and also start selling this and teaching this as well because once people see this, they immediately go like, "Oh, well, I'm just going to go and teach people in my my network how to do this." And I mean, I'm I'm not like getting all elbows out on this. I think it's great. I'm not too
+
+00:10:52 - 00:11:40
+bothered. But I think for the sake of if you're trying to make a scalable offer and find like a real good niche for your agency to sit, going and teaching say digital marketing agency owners how to set these up is not really going to say give you much time um because they were just going to start teaching it as well. So where do you fall on that spectrum? The one I was just talking about with Tyler is kind of I'd say on the on the one side you've got train. So you can make a training package of I'll fly out
+
+00:11:16 - 00:11:59
+and set it up. I'll train you how to use it and they'll offer ongoing support and that might be a 5k setup and then like a one or two per month with like a call a week or something and so you're there maybe that's a three-month package and then they're done and then you just sell that as an offer which is actually training and support and maintenance. Then you could also offer like doing setups for their teams and scaling it up to teams which is a whole different thing. There is a huge amount of value
+
+00:11:37 - 00:12:30
+in that and then on the far side you would have what what is more of like a productized version of this. Um and one of uh um our community members, Alice, she has created what's like a kind of ecom a iOS which is for uh ecom owners and taking basically the AIOS system that I I have in my accelerator wrapping it and modifying it for her e-commerce business and then as a as a a niche expert who's applied the system to her business and made a dashboard that can do a lot of the functions of the
+
+00:12:04 - 00:12:47
+business and save her a bunch of time and money by making some sort of dashboard and then niching it down. You can create a product out of it. Sell it maybe 10k setup. Validate that it's working for your business or someone else's business. And then instead of giving them the keys and teaching them how to fish, you're just kind of giving them the fish. Most founders don't want to learn how to use cloud code. They don't want to learn all the stuff, do all the setup, they just want to like
+
+00:12:26 - 00:13:08
+tell you about their business and then they want to get the cool thing that you've you've set up and and it's working for you. So that's like the productiz service and there's an ongoing model for that. But basically, you're building them a custom app that sort of wraps around one of these. And then in the middle is is kind of like what Tyler's doing. So training product in the middle is more so like the agency services model and people have been exploring that in different ways and
+
+00:12:47 - 00:13:36
+price points. One thing that I think is really interesting is a retainer based kind of design joy model. Um and we actually tried this at Morningside way way back and we're just way too early to it. Um, we tried it was called Borning Side Automation and it was like why don't we take like a design joy model and then charge our clients like 5K 6K per month and then they get like one or two automations but the stuff just took so long to build. Um, it was there's support. There's like it was finding the
+
+00:13:12 - 00:13:58
+right people for it making the ma maths work. So, okay, so you've got like two one developer per client. How many how many builds can they do? How do you scope it? Stop scope creep. It was just a nightmare and we were just way too early for it. But I now think there's actually an option for a really powerful offer for small to mediumsiz businesses of a retainer based model rather than these big upfronts that we've been charging for a long time. Tyler in his case is charging 2 1/2k per month for
+
+00:13:35 - 00:14:20
+it. And for a business owner like not having some 10 20k up front and being like hey this guy's going to charge me 2 1/2 grand a month where there might be like a 5k fly out and install cost and then paying for the travel but after that it's 2 and a halfk a month. I'm going to get one big automation or two smaller ones and I now I have an AI guy in my corner and I need I knew I needed to do something on it and I'm only having to pay two and a half grand a month and I think that could honestly go
+
+00:13:57 - 00:14:39
+up to 3 4 5k as you basically build more things on top. You would add retainer or usage based things on top. So it might start off at 2 and 1/2 but then it goes to three when you build out system number one and then goes to four and five and six and you're just adding on these retainers because you're having to maintain these systems as they grow and they're getting a ton of value out of it as well. But what makes this all possible is like I said that flipped upside down model of automation where
+
+00:14:19 - 00:15:06
+it's context, it's integrations. And so in Tyler's case, he's going out in person doing these setups. Um, and I'll drop Tyler's details in the in the description below. Absolute legend. Um, I I can't cannot give him enough love. He was in my my community doing um a workshop for us. So Tyler, mate, I'm so so proud of uh all the work you're doing and thank you for sharing with us as well. So if I could send a bit of bit of love his way. If you're a business owner
+
+00:14:42 - 00:15:29
+in America, uh anywhere and you're looking for a guy to come out and literally sit with you and do this and he's an absolute that as well. I cannot recommend him enough. But Tyler's model is kind of in the middle of the training and the product and that he will go out and instead of setting up the AIOS for them to use, he will sit with them and set up an AIOS for him to use. So he walks them through it. He gets the context set up, he's there out in person with them. He gets all the API keys and
+
+00:15:06 - 00:15:53
+things set up in person making sure he's got this workspace fully set up for him to be able to build on top of. He works on the first solution and gets in that like instant ROI on the first payment. And then he's built basically a system for them to go back home and and have a development environment that's fully contextualized. It's fully plugged into their systems. And then he's also creating like their own interface or way of chatting with their own claw code workspace. So it's just makes a custom a
+
+00:15:30 - 00:16:16
+custom web app that I have a link to. It's like their own chat. Very basic, but allows them to chat to it and get the same functionality of having access to this very knowledgeable workspace, full context, connection to all their tools. So, they have that to chat to and they get the chat experience. But he's got it on his side, the development engine that now based off requests can very quickly move through explore flows to be like, hey, this is the next system I want. I've got two things to build
+
+00:15:52 - 00:16:44
+this month. One, two. And then because the development is so quick, it can make that retainer model actually make sense. And he doesn't need developers. He can do it himself as a oneman business. So much exciting stuff guys and there's such still such a big gap in businesses. I will link a really really interesting um podcast I listen to by Jack Dorsey, founder of Twitter and now um CEO of blog and his model is trying to flatten out or structures and having sort of like a turning a business into basically
+
+00:16:19 - 00:17:04
+an intelligence where there's all of this work streaming in there's artifacts from different things being done there's all of the cores that are happening basically everything revolves around some sort of very contextualized AI intelligence which is basically what this AI operating system thing is um it's a it's a layer around the business or kind of like a a core to the business with all the people dotted around it. And when you look at all the work that AI agencies have done thus far and
+
+00:16:41 - 00:17:28
+realize that hey companies are still running this old hierarchical model of employment there's probably five times more staff than they're going to need in 3 4 years time. They are not using any kind of workspace to centralize all the apps and give them integrations where like each employee has their own AIOS kind of like workspace that's super contextualized and allows them to move very quickly. It's just like claude coowork is a very interesting place that I'm looking into as well. rolling those
+
+00:17:05 - 00:18:00
+out as a service. I think there's a big opportunity there, too. But we are just so far away. So, so far away. And I think we've been kind of like digging with a teaspoon now and we can finally like get the excavator out and start really like fundamentally changing these businesses and delivering on the promise of true transformation. Uh but it's the reason it hasn't come is because you need to break stuff. You need to like really fundamentally rethink the business. And my final point um I
+
+00:17:31 - 00:18:36
+suppose is the opportunity in the flip side of that coin and is it is there opportunity for your agency in going and making a retainer style offer and maybe stacking up four or five clients where they end up paying you 5 10k per month. um and you really go deep with them and trying to sort of like band-aid or like break and remodel these legacy businesses or legacy your legacy businesses in the old way of doing things or is there more opportunity in the other side of the coin which is going to a business owner and saying hey
+
+00:18:03 - 00:18:53
+look I want to start your business but fundamentally rethink and actually go become a partner and say look we're going to start up a a new version or a new department or a new version of this business. It can be something completely different, but it's going to be built with AI first principles. It's going to be built with this AI operating system at the core and we're going to be very specific about who we hire and how they fit in, how the context is being fed into the machine, the workspace that
+
+00:18:30 - 00:19:24
+they work in, the AI agents and automations that we can build and we can just rethink it from the ground up. And this is what the big dog's looking at like why would you go through all of the challenge and human difficulties and and layoffs and redundancies and this when there may be a much better better opportunity than just starting fresh. So I think this is a really under under discussed and under explored part of the AI automation landscape and as an agency do you need to try to like break them and rebuild them or could you
+
+00:18:57 - 00:19:48
+just start from scratch and I mean sounds like a lot more fun you know like you literally get to be an architect and just paint on a canvas with all the knowledge of this business owner and repaint it from the ground up and probably take a percentage of that new company uh whether it's yeah I mean the equity or there's profit share or whether there's like some kind of model there. Again, spitballing a bit, but what a freaking time to be alive, to be in the space. And I just want to like
+
+00:19:23 - 00:20:22
+say for you guys out there who are probably feeling I think it's like a paradox and that the people who are the deepest in this tech feel the most stressed by it. And we're all going through it, man. Like I've been I've been out in front of this stuff for ages. I'm going through it. Everyone else you're watching is going through it. Um, just like go outside and touch some grass, get some sun and just realize that if you can read the the chessboard now and pick a play that is
+
+00:19:52 - 00:20:46
+based on some sort of durable value creation source such as transforming or or moving companies from this old model to this new one, whether it's like claude co-work setups and getting really good at that. we've got now got so much diversity is that if you just pick one of these incredible tools or platforms that's coming out or one of these big and gnarly uh challenges in in this big like sort of smorgas board of AI transformation there's so many different parts to it now uh maybe you don't have
+
+00:20:19 - 00:21:17
+to do everything just find your thing now and start building your building your house upon that thing but make sure you've picked that well because there's a lot of like durable sources of value here that aren't going to move that much and your job is to find those and build on it. So guys, um, thank you for being on this ride with me. I'm I'm actually I'm excite excited and uh and optimistic about the future and I I want to sort of trans transmit some of that to you guys
+
+00:20:48 - 00:21:38
+in that we've been waiting for this for a long time and now the development and auditing part is getting a lot easier. So this is when the fun begins and uh yeah, that's all with the video. If you guys want to see one of my vlogs where I'm doing like the behind the scenes of uh actually working with founders oneonone or my actually no my recap video from my Cape Town mastermind, I'll put that up there. Sorry for that guys. Thank you so much for watching. See you in the next one.

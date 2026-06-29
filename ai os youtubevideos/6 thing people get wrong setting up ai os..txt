@@ -1,0 +1,161 @@
+00:00:00 - 00:00:51
+Over the past weeks, we've helped dozens of professionals and businesses set up their AI operating system across my community and my agency. And across these people, there's a clear pattern. The ones who get the setup right really transform the way they work. But the ones who don't end up with a system that spends a lot of tokens, still produces generic outputs, and doesn't actually get used. So, in this video, I'll show you the six most common mistakes to avoid, show you how to fix each one, and
+
+00:00:25 - 00:01:22
+show you why less is often more when setting up an AI operating system or second brain. Now, before covering some of the common pitfalls people fall into when setting up an AIOS or second brain, let me quickly address why you need one and what it actually is if you're still unfamiliar with it. Now, the reason a second brain or an AIOS is so powerful is because with a second brain setup, Cloud has persistent and up-to-date context and memory on you and your business across different chats and even
+
+00:00:54 - 00:01:48
+across different AI providers. And this just means that your outputs become far better and more relevant for any task you do inside of these AI providers. And because it can be shared and synced across a team, it also means that in a business setting, it can make everyone's AI agents more powerful, but maybe even more importantly, more aligned with the business by drawing and adding to that same business context and memory. And it also means that every skill or automation anyone from the team sets up
+
+00:01:21 - 00:01:59
+instantly becomes better because it can uh draw from that business specific context immediately and embed it into the skill. Now, if you're completely new to this topic, and this might go a little bit too fast, I'd recommend first checking out my full step-by-step tutorial on how to set up a second brain on my channel, which I'll make sure to link in the description below, too. But you should be able to follow this video, too. Now, there's one more thing I want to address before going into the first
+
+00:01:41 - 00:02:32
+mistake, which is probably the most common question uh we get, which is if you've seen any video on the AIOS of a second brain, you've seen that most of the time this of course is set up on a local folder on your computer and consists of text or markdown files with this context or memory. And then we often use a tool like Obsidian to visualize that folder on our computer. So the most commonly asked question is, do I really need Obsidian? And the question is, no, you don't because this
+
+00:02:06 - 00:02:58
+is just a visual layer for you. Clot will have nothing to do with Obsidian because it directly pulls and saves data into the folder. All Obsidian is is just a tool for you to visualize this folder on your computer a bit better. So you don't need it, but it's a free app that will help you visualize your folder. So I do recommend it. The second most common question we get is is it really necessary to have all of this context or memory in a local folder or can I just use my existing software like notion,
+
+00:02:32 - 00:03:25
+Google drive, one drive or any other software platform. Um because all of my context already lives there, my team already uses this. Now the short answer to this is yes, you can. But it is good to understand the tradeoff because if the context lives on a folder on your computer, um cloud can basically access and save data to uh this folder with a simple bash command. And this means it's far more efficient for cloud or an AI provider to retrieve or save this context because when the context lives
+
+00:02:58 - 00:03:52
+inside of a software, it means that Claude has to use an MCP or a connector to retrieve and save data from your second brain. And this essentially means we add a layer of complexity in between our AI agent and the context. And this layer of complexity comes at a little bit of a cost. It means that we'll use more tokens uh to retrieve and save data. It might come back a little bit less accurate when retrieving and saving this data. it might run into a few more errors, etc. So, very simply put, the
+
+00:03:25 - 00:04:13
+most efficient way is to have this locally stored and to use a tool like Obsidian to visualize the folder on your computer. But if you're okay with some of the tradeoffs and it makes more sense for you because you already have all of this context in an existing software, you can definitely set it up like this, too. I'll soon release a video also on how to set it up through a software in a little bit more detail. But all of these mistakes and common pitfalls to avoid will still be relevant wherever your
+
+00:03:49 - 00:04:39
+setup is. So let me start with the first common mistake. Now just for context, um the way we got to these most common mistakes is by uh basically looking at all the transcripts of hundreds of support calls we've had on setting up an AIOS and see what the most common mistakes and and issues were. Now this first one is the most common one we've seen across our support calls um here which is not having the right context to actually get better outputs from AI and to actually benefit from this OS setup.
+
+00:04:14 - 00:05:12
+Now generally this is either a problem of not having the essential or most important context files set up well or it comes out of just dumping raw context into the second brain without any filter. And this could look something like this and we've seen this across many calls is very unstructured raw data dump inside of these folders which makes of course maybe your graph view look pretty impressive but it doesn't actually work to uh make this OS setup work efficiently. So the way you want to
+
+00:04:43 - 00:05:35
+think about this in general is that 80% of the benefits of that second brain come from 20% of the context files. There are essentially a few of these essential context files that will make outputs across almost any task you do with AI more relevant instantly. And it's exactly why we need to actually put in effort into creating these essential files instead of just dumping a huge amount of of raw data. So what are these essential files that you need to set up? Well, there are really only five or six
+
+00:05:10 - 00:06:03
+that you want to set up that give you that 80% of the benefit with 20% of the context or effort because for me and my team, these docs get pulled in almost every time we do a task with AI. Whether that's copywriting, uh YouTube ideation, whether we use AI for strategy, uh to create skills or workflows, these context uh documents will almost always be pulled in. And that's why we want to really put effort into creating these well, which I'm going to show you in a second how to do. The first one is me.md
+
+00:05:36 - 00:06:30
+which is a document about you, your background, who you are, uh your stories, your work, your preferences and it gives AI instant context on you. The second of course is a business.mmd uh and this is the same but basically with everything it needs to know around your business like your product, your service, the history, your funnel, etc. The third is an ICP doc that describes your ideal customer profile which of course makes any task you do for your business much more aligned with your target audience. For example, in my ICP,
+
+00:06:03 - 00:06:57
+I have the value proposition, who we serve, what they have in common, uh who shows up, why Ben resonates, a strategy doc that describes your current goals, your focus, your current strategy, and a brand.mmd that describes your brand or your tone of voice, your styling, your color schemes, and your positioning. And if you're business, you probably want to have a team MD that describes the role uh and the responsibilities of each of your team members. So again, it's far more valuable to have five or six of
+
+00:06:29 - 00:07:22
+these essential docs set up well. Um, and often it's better than having thousands of sort of raw unstructured documents living in your second brain. So you do really want to take time to set these up and update them over time. And the way you can do it simply is by just literally sitting down with cloud and ask it to create these docs and first ask you 20 or 30 questions. You then sit down and do a voice uh use a voice transcription tool and just do a brain dump on everything you need to know about each of these topics and then
+
+00:06:56 - 00:07:52
+ask cla to structure it into an MD file. We've also set up an OS setup skill which you can download for free in the first link in the description below the free resources of this video that walks you through all the questions to answer to get this initial uh these initial context doc set up. And again, you can just brain dump your way through all of these 12 questions and you should have your essential context data set um set up well. Now, the second most common mistake is not actually updating it with
+
+00:07:24 - 00:08:24
+real time context. There's of course work decisions and the world changed constantly and if clot doesn't have context on that, your outputs tend to become irrelevant, repetitive, out ofd, and sometimes just useless. So the 9010 of context is really to have those essential files that I mentioned before plus having it updated with real-time context on you and your business. So what real-time context do you actually need? This of course depends on the person and your business. Uh so you actually again want to take a step back
+
+00:07:54 - 00:08:54
+and think for a few minutes of what's actually relevant for you and what you need um your second brain to have up-to-date uh knowledge on. Now the way you can think about it generally is there are two types of sources for real-time context. The first one are uh from our softwares. For example, in my case, I want cloud to always know about what happened in my meetings of course my meeting transcripts u my email inbox maybe my slack uh threads and what happened in my community for example. And the second source is from the
+
+00:08:24 - 00:09:18
+internet what upto-ate data do we need from the external world. So in my case, I'm of course glad to have real-time context on the latest news in AI, on what my competitors have done, uh maybe AI trends on X, etc. And for me, besides these essential files, this is really a big game changer because, for example, when I'm ideulating on a new YouTube video, my clot has instant context on what we discussed about this video in my meeting today or in my last two meetings with my team. It has context on what
+
+00:08:52 - 00:09:43
+other people in the space have covered around this. Plus, of course, it has access to my strategy doc, my ICP, etc. And combining that real-time context with these essential context docs, you're going to see a lot better outputs in most of your tasks. Now, you might be wondering, can't I just use the connectors or the MCPS to pull that data whenever I need to? Um, but the point of this is then you have to constantly think about and explicitly tell CLA where to get the data. And this means it
+
+00:09:17 - 00:10:02
+will slow down the process because it has to use connectors and MCPS to get the data. it takes longer and it just adds friction to the process of using AI which in my experience is one of the biggest reasons for not actually using it or using it efficiently. So how do you make sure that your second brain has this up-to-date context? The simplest way is by just setting up a schedule task in the cloud desktop. So you have a schedule task with second brain updates and it just goes through the process of
+
+00:09:40 - 00:10:30
+getting the relevant data and updating it to the folder of my second brain. So in this case it goes through my latest videos uh the transcript my recent meetings and all the other relevant um updates it needs can then just run on a daily basis or every few hours to make sure your second brain's updated. Again we have a free skill in the free resources in the link in the description that helps you set up this schedule task according to your use case. So it'll ask you and look at your current connectors
+
+00:10:04 - 00:10:53
+and ask you what relevant data it should pull in for you and then personalizes and creates that schedule task automatically for you. Now, last thing I want to add here is that if you use this in a team setting, you want every person in the team to think about what's relevant for them. Because, for example, my sales rep needs to pull different data than me, for example. And ideally, everyone in the team has this set up for themselves or at least has communicated it with you so that you can set it up
+
+00:10:29 - 00:11:15
+for them. Now, very quickly, if this is going a little bit too fast for you or you want to dive deeper into this OS setup, you can also get our full AIOS setup course together with unlimited one-on-one live tech help. uh and a community of other professionals and business owners building this out inside of my AI accelerator in the second link in the description below. And if you're a small business and want me and my team to actually help you set this up for you uh together with training and
+
+00:10:52 - 00:11:39
+consulting, you can also book in a free call with us in the third link in the description below. And if you might be a bigger business and are looking for an AI partner that helps with AI strategy, implementation, and training, you can also check out the fourth link in the description below and book a free call with my AI agency. And the third mistake is not having a fixed folder structure in your second brain. And we see two common problems here in general is the first one is not having any folder
+
+00:11:15 - 00:12:14
+structure or subfolders. Meaning all of the context docs just live in one folder. And the second is just having far too many subfolders with a lot of empty folders or folders that don't actually get used. Something that again might look something like this where we just have lots of subfolders, some are empty, etc. The problem with this is that both lead to bad routing. So cloth pulling the wrong type of files, saving it in the wrong places and it just becomes far more inefficient and can also lead to more token uh usage and
+
+00:11:45 - 00:12:38
+burn. So folder structure follows a similar pattern to before which is less is often more which is something we learned while using this internally uh more and more too. And the more most important takeaway here is sticking to a specific folder structure a fixed folder structure is probably more important than the folder structure itself. Now why is that? Because cloud then consistently knows where to pull data and save data to uh because if it changes constantly and there's new subfolders constantly etc. we also
+
+00:12:11 - 00:13:06
+constantly have to update the routing rules uh etc in order to keep making it work efficient. So my recommendation is to pick one folder structure and stick with it. And my suggestion for a folder structure, the 8020 folder structure, which works for most people, which is exactly what our OS setup scale helps you set up exactly these subfolders, which again you can download for free in the free resources, is the following. If you're alone, the first one is a context subfolder where basically all those
+
+00:12:38 - 00:13:36
+essential context files that I mentioned in the first point live. As you can see here in my context subfolder, I have all those important documents that are relevant across almost any chat. And this is really the most important uh folder. Then we have the daily subfolders with daily notes and logs and is what uh gives cloud quick context on what happened each day in your business. You can see in my daily folder we basically have a log of each day in our business what happened. And a lot of the the real-time context that I talked
+
+00:13:07 - 00:14:02
+about before is going to be used also to update this. So as you can see here for example a random day you can see it pulled 13 fireflies meetings. It looks at critical escalations, the today's calendar, the meetings that were done, my circle community activity, the activity on Slack, and important tasks. Again, this is what the free OS operator skill helps you set up. Besides pulling all of that data from your softwares, it also creates a daily uh MD file. So, Cloud has quick context on what happened
+
+00:13:35 - 00:14:33
+across your business every day. Then, we have the intelligence folder, which is really important. And this is where all your uh meeting transcripts, your decisions, your market research, uh etc., and any other intelligence live and this for example also gets updated uh with this real-time data through the scheduled task for example you can see in my case we have decision logs market intelligence what happened uh across the AI market we have our meeting transcripts we have our meetings across clients across the community etc and
+
+00:14:04 - 00:14:57
+also logged per day we also have churn logs as you can see here we have um processes laid out we have reports and YouTube intelligence but this might look different for your specific use case or need but this intelligence folder is really important. Then we have projects where we have specific subfolders for each of the project you're working on and this can be anything and is highly dependent on your business of course but these can be for example a project per client if you're an agency or in my case
+
+00:14:30 - 00:15:23
+you can see that I have a project for each of the YouTube video I'm working on. So this will depend on what you work on and your business but a really important subfolder of course. And then we have resources where you can save any reusable template uh file or any other resource. In my case that could be for example YouTube transcripts framework processes SOPs etc. For example in my resources you can see I have some of my old LinkedIn posts. So I can use that whenever I need to reference it prompts
+
+00:14:56 - 00:15:54
+that I uh often reuse and things like that. And if you have a team, you want to add one more to this, which is a team subfolder where all of the tasks, the profiles, and the specific intelligence resources and notes for each of the person in the team live. So you can see in my team folder here, I have profiles for my closed team members here. And inside of each of the profile, I have a daily with updates on what happened with me each day with updates on everything that happened across my work and my
+
+00:15:25 - 00:16:22
+meetings and Slack activity. This is really the 8020 of the folder structure that you need and it covers really I think 90% of the use cases for uh professionals and business owners. The point of this is it's just an initial set setup. If you start using this consistently and you start noticing that you're constantly using this for something else for another use case for example you're actively managing a task list through claude um then you can create a task list subfolder or for example for my use case it could be if
+
+00:15:54 - 00:16:47
+I'm constantly working on YouTube things I could create a separate subfolder for YouTube but again less is more uh start simple and the more you start using it if you need an extra subfolder you can always make it afterwards now the next mistake is not optimizing your cloud MD file which can lead to high token spend again to routing routing problems, slower responses and cloud just not pulling the right documents. Again, the cloud.mmd is the most important file to optimize because it's what cloud reads
+
+00:16:20 - 00:17:13
+every single time and basically tells cloud where and when to pull data from and where and when to save data. So, it's like the map for your AI agent between um your second brain or your AIOS and your AI agent in your cloud desktop. You can always find it here in instructions and inside of the folder. You can also find it because it lives at the root. Now, there are three important things for making sure the cloudMD works well and functions well. Firstly, we have to optimize it based on best
+
+00:16:47 - 00:17:39
+practices. Now, cloud often writes the cloud MD itself if you don't specify yourself or often people just ask cloud to write a cloud MD. The problem with this is that cloud often doesn't really follow the best practices for a good clot.md. Now there are a lot of smart people like Andre Karpathy and the Entropic team who've uh released best practices and frameworks on optimizing the cloudMD which again I'll show you a skill for that you can apply to optimize your cloud MD but the highest leverage
+
+00:17:13 - 00:18:17
+ones really are first of all keeping the cloudmd under 300 lines u because a bloated cloud MD uh tends to work far less efficiently second we really need a routing table for example you can see mine is pretty short here and includes a routing table that basically specifies where all the information lives and where to save information from and as a routing table here which basically gives cloud information about what context lives where and where to save context and then thirdly we need to use subcloud.mds or index files basically a
+
+00:17:45 - 00:18:43
+cloud MD for each of the subfolders so as you can see each of my subfolders also has a separate cloud MD on how each of these subfolders is structured so again you can use cloud to just tell it to do this and apply these best practices but we also built a skill again which you can download for free which basically follows and implements all of these best practices and frameworks automatically onto your cloud NMD and also personalizes it with these knowledge routing based on your uh file structure etc. And then besides just
+
+00:18:14 - 00:19:08
+optimizing it based on these best practices the second thing you need to do of course is to personalize it and try to optimize it while using and working together with our AI. For example, if you notice that you keep repeating the same instruction or it keeps forgetting to pull specific context dock or add a specific type of query etc. you would just want to be conscious and tell cloud immediately to apply these changes or corrections to the cloud MD right away. It's sort of a habit that you want to get into. And
+
+00:18:41 - 00:19:38
+thirdly, you do have to regularly update it. Even if it already follows those best practices because as your context grows, uh your work changes and folders get more populated, the instructions in the cloud MD have to evolve together with that growing context. So what I recommend to do is to run that OS optimizer scale every week or every two weeks. You can also uh schedule this in a scheduled task because the OS optimizer will look at the changes in your second brain and also optimize and update the claude MD accordingly. Now,
+
+00:19:10 - 00:20:04
+the next one follows up on the previous one because besides just optimizing the cloud.md, we also have to optimize the context folders themselves and the context structure itself because the more we use this, the more duplications we're going to have, the more conflicting information. We might have irrelevant, outdated context, some of the context files will fall into the wrong folders, even if you have a perfectly setup cloud MD. So to make sure this keeps functioning well when using it, we need to regularly audit and
+
+00:19:37 - 00:20:38
+optimize the context together with the cloud MD. Now again the OS optimizer scale doesn't just optimize this cloud MD but it also optimizes your entire second brain infrastructure according to nine uh best practices and frameworks. So when you run it, it goes through a pretty in-depth process as you can see here to find duplicates. Uh it compares the routing table to the actual structure of your second brain. Uh it deletes blank files. It checks and resolves conflicting info. It finds uh broken wiki links. It improves
+
+00:20:08 - 00:21:05
+formatting and all kinds of other stuff to improve your second brain infrastructure. You also get a dashboard with basically an overview of everything it has done. So in this case it has audited 1700 files. It has uh applied 32 fixes and it gives you an overview of all the changes it made to the cloud MD to uh edmiki kang compression and some other uh improvements. You can check them in the dashboard. So again, the easiest way is to just run this skill on a weekly or bi-weekly basis through a scheduled task
+
+00:20:37 - 00:21:21
+to clean and optimize your second brain autonomously. Of course, you can do this yourself too by just telling Claude what to do. But again, the skills are for free in the first link in description below. Also, if you do this in a team setting, you want one person in the team to be responsible for this maintenance of the second brain. Even if you run this skill, you want to make sure that someone is accountable and responsible for maintaining the system. That's really important in our experience. And
+
+00:20:59 - 00:21:48
+then lastly, which might be obvious, but it might actually be the biggest one, which is not actually using it consistently. The whole point of this entire setup is that it becomes more powerful the more you use it. Because if you don't, it gets outdated. You don't actually learn how to use it. You don't optimize it. The context doesn't grow. And there's going to be no benefit to this at all. Because there are really two things to using an AIOS. It's partly the context that get makes it more
+
+00:21:23 - 00:22:16
+powerful, but it's also partly the skill of using AI better. And these factors combined is what actually create the change in how you work and actually make you and your business far more productive. So if you don't use it consistently, you're not going to develop both. So the mindset I believe you have to have and what me and my team are trying to do is to make cloud or wherever you work uh your default for most work, even when it feels much slower and more efficient the first few times you do a task together with an AI
+
+00:21:50 - 00:22:45
+agent. The whole point of it is the more you will use it, the more you learn how to work with AI and the more context builds up for cloud on how it actually should do this work for you. Well, and you getting better at working with AI together with the builtup context, it compounds and is what actually makes your AI tools across your business far more powerful in 3 months uh than someone who didn't actually adopt this. And for anyone who thinks a new model might make this irrelevant, etc., I can
+
+00:22:17 - 00:23:12
+tell you it's not because your unique context is not going to be replaced by a new model or a new feature. Context windows are likely not going to increase or grow by a lot in the upcoming years. And I would argue that today it's already more efficient to use an older model maybe like cloud opus 4.5 with good context instead of one of the newest models without context. Context is really what makes AI powerful. So start using and building that context for your AI as soon as possible. really
+
+00:22:45 - 00:23:38
+try to get in the habit of just using it consistently. Look at it from an observer's point of view. Try to improve and adapt both your skills in using AI and the second brain itself. In the worst case, you've learned a lot about using AI efficiently, which is arguably one of the highest value skills you can have right now. The pattern across all of these mistakes is often less is more when starting and using an AIOS infrastructure or setup. So, just start simple, put the effort in, and be
+
+00:23:11 - 00:23:59
+consistent, and it's going to lead to good results. We've also identified a few other mistakes and best practices in uh our call analysis. So if you're interested, you can also check out the full presentation together in the free resources to look at the other mistakes and best practices. And again, if you want access to all of the skills that I mentioned in in this video, just check the first link in the description. Also, if you want access to our full in-depth AIOS setup course together with
+
+00:23:35 - 00:24:11
+unlimited one-on-one live tech help, a community of serious professionals and business owners, and multiple weekly Q&As with me and my team, together with all the other skills and plugins we're building out, you can also check out my AI accelerator in the second link in the description below. And if you want to learn more about the AIOS or second brain setup, you can check out the video here above.

@@ -1,0 +1,49 @@
+name: CI
+
+# Runs the full WOBBLE OS check suite automatically on every push and pull
+# request, on a clean Linux runner. This is the safety net so no one has to
+# run tests by hand, and so broken code is caught BEFORE it reaches the VPS.
+#
+# `npm ci` installs the correct Linux binaries from package-lock.json, which
+# is why CI works even though a Windows-installed node_modules cannot run the
+# test runner. Every AI builder (Codex, Claude, Gemini, Antigravity) gets the
+# same automatic check.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+# Cancel older runs of the same branch when a new commit is pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies (clean, from lockfile)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

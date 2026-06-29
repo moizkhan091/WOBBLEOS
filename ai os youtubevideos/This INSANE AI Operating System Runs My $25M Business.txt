@@ -1,0 +1,278 @@
+00:00:00 - 00:00:59
+Three weeks ago, I closed my laptop at two in the morning. I looked at my business partner, Joe, from across the table. And I said, I think I just automated myself out of my own job. And I genuinely meant it. What I just built had changed everything. And in this video, I want to show you exactly what it was, how it works, and why I think it is the most significant shift I've seen in 8 years of business. What I'm going to show you is an AI operating system. And it will fundamentally change how you
+
+00:00:29 - 00:01:26
+run your business. And I'm not just going to explain it here, but I'm also going to show you exactly what it looks like running inside a real business live. You're going to spend less time stuck in the day-to-day. You're going to make better decisions much faster, and you'll be laying the groundwork for a fully autonomized future. And look, even if you don't have a business yet, if you build with this foundation from day one, you'll be growing leaner and more profitably than ever before. That
+
+00:00:57 - 00:01:50
+actually sounds like an overstatement as I say that, but I genuinely believe that to be true. When you get to the end of this video, let me know in the comments if you feel the same. In fact, I'm going to give one in every 100 people who comment to win a personal call with a senior member of my team where we will help you plan your own AI operating system completely for free. And I want to make it very clear, I have nothing to sell you here. There is no pitch at the end of this video. I've just spent the
+
+00:01:23 - 00:02:17
+past 5 weeks working 15-hour days feeling more fired up than I have done in years. And I couldn't not make this video. Now, for those of you that don't know me, I'm Jordan. I spent the past 8 years building businesses and my portfolio currently has an enterprise value of well in excess of $25 million. And I'm not saying that to flex on you. I'm saying it because what I'm about to tell you genuinely needs that context. I know what it takes to actually run businesses at this level. And I am
+
+00:01:50 - 00:02:51
+telling you this is the most significant shift I have seen in 8 years of entrepreneurship. So let me bring you up to speed first. Every year when the weather gets [ __ ] in the UK, it's raining now. I fly out to Cape Town and Joe, the co-founder of my marketing agency, Affluent.co, he usually comes and we use a change of scene to think bigger. Now, this year, I needed it more than most. I'd hit this point where growing the business meant either adding more people or accepting more chaos, and
+
+00:02:21 - 00:03:29
+neither of those felt like the right answer. Now, before I left, I picked up a new book to read on the plane. It's called the scaling era by Daresh or Dwaresh Patel and it's the oral history of AI and it's interviews with people who are leading the frontier models like Dario Amdi from Anthropic and also Dennis Hassabis from DeepMind and after reading it on the flight something genuinely clicked and honestly it was actually quite unsettling. Now, I'd dabbled a little bit with Claudeco
+
+00:02:55 - 00:04:00
+before, but I made a decision on that flight that Cape Town was where I put the real time in. And [laughter] [ __ ] me, I became addicted. What was supposed to be a working trip with some downtime in the sun turned into 15-hour days, finishing at 2:00 in the morning, eating in most nights, and even if we did drag ourselves out for dinner, we'd rush off so we could get back to a vibe coding session. We could not stop. We optimized our lives around clawed code. And honestly, actually, part of me was
+
+00:03:27 - 00:04:22
+starting to think maybe we were in a bubble. Maybe I'd lost perspective on the whole thing. And then something happened that changed that. A friend of mine, Liam, who pretty deep in the AI space, he happened to be in Cape Town at the same time. And we went for dinner. And when I arrived, him and a few other AI friends, they looked like they just came off an 8hour acid trip. We barely got past a hello. and they were talking about how the world is changing, how this is the moment, how everything is
+
+00:03:55 - 00:05:00
+going to be different from here on out. And I just sat back and I thought to myself, this is the exact same headsp space that I have been in for weeks. And we were there for hours. And what blew my mind was that we'd all been building independently without talking to each other. And we'd all arrived at almost the exact same conclusions. completely different businesses, completely different nuance, but the same fundamental blueprint. And when people aren't talking to each other, all arrive
+
+00:04:27 - 00:05:43
+at the same answer independently, that is not a coincidence. That's a signal. So, here's what I built. So an AI operating system, let's say uh let's say AIOS, you can call this whatever you want, is I'm going to break down all of the architecture for you, is a fundamental system that is going to help you automate your entire business. But in order for you to be able to do that, the operating system itself has to be fed with three foundational layers that you absolutely cannot skip.
+
+00:05:08 - 00:06:07
+And if you're wondering exactly how I build this as well, I'm going to be touching on all of that. I'm going to show you exactly what it looks like, but you cannot skip any of this because if you do, you just will not get anywhere close to to building something that's actually going to achieve your goals of autonomy. So there are three layers to this. The first layer is context. We've got to build this system with context on exactly who we are and what we want. And I'm going to break down
+
+00:05:40 - 00:06:42
+each of these in more detail. So I'm going to glass over them for now. The next layer is data. Okay? And so this is taking all of the intellectual property that we have as a business, any call that we've ever had, any communication channel that we've got, our emails, any bit of data, the sales data, the P&L like which is our finance, any bit of data we've got, we feed it to that after it has the context. And then the final piece is function. And this is what we actually want the
+
+00:06:14 - 00:07:08
+system to do. These are the tools. These are the agents. These are the software front ends maybe that we build on the on on top of the context and the data. Now most people skip straight through to function. That's the fundamental people mistake that people make in AI. And actually this is the mistake that I made myself for a very long time. This is where I've been for the past 12 months. And I've been really missing the foundational layers that make a great operating system that can run your
+
+00:06:41 - 00:07:42
+entire business. And this part here, data, this is the intellectual property of the future. This is what separates your system, my system, Liam's system, and everyone else's system. It's what makes us truly unique. It's what gives the system intel on how we do what we do and why that separates us from anyone else in the market. And look, I'm an agency owner by trade. I own an education business where I also have mentored thousands of other agency owners. You know, I own a software
+
+00:07:12 - 00:07:56
+company called Appointwise, which is an AI appointment setting software. This applies to all of those companies. So, I don't care if you know, you're an agency owner or you own a home improvement business. You can build home improvement. Maybe not a home improvement business. You could definitely automate the digital part of the company, but if you're physical in the real world, you know, we're a little bit away from the from an AI operating system running that. You get the idea.
+
+00:07:33 - 00:08:34
+This applies to any business that spends a lot of time running anything digital. Okay? And we cannot skip any of these foundational layers. They are absolutely essential to it. So let's break them all down in a little bit more detail. We'll start off with context. Okay. So context is the first thing that we build out. Okay. And if you're wondering exactly where we're building this, we're using claude code and specifically I'm using VS Code as a place to host that and a place to
+
+00:08:04 - 00:09:05
+organize. We can talk about organizational structure and the exactly exactly how uh well we can talk about it shortly but we must understand this first of all. So context we have personal context okay and this is who we are and not just who we are but what we actually want you know many people will give context to AI when they're chatting to chat GPT or a custom GPT and they'll say hey this is who I am this is like what I do the most important question is what the [ __ ] do you want you've got to tell the system
+
+00:08:37 - 00:09:37
+that you know do you want to earn as much money as possible with as little time personally invested If yes, tell the system that and keep it as simple as possible. Don't be vague. Don't have like a list of 10 different goals. Be as specific as you can, but as simple as you can with who you are and what you actually want. So the business knows or the operating system understands your motivations. Then we have business. Okay. And in my instance, I've created an AI operating system for my personal
+
+00:09:07 - 00:09:59
+portfolio. So the uh the the the agency, the education business, the software. I've even got personal investments managed there as well. But we've also created an operating system separately independently for the agency that Joe can manage himself. Now for me, I put all of my businesses as context. I wanted to create an operating system that can sit in between the entire group. That is what um is important to me because I don't want to have these separate fragmented systems that I then
+
+00:09:33 - 00:10:44
+have to connect later. I want everything to be congruent because my day-to-day is context switching from business to business. So if that's my day-to-day, it needs to be the operating systems day-to-day as well. We then have strategy. So [snorts] exactly what it is we are trying to achieve with the operating system itself. Okay. And so for me, one of the foundational parts of strategy building this system out was how can I remove myself from repeat tasks? How can I remove the team from these repeat tasks? How can I ensure
+
+00:10:08 - 00:11:19
+that we are laying the foundation for a completely autonomized business? And this system is going to help you completely autonomize the business. you know, we are I mean, I speculate 40 50% of the way there with a couple of caveats that I will highlight, but I truly believe that in less than two years, maybe even less than that, the entire company will be completely automated. Okay, the next thing is team. Who's actually going to be using the system? And not just who is going to be using the system, but who sits within
+
+00:10:44 - 00:11:51
+these businesses? what people actually are there because we want the AI to understand exactly who makes up the current uh business structure. So it understands what roles potentially it might even come in and end up replacing or just amplifying making better improving in the short term. Okay, in the short term the priority is ensuring that every single person here can be as efficient as they possibly can be. In the long term I'm not entirely sure where this goes. I'll be completely honest, none of us really are. But my
+
+00:11:17 - 00:12:18
+priority is protecting the team, those who add genuine value to the company, and enabling them to be able to build on top of the system, from the foundation that I have built, and be able to transcend from their current role into something completely new. cuz that is really the the value of the future of any team in any online business is transcending into being able to manage systems being able to feed the data being able to feed the context and so on. But for now it's about making their lives as easy as possible and reducing
+
+00:11:48 - 00:12:38
+human error. So the system must understand exactly who there is in the team and put the time in for this. Don't gloss over any of this. You know the worst thing you could do is just go on to chat GPT and say summarize my business and create these context docs. Now, and and also if you're using claude code, don't even bother with chat GPT right now. ChatGBT is like the LLM that your auntie uses. Claude Code is for serious developers and people that want to build actual systems. Gemini is good
+
+00:12:12 - 00:13:03
+for the visuals, good for image uh and uh and video analysis and so on. Okay. Now, you also have to be the person to do this. If you delegate this, then the system is going to think like someone else. But you as the founder are the most equipped person to do this because you built this business from the ground up and you truly understand what you actually want because you built the business for selfish reasons. Let's be honest. And so the business or the system, the operating system has to understand those selfish reasons that
+
+00:12:38 - 00:13:57
+you built a business so it can cater to you personally and not to somebody else's agenda. So don't be lazy and get somebody else to run this for you. Next layer we have here is data. Okay. And we where we share that store that data is actually a vector database uh DB messed that up. And [snorts] a vector database is is a database that converts words into numbers, but they're numbers with meaning. And so it's not like every single word has a corresponding number. Actually, the numbers have meaning. And
+
+00:13:19 - 00:14:05
+so the when you're doing a search into a vector database, what you're really searching is for common meaning. And so these numbers are grouped into categories and you can handle a huge amount of data and be able to pull into that data and be able to find relevant meaning based on whatever it is you're trying to search within the system itself. So de effective database enables you to be able to h store a huge amount of data with very minimal storage. And so that is what we use here because we
+
+00:13:42 - 00:14:34
+are storing a huge amount of data. Okay, what kind of data do we want to put in here? And not all of this is going to be relevant for you in the place that you're in in business, but I just want to outline exactly what it is that I've done, and you can take what is relevant to you. So sales data is one. So our entire sales team for the past eight years have been tracking all of their numbers, their close rates, their show up rates, and so on. And they store that inside of an Air Table system
+
+00:14:08 - 00:15:10
+that we built and developed. Okay. I've connected Air Table via API to the data. We have finance, okay, which is like our P&L, so our profit and loss. You might have this on zero, but we also have a comprehensive finance database as well, which is actually on Google Sheets, one of the things on the list to to to to change. And so we want to have all of our numbers. We have full financial transparency. We've got email. What you really need to do here is think about and write down all of the systems
+
+00:14:41 - 00:15:49
+that you use on a daily basis that have data. Um, we have Slack, which is what we use to speak to team members, okay? And we scrape the entire Slack channel. We have call transcripts. This is a big one. We actually imported 7,000 call transcripts across Zoom and Google Meets. These are client on boarding calls. These are sales calls. These are coaching calls. just every single call. We have internal calls. Every call we got in the business. This is probably the most important data point for the majority of
+
+00:15:17 - 00:16:27
+companies because this is deep deep deep context on how you do things and how you think as an enterprise. Any training resources that you've got. So transcribe any videos that you've created internally or external trainings that you found really useful inside of the team. Um on that same note, your SOP library So we've got an extensive library of hundreds of SOPs on notion. We we got we plugged in the API and we uh we scraped the entire thing. So now it's understanding how we do things. You
+
+00:15:52 - 00:16:56
+know, we have a really great community posted on circle but also on school. We scraped that. And what else? I tell you the final thing last but not least is decisions. This is a big one. I'm going to star this because we're going to come back to this. We created a decision database or a decision learning engine which effectively tracks the decisions that I make and seniority in the business make. So the system itself can learn how we react personally and how we make decisions across the business. And in
+
+00:16:28 - 00:17:26
+the future, this and when I say the future, I'm saying really not so distant. This is how the AI will learn how to run autonomously. In fact, this is genius. And I haven't actually seen anyone speaking about AI operating systems online talking about this right now. So, you know, if you've already built one, get this in. You're going to love this. Um, I think that's it for data. Cool. And that's really your true enterprise value. I keep saying that, but like the inter the enterprise value
+
+00:16:56 - 00:17:49
+of the future is IP. It's data. So, preserve and protect that data. It's the only thing that separates you from everyone else. In a world of AI, the only limitation to LLM growth is more data. You know, the the we haven't really broke the scaling rule. If you read this book, and I recommend you reading this, the the scaling area is an incredible book. It really will teach you fundamentally about how AI works and how LLM's work. The only limitation of AI is more data, which is why these
+
+00:17:23 - 00:18:20
+companies are spending so many millions, hundreds of millions just buying and collecting data. And at the moment, the the scaling curve is exponential. It's just growing again and again. Intelligence is increasing with more data that we put into the system. And so if we take that same logic that the big the companies like anthropic are taking in order to build models like Opus 4.6 which is actually what facilitated this whole thing then we ourselves are using that same logic in order to build more
+
+00:17:52 - 00:18:53
+intelligent systems in ter it's almost like we are building our own micro LLMs for our own companies. That's really what we're building here with an operating system. And if some of you guys are a little bit confused, like that's really probably the closest analogy I can give you. Imagine this as like building your own version of Claude for your own company that can do anything across any department at any time without you. Insane. Okay. Um, now also Opus 4.6 is what really triggered all of this. It's
+
+00:18:22 - 00:19:11
+like the larger context window. Especially context window uh is essentially I mean I'm not going to explain that but if you're watching this you already understand context window it's just the ability to read more data read more context and so when we're now coding solutions with things like core code obviously there's a huge amount of data that we have to read and now you plug that into a larger context window it stops making as many mistakes we stop basically building on top of it of the
+
+00:18:46 - 00:19:48
+system and bodgeging like plastering new solutions on and we start analyzing entire modules of a system when we're able to build much deeper and more efficiently and and and more predictably without breaking [ __ ] Okay. And we're able to just read more of that database that we are creating. Okay. Um what's next data function? What do we actually want this to do? What do we want this system to actually do? Now I told you guys I kind of built backwards and I actually started building function way before I started
+
+00:19:18 - 00:20:08
+really thinking about data and and proper context. And so the first systems that I created, I I automated sales call reporting. We we created a whole bunch of NAN workflows. And now looking back are are kind of um it's child's play in comparison to what we're building now. But we started with function. I think most people do. It's like what can I build that's going to help me straight away with skipping those foundational layers. And so when I then started building the agency operating system and
+
+00:19:43 - 00:20:41
+I had the foundation, I'm like what do I build on top of this? And this was the order in which I built in. So the first thing we did was an easy daily report. Okay. Now, my agency, my AI AIOS, I have a orchestrator agent on Telegram. So, it means on my phone, I will show you this in the video. Uh on Telegram, I can I get a message every single day, which is breaking down the business, where we're at, what has changed, not just one of the businesses, but all of the companies. It's giving me analysis of of
+
+00:20:15 - 00:21:03
+different problems that there could be. It's maybe even suggesting solutions to those problems. I'll come on to that. And so it's a full understanding of everything that's happening, all the sales data, the finance data, etc., etc. And so what it does and why this is so vital is it removes the anxiety as a founder that you have to look at all your messages. You have to ensure that everything's running smoothly and you it it removes that first couple of hours in the day where you usually end up getting
+
+00:20:39 - 00:21:30
+veered off course and various different things in the business. you plan out what you want to achieve for the day and then all of a sudden you end up going down this wild goose chase doing a whole bunch of [ __ ] you didn't anticipate having to do. This solves that because you can just trust in the system to tell you if there are fires that you actually need to put out. The next system I built was um this is a pointwise which is our AI appointment setting software. One of the big missing holes that we had in the
+
+00:21:04 - 00:22:07
+business was was data and um we didn't have uh clarity on what was actually happening when it came to free trial conversions when it came to on boarding upsells to annual packages um when it came to um just general team performance when it came to the finances how they tie into attribution we connected high roast to this data system so we can attribute calls they paid or organic etc said. Anyway, it's a full data system that I built. What's ironic is this data system took me 5 days to
+
+00:21:35 - 00:22:48
+build. I spent over £100,000 and 6 months with a team of developers building the original sales data system on Air Table that we built for the company. And it was less comprehensive than I spent 5 days building on this system here. And this is a custom front end that I had built that is now self-developing as well, which is actually insane. Okay. Um, next thing is what did I build? Content OS or as I called it content OSX. We had a bunch of systems inside of our training before. We had agency OS, we had content
+
+00:22:13 - 00:23:04
+OS. And these were systems that we built on notion. Um, kind of like comprehensive like project management systems. And so I was like, ah, but I like that content OS name. And so instead I was like, oh, I'll just call it something new. Content OSX. The X being the unknown. We don't like the X is like in in in in coding. It's like the the unknown symbol and uh and for me this is somewhat unknown. We're stepping into this new territory that we don't really know where this is all going and
+
+00:22:38 - 00:23:26
+uh and that's also exciting in itself. It's exciting but also fills you a little bit little bit of dread. Um so content OSX uh helps me to to plan this video for example, helps us plan emails, helps us plan LinkedIn. It's got context of the entire business. And so now coming up with content ideas is easier than it has ever been. And actually coming up with great content is also easier because it can see all of the YouTube data. It knows all of the best content that we've got. And so it can
+
+00:23:02 - 00:24:02
+help create exceptional content. The next system that we built is auto. Oh, this one is massive. Uh auto outreach. So in the marketing agency affluent.co, one of the most efficient ways to get clients is by sending mass outreach. And so I've built a completely automated AI outreach system. This I've had the vision of this for so many years and haven't been able to build it until now. And so we are sending 2,200 cold emails every single day. Every single one of those emails personalized to the
+
+00:23:32 - 00:24:32
+individual and deep personalization through scraping them. I took I got I found 53,000 leads enriched absolutely all of them from my own custom waterfall of different APIs that I used with with lead scores the top 5% of leads sending personal WhatsApps dropping them a voicemail and sending handwritten lessons to those individuals and plugging in a pointwise which is my software in order to speak to those people book them into the calendar so the only thing that Joe the my co-founder in the agency has to do is
+
+00:24:02 - 00:24:47
+turn up to sales calls the entire system is completely automated I'm going to break that down. In fact, I'll break down all of these things down in future videos. Um, and you know, there's there's lots of other [ __ ] that we're building. I won't get stuck on function for now. For example, I'm convinced that I can build a system that will automate media buying completely, which is the act of running ads on, let's say, Meta or Google. I think I'm automating that
+
+00:24:24 - 00:25:27
+process and I'm currently working on building that out. But for you, you just need to deeply think about what are the biggest bottlenecks in your business, the biggest time saps, also the biggest areas that team members keep making repeat mistakes. Where do you have these this lack of trust or these uh these inconsistencies where humans are delivering a specific result? And so then you need to just write a big list of all of those areas. What are the biggest pains? Prioritize them. Okay? and think about okay what is
+
+00:24:56 - 00:25:51
+the main priority is probably does this impact client results and ensure that we we keep clients happy that's probably the first thing the next thing is like can we make or save more money and uh and so on and I would just work through that list and then that's what you build out from your function piece on top of it some of these systems are deeply integrated with the AIOS some of them have front ends where they sit on top I miss I missed the one of the best systems of all and that's AI employees
+
+00:25:25 - 00:26:27
+You wait till you see this one. So this is agency OSX. This one came here. I actually built it after the data system. I'm going to show you this today because this is going to absolutely blow your mind. I built a entire suite of AI employees that can manage all entire team roles inside of our agency, but also on behalf of other agencies. And I've started giving people access to this. The final thing I want to show you before I actually show you this [ __ ] in motion and what it looks like on the Mac
+
+00:25:56 - 00:27:02
+is a decision engine. Now, last but not least on this because this is engine. Yes. Fine. Okay. So this is the part that I think most people are missing at the moment. And this is the fundamental part to how you go from building a system that can give you intelligent insight to a system that actually can make decisions as if it was you. Because the danger for many people building an AI operating system is that they give autonomy to AI and then the business becomes something other than what you built because your business is
+
+00:26:30 - 00:27:25
+exceptional or is great. I hope it is because you built it because it's your stroke of genius. It's your creativity. It's your way of doing things. If you allow AI autonomy to run the business on your behalf, then it stops becoming yours and you're going to blend into the masses. You blend into the sea and you won't have that individuality. And so I've baked this in and it starts off with um decide. So I make a decision. Okay. And uh and that decision is logged in the decision database that exists as
+
+00:26:57 - 00:28:19
+a subsection of the vector database we created. Okay. So it's then logged inside the database. The next thing is it is matched. Okay. And so basically what happens is in that vector database uh other decisions that I have made are matched to it. So they are grouped together. So we're starting to see patterns of decisions that have been made. And then the next thing we have is the system is then learning from that. And then finally, it earns the right to make autonomous decisions. I'm being quite messy with that. And so
+
+00:27:38 - 00:28:30
+I make a decision, it logs that decision, it matches it with other decisions I've made. It learns from those patterns. It then earns the right over time to make autonomous decisions. But we don't just go straight from either side. It's got some data now. It can run everything automatically because that would be foolish. Okay? would be making mistakes and uh well it would make mistakes and it would probably cost you a lot of money. We have to like gradually work our way up to this. Okay.
+
+00:28:04 - 00:28:58
+So there's kind of like I would say four steps. The first step is and this is how it reacts to me. So this is what it does right now and I'll tell you where I'm at. So the first step is it will inform. So when you're doing those daily briefs, it will inform you of the data. It will inform you this person messaged you. This person asked for um for for for for leave. this person had a refund request maybe like whatever that is it will tell you what the problem is and that's the
+
+00:28:31 - 00:29:32
+first layer for most people. The next step though is recommend. Okay. And this is when you give the system permission to start making recommendations to you on how you can fix problems in the business based on the analysis it's doing on a daily basis. So this is what I recommend. Why don't you do this? Why don't you message this person? Why don't you send this? Why don't you create this system? Okay. And then this part I'm at right now is confirm. Okay. And this is where you can
+
+00:29:02 - 00:29:58
+then say yes. Cool. Let's do that. And then so it just confirms of you are you happy for me to do it. You say yes. It goes ahead and creates a solution to whatever problem you are facing. It confirms would you like to make the decision? Would you like me to make the decision for you? And then the final piece which I'm working towards and I think I'll be very uh I'll be at very very soon and I'm already at with certain sub projects. So I've got autonomous development running on some
+
+00:29:31 - 00:30:29
+of the products that I've run. Um but for the entire business group I think there's more risk involved in that when there's so much revenue involved. uh and so that is when we allow the system just to run automatically without asking for permission and uh and we only do that we're doing this through like I suppose this here the ascension is based on like human trust okay so initially you're not going to have much trust just tell me what's happening and I'll do what I need to do
+
+00:30:00 - 00:30:48
+then you can start recommending things for me oh yeah I actually think those those recommendations are good or they're [ __ ] and if they're [ __ ] what you need to do is on a daily basis you give feedback to the system and you tell it why the recommendations are [ __ ] so it learns until you're at a place where you are 100% confident on all the recommendations are being made then you get it to confirm okay cool I want you when you make a recommendation to you bake in a function for it to create a
+
+00:30:24 - 00:31:12
+plan to build a solution it then says would you like me to actually build that solution yes I would and only when you have 100% confidence when you are confirming on each of the things that they're suggesting that you and you have to be 100% confident on all of the decisions that the the system is making because if not when you let this run on autonomy you're going to [ __ ] up the business like it's going to be pretty messy and I'm not quite there yet. There's like sometimes there are some
+
+00:30:48 - 00:31:43
+rogue decisions that are being made and it's purely I think a game of time. Now at the moment I'm a couple of weeks into decision collection and it's analyzing the decisions I'm making and not just the decisions I'm making based on the daily brief but it's also analyzing decisions I'm making on calls. It's analyzing decisions I'm making inside of our communities and so on. I think it probably is going to take I would estimate a couple of months until I get to the point where I'm fully
+
+00:31:15 - 00:32:24
+autonomous autonomous in that. So, but I will keep you guys updated on that. This is but this is how you get moved to that place and how you move to a place where you can be confident that the business is going to run how you want it to be ran because what you're doing is you are offloading your own decision-making process and you are embedding it into a system externally from you and that is damn exciting. This is really how you go from a chatbot to agents with a bit of function to a full digital CEO.
+
+00:31:49 - 00:32:41
+In fact, let me now show you what this actually looks like in practice. Let's get on to the Mac. Okay. When I was in Cape Town, I had this gut feeling that the workflow of the future is how many agents one person can manage simultaneously. And so, the first thing I did when I got home is I went upstairs to the loft, dug out my old monitor that I use that now for extra real estate. I also use now the Mac screen as well. Let me just show you what this is looking like. So my general workflow is on the
+
+00:32:15 - 00:33:01
+main screen. I've got VS Code with two clawed code instances managing this core project that I'm working on. Don't worry, I will dive into what that actually is and how you can set it up. And then on the left hand side, I'm currently developing um Sales OS as well. So Sales OSX, which is that automated outreach system that I manage. There's free cloud code instances there. And then we've got this main instance which is HQoS which is what I called the AR operating system originally. It's a
+
+00:32:39 - 00:33:30
+[ __ ] name and we need to rename that but it doesn't matter. And uh currently on this side I am building a new function. So this is for Kinsley Capital which is my holding company my investment company. And what I've done is I've created an a function which is going to autonomously invest pull profits from the business and autonomy autonomously invest. I invest in software but I also invest in various funds and so on. It's going to do that for me based on my existing investment strategy and some
+
+00:33:04 - 00:33:52
+other intel. I'm not just letting it run rogue. If you're looking at this for the first time and it's very intimidating, don't worry. I didn't understand any of this 5 weeks ago, okay? And now, you know, now I'm a I'm a veteran vibe coder at this stage. Um, and so I'm going to jump on the screen right now and I'm going to run you through some of this stuff really quickly before we get into the desktop. I'm recording this after the entirety of the video because I
+
+00:33:28 - 00:34:20
+realized when watching the footage that I missed out something really crucial and that is how I access and use the system when I'm on the go and not glued to my desk. And I did that through building what is called an orchestrator agent. And that's a bot on Telegram that has access to the entire system. There I was scrolling through all of the daily reports and all of my engagement with that bot because it sends me not only the reports but I can also engage with the agent just as if I was speaking on
+
+00:33:54 - 00:34:49
+my desktop and so I can create new plans, I can make changes, I can make decisions that get logged on the decision engine. The only difference is on the desktop I'm working on multiple instances, multiple agents at once. When I'm on mobile, it's really just this onetoone, but essentially see this as the ultimate virtual private assistant that has access to the entirety of your company. Okay, back to desktop. Okay, so VS Code, Visual Studio Code, is an open-source code editor. It's free to
+
+00:34:22 - 00:35:13
+use, free to download. The great thing is we can embed other apps within it. So we can launch LLM instances like Claude inside of it. Most people will start off on Claude web, then they will graduate to maybe Claude desktop. So they start using co-work and then code. But this has severe limitations. We can't run multiple agents simultaneously. We are also limited by all of the permissions. We have to constantly say yes yes. And so it kind of defeats the purpose of being or trying to build an autonomous
+
+00:34:47 - 00:35:34
+workflow. When we come onto VS Code, the great thing is we can use this function bypass permissions. And that means like it sounds we can bypass the need to have to constantly click yes. Now use this with caution. Make sure you're monitoring things are actually being done um that that are correct. Um, but this is how we really unlock that vibe coding energy of just letting it rip some people would call it. So what we can do is we can launch a new clawed code instance. And you see we can launch
+
+00:35:11 - 00:35:57
+as many instances as we want. And what we have here is this is a claude code instance. This is another one here. And so we can move them around and organize them. But you know, you'll probably start off just by having one instance, but I like to have two generally because I'm either running multiple features simultaneously or I'm planning on the right hand side and I'm uh I'm launching something on the left hand side. We then also have our file structure. Every system that we create has a file
+
+00:35:34 - 00:36:19
+structure. This is all the context. This is all just the files and needs is what we're building here is an app. Whether it's hosted locally or whether it's got a front end, it's the same difference. And so I'm not going to get stuck in the nitty-gritty here because what I am going to do is give you access to a resource that will help you set this up. And maybe we can create a video in the future where I get into the nitty a little bit more detail. But at the top here, we have what I call commands. And
+
+00:35:56 - 00:36:44
+commands are like shortcuts. And the command I use the most often probably is prime. And I actually think I got this one from Liam. So shout out to you. And prime what it does is it reads all of the context, all of the files. And so it makes sure it gets a deep understanding of what it is exactly we are working on before we get started. This is very important. You see now it's asking me for permissions because I clearly I had edit automatically. I didn't have bypass permissions on. So now it's going to
+
+00:36:20 - 00:37:04
+read all of the context before we get into actually working on the project. This is very important to do when we still have limited context windows. In the grand scheme of things, we still have small context windows and that's only going to develop over time. I think we've got our where have we got our decisions. So, we got decide there. That's another command I created in order to fuel that decision engine that I highlighted earlier. We then got our context. So, we've got that personal
+
+00:36:42 - 00:37:27
+info. I said we've got the team. We've got the companies. Um, and we also have our strategy. I've got a couple of extras there. Integrations because of all the apps that I've integrated and also current data. And then we actually have our data, knowledge, plans, and a whole bunch of other stuff. So, what I'm actually going to do for you instead, let me just go full screen on this. What I'm going to do for you is I'm going to create a quick start guide so you can get set up on the infrastructure on your
+
+00:37:05 - 00:38:11
+end. Okay? So, you can set up on VS Code, you can get the base uh AI operating system built out. And in order for you to get access to that, it's completely free. Drop a comment underneath this video and let me know where you're at right now or what you liked about the video. Then follow me on Instagram, Jordan Platin, and DM me the keyword AI operating system. Okay? Or that's many of you, some people will spell that wrong. Okay? Uh do AIOS and then I will send you over that quick start guide and you can go ahead and you
+
+00:37:38 - 00:38:28
+can set this up and you'll be able to do that in very limited time. Just dedicate a short evening and you will get a hang of this interface. Okay, let me show you something that I built. This is actually insane. This is agency OSX. This is a suite of AI employees that I've built for my marketing agency that we can use to run specific functions inside of the company. Sales, marketing, fulfillment, operations. And let me just log into this so you can see this. Now, you need the context of the MVP, the minimum
+
+00:38:03 - 00:38:57
+viable product that I launched for this. It took me 7 days to create this. Granted, 15 hour days, 2 a.m. just charged up on on nicotine and caffeine, but this is what we came up with. So on the left hand side we've got this big list of AI employees in all different departments of the business replicating all of the needs of the agency and other team members. And so imagine these as the most comprehensive custom GPTs ever with all of the context of our agency, all of our SOPs, but they don't just say
+
+00:38:30 - 00:39:19
+stuff to us. They actually do things. So they've got skills. They can generate big list of leads and scrape the entire internet. It can generate ICP documents based on our SOP based on our documents. In case I can, in fact, I can actually show you this. Kai, can you generate an ICP document on my agency? Please make it quick. Don't ask me any questions because I'm doing a demo right now. Okay. And so we can hit send. The reason why I said don't ask me any questions because the team will be lazy when they
+
+00:38:54 - 00:39:36
+use tools like this. So we want them to actually we want the agents to push back and say, "Hang on a second. Give me this additional context so I can actually give you the right file." So normally it wouldn't one bang a file like this, but I've kind of one banged it. It knows our agency and where we're at. The last information it had from us that it could find like we're at 250K working towards 300K with a certain amount of clients. and knows the ICP we're working with. It
+
+00:39:15 - 00:40:03
+already has that context and is learning behind the scenes. And so, it's now going to generate that ICP document. We can use SAM that's automatically plugged into all of our sales calls to analyze the sales calls, give the sales team feedback, monitor if they're actually implementing it. The marketing team now can create comprehensive marketing strategy. They can generate ads. Let me Okay, we can we can put this straight into notion. We could download the document or we can preview it there. So
+
+00:39:39 - 00:40:40
+we can preview. We've got that full ICP document created there based on our agency, different tiers of client and so on and so forth. You know, Nina, the creative strategist, can analyze video ads using V3. She can generate image ads using Nano Banana Pro plugged into the perfect image ad structure that we have based on all of the ads that we've ran. You know, Mia can actually plug into the Facebook ad account. So we have a meta API integration that can analyze ad data and give us feedback on what the ad team
+
+00:40:09 - 00:41:11
+need to do to improve the ad based on all of the call transcripts from the the the uh the media buying team. So it knows how we do things in the agency. And this is kind of like the first step because what we're now doing is building these workflows, custom workflows on the back end that mean we're essentially building like our own version of NAT but with agency focused agents which are fed with all of our intellectual property and all of our data across the business over the past 8 years. And so this is
+
+00:40:40 - 00:41:32
+how you move to a place where you can fully autonomize the business. You know, this is so good that I couldn't keep it to myself. I actually have released a version of this, not with all of the IP, but to our private community of agency owners, and that's available right now. I gave it to them for free inside of Agency Launch and Elite. Um, and they they're using this and absolutely loving it, getting insane results with it. And this is just one of many of the functions that I built over the past
+
+00:41:06 - 00:42:14
+five weeks. I built this, I built the the Appoint Wise data sales software, which I can't show you because of all the the sales numbers. about the autonomous a these outreach system and so much more in five weeks. That is [ __ ] insane. That's insane. Like my dad is a senior software engineer, has been his entire life. I've watched him build projects and the amount of time it takes or would take for him to build a system like this is incomprehensible. That's why to me this is the most vital
+
+00:41:40 - 00:42:34
+or the craziest period of entrepreneurship ever. At least in my time I've ever been here and it is so damn exciting which is why I want to share this with you guys. Anyway, I'm going to come off this for now. I can show you all of this stuff in a lot more detail. But yeah, I haven't shown you everything today. Not even close. We would be here all day and this video is already way longer than I anticipated it being. I can't help myself. But over the next 12 months, the most successful
+
+00:42:07 - 00:43:10
+entrepreneurs are not going to be the ones with the biggest teams. They're going to be the ones with the most intelligent systems. The ones who started building early, the ones who put in the work when most people were still asking themselves whether or not this is real. And those systems have to be built by the founders. That is a non-negotiable. I stand by that. You cannot outsource this. The system needs to think like those at the top. your context, your instincts, okay? It needs to be your decision-making logic. Nobody
+
+00:42:38 - 00:43:36
+else has that. If you delegate this, you will end up creating a system that thinks like someone else, and that defeats the entire purpose. Now, for agency owners who are watching this, if you've been in my world for a while, you know that I've been talking about custom AI solutions as one of the biggest revenue opportunities for established agencies coming into the future. What I've built for my own business is the clearest illustration yet of exactly what that looks like in practice. And I'm going to be sharing
+
+00:43:07 - 00:44:08
+some more ideas around how you can actually implement this for your clients very soon. Cuz I booked that trip to Cape Town for downtime and I came back having worked harder than I have done in years. Because once you see what is possible, you cannot unsee this. I tried it. I came back first week back in the UK straight upstairs in the loft screen down. I couldn't think about anything else and I've still locked in ever since. The question I suppose is whether or not you're going to join me on this
+
+00:43:38 - 00:44:39
+or you want to wait to play catchup later because from here on out I'm going to move in a new direction on the channel. Not away from what I've always always covered, agency growth, you know, sales systems, building businesses, all of that continues. But alongside it, I'm going to be building in public. I'm going to document what I'm building, what I'm learning, what is working, and then sharing it with you in real time. So, subscribe, turn your notifications on, because what is coming next on this
+
+00:44:08 - 00:44:31
+channel over the next few months, it's going to be some of the most valuable content I have ever made and it's going to move fast. I'll see you in the next one, guys. Cheers.
