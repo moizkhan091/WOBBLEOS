@@ -21,8 +21,8 @@ This is the project's "First Recommended Backend Build Sequence", with 08 slotte
 6. [x] Chunk 07 - Worker Runtime Foundation
 7. [x] Chunk 09 - Source Library Backend
 8. [x] Chunk 10 - Memory & WOBBLE Brain Backend
-9. [ ] Chunk 08 - Provider Adapter Registry      <- NEXT (deferred to here before 11)
-10. [ ] Chunk 11 - Ask WOBBLE V1
+9. [x] Chunk 08 - Provider Adapter Registry
+10. [ ] Chunk 11 - Ask WOBBLE V1        <- NEXT
 11. [ ] Chunk 14 - Content Command Backend
 12. [ ] Chunk 15 - Content Worker V1
 13. [ ] Chunk 18 - n8n Signed Handoff

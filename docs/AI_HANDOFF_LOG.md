@@ -669,3 +669,50 @@ Verification:
 Next suggested action:
 
 - Build Chunk 08: Provider Adapter Registry. It should provide normalized text/search/media adapter interfaces, OpenRouter text adapter shape, provider error normalization, model-role routing via settings/provider connections, and make provider calls use `recordModelCall(...)` so Ask WOBBLE and Content Worker inherit cost/error logging.
+
+---
+
+## 2026-06-29 - Codex - Chunk 08 Provider Adapter Registry
+
+Context:
+
+- Continued after Chunk 10 because the tracker explicitly places Chunk 08 before Ask WOBBLE.
+- Chunk 08 is complete locally; Chunk 11 Ask WOBBLE V1 is next.
+
+Files created:
+
+- `src/lib/domain/providers.ts` - pure provider domain logic: model role config validation, model role resolution, provider/module permission checks, and normalized provider error handling with secret redaction.
+- `src/lib/providers/index.ts` - provider adapter registry/service: OpenRouter text adapter, text/search/media adapter interfaces, provider connection lookup, model-role routing from `settings.key = "model_roles"`, provider permission checks from `provider_connections`, env-only credential lookup by `credentialKeyName`, and `runTextProvider(...)` that wraps calls in `recordModelCall(...)`.
+- `src/app/api/providers/route.ts` - GET sanitized provider connections. Returns credential key names only, never secret values.
+- `src/app/api/providers/text/route.ts` - POST internal text-provider execution by role/module for Ask WOBBLE or Content Worker.
+- `tests/provider-adapters.test.ts` - Chunk 08 tests for role routing, provider permission blocking, provider error normalization/redaction, mocked OpenRouter response normalization, model_run success logging, and model_run error logging when an adapter fails.
+
+Files changed:
+
+- `docs/BUILD_SEQUENCE_TRACKER.md` - flipped Chunk 08 to `[x]` and moved NEXT to Chunk 11.
+- `docs/AI_HANDOFF_LOG.md` - this handoff entry.
+
+Real vs mocked:
+
+- Real: default provider store reads `settings`, `provider_connections`, and `process.env[credentialKeyName]`; OpenRouter adapter uses real fetch shape; text execution uses the existing Chunk 05 `recordModelCall(...)` so success/failure records hit `model_runs`.
+- Mocked in tests only: fetch, provider store, text adapter, and model_run writer are injected fakes.
+- Not yet live-provider exercised: no real OpenRouter key/API call was made. This is intentional; no secrets were present and provider calls should only run after model roles/provider connections are configured.
+
+Important implementation notes:
+
+- No API keys or model choices were hardcoded into workers. The model is selected from the `model_roles` setting, e.g. `{ ask_wobble: { provider: "openrouter", model: "..." } }`.
+- Provider credentials are read from environment by credential key name only. `/api/providers` does not expose secret values.
+- Provider connections must be `enabled` and allowed for the calling module before use.
+- Failed provider adapter calls are logged to `model_runs` with `status: "error"` via `recordModelCall(...)`.
+- Chunk 08 does not write directly to provider tables; no new `.values()`/`.set()` calls were added in provider code.
+
+Verification:
+
+- TDD red step confirmed first: `npm run test -- tests/provider-adapters.test.ts` failed because `@/lib/domain/providers` did not exist.
+- Focused test after implementation: `npm run test -- tests/provider-adapters.test.ts` passed, 6/6.
+- Full local gate: `npm run verify` passed.
+- Details: typecheck passed, 15 test files passed, 93/93 tests passed, Next build passed. New routes compiled: `/api/providers`, `/api/providers/text`.
+
+Next suggested action:
+
+- Build Chunk 11: Ask WOBBLE V1. It should retrieve WOBBLE Brain + approved sources/memory with citations, exclude unapproved sources, call the provider adapter through `runTextProvider(...)`, and return evidence/citations instead of canned answers.
