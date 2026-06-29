@@ -27,7 +27,7 @@ describe("classifyIntent", () => {
     expect(classifyIntent("Write 5 LinkedIn posts about AI agents")).toBe("content_generation");
     expect(classifyIntent("Find sources about AI agents")).toBe("source_search");
     expect(classifyIntent("Research competitor pricing trends")).toBe("research");
-    expect(classifyIntent("Should we respond to competitor pricing? decision")).toBe("decision_brief");
+    expect(classifyIntent("Should we raise prices next quarter?")).toBe("decision_brief");
     expect(classifyIntent("Send approved post to n8n")).toBe("handoff");
     expect(classifyIntent("Update the brain with this note")).toBe("memory_update");
     expect(classifyIntent("What should WOBBLE focus on this week?")).toBe("question");
