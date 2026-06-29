@@ -6,6 +6,7 @@ Before edits, read:
 
 - `docs/PROJECT_START_HERE.md`
 - `docs/AI_HANDOFF_LOG.md`
+- `docs/BUILD_SEQUENCE_TRACKER.md` (what's done / next / deferred - keep it updated)
 - `docs/WOBBLE_OS_BACKEND_ORCHESTRATION_MAP.md`
 - `docs/WOBBLE_OS_V2_PRD.md`
 - `docs/WOBBLE_COMPANY_OS.md`

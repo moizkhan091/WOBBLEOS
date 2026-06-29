@@ -497,6 +497,49 @@ Next suggested action:
 
 ---
 
+## 2026-06-29 - Claude - HANDOFF TO NEXT BUILDER (Codex): start at Chunk 09
+
+Read `docs/BUILD_SEQUENCE_TRACKER.md` first. It is the source of truth for order/status. Active order: 01,03,04,05,06,07 are DONE & CI-green; NEXT is 09 -> 10 -> 08 -> 11 -> 14 -> 15 -> 18. Deferred (do not drop): 02 Auth (before VPS deploy), 34 Prompt/Skill Registry, 35 Connections Registry, and 12,13,16,17,19-33,36.
+
+### Current state (all CI-green, 68 tests)
+
+- Repo: https://github.com/moizkhan091/WOBBLEOS (public). CI runs `npm install` + typecheck + test + build on every push (`.github/workflows/ci.yml`). Deploy only via `scripts/deploy.sh` (gates on `npm run verify`).
+- Spine built: `src/db/index.ts` (lazy drizzle+pg client: `getDb`/`getPool`/`closeDb`), Chunk 03 audit (`src/lib/audit`, `src/lib/domain/audit.ts`), Chunk 04 approvals (`src/lib/approvals`, `src/lib/domain/approval-flow.ts`), Chunk 05 cost/model-runs (`src/lib/domain/cost.ts`, `src/lib/model-runs`, `src/lib/budget`), Chunk 06 queue (`src/lib/domain/jobs.ts`, `src/lib/jobs`), Chunk 07 worker (`src/lib/workers/*`, `src/workers/worker.ts`).
+
+### Conventions to FOLLOW (keep the codebase consistent)
+
+1. Pure domain logic in `src/lib/domain/<feature>.ts` (zod validation, builders, decisions). Service layer in `src/lib/<feature>/index.ts`.
+2. Services take INJECTABLE deps - `{ store?, recordAudit?, now? }` - defaulting to real Drizzle + `writeAuditEvent`. This is why everything is unit-testable without Postgres (the sandbox/CI runs no DB). Follow this exact pattern for 09/10.
+3. Every important action writes an audit event via `writeAuditEvent(...)` (from `@/lib/audit`). Risky/public/expensive actions create an approval via `createApproval(...)` (from `@/lib/approvals`, `approvalType` is an open string e.g. "source", "memory_update").
+4. IDs: `newId("prefix")` from `@/lib/ids`. numeric columns are stored/returned as STRINGS by the pg driver (cast with String()). timestamps are Date.
+5. API routes: `export const dynamic = "force-dynamic"`; 503 if no `DATABASE_URL`; validate body with zod -> 422 on failure. Mirror `src/app/api/approvals/route.ts`.
+6. Tests in `tests/<feature>.test.ts` (vitest, `@/` alias). Cover success AND failure paths with injected fakes.
+7. Before claiming done: every key in a drizzle `.values({...})`/`.set({...})` MUST match a schema property name (I verify this each chunk; schema<->migration columns are already confirmed aligned).
+
+### Reusable building blocks (don't re-invent)
+
+- Audit: `writeAuditEvent(input, { writer? })`. Approvals: `createApproval(input, { store?, recordAudit? })`, `applyApprovalAction(...)`. Cost: `recordModelCall(meta, call, deps)` logs a model_run on success AND failure; `estimateCostUsd(...)`. Budget: `guardBudget(input, { spentToday, createApproval? })`. Queue: `enqueueJob`, `processNextJob`. Worker: `runWorker`, `generalRegistry` (register new job types here).
+
+### Chunk 09 (Source Library) - how to build it
+
+- Tables already exist: `sources`, `files`, `source_chunks`, and seeded `source_trust_levels` (tier_1_core_wobble ... blocked; only tier_1 has canUpdateBrain=true).
+- Build `src/lib/domain/sources.ts` (validate add/upload input; resolve trust tier; default new sources to approvalStatus "pending" unless explicitly trusted) + `src/lib/sources/index.ts` (createSource [audit "source.added"], approveSource/rejectSource via `createApproval`+`applyApprovalAction` with approvalType "source", listSources, attachChunks). API `src/app/api/sources/route.ts`. Tests.
+- Acceptance: source starts pending; approval assigns/uses trust tier; approved sources retrievable by jobs; unsupported MIME/type rejected; trust hierarchy resolves. Do NOT auto-trust unknown sources.
+
+### Chunk 10 (Memory/Brain) notes for after
+
+- Tables: `memory_records`, `memory_chunks`, `memory_update_proposals`. `src/lib/domain/memory.ts` ALREADY has `rankMemoryChunks` (time-weighted, tier/trust boosts) - reuse it. Brain updates go through `memory_update_proposals` + approval (approvalType "memory_update"); never mutate core Brain silently. pgvector column is `embedding vector(1536)`.
+
+### Verification reality (important)
+
+- The Cowork/Claude sandbox CANNOT run vitest (Linux reusing Windows node_modules). Claude verified each chunk via standalone Node replicas of the logic. Codex on the Windows machine CAN and SHOULD run `npm run verify` locally before claiming done, then commit + push so CI confirms. Use `scripts/push.ps1` for a one-step push.
+
+### After each chunk
+
+- Flip the box in `docs/BUILD_SEQUENCE_TRACKER.md` to [x], append a handoff entry here (files, real-vs-mocked, verification, next), and push so CI verifies.
+
+---
+
 ## 2026-06-29 - Codex - Handoff Review After Claude Work
 
 Context:
@@ -529,3 +572,51 @@ Next suggested action:
 
 - Build Chunk 05: Model Runs and Cost Tracking.
 - Include the missing seed insertion pathway soon, either as part of Chunk 05 setup work or as a small Chunk 01 completion patch before deeper worker work.
+
+---
+
+## 2026-06-29 - Codex - Chunk 09 Source Library Backend
+
+Context:
+
+- Moiz instructed Codex to continue from `docs/BUILD_SEQUENCE_TRACKER.md` and the latest "HANDOFF TO NEXT BUILDER (Codex)" entry.
+- Active order is now 09 -> 10 -> 08 -> 11 -> 14 -> 15 -> 18. Chunk 09 is complete locally; Chunk 10 is next.
+
+Files created:
+
+- `src/lib/domain/sources.ts` - pure Source Library domain logic: source rows default to `approvalStatus: "pending"`, trust hierarchy resolution, supported source file validation, file metadata rows, and ordered source chunk rows.
+- `src/lib/sources/index.ts` - injectable Source Library service layer with real Drizzle defaults: create source, create source approval, approve/reject source through Chunk 04 approval flow, attach chunks only to approved active sources, list sources, list approved sources for job handlers, and list source chunks.
+- `src/app/api/sources/route.ts` - GET sources and POST create source; 503 without `DATABASE_URL`, zod validation -> 422, dynamic route.
+- `src/app/api/sources/[id]/approval/route.ts` - POST approve/reject source and update source/file approval state after `applyApprovalAction`.
+- `src/app/api/sources/[id]/chunks/route.ts` - GET chunks and POST chunks; pending sources cannot receive chunks.
+- `tests/sources.test.ts` - Source Library domain/service tests covering pending defaults, no auto-trust, trust hierarchy, unsupported file rejection, file metadata normalization, chunk building, source creation + approval item + audit, approval/rejection, chunk attach blocking, and approved-source retrieval for workers.
+
+Files changed:
+
+- `docs/BUILD_SEQUENCE_TRACKER.md` - flipped Chunk 09 to `[x]` and moved NEXT to Chunk 10.
+- `docs/AI_HANDOFF_LOG.md` - this handoff entry.
+
+Real vs mocked:
+
+- Real: Drizzle-backed default store writes to `sources`, `files`, and `source_chunks`; source creation writes `source.added` audit and creates a real `approvalType: "source"` approval; approve/reject calls the existing approval state machine and writes source-specific audit events; approved-source retrieval is available for worker handlers.
+- Mocked in tests only: stores/audit/approval store are injected fakes so Vitest does not need live Postgres.
+- Not yet live-DB exercised: no local `DATABASE_URL`/Postgres migration run was performed in this entry, so API routes and Drizzle writes are type/build verified but not manually hit against Postgres.
+
+Important implementation notes:
+
+- Unknown/new sources always start pending. Passing `approvalStatus: "approved"` at creation is ignored by `buildSourceRow`; approval attribution only happens through `approveSource`.
+- `blocked` trust cannot be approved.
+- Source chunks can only be attached after the source is active + approved.
+- Supported source files currently include PDF, TXT, MD, CSV, DOCX, PNG/JPG/WebP, MP4/MOV, MP3/WAV. Unsupported files fail before any source row is inserted.
+- Checked Chunk 09 Drizzle write keys against schema property names: inserts/updates use `sourceType`, `trustLevel`, `approvalStatus`, `linkedEntityId`, `sizeBytes`, `chunkIndex`, etc. No snake_case keys were added.
+
+Verification:
+
+- TDD red step confirmed first: `npm run test -- tests/sources.test.ts` failed because `@/lib/domain/sources` did not exist.
+- Focused test after implementation: `npm run test -- tests/sources.test.ts` passed, 13/13.
+- Full local gate: `npm run verify` passed.
+- Details: typecheck passed, 14 test files passed, 81/81 tests passed, Next build passed. New routes compiled: `/api/sources`, `/api/sources/[id]/approval`, `/api/sources/[id]/chunks`.
+
+Next suggested action:
+
+- Build Chunk 10: Memory & WOBBLE Brain Backend. Reuse `src/lib/domain/memory.ts` ranker. Memory updates must go through `memory_update_proposals` + `createApproval` with `approvalType: "memory_update"`; never mutate Core Brain silently. Retrieval should be metadata-rich and exclude unapproved/blocked material unless explicitly requested.
