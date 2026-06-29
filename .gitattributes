@@ -1,0 +1,20 @@
+# Normalize line endings across machines so Windows + Linux + CI agree.
+# Default: store text as LF in the repo; check out LF in working trees.
+* text=auto eol=lf
+
+# Shell scripts MUST stay LF or they break on the VPS ("bad interpreter").
+*.sh text eol=lf
+
+# Windows-only scripts stay CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat these as binary (never touch line endings).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.pdf binary
