@@ -620,3 +620,52 @@ Verification:
 Next suggested action:
 
 - Build Chunk 10: Memory & WOBBLE Brain Backend. Reuse `src/lib/domain/memory.ts` ranker. Memory updates must go through `memory_update_proposals` + `createApproval` with `approvalType: "memory_update"`; never mutate Core Brain silently. Retrieval should be metadata-rich and exclude unapproved/blocked material unless explicitly requested.
+
+---
+
+## 2026-06-29 - Codex - Chunk 10 Memory & WOBBLE Brain Backend
+
+Context:
+
+- Continued immediately after Chunk 09 per the active tracker order.
+- Chunk 10 is complete locally; Chunk 08 Provider Adapter Registry is next before Ask WOBBLE.
+
+Files created:
+
+- `src/lib/memory/index.ts` - injectable Memory/WOBBLE Brain service layer with real Drizzle defaults: propose memory updates, create `approvalType: "memory_update"` approval items, approve/reject proposals through Chunk 04 approval flow, insert approved memory records/chunks, retrieve ranked memory context, list memory records, and list proposals.
+- `src/app/api/memory/route.ts` - GET approved memory/Brain records.
+- `src/app/api/memory/proposals/route.ts` - GET proposals and POST a memory update proposal. Proposal creation does not mutate memory.
+- `src/app/api/memory/proposals/[id]/approval/route.ts` - POST approve/reject proposal. Approval creates memory; rejection does not.
+- `src/app/api/memory/retrieve/route.ts` - POST ranked metadata-rich retrieval for Ask WOBBLE/workers.
+
+Files changed:
+
+- `src/lib/domain/memory.ts` - preserved the existing time-weighted `rankMemoryChunks` behavior and added domain builders/types for memory records, memory chunks, memory update proposals, retrieval chunks, tiers, trust levels, and proposal statuses.
+- `tests/memory.test.ts` - expanded from ranker-only coverage to full Chunk 10 domain/service tests.
+- `docs/BUILD_SEQUENCE_TRACKER.md` - flipped Chunk 10 to `[x]` and moved NEXT to Chunk 08.
+- `docs/AI_HANDOFF_LOG.md` - this handoff entry.
+
+Real vs mocked:
+
+- Real: Drizzle-backed default store writes to `memory_update_proposals`, `memory_records`, and `memory_chunks`; proposals create real approvals; approve/reject calls the existing approval state machine; approved memory retrieval returns metadata-rich ranked chunks and filters blocked/archived material for current queries.
+- Mocked in tests only: memory store, approval store, and audit writer are injected fakes.
+- Not yet live-DB exercised: no local `DATABASE_URL`/Postgres migration/API manual flow was run in this entry. The code is type/build verified and unit-tested without Postgres.
+
+Important implementation notes:
+
+- Core Brain is not silently mutated. The only path that inserts memory from a proposal is `approveMemoryUpdate(...)` after `applyApprovalAction(...)` succeeds.
+- Rejected proposals update proposal status only; they do not insert memory records or chunks.
+- Retrieval reuses the existing ranker and returns content, sourceId, memoryRecordId, entityType, tags, trustLevel, tier, and score.
+- Default retrieval is currently DB-filtered metadata retrieval with a placeholder similarity score because real embedding/vector search will be wired by provider/Ask WOBBLE chunks. The retrieval contract is ready for vector candidates.
+- Checked Chunk 10 Drizzle write keys against schema property names: `memoryTier`, `trustLevel`, `approvalId`, `approvedAt`, `rejectedAt`, etc. No snake_case keys were added.
+
+Verification:
+
+- TDD red step confirmed first: `npm run test -- tests/memory.test.ts` failed because `@/lib/memory` did not exist.
+- Focused test after implementation: `npm run test -- tests/memory.test.ts` passed, 8/8.
+- Full local gate: `npm run verify` passed.
+- Details: typecheck passed, 14 test files passed, 87/87 tests passed, Next build passed. New routes compiled: `/api/memory`, `/api/memory/proposals`, `/api/memory/proposals/[id]/approval`, `/api/memory/retrieve`.
+
+Next suggested action:
+
+- Build Chunk 08: Provider Adapter Registry. It should provide normalized text/search/media adapter interfaces, OpenRouter text adapter shape, provider error normalization, model-role routing via settings/provider connections, and make provider calls use `recordModelCall(...)` so Ask WOBBLE and Content Worker inherit cost/error logging.
