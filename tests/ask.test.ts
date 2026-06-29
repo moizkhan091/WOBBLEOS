@@ -124,7 +124,19 @@ describe("askWobble - question intent", () => {
 
     expect(runProvider).toHaveBeenCalledTimes(1);
     const providerInput = runProvider.mock.calls[0]?.[0];
+    expect(providerInput?.maxTokens).toBe(500);
     expect(providerInput?.messages[0]?.content).toContain("AI OS needs context, data, skills, routines, permissions, APIs, and cadence.");
+  });
+
+  it("allows a bounded maxTokens override for controlled live spend", async () => {
+    const runProvider = vi.fn<NonNullable<AskWobbleDeps["runProvider"]>>(async () => ({
+      text: "Short answer.",
+      run: { id: "modelrun_1" },
+    }));
+    await askWobble({ question: "Summarize WOBBLE", maxTokens: 180 }, deps({ runProvider }));
+
+    expect(runProvider.mock.calls[0]?.[0].maxTokens).toBe(180);
+    await expect(askWobble({ question: "Summarize WOBBLE", maxTokens: 5000 }, deps({ runProvider }))).rejects.toThrowError();
   });
 
   it("STILL calls the model when evidence is thin (to explain the gap), marking insufficiency", async () => {

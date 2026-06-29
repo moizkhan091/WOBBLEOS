@@ -16,7 +16,9 @@
     "worker": "tsx src/workers/worker.ts",
     "worker:video": "tsx src/workers/video-worker.ts",
     "db:migrate": "drizzle-kit migrate",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:seed": "tsx src/db/seed-runner.ts",
+    "ask:live-check": "tsx src/scripts/live-ask-check.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

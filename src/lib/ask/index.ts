@@ -36,6 +36,7 @@ export const askWobbleSchema = z.object({
   memoryLimit: z.number().int().min(1).max(50).optional(),
   sourceLimit: z.number().int().min(1).max(50).optional(),
   sourceChunkLimit: z.number().int().min(1).max(10).optional(),
+  maxTokens: z.number().int().min(100).max(1200).optional(),
 });
 
 export type AskWobbleInput = z.input<typeof askWobbleSchema>;
@@ -57,7 +58,7 @@ export interface AskWobbleDeps {
   retrieveBrain?: () => Promise<AskBrainRecord[]>;
   retrieveMemory?: (question: string) => Promise<AskMemoryChunk[]>;
   retrieveSources?: () => Promise<AskSourceRef[]>;
-  runProvider?: (input: { role: string; module: string; messages: ProviderMessage[] }) => Promise<{ text: string; run: { id: string } }>;
+  runProvider?: (input: { role: string; module: string; messages: ProviderMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
   enqueueJob?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   doNotSay?: string;
@@ -126,7 +127,12 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
 
   // Always call the model (cost-logged). When evidence is thin the prompt makes
   // it explain the gap / ask a clarifying question instead of inventing.
-  const { text, run } = await runProvider({ role: "ask_wobble", module: "ask_wobble", messages: context.messages });
+  const { text, run } = await runProvider({
+    role: "ask_wobble",
+    module: "ask_wobble",
+    messages: context.messages,
+    maxTokens: parsed.maxTokens ?? 500,
+  });
   const answer = buildAskAnswer(text, context, run.id);
 
   await recordAudit({
@@ -173,7 +179,7 @@ async function defaultRetrieveSources(limit?: number, chunkLimit?: number): Prom
   }));
 }
 
-async function defaultRunProvider(input: { role: string; module: string; messages: ProviderMessage[] }) {
+async function defaultRunProvider(input: { role: string; module: string; messages: ProviderMessage[]; maxTokens?: number }) {
   const result = await runTextProvider(input);
   return { text: result.text, run: { id: result.run.id } };
 }

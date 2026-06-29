@@ -744,3 +744,54 @@ Live test attempt:
 - Root cause confirmed with a sanitized `pg` connectivity check: `ECONNREFUSED` on `::1:5432` and `127.0.0.1:5432`.
 - Docker is not installed/available (`docker` command not found), and no local PostgreSQL Windows service was found.
 - Therefore the live `/api/ask` OpenRouter test is blocked until local Postgres is installed/started or `DATABASE_URL` points to a reachable Postgres database with pgvector. This is an environment blocker, not a Chunk 11 code failure.
+
+---
+
+## 2026-06-30 - Codex - Local DB Runtime + Ask WOBBLE Live Test Prep
+
+Context:
+
+- Moiz pushed back that Chunk 11 must be live-tested with OpenRouter before moving to Chunk 14. Correct. Code-only verification is not enough for this path because VPS launch depends on Postgres + pgvector + provider credentials + model run/audit logging working together.
+- The prior blocker was missing local Postgres. The production-faithful local path is Docker Compose with `pgvector/pgvector:pg16`, not plain Windows Postgres without pgvector.
+
+Files added/changed:
+
+- `compose.yaml` - local Postgres service using `pgvector/pgvector:pg16`, database/user/password matching `.env.example`, persistent volume, and healthcheck.
+- `src/db/seed-runner.ts` - real idempotent seed runner for founders, trust levels, approval actions, WOBBLE Brain memory records/chunks, budget caps, provider connections, and `settings.model_roles.ask_wobble`.
+- `src/scripts/live-ask-check.ts` - one tiny live Ask WOBBLE test: seeds DB, inserts an approved live-test source/chunk, calls Ask WOBBLE with capped `maxTokens`, then verifies `model_runs` success and `audit_logs.ask.answered`.
+- `package.json` - added `db:seed` and `ask:live-check`.
+- `.env.example` - added `ASK_WOBBLE_MODEL=openai/gpt-4o-mini`.
+- `src/lib/ask/index.ts` / `tests/ask.test.ts` - added bounded `maxTokens` control so live/provider calls are cost-contained.
+
+Verification so far:
+
+- `npm run typecheck` passed after fixing Drizzle readonly seed array shapes.
+- `npm run test -- tests/ask.test.ts` passed, 12/12.
+- Full local gate: `npm run verify` passed.
+- Details: typecheck passed, 16 test files passed, 105/105 tests passed, Next build passed.
+
+Local Docker/WSL status:
+
+- Docker Desktop was installed via winget and Moiz completed Docker login.
+- Docker still could not start because WSL was outdated/missing required components.
+- Installed modern WSL via `winget install --id Microsoft.WSL --exact --source winget`.
+- `wsl --version` now reports WSL `2.7.10.0`; `wsl --update` reports the newest WSL is installed.
+- `wsl --status` then reported the WSL Optional Component was required.
+- Ran `wsl.exe --install --no-distribution`; Windows reported the operation succeeded, but changes will not take effect until system reboot.
+- Final pre-reboot Docker check still failed with `Docker Desktop is unable to start`, confirming reboot is required before the live DB/OpenRouter test can continue.
+
+Next exact action after reboot:
+
+1. Open Docker Desktop and wait until the engine is running.
+2. From `C:\Wobble OS`, run `docker compose up -d`.
+3. Run `npm run db:migrate`.
+4. Run `npm run db:seed`.
+5. Run `npm run ask:live-check`.
+6. Confirm output includes `ask_live_check=ok`, a `model_run_id`, provider/model, estimated cost, confidence, citations, and answer excerpt.
+7. Run full `npm run verify`.
+8. Commit/push if green.
+
+Founder-requested module scope captured:
+
+- `docs/BUILD_SEQUENCE_TRACKER.md` now includes Phase 7 chunks: SEO & Blog Growth Engine, Social Intelligence & Platform Analytics, Website Analytics Connector, Invoice Builder, Presentation Maker Intake & Claude Design Bridge, and Business Docs Engine.
+- Architecture rule: these modules should feed live approved data into Ask WOBBLE through connectors/retrieval/memory/jobs. They should not become hardcoded prompt branches inside Ask WOBBLE.
