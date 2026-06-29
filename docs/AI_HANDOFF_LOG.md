@@ -575,45 +575,31 @@ Next suggested action:
 
 ---
 
-## 2026-06-29 - Codex - Chunk 09 Source Library Backend
+## 2026-06-29 - Claude - Chunk 11 Ask WOBBLE V1 (command surface / router)
 
-Context:
-
-- Moiz instructed Codex to continue from `docs/BUILD_SEQUENCE_TRACKER.md` and the latest "HANDOFF TO NEXT BUILDER (Codex)" entry.
-- Active order is now 09 -> 10 -> 08 -> 11 -> 14 -> 15 -> 18. Chunk 09 is complete locally; Chunk 10 is next.
+Built per founder-approved spec (Ask WOBBLE = front door/router, not a plain chatbot, not every module).
 
 Files created:
 
-- `src/lib/domain/sources.ts` - pure Source Library domain logic: source rows default to `approvalStatus: "pending"`, trust hierarchy resolution, supported source file validation, file metadata rows, and ordered source chunk rows.
-- `src/lib/sources/index.ts` - injectable Source Library service layer with real Drizzle defaults: create source, create source approval, approve/reject source through Chunk 04 approval flow, attach chunks only to approved active sources, list sources, list approved sources for job handlers, and list source chunks.
-- `src/app/api/sources/route.ts` - GET sources and POST create source; 503 without `DATABASE_URL`, zod validation -> 422, dynamic route.
-- `src/app/api/sources/[id]/approval/route.ts` - POST approve/reject source and update source/file approval state after `applyApprovalAction`.
-- `src/app/api/sources/[id]/chunks/route.ts` - GET chunks and POST chunks; pending sources cannot receive chunks.
-- `tests/sources.test.ts` - Source Library domain/service tests covering pending defaults, no auto-trust, trust hierarchy, unsupported file rejection, file metadata normalization, chunk building, source creation + approval item + audit, approval/rejection, chunk attach blocking, and approved-source retrieval for workers.
+- `src/lib/domain/ask.ts` - pure: `classifyIntent` (keyword V1: question / content_generation / research / decision_brief / source_search / memory_update / handoff), `DEFAULT_CAPABILITIES` (intent -> module/jobType/status; everything except `question` is `planned` until its chunk ships), `buildAskContext` (grounds on Brain + APPROVED memory + APPROVED sources, citations, basic do-not-say loaded into the prompt, explicit "if evidence insufficient, explain the gap / ask a clarifying question / suggest sources - do not invent"), `computeConfidence`, `buildAskAnswer`, `extractDoNotSay`.
+- `src/lib/ask/index.ts` - `askWobble(input, deps)` returning a discriminated `AskResult`: `{type:"answer"}` for question intent (always calls the model via `runTextProvider` with role/module `ask_wobble` so the call is cost-logged even on thin evidence), or `{type:"route"}` for action intents. Router: if a capability is `available` + has a real jobType it enqueues a job; if `planned` it returns "Intent recognized... Status: planned/not available yet" and NEVER enqueues a fake job. Retrieval/provider/enqueue/audit injectable.
+- `src/app/api/ask/route.ts` - POST /api/ask -> `{ ok, result }`. 503 if no DATABASE_URL, 422 on validation.
+- `tests/ask.test.ts` - classifyIntent, context (do-not-say + gap rule), confidence, answer flow, thin-evidence STILL calls model + marks insufficiency, planned route (no enqueue), available route (enqueues real job), empty-question reject.
 
-Files changed:
+Founder corrections applied: (1) front door not every module; (2) thin evidence -> still call model to explain gap, cost-logged (no silent no-answer); (3) do-not-say is basic prompt-loading only, full QA = Chunk 17; (4) unbuilt modules return planned route, no fake jobs.
 
-- `docs/BUILD_SEQUENCE_TRACKER.md` - flipped Chunk 09 to `[x]` and moved NEXT to Chunk 10.
-- `docs/AI_HANDOFF_LOG.md` - this handoff entry.
+Provider: uses OpenRouter via `runTextProvider` (role/module = `ask_wobble`). Adapters stay swappable.
 
-Real vs mocked:
+Real vs mocked: domain + router fully unit-tested via injected deps. Default wiring calls the real memory/sources/providers/jobs modules. No live Postgres/LLM in sandbox.
 
-- Real: Drizzle-backed default store writes to `sources`, `files`, and `source_chunks`; source creation writes `source.added` audit and creates a real `approvalType: "source"` approval; approve/reject calls the existing approval state machine and writes source-specific audit events; approved-source retrieval is available for worker handlers.
-- Mocked in tests only: stores/audit/approval store are injected fakes so Vitest does not need live Postgres.
-- Not yet live-DB exercised: no local `DATABASE_URL`/Postgres migration run was performed in this entry, so API routes and Drizzle writes are type/build verified but not manually hit against Postgres.
+Verification: vitest can't run in sandbox; verified ALL Chunk 11 logic via Node replica with real zod (classifyIntent, context, confidence, answer path, thin-evidence-still-calls, planned vs available routing, empty reject). Run `npm run verify` on Windows; CI confirms on push (now ~16 test files).
 
-Important implementation notes:
+PREREQUISITES for Ask WOBBLE to run LIVE (not blocking Chunk 11 code/tests):
+- `OPENROUTER_API_KEY` must be set in server env (.env locally / VPS env). NOTE: the key was exposed in chat on 2026-06-29 and MUST be rotated before use.
+- `settings.model_roles` must include an `ask_wobble` role mapped to `{ provider: "openrouter", model: <approved model> }`, and the `openrouter` provider connection must be enabled with `ask_wobble` in allowedModules (it is, in seed). Seeding `model_roles` belongs to Settings (Chunk 28); add a minimal seed if you want live Ask WOBBLE before then.
 
-- Unknown/new sources always start pending. Passing `approvalStatus: "approved"` at creation is ignored by `buildSourceRow`; approval attribution only happens through `approveSource`.
-- `blocked` trust cannot be approved.
-- Source chunks can only be attached after the source is active + approved.
-- Supported source files currently include PDF, TXT, MD, CSV, DOCX, PNG/JPG/WebP, MP4/MOV, MP3/WAV. Unsupported files fail before any source row is inserted.
-- Checked Chunk 09 Drizzle write keys against schema property names: inserts/updates use `sourceType`, `trustLevel`, `approvalStatus`, `linkedEntityId`, `sizeBytes`, `chunkIndex`, etc. No snake_case keys were added.
-
-Verification:
-
-- TDD red step confirmed first: `npm run test -- tests/sources.test.ts` failed because `@/lib/domain/sources` did not exist.
-- Focused test after implementation: `npm run test -- tests/sources.test.ts` passed, 13/13.
+Next: Chunk 14 (Content Command Backend) per tracker. When Content Worker (15) lands, flip `content_generation` capability to `available` with a registered `content.generate` handler so Ask WOBBLE routes to it for real.
+ts/sources.test.ts` passed, 13/13.
 - Full local gate: `npm run verify` passed.
 - Details: typecheck passed, 14 test files passed, 81/81 tests passed, Next build passed. New routes compiled: `/api/sources`, `/api/sources/[id]/approval`, `/api/sources/[id]/chunks`.
 
