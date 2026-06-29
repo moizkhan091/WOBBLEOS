@@ -69,15 +69,15 @@ export const initialSourceTrustLevels = [
 ] as const;
 
 export const initialApprovalActions = [
-  { id: "approval_action_approve", slug: "approve", label: "Approve", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_reject", slug: "reject", label: "Reject", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_request_revision", slug: "request_revision", label: "Request Revision", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_regenerate", slug: "regenerate", label: "Regenerate", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_edit_manually", slug: "edit_manually", label: "Edit Manually", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_archive", slug: "archive", label: "Archive", riskLevel: "normal", requiresConfirmation: false },
-  { id: "approval_action_send_to_n8n", slug: "send_to_n8n", label: "Send to n8n", riskLevel: "high", requiresConfirmation: true },
-  { id: "approval_action_retry_handoff", slug: "retry_handoff", label: "Retry Handoff", riskLevel: "high", requiresConfirmation: true },
-  { id: "approval_action_mark_final", slug: "mark_final", label: "Mark as Final", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_approve", slug: "approve", label: "Approve", description: "Approve the item as final-ready.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_reject", slug: "reject", label: "Reject", description: "Reject the item; it will not proceed.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_request_revision", slug: "request_revision", label: "Request Revision", description: "Send the item back for changes.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_regenerate", slug: "regenerate", label: "Regenerate", description: "Regenerate the item from scratch.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_edit_manually", slug: "edit_manually", label: "Edit Manually", description: "Edit the item by hand before deciding.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_archive", slug: "archive", label: "Archive", description: "Archive the item out of the active queue.", riskLevel: "normal", requiresConfirmation: false },
+  { id: "approval_action_send_to_n8n", slug: "send_to_n8n", label: "Send to n8n", description: "Hand the approved item to n8n for external action.", riskLevel: "high", requiresConfirmation: true },
+  { id: "approval_action_retry_handoff", slug: "retry_handoff", label: "Retry Handoff", description: "Retry a failed n8n handoff.", riskLevel: "high", requiresConfirmation: true },
+  { id: "approval_action_mark_final", slug: "mark_final", label: "Mark as Final", description: "Mark the item as the final approved version.", riskLevel: "normal", requiresConfirmation: false },
 ] as const;
 
 export const initialWobbleBrainRecords = [
@@ -86,6 +86,7 @@ export const initialWobbleBrainRecords = [
     slug: "about-wobble",
     title: "About WOBBLE",
     area: "brand",
+    memoryTier: "core",
     content:
       "WOBBLE builds digital employees for growing businesses. The old way is wobbling; WOBBLE makes work faster, smarter, and less dependent on repetitive human effort.",
   },
@@ -94,6 +95,7 @@ export const initialWobbleBrainRecords = [
     slug: "brand-voice",
     title: "Brand Voice",
     area: "brand",
+    memoryTier: "core",
     content:
       "Bold, fast, intelligent, rebellious, premium, clear, and direct. WOBBLE should sound like an operator building the future, not a generic AI agency.",
   },
@@ -102,6 +104,7 @@ export const initialWobbleBrainRecords = [
     slug: "icp",
     title: "Ideal Customer Profile",
     area: "icp",
+    memoryTier: "core",
     content:
       "Growing businesses and founders who need AI employees, workflow automation, content systems, and operating leverage without drowning in tools or manual work.",
   },
@@ -110,6 +113,7 @@ export const initialWobbleBrainRecords = [
     slug: "offers",
     title: "Offers",
     area: "offer",
+    memoryTier: "core",
     content:
       "WOBBLE offers AI workforce systems, AI operating systems, automation rails, content engines, and client-specific digital employee builds.",
   },
@@ -118,6 +122,7 @@ export const initialWobbleBrainRecords = [
     slug: "content-strategy",
     title: "Content Strategy",
     area: "content",
+    memoryTier: "core",
     content:
       "Teach-first content is the center. Aggressive or rage-bait angles can be used between educational posts, but the main goal is to teach, prove, and build authority.",
   },
@@ -126,6 +131,7 @@ export const initialWobbleBrainRecords = [
     slug: "do-not-say",
     title: "Do Not Say Rules",
     area: "brand",
+    memoryTier: "core",
     content:
       "Avoid generic AI agency language, weak hype, unsupported claims, fake certainty, and competitor attacks without proof. Claims that need evidence must carry citations or be held for review.",
   },
@@ -134,6 +140,7 @@ export const initialWobbleBrainRecords = [
     slug: "founder-preferences",
     title: "Founder Preferences",
     area: "founder",
+    memoryTier: "core",
     content:
       "Moiz wants WOBBLE OS built fully, locally first, with no shortcuts, no scaled-down fake paths, and clean handoff between Codex, Claude, Gemini, and Antigravity.",
   },
@@ -142,6 +149,7 @@ export const initialWobbleBrainRecords = [
     slug: "team-and-roles",
     title: "Team And Roles",
     area: "team",
+    memoryTier: "core",
     content:
       "V2 uses one shared private login, but approvals must capture an approver name: Moiz, Haad, Founder 3, or Founder 4.",
   },
@@ -150,6 +158,7 @@ export const initialWobbleBrainRecords = [
     slug: "current-priorities",
     title: "Current Priorities",
     area: "strategy",
+    memoryTier: "core",
     content:
       "Build WOBBLE OS V2 locally first, starting with the database, Brain, approvals, audit, model cost tracking, workers, sources, memory, Ask WOBBLE, content, media, and n8n handoff.",
   },
@@ -158,6 +167,7 @@ export const initialWobbleBrainRecords = [
     slug: "competitor-landscape",
     title: "Competitor Landscape",
     area: "market",
+    memoryTier: "core",
     content:
       "WOBBLE should monitor Pakistan and international AI landscape, approved YouTubers, competitor content, source transcripts, AI product changes, and market shifts before creating strategy or content.",
   },

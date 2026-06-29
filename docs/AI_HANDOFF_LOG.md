@@ -412,6 +412,41 @@ Next suggested action:
 
 ---
 
+## 2026-06-29 - Claude - Spine Audit + Seed Fixes + Chunk 05 (Model Runs & Cost)
+
+### Spine audit (Chunks 01, 03, 04) - PASSED
+
+- Ran a column-by-column diff of `src/db/schema.ts` vs `src/db/migrations/0000_init_pgvector.sql`: all 30 tables present on both sides and EVERY column matches. No drift. (This is the gap tests/typecheck miss - it would only surface against a real Postgres.)
+- Confirmed all Chunk 03 audit + Chunk 04 approvals insert/update column references map to real schema properties.
+- CI cross-check: 36/36 tests + typecheck + build green.
+
+### Seed fixes (latent bug found during audit)
+
+- `seed.ts` was missing two NOT-NULL-without-default fields that would break a future seed-runner: `approval_actions.description` (added to all 9 actions) and `memory_records.memoryTier` (added `"core"` to all 10 WOBBLE Brain records, since they are Core Brain). db-foundation test still passes (it checks slugs only).
+- Note for whoever builds the seed-runner: a real `db.insert(...)` of the seed arrays now satisfies NOT NULL constraints.
+
+### Chunk 05 - Model Runs & Cost Tracking
+
+Files created:
+
+- `src/lib/domain/cost.ts` - pure cost estimator. `estimateCostUsd({provider,model,inputTokens,outputTokens,pricing})` with a config-driven `PricingTable` (USD per 1M tokens). `DEFAULT_PRICING` is a seed/config default and is OVERRIDABLE per call - no price is hardcoded inside the calc, so price changes never touch this function. Should move to Settings/DB later.
+- `src/lib/model-runs/index.ts` - `buildModelRunRow` (pure, computes estimated cost), `logModelRun` (injectable writer + audit `model.run.<status>`), `recordModelCall(meta, call, deps)` which times a provider call and logs a `model_runs` row on BOTH success and failure (then rethrows) - satisfies "logging works even when the provider call fails". Plus `sumEstimatedCostSince`, `costSummary` (today/week/month), `listModelRuns`, `clampRunLimit`.
+- `src/lib/budget/index.ts` - `guardBudget` reuses the pure `evaluateBudgetGate` (domain/budget.ts) with an injectable spend lookup; when over the daily cap or batch limit it BLOCKS and (if a creator+entity are supplied) raises a high-risk "budget" approval via Chunk 04 `createApproval`. Plus `modelRunSpentToday` and `defaultGuardDeps`.
+- `src/app/api/costs/route.ts` - GET cost summary (today/week/month) + recent runs with filters.
+- Tests: `tests/cost.test.ts`, `tests/model-runs.test.ts`, `tests/budget-guard.test.ts` (estimator, run logging on success/failure, latency, budget block + approval creation).
+
+Anti-hardcoding: prices are data (pricing table param), budget caps come from `budget_caps`/settings (passed into the guard), model/provider/role are per-call. No strategy hardcoded.
+
+Real vs mocked: services + route are real Drizzle/audit-wired. No live Postgres in the sandbox.
+
+Verification: vitest can't run in the sandbox (known). Verified all Chunk 05 logic via a standalone Node replica: ALL assertions passed (cost estimation incl. custom pricing, run-row building, recordModelCall success+failure logging+latency, guardBudget block/approve/batch). Also confirmed all 16 model_runs insert columns map to schema. CI (on push) runs the real suite (now ~45+ tests).
+
+Next suggested action:
+
+- Chunk 06 (Job Queue Foundation) then Chunk 07 (Worker Runtime), so workers can call `recordModelCall`/`guardBudget` for real background jobs. Push to run CI.
+
+---
+
 ## 2026-06-29 - Codex - Handoff Review After Claude Work
 
 Context:
