@@ -84,7 +84,7 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
       const { job } = await enqueue({
         queue: route.queue ?? "general",
         type: route.jobType,
-        payload: { question: parsed.question, requestedBy: parsed.founder },
+        payload: buildRoutePayload(intent, parsed.question, parsed.founder),
         linkedModule: route.module,
       });
       await recordAudit({
@@ -187,4 +187,15 @@ async function defaultRunProvider(input: { role: string; module: string; message
 async function defaultEnqueue(input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) {
   const result = await enqueueJob(input);
   return { job: { id: result.job.id } };
+}
+
+function buildRoutePayload(intent: IntentType, question: string, founder?: string): Record<string, unknown> {
+  if (intent === "content_generation") {
+    return {
+      contentTrackId: "track_wobble_company",
+      requestedBy: founder,
+      objective: question,
+    };
+  }
+  return { question, requestedBy: founder };
 }

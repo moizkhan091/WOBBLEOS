@@ -28,14 +28,14 @@ Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not 
 
 ### Phase 2 - Content loop
 12. [x] Chunk 14 - Content Command Backend
-13. [ ] Chunk 15 - Content Worker V1              <- NEXT
-14. [ ] Chunk 17 - Quality Gate & Do-Not-Say (pairs with the content worker)
+13. [x] Chunk 15 - Content Worker V1
+14. [ ] Chunk 17 - Quality Gate & Do-Not-Say (pairs with the content worker)              <- NEXT BACKEND
 15. [ ] Chunk 16 - Founder Content Tracks
 16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
 Frontend checkpoint:
 
-- After Chunk 15: run UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` and wire Content Command to real packets/tracks/generation.
+- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due before the next backend chunk. Wire Content Command to real packets/tracks/generation.
 - After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.
 
 ### Phase 3 - Registries + intelligence inputs

@@ -26,11 +26,15 @@ function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   }
 }
 
-function askWobbleModelRole() {
+function modelRoles() {
   return {
     ask_wobble: {
       provider: "openrouter",
       model: process.env.ASK_WOBBLE_MODEL?.trim() || "openai/gpt-4o-mini",
+    },
+    content_strategy: {
+      provider: "openrouter",
+      model: process.env.CONTENT_STRATEGY_MODEL?.trim() || "openai/gpt-4o-mini",
     },
   };
 }
@@ -153,12 +157,12 @@ export async function seedDatabase() {
       id: "setting_model_roles",
       key: "model_roles",
       scope: "global",
-      value: askWobbleModelRole(),
+      value: modelRoles(),
       description: "Model-role routing for provider adapter calls. Editable in Settings later.",
     })
     .onConflictDoUpdate({
       target: schema.settings.id,
-      set: { value: askWobbleModelRole(), updatedAt: now },
+      set: { value: modelRoles(), updatedAt: now },
     });
 }
 
@@ -167,6 +171,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     .then(async () => {
       console.log("db_seed=ok");
       console.log(`ask_wobble_model=${process.env.ASK_WOBBLE_MODEL?.trim() || "openai/gpt-4o-mini"}`);
+      console.log(`content_strategy_model=${process.env.CONTENT_STRATEGY_MODEL?.trim() || "openai/gpt-4o-mini"}`);
     })
     .catch((error) => {
       console.error("db_seed=failed");

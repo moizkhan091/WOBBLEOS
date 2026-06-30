@@ -5,12 +5,9 @@ import {
   classifyIntent,
   computeConfidence,
   extractDoNotSay,
-  DEFAULT_CAPABILITIES,
   type AskBrainRecord,
   type AskMemoryChunk,
   type AskSourceRef,
-  type CapabilityRoute,
-  type IntentType,
 } from "@/lib/domain/ask";
 import { askWobble, type AskWobbleDeps } from "@/lib/ask";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -156,31 +153,37 @@ describe("askWobble - router", () => {
   it("returns a PLANNED route (no fake job) for unbuilt modules", async () => {
     const enqueueJob = vi.fn();
     const result = await askWobble(
-      { question: "Write a LinkedIn post about AI agents" },
+      { question: "Research competitor pricing trends" },
       deps({ enqueueJob: enqueueJob as never }),
     );
     expect(result.type).toBe("route");
     if (result.type !== "route") throw new Error("expected route");
-    expect(result.intent).toBe("content_generation");
+    expect(result.intent).toBe("research");
     expect(result.status).toBe("planned");
     expect(result.jobId).toBeUndefined();
     expect(enqueueJob).not.toHaveBeenCalled(); // never enqueue when module is planned
   });
 
-  it("routes to a real job when the capability is marked available", async () => {
-    const available: Record<IntentType, CapabilityRoute> = {
-      ...DEFAULT_CAPABILITIES,
-      content_generation: { intent: "content_generation", module: "content_command", queue: "content", jobType: "content.generate", status: "available" },
-    };
+  it("routes content generation to the real content worker job by default", async () => {
     const enqueueJob = vi.fn(async () => ({ job: { id: "job_99" } }));
     const result = await askWobble(
-      { question: "Write a LinkedIn post about AI agents" },
-      deps({ capabilities: available, enqueueJob }),
+      { question: "Write a LinkedIn post about AI agents", founder: "Moiz" },
+      deps({ enqueueJob }),
     );
     if (result.type !== "route") throw new Error("expected route");
     expect(result.status).toBe("available");
     expect(result.jobId).toBe("job_99");
-    expect(enqueueJob).toHaveBeenCalledTimes(1);
+    expect(enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queue: "general",
+        type: "content.generate",
+        payload: {
+          contentTrackId: "track_wobble_company",
+          requestedBy: "Moiz",
+          objective: "Write a LinkedIn post about AI agents",
+        },
+      }),
+    );
   });
 
   it("rejects an empty question", async () => {

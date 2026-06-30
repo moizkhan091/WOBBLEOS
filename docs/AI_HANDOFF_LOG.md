@@ -1046,3 +1046,100 @@ Verification:
 Next recommended action:
 
 - Continue with Chunk 15 Content Worker V1.
+
+---
+
+## 2026-06-30 - Codex - Chunk 15 Content Worker V1 Complete
+
+Context:
+
+- Moiz reiterated that "V1" must not mean a fake or reduced build. Chunk 15 was built as a real backend worker slice: Brain + approved source chunks + model provider + cost logging + packet creation + quality gate + approvals.
+- Work was done in the real repo `C:\Wobble OS`, not the old OneDrive folder.
+- TDD red step was run first: `tests/content-worker.test.ts` initially failed because `@/lib/domain/content-worker` did not exist.
+
+Files changed:
+
+- `.env.example`
+  - Added `CONTENT_STRATEGY_MODEL=openai/gpt-4o-mini`.
+- `src/db/seed-runner.ts`
+  - `settings.model_roles` now seeds both `ask_wobble` and `content_strategy`.
+  - Prints both model role defaults during seed.
+- `src/lib/domain/content-worker.ts`
+  - Pure Chunk 15 domain.
+  - Defines `content.generate`, request schema, strict JSON model-output schema, prompt builder, context guard, and parser.
+  - Requires WOBBLE Brain plus at least one approved source chunk before any provider call should happen.
+  - Builds prompts from editable content track, Brain, memory chunks, approved source chunks, and banned/do-not-say phrases.
+- `src/lib/content-worker/index.ts`
+  - Service layer with injectable deps.
+  - `enqueueContentGenerationJob(...)` enqueues real `content.generate` jobs onto the general worker queue.
+  - `runContentGenerationJob(...)` loads track/Brain/memory/approved sources, calls `runTextProvider` through role `content_strategy` and module `content`, parses strict JSON, and creates packets through `createContentPacket`.
+  - Passing packets request approval; failed quality drafts are saved but stay outside approvals through the existing Content Command service.
+  - Writes `content_worker.started`, `content_worker.completed`, and `content_worker.failed` audit events.
+- `src/app/api/content/generate/route.ts`
+  - `POST /api/content/generate` validates request JSON and enqueues the real content worker job.
+  - Returns 503 when `DATABASE_URL` is missing and 422 on validation failure.
+- `src/lib/workers/registry.ts`
+  - Registered `content.generate` in `generalRegistry`.
+- `src/lib/domain/ask.ts`
+  - Flipped `content_generation` capability from `planned` to `available`.
+  - Routes it to queue `general` and job type `content.generate`.
+- `src/lib/ask/index.ts`
+  - Ask WOBBLE now maps content-generation commands into a content worker payload:
+    - `contentTrackId: track_wobble_company`
+    - `requestedBy`
+    - `objective` = the user's command text
+- `tests/content-worker.test.ts`
+  - New tests covering grounded prompt construction, strict JSON parsing, refusal before token spend when Brain/source chunks are missing, packet creation through Content Command, quality-gated approval behavior, and real job enqueue metadata.
+- `tests/ask.test.ts`
+  - Updated router expectations: content generation is now available; still-unbuilt modules such as Research remain planned and cannot enqueue fake jobs.
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+  - Chunk 15 marked done.
+  - Chunk 17 marked NEXT.
+
+Real vs mocked:
+
+- Real:
+  - Worker handler registration: `content.generate`.
+  - `/api/content/generate` enqueue route.
+  - Seeded `content_strategy` model role.
+  - Provider call path uses `runTextProvider`, so real calls are logged in `model_runs` and cost/audit rows by Chunk 05/08.
+  - Packet creation uses `createContentPacket`, so versions, quality reviews, approval creation, and failed-draft behavior are real.
+  - Ask WOBBLE content route now enqueues the real content worker job.
+- Mocked in tests:
+  - The OpenRouter response is mocked so tests do not spend credits.
+  - In-memory packet creation/enqueue fakes are used only in unit tests.
+- Not yet:
+  - UI-C1 frontend wiring is next after Chunk 15: Content Command board/detail/generate button must be wired to real APIs.
+  - Chunk 17 full Quality Gate & Do-Not-Say module is still next; Chunk 15 uses the existing packet self-review quality gate and prompt-level do-not-say context.
+  - Live content generation with OpenRouter can be run later with a tiny maxTokens request, but was not needed for unit/build verification.
+
+Verification:
+
+- Red test first:
+  - `npm run test -- tests/content-worker.test.ts` failed before implementation because `@/lib/domain/content-worker` was missing.
+- Focused tests:
+  - `npm run test -- tests/content-worker.test.ts tests/ask.test.ts` passed: 17/17.
+- Typecheck:
+  - `npm run typecheck` passed.
+- Full tests:
+  - `npm run test` passed: 18 files, 118 tests.
+- Seed:
+  - `npm run db:seed` passed.
+  - Output included `ask_wobble_model=openai/gpt-4o-mini` and `content_strategy_model=openai/gpt-4o-mini`.
+- Full verify:
+  - `npm run verify` passed: typecheck + 118 tests + Next build.
+  - Production build included `/api/content/generate`.
+
+Schema-key check:
+
+- No new database tables or columns were added in Chunk 15.
+- No direct Drizzle packet writes were added in the worker; the worker creates packets through `createContentPacket`.
+- Existing Drizzle `.values({...})` touched in seed-runner were checked against schema keys for `settings`.
+
+Next recommended action:
+
+- Run frontend checkpoint UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` before the next backend chunk:
+  - Content Command board reads real packets/tracks.
+  - Packet detail reads real packet/version/quality/evidence.
+  - Generate button triggers `/api/content/generate`.
+- Next backend chunk after UI-C1: Chunk 17 Quality Gate & Do-Not-Say.

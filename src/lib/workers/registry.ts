@@ -1,5 +1,6 @@
 import type { JobHandler, JobHandlerRegistry } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
+import { runContentGenerateJobHandler } from "@/lib/content-worker";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -17,6 +18,7 @@ const echo: JobHandler = async (job: JobRow) => ({ echoed: job.payload });
 export const generalRegistry: JobHandlerRegistry = {
   noop,
   "test.echo": echo,
+  "content.generate": runContentGenerateJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {
