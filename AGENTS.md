@@ -45,6 +45,23 @@ Important rules:
 - Fast questions can answer directly. Heavy work such as deep research, SEO audits, competitor scans, media generation, or large content batches should create worker jobs and return status quickly.
 - Risky, public, expensive, or business-changing actions remain approval-gated and audit-logged.
 
+## Cost Observability Rule
+
+No external AI/search/media/video/provider cost may be incurred without a durable local cost record.
+
+Required path for paid/credit-consuming calls:
+
+`provider call -> model_runs/provider_runs row -> cost estimate or actual cost -> linked module/output/job -> audit event -> Costs dashboard/API`
+
+Rules:
+
+- Text LLM calls must go through the provider adapter and `recordModelCall`, not direct ad hoc `fetch`.
+- Future search, media, video, SEO, social, and automation provider calls must use the same pattern or a provider-specific run table that rolls up into Costs.
+- Record both successes and failures when the provider was attempted. Failed paid attempts still matter.
+- Store provider, model/tool, role, module, input/output usage when available, estimated/actual cost, latency, status, error, provider run id, linked entity, and created date.
+- Never reset/delete cost records automatically. Monthly, weekly, daily, provider, module, and job-level totals must be derivable from stored rows.
+- Cost UI can be rebuilt, but the source of truth is the database.
+
 ## Source control, testing & CI (read this — added 2026-06-29)
 
 This project is now a Git repo pushed to GitHub: https://github.com/moizkhan091/WOBBLEOS

@@ -81,6 +81,16 @@ This applies to founder input, approved sources, Research Radar, Learning Engine
 
 Fast Ask WOBBLE questions may answer directly from approved retrieval context. Heavy work should route to workers/jobs and return status quickly. Risky, public, expensive, or business-changing actions stay approval-gated.
 
+## Cost Tracking Rule
+
+Any paid or credit-consuming provider call must leave a local cost trail before the work is considered complete.
+
+```text
+provider call -> model_runs/provider_runs row -> cost estimate or actual cost -> linked module/output/job -> audit event -> Costs dashboard/API
+```
+
+Do not bypass this with direct one-off API calls. Text LLM calls use the provider adapter and `recordModelCall`. Future search, media, video, SEO, social, and automation providers must use equivalent logging so daily, weekly, monthly, provider, module, and job-level totals can always be reconstructed from the database.
+
 ## Running locally
 
 ```powershell

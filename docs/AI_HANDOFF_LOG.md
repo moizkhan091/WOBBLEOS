@@ -876,3 +876,34 @@ OpenRouter verification note:
 - Local DB shows real Ask WOBBLE OpenRouter calls in `model_runs`.
 - Latest verified rows used provider `openrouter`, model `openai/gpt-4o-mini`, role/module `ask_wobble`, status `succeeded`.
 - Costs were tiny: about `0.000185` to `0.00019` USD per call. This is why the OpenRouter dashboard balance can still visually show the same rounded `88 cents`.
+
+---
+
+## 2026-06-30 - Codex - Cost Observability Rule Locked
+
+Context:
+
+- Moiz confirmed OpenRouter logs show the live calls and asked whether WOBBLE will properly track all costs over time.
+- Current local DB confirms three Ask WOBBLE OpenRouter calls in `model_runs`, all `succeeded`, total estimated cost `0.000565` USD.
+- `/api/costs` currently exposes today/week/month summaries and recent model runs from `model_runs`.
+- The current `src/app/page.tsx` Cost Watch card is still static placeholder UI (`$0.00 today`). The backend data exists; the full Cost dashboard UI still needs to be wired/built in the relevant UI/settings/cost module work.
+
+Rule added to canonical docs:
+
+- `AGENTS.md`
+- `docs/PROJECT_START_HERE.md`
+
+Hard rule:
+
+```text
+provider call -> model_runs/provider_runs row -> cost estimate or actual cost -> linked module/output/job -> audit event -> Costs dashboard/API
+```
+
+Implications for future chunks:
+
+- No paid/credit-consuming AI/search/media/video/SEO/social/provider call should bypass local cost logging.
+- Text LLM calls must go through provider adapters and `recordModelCall`.
+- Future non-text providers may use provider-specific run tables, but they must roll up into Costs.
+- Successes and provider-attempt failures must be recorded when a provider call is attempted.
+- Cost records are long-term operational records, not temporary logs.
+- Monthly, weekly, daily, provider, module, and job-level totals must be derivable from stored rows.
