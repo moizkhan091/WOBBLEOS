@@ -67,6 +67,20 @@ Context -> Data -> Function, and Context -> Connections -> Capabilities -> Caden
 Do not build autonomous cadence before the manual workflow and Brain/data layer work.
 ```
 
+## Ask WOBBLE Data Ingestion Rule
+
+Ask WOBBLE must become smarter because the OS stores better data, not because builders keep adding hardcoded prompt branches.
+
+Every module that creates reusable intelligence must use this path:
+
+```text
+new module data -> structured DB row -> chunk/vector/metadata if needed -> approved/trusted status -> Ask WOBBLE retrieval
+```
+
+This applies to founder input, approved sources, Research Radar, Learning Engine, competitor tracking, Content Command, social analytics, SEO/blog data, website analytics, invoices, presentation assets, client work, Decision Room, Offer Lab, Media Studio, n8n results, costs, audit records, and future modules.
+
+Fast Ask WOBBLE questions may answer directly from approved retrieval context. Heavy work should route to workers/jobs and return status quickly. Risky, public, expensive, or business-changing actions stay approval-gated.
+
 ## Running locally
 
 ```powershell

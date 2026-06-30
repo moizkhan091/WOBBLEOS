@@ -27,6 +27,24 @@ WOBBLE is a black/electric-lime AI Workforce Company. The OS should feel premium
 - After meaningful work or architecture discussion, append a concise update to `docs/AI_HANDOFF_LOG.md` so Codex, Claude, Gemini, Antigravity, and future agents share context.
 - Do not hardcode changing strategy, content angles, captions, hooks, posting decisions, or model choices in workers or n8n. Keep stable workflow in code; keep changing intelligence in WOBBLE Brain, approved sources, settings, prompts, model reasoning, and founder feedback.
 
+## Ask WOBBLE Retrieval Rule
+
+Ask WOBBLE is the OS command surface/conductor, not a hardcoded mega-prompt and not a place to duplicate downstream module logic.
+
+Every new module that creates useful business intelligence must follow this ingestion path:
+
+`new module data -> structured DB row -> chunk/vector/metadata if needed -> approved/trusted status -> Ask WOBBLE retrieval`
+
+This applies to sources, memory, research radar, competitor tracking, content results, social stats, SEO/blog data, website analytics, invoices, presentation assets, client work, decisions, offers, media outputs, n8n/webhook results, cost records, and future module outputs.
+
+Important rules:
+
+- Future data must become queryable through structured storage, approved sources, memory chunks, module tables, rollups, citations, and retrieval adapters.
+- Ask WOBBLE should automatically pick up newly approved/trusted data through retrieval. Do not manually rewrite Ask WOBBLE prompts every time a new source, connector, competitor feed, social metric, SEO result, or module output is added.
+- Unknown/discovered sources are never trusted automatically. They go through approval and trust-tier assignment before serious Ask WOBBLE use.
+- Fast questions can answer directly. Heavy work such as deep research, SEO audits, competitor scans, media generation, or large content batches should create worker jobs and return status quickly.
+- Risky, public, expensive, or business-changing actions remain approval-gated and audit-logged.
+
 ## Source control, testing & CI (read this — added 2026-06-29)
 
 This project is now a Git repo pushed to GitHub: https://github.com/moizkhan091/WOBBLEOS

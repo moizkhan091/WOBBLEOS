@@ -840,3 +840,39 @@ Notes for next builder:
 - Do not write JSON metadata with Windows PowerShell `Set-Content -Encoding UTF8` in Windows PowerShell 5.1 because it can add a BOM. Use a BOM-free writer if regenerating migration metadata.
 - The live Ask path is now proven: DB migration -> seed -> OpenRouter provider adapter -> Ask WOBBLE -> model_runs -> audit_logs.
 - Next build chunk remains Chunk 14 Content Command unless Moiz redirects.
+
+---
+
+## 2026-06-30 - Codex - Ask WOBBLE Future Data Retrieval Rule Locked
+
+Context:
+
+- Moiz asked to make the future-data rule permanent before moving to Chunk 14.
+- Concern: Ask WOBBLE should not need manual prompt rewrites every time new module data, sources, competitor intel, SEO stats, social stats, invoices, presentations, or client data are added.
+
+Rule added to canonical docs:
+
+- `AGENTS.md`
+- `docs/PROJECT_START_HERE.md`
+
+Hard rule:
+
+```text
+new module data -> structured DB row -> chunk/vector/metadata if needed -> approved/trusted status -> Ask WOBBLE retrieval
+```
+
+Implications for all future chunks:
+
+- Ask WOBBLE stays the OS command surface/conductor, not a hardcoded mega-prompt.
+- Every module that creates reusable intelligence must write structured data first.
+- If the data is useful for semantic recall, it must also create chunks/vectors/metadata or rollups.
+- Unknown/discovered sources are not trusted automatically; they require approval/trust-tier assignment.
+- Ask WOBBLE should retrieve newly approved/trusted data through retrieval adapters, not manual prompt edits.
+- Heavy work should route to workers/jobs and return status quickly.
+- Risky/public/expensive/business-changing actions remain approval-gated and audit-logged.
+
+OpenRouter verification note:
+
+- Local DB shows real Ask WOBBLE OpenRouter calls in `model_runs`.
+- Latest verified rows used provider `openrouter`, model `openai/gpt-4o-mini`, role/module `ask_wobble`, status `succeeded`.
+- Costs were tiny: about `0.000185` to `0.00019` USD per call. This is why the OpenRouter dashboard balance can still visually show the same rounded `88 cents`.
