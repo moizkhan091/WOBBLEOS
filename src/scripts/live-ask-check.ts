@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { askWobble } from "@/lib/ask";
 import { closeDb, getDb, schema } from "@/db";
 import { seedDatabase } from "@/db/seed-runner";
@@ -74,10 +74,15 @@ async function run() {
   const [audit] = await db
     .select()
     .from(schema.auditLogs)
-    .where(eq(schema.auditLogs.modelRunId, result.answer.modelRunId ?? ""))
+    .where(
+      and(
+        eq(schema.auditLogs.modelRunId, result.answer.modelRunId ?? ""),
+        eq(schema.auditLogs.eventType, "ask.answered"),
+      ),
+    )
     .limit(1);
 
-  if (!modelRun || modelRun.status !== "success") {
+  if (!modelRun || modelRun.status !== "succeeded") {
     throw new Error("model_runs did not record a successful Ask WOBBLE call");
   }
   if (!audit || audit.eventType !== "ask.answered") {

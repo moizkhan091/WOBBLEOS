@@ -795,3 +795,48 @@ Founder-requested module scope captured:
 
 - `docs/BUILD_SEQUENCE_TRACKER.md` now includes Phase 7 chunks: SEO & Blog Growth Engine, Social Intelligence & Platform Analytics, Website Analytics Connector, Invoice Builder, Presentation Maker Intake & Claude Design Bridge, and Business Docs Engine.
 - Architecture rule: these modules should feed live approved data into Ask WOBBLE through connectors/retrieval/memory/jobs. They should not become hardcoded prompt branches inside Ask WOBBLE.
+
+---
+
+## 2026-06-30 - Codex - Ask WOBBLE Live Test Completed After Reboot
+
+Context:
+
+- Moiz rebooted after WSL optional component installation. Goal was to prove Chunk 11 live, not just with mocks.
+- Docker Desktop initially started in a broken state: CLI pipe missing, then API 500, then backend logs showed `init control API` timeout and a stale `Docker Desktop.exe` lingering-process dialog.
+- Root cause was environment-level Docker/WSL startup state, not WOBBLE code. Fixed by elevated Docker cleanup/restart, then pulling `pgvector/pgvector:pg16`.
+
+Files changed:
+
+- `src/db/migrations/meta/_journal.json` - added missing Drizzle migration journal for the existing `0000_init_pgvector.sql` migration. Important: file must be UTF-8 without BOM; Drizzle rejects BOM JSON.
+- `src/scripts/live-ask-check.ts` - fixed live check assertions to match existing domain behavior: `model_runs.status = "succeeded"` and specifically require `audit_logs.event_type = "ask.answered"`.
+- `vitest.config.ts` - changed default test environment from `jsdom` to `node`. Current tests are backend/domain tests; jsdom caused Vitest worker startup timeouts on Windows. Future UI/component tests should opt into jsdom per file/config.
+
+Live verification:
+
+- Docker Desktop now works after elevated cleanup.
+- `docker pull pgvector/pgvector:pg16` succeeded.
+- `docker compose up -d` started `wobble-os-postgres`.
+- Postgres readiness passed: `/var/run/postgresql:5432 - accepting connections`.
+- `npm run db:migrate` now passes through the normal Drizzle CLI path.
+- `npm run db:seed` passes and prints `db_seed=ok`.
+- `npm run ask:live-check` passes with real OpenRouter + local Postgres:
+  - `ask_live_check=ok`
+  - provider `openrouter`
+  - model `openai/gpt-4o-mini`
+  - estimated cost about `0.00019`
+  - confidence `high`
+  - citations `9`
+  - answer excerpt confirms Ask WOBBLE reads approved source chunks, WOBBLE Brain, memory, and future operating data instead of hardcoded prompts.
+
+Full verification:
+
+- Exact gate `npm run verify` passed.
+- Details: `tsc --noEmit` passed, Vitest passed 16 files / 105 tests, Next build passed.
+
+Notes for next builder:
+
+- Do not remove `src/db/migrations/meta/_journal.json`; the Drizzle CLI depends on it.
+- Do not write JSON metadata with Windows PowerShell `Set-Content -Encoding UTF8` in Windows PowerShell 5.1 because it can add a BOM. Use a BOM-free writer if regenerating migration metadata.
+- The live Ask path is now proven: DB migration -> seed -> OpenRouter provider adapter -> Ask WOBBLE -> model_runs -> audit_logs.
+- Next build chunk remains Chunk 14 Content Command unless Moiz redirects.
