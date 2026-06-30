@@ -6,6 +6,7 @@ import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   buildContentPacketRow,
+  buildContentTrackPatch,
   buildContentTrackRow,
   buildContentVersionRow,
   buildQualityReviewRow,
@@ -16,11 +17,14 @@ import {
   type ContentPacketRow,
   type ContentPlatform,
   type ContentQualityStatus,
+  type ContentTrackOwnerType,
   type ContentTrackRow,
+  type ContentTrackStatus,
   type ContentVersionRow,
   type CreateContentPacketInput,
   type CreateContentTrackInput,
   type QualityReviewRow,
+  type UpdateContentTrackInput,
 } from "@/lib/domain/content-command";
 
 export type { ContentPacketRow, ContentTrackRow, ContentVersionRow, QualityReviewRow };
@@ -34,6 +38,13 @@ export interface ListContentPacketsQuery {
   limit?: number;
 }
 
+export interface ListContentTracksQuery {
+  status?: ContentTrackStatus;
+  ownerType?: ContentTrackOwnerType;
+  slug?: string;
+  limit?: number;
+}
+
 export const DEFAULT_CONTENT_LIMIT = 50;
 export const MAX_CONTENT_LIMIT = 200;
 
@@ -44,8 +55,9 @@ export function clampContentLimit(limit?: number): number {
 
 export interface ContentCommandStore {
   insertTrack?(row: ContentTrackRow): Promise<void>;
+  updateTrack?(id: string, fields: Partial<ContentTrackRow>): Promise<void>;
   getTrackById(id: string): Promise<ContentTrackRow | null>;
-  listTracks(query?: { status?: "active" | "archived"; limit?: number }): Promise<ContentTrackRow[]>;
+  listTracks(query?: Omit<ListContentTracksQuery, "limit"> & { limit?: number }): Promise<ContentTrackRow[]>;
   insertPacket(row: ContentPacketRow): Promise<void>;
   updatePacket(id: string, fields: Partial<ContentPacketRow>): Promise<void>;
   getPacketById(id: string): Promise<ContentPacketRow | null>;
@@ -94,11 +106,46 @@ export async function createContentTrack(
 }
 
 export async function listContentTracks(
-  query: { status?: "active" | "archived"; limit?: number } = {},
+  query: ListContentTracksQuery = {},
   deps: ContentDeps = {},
 ): Promise<ContentTrackRow[]> {
   const store = deps.store ?? defaultStore();
   return store.listTracks({ ...query, limit: clampContentLimit(query.limit) });
+}
+
+export interface UpdateContentTrackResult {
+  track: ContentTrackRow;
+}
+
+export async function updateContentTrack(
+  contentTrackId: string,
+  input: UpdateContentTrackInput,
+  deps: ContentDeps = {},
+): Promise<UpdateContentTrackResult> {
+  if (!contentTrackId.trim()) throw new Error("contentTrackId is required");
+  const store = deps.store ?? defaultStore();
+  if (!store.updateTrack) throw new Error("content store does not support track updates");
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const current = await store.getTrackById(contentTrackId);
+  if (!current) throw new Error(`content track '${contentTrackId}' not found`);
+
+  const patch = buildContentTrackPatch(input, { now });
+  await store.updateTrack(contentTrackId, patch);
+  const track = { ...current, ...patch };
+  await recordAudit({
+    eventType: "content_track.updated",
+    module: "content_command",
+    entityType: "content_track",
+    entityId: contentTrackId,
+    metadata: {
+      slug: track.slug,
+      ownerType: track.ownerType,
+      changedFields: Object.keys(patch).filter((field) => field !== "updatedAt"),
+    },
+  });
+
+  return { track };
 }
 
 export interface CreateContentPacketServiceInput extends CreateContentPacketInput {
@@ -302,6 +349,8 @@ export function defaultStore(db: Db = getDb()): ContentCommandStore {
     async listTracks(query = {}) {
       const conditions = [];
       if (query.status) conditions.push(eq(contentTracks.status, query.status));
+      if (query.ownerType) conditions.push(eq(contentTracks.ownerType, query.ownerType));
+      if (query.slug) conditions.push(eq(contentTracks.slug, query.slug));
       const where = conditions.length ? and(...conditions) : undefined;
       return db
         .select()
@@ -309,6 +358,9 @@ export function defaultStore(db: Db = getDb()): ContentCommandStore {
         .where(where)
         .orderBy(desc(contentTracks.createdAt))
         .limit(query.limit ?? DEFAULT_CONTENT_LIMIT) as Promise<ContentTrackRow[]>;
+    },
+    async updateTrack(id, fields) {
+      await db.update(contentTracks).set(fields).where(eq(contentTracks.id, id));
     },
     async insertPacket(row) {
       await db.insert(contentPackets).values(row);

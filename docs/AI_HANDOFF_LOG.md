@@ -1571,3 +1571,97 @@ Next backend:
   - make Content Worker call the intelligence context builder once content knowledge/performance/competitor stores are populated enough.
 - Important integration after Chunk 18:
   - n8n signed inbound webhooks should normalize competitor transcripts, social stats, website analytics, Search Console data, CRM/lead quality, and ad captures into `intelligence_items`.
+
+---
+
+## 2026-07-01 - Codex - Chunk 16 Founder Content Tracks
+
+Context:
+
+- Moiz asked Codex to start Chunk 16.
+- Acceptance criteria: add founder content without creating a separate backend. WOBBLE Company and Moiz Founder POV must use the same content packet schema and same content worker, with editable voice/profile settings that change output context without code changes.
+
+What was already present:
+
+- `content_tracks` table already existed from the content-command migration.
+- `content_packets.content_track_id` already existed.
+- Seed already included:
+  - `track_wobble_company`
+  - `track_moiz_founder`
+- Content worker already accepted `contentTrackId`.
+
+What Codex completed:
+
+- Added update/patch support for content tracks:
+  - `updateContentTrackSchema`
+  - `buildContentTrackPatch`
+  - `updateContentTrack(...)`
+  - Drizzle `updateTrack(...)`
+  - audit event `content_track.updated`
+- Added track retrieval/filter depth:
+  - list tracks by `status`
+  - list tracks by `ownerType`
+  - list tracks by `slug`
+- Added normalized track prompt context:
+  - `buildContentTrackPromptBlock(...)`
+  - `getContentTrackPersonaName(...)`
+  - the content worker now uses the shared prompt block instead of manually stringing track fields together.
+- Added API support:
+  - `GET /api/content/tracks?ownerType=founder&status=active`
+  - `GET /api/content/tracks?slug=moiz_founder_pov`
+  - `GET /api/content/tracks/[id]`
+  - `PATCH /api/content/tracks/[id]`
+- Added tests proving:
+  - founder and company tracks are separate contexts, not separate engines.
+  - founder voice profile appears in the same content worker prompt.
+  - founder track updates are persisted and audit-logged.
+  - the same content worker creates packets with `contentTrackId: track_moiz_founder`.
+
+Files touched:
+
+- `src/lib/domain/content-command.ts`
+- `src/lib/domain/content-worker.ts`
+- `src/lib/content/index.ts`
+- `src/app/api/content/tracks/route.ts`
+- `src/app/api/content/tracks/[id]/route.ts`
+- `tests/content-command.test.ts`
+- `tests/content-worker.test.ts`
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+- `docs/AI_HANDOFF_LOG.md`
+
+Verification so far:
+
+- TDD red run:
+  - `npm run test -- tests/content-command.test.ts tests/content-worker.test.ts`
+  - failed as expected because `buildContentTrackPromptBlock` and `updateContentTrack` did not exist.
+- Focused green run:
+  - `npm run test -- tests/content-command.test.ts tests/content-worker.test.ts`
+  - 2 test files passed, 18 tests passed.
+- Typecheck:
+  - `npm run typecheck`
+  - passed.
+- Full verify:
+  - `npm run verify`
+  - typecheck passed.
+  - Vitest passed: 23 test files, 163 tests.
+  - Next production build passed.
+  - Note: the first wrapper run hit the 5-minute tool timeout with no failure output; rerunning with a longer timeout completed successfully.
+
+Real vs not built:
+
+- Real now:
+  - editable founder/company tracks
+  - track filters
+  - same content worker / same packet schema for founder content
+  - runtime prompt context from track data
+  - audit logging for track updates
+- Not built in this chunk:
+  - frontend wiring for track editing/filtering (UI-C1 is next)
+  - full Content Knowledge Base and performance-driven track intelligence (future Chunks 43/47)
+  - n8n handoff (Chunk 18)
+
+Next:
+
+- Run full `npm run verify`, commit, and push.
+- Next product checkpoint is UI-C1: wire Content Command frontend to real tracks/packets/generation.
+- Next backend after UI-C1 is Chunk 18 - n8n Signed Handoff.

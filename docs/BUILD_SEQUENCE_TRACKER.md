@@ -35,12 +35,12 @@ The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use i
 13. [x] Chunk 15 - Content Worker V1
 14. [x] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)
 15. [x] Chunk 50 - Self-Improving Intelligence Foundation (data substrate, retrieval plans, Dreamer suggestions, research targets)
-16. [ ] Chunk 16 - Founder Content Tracks   <- NEXT BACKEND
-17. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
+16. [x] Chunk 16 - Founder Content Tracks
+17. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)   <- NEXT BACKEND AFTER UI-C1
 
 Frontend checkpoint:
 
-- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due before the next backend chunk. Wire Content Command to real packets/tracks/generation.
+- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due before the next backend chunk. Wire Content Command to real packets/tracks/generation.   <- NEXT FRONTEND
 - After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.
 
 ### Phase 3 - Registries + intelligence inputs

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createContentTrack, listContentTracks } from "@/lib/content";
-import { createContentTrackSchema, CONTENT_TRACK_STATUSES } from "@/lib/domain/content-command";
+import {
+  createContentTrackSchema,
+  CONTENT_TRACK_OWNER_TYPES,
+  CONTENT_TRACK_STATUSES,
+} from "@/lib/domain/content-command";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +17,14 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
+  const ownerType = searchParams.get("ownerType");
   const limitParam = searchParams.get("limit");
 
   try {
     const tracks = await listContentTracks({
       status: CONTENT_TRACK_STATUSES.includes(status as never) ? (status as never) : undefined,
+      ownerType: CONTENT_TRACK_OWNER_TYPES.includes(ownerType as never) ? (ownerType as never) : undefined,
+      slug: searchParams.get("slug") ?? undefined,
       limit: limitParam !== null ? Number(limitParam) : undefined,
     });
     return NextResponse.json({ ok: true, count: tracks.length, tracks });

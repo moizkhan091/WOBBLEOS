@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildContentTrackPromptBlock,
   buildContentPacketRow,
   buildContentTrackRow,
   buildContentVersionRow,
@@ -12,8 +13,11 @@ import {
 import {
   addContentPacketVersion,
   createContentPacket,
+  createContentTrack,
   getContentPacketDetail,
   listContentPackets,
+  listContentTracks,
+  updateContentTrack,
   type ContentCommandStore,
 } from "@/lib/content";
 import type { ApprovalStore } from "@/lib/approvals";
@@ -92,6 +96,8 @@ function makeContentStore(seed: {
   const versions: ContentVersionRow[] = [...(seed.versions ?? [])];
   const reviews: QualityReviewRow[] = [...(seed.reviews ?? [])];
   const calls = {
+    insertTrack: [] as ContentTrackRow[],
+    updateTrack: [] as Array<{ id: string; fields: Partial<ContentTrackRow> }>,
     insertPacket: [] as ContentPacketRow[],
     updatePacket: [] as Array<{ id: string; fields: Partial<ContentPacketRow> }>,
     insertVersion: [] as ContentVersionRow[],
@@ -99,8 +105,22 @@ function makeContentStore(seed: {
   };
 
   const store: ContentCommandStore = {
+    insertTrack: async (row) => {
+      calls.insertTrack.push(row);
+      tracks.set(row.id, row);
+    },
+    updateTrack: async (id, fields) => {
+      calls.updateTrack.push({ id, fields });
+      const current = tracks.get(id);
+      if (current) tracks.set(id, { ...current, ...fields });
+    },
     getTrackById: async (id) => tracks.get(id) ?? null,
-    listTracks: async () => [...tracks.values()],
+    listTracks: async (query = {}) =>
+      [...tracks.values()]
+        .filter((track) => (query.status ? track.status === query.status : true))
+        .filter((track) => (query.ownerType ? track.ownerType === query.ownerType : true))
+        .filter((track) => (query.slug ? track.slug === query.slug : true))
+        .slice(0, query.limit ?? 50),
     insertPacket: async (row) => {
       calls.insertPacket.push(row);
       packets.set(row.id, row);
@@ -162,6 +182,46 @@ describe("content command domain", () => {
     });
   });
 
+  it("builds a generation prompt block that separates company and founder voice profiles", () => {
+    const companyTrack = buildContentTrackRow(
+      {
+        slug: "wobble_company",
+        label: "WOBBLE Company",
+        ownerType: "company",
+        voiceProfile: { tone: "teach-first, premium, anti-agency dependency" },
+        goals: ["AI OS education"],
+        platformPriorities: ["linkedin", "instagram"],
+      },
+      { id: "track_wobble_company", now },
+    );
+    const founderTrack = buildContentTrackRow(
+      {
+        slug: "moiz_founder_pov",
+        label: "Moiz Founder POV",
+        ownerType: "founder",
+        voiceProfile: {
+          founderName: "Moiz",
+          tone: "operator POV, direct, educational, sharper than company voice",
+          signatureBeliefs: ["teach in public", "show the system being built"],
+        },
+        goals: ["founder authority", "education"],
+        allowedTopics: ["AI OS builds"],
+        bannedPhrases: ["easy money"],
+        aggressionRange: { min: 3, max: 9 },
+        platformPriorities: ["linkedin", "x"],
+      },
+      { id: "track_moiz_founder", now },
+    );
+
+    expect(buildContentTrackPromptBlock(companyTrack)).toContain("Track type: company");
+    const founderBlock = buildContentTrackPromptBlock(founderTrack);
+
+    expect(founderBlock).toContain("Track type: founder");
+    expect(founderBlock).toContain("Founder/persona: Moiz");
+    expect(founderBlock).toContain("operator POV");
+    expect(founderBlock).toContain("easy money");
+  });
+
   it("requires evidence metadata for content packets with serious researched claims", () => {
     expect(() =>
       buildContentPacketRow(
@@ -216,6 +276,66 @@ describe("content command domain", () => {
 });
 
 describe("content command service", () => {
+  it("creates, filters, and updates founder content tracks without creating a separate content engine", async () => {
+    const companyTrack = buildContentTrackRow(
+      { slug: "wobble_company", label: "WOBBLE Company", ownerType: "company" },
+      { id: "track_wobble_company", now },
+    );
+    const { store, calls, tracks } = makeContentStore({ tracks: [companyTrack] });
+    const audit: AuditEventInput[] = [];
+
+    const created = await createContentTrack(
+      {
+        slug: "moiz_founder_pov",
+        label: "Moiz Founder POV",
+        ownerType: "founder",
+        voiceProfile: { founderName: "Moiz", tone: "direct operator POV" },
+        goals: ["founder authority"],
+        allowedTopics: ["AI OS builds"],
+        platformPriorities: ["linkedin", "x"],
+      },
+      {
+        store,
+        recordAudit: async (event) => {
+          audit.push(event);
+        },
+        now,
+      },
+    );
+
+    const founderTracks = await listContentTracks({ ownerType: "founder", status: "active" }, { store });
+    const updated = await updateContentTrack(
+      created.track.id,
+      {
+        voiceProfile: { founderName: "Moiz", tone: "more educational, less hype", pov: "building WOBBLE in public" },
+        bannedPhrases: ["easy money", "passive income"],
+      },
+      {
+        store,
+        recordAudit: async (event) => {
+          audit.push(event);
+        },
+        now,
+      },
+    );
+
+    expect(calls.insertTrack).toHaveLength(1);
+    expect(founderTracks).toHaveLength(1);
+    expect(founderTracks[0].id).toBe(created.track.id);
+    expect(calls.updateTrack[0]).toMatchObject({
+      id: created.track.id,
+      fields: {
+        voiceProfile: { founderName: "Moiz", tone: "more educational, less hype", pov: "building WOBBLE in public" },
+        bannedPhrases: ["easy money", "passive income"],
+        updatedAt: now,
+      },
+    });
+    expect(tracks.get(created.track.id)?.voiceProfile).toMatchObject({ pov: "building WOBBLE in public" });
+    expect(updated.track.ownerType).toBe("founder");
+    expect(audit.some((event) => event.eventType === "content_track.created")).toBe(true);
+    expect(audit.some((event) => event.eventType === "content_track.updated")).toBe(true);
+  });
+
   it("creates an approval-ready content packet with version, quality review, approval, and audit trail", async () => {
     const track = buildContentTrackRow({ slug: "wobble_company", label: "WOBBLE Company" }, { id: "track_wobble_company", now });
     const { store, calls } = makeContentStore({ tracks: [track] });

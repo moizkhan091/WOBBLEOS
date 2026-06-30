@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  buildContentTrackPromptBlock,
   CONTENT_FORMATS,
   CONTENT_PLATFORMS,
   type ContentTrackRow,
@@ -180,13 +181,7 @@ export function buildContentGenerationPrompt(input: BuildContentGenerationPrompt
     "Avoid tired question-hook formulas such as 'Tired of...', 'Are you...', 'Why settle...', and generic 'It's time...' openings unless the source context makes them unusually strong.",
     "Self-review rubric: usefulness = practical teaching value; originality = non-generic WOBBLE POV; brandFit = premium teach-first WOBBLE voice; clarity = easy to understand; aggressionControl = the sharpness is controlled and within the track's range, so calm educational content should score high; proofStrength = source/memory evidence directly supports the claims. postWorthiness must be 'fail' if any score is below 7.",
     "Return strict JSON only with this shape: {\"packets\":[{\"platform\":\"linkedin|instagram|x|youtube|multi\",\"format\":\"static|carousel|text|thread|reel_script|youtube_script\",\"objective\":\"...\",\"targetAudience\":\"...\",\"angle\":\"...\",\"hook\":\"...\",\"mainCopy\":\"...\",\"carouselSlides\":[],\"caption\":\"...\",\"cta\":\"...\",\"designDirection\":\"...\",\"sourceIdsUsed\":[\"source_id\"],\"insightIdsUsed\":[\"insight_or_angle_id\"],\"memoryChunksUsed\":[\"memorychunk_id\"],\"evidenceSummary\":\"...\",\"claimRiskLevel\":\"low|medium|high\",\"proofRequired\":true,\"selfReview\":{\"usefulness\":0,\"originality\":0,\"brandFit\":0,\"clarity\":0,\"aggressionControl\":0,\"proofStrength\":0,\"postWorthiness\":\"pass|fail\"}}]}",
-    `Content track: ${input.track.label} (${input.track.slug}) owner=${input.track.ownerType}`,
-    `Voice profile: ${JSON.stringify(input.track.voiceProfile)}`,
-    `Goals: ${input.track.goals.join(", ") || "(none set)"}`,
-    `Allowed topics: ${input.track.allowedTopics.join(", ") || "(none set)"}`,
-    `Do-not-say / banned phrases: ${input.track.bannedPhrases.join(", ") || "(none set)"}`,
-    `Aggression range: ${input.track.aggressionRange.min}-${input.track.aggressionRange.max}/10`,
-    `Platform priorities: ${input.track.platformPriorities.join(", ") || "(model may choose from request/context)"}`,
+    buildContentTrackPromptBlock(input.track),
     `Request objective: ${request.objective ?? "Create useful WOBBLE company content from the strongest current approved evidence."}`,
     request.platformFocus.length ? `Platform focus: ${request.platformFocus.join(", ")}` : "",
     request.formatFocus.length ? `Format focus: ${request.formatFocus.join(", ")}` : "",

@@ -19,6 +19,7 @@ export type ContentApprovalStatus = (typeof CONTENT_APPROVAL_STATUSES)[number];
 export type ContentHandoffStatus = (typeof CONTENT_HANDOFF_STATUSES)[number];
 
 const stringList = z.array(z.string().trim().min(1)).default([]);
+const optionalStringList = z.array(z.string().trim().min(1)).optional();
 
 export const aggressionRangeSchema = z
   .object({
@@ -47,6 +48,29 @@ export const createContentTrackSchema = z.object({
 });
 
 export type CreateContentTrackInput = z.input<typeof createContentTrackSchema>;
+
+export const updateContentTrackSchema = z
+  .object({
+    slug: z.string().trim().min(1, "slug cannot be empty").optional(),
+    label: z.string().trim().min(1, "label cannot be empty").optional(),
+    ownerType: z.enum(CONTENT_TRACK_OWNER_TYPES).optional(),
+    voiceProfile: z.record(z.string(), z.unknown()).optional(),
+    goals: optionalStringList,
+    allowedTopics: optionalStringList,
+    bannedPhrases: optionalStringList,
+    aggressionRange: aggressionRangeSchema.optional(),
+    platformPriorities: z.array(z.enum(CONTENT_PLATFORMS)).optional(),
+    approvalRequired: z.boolean().optional(),
+    status: z.enum(CONTENT_TRACK_STATUSES).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((patch, ctx) => {
+    if (Object.values(patch).every((value) => value === undefined)) {
+      ctx.addIssue({ code: "custom", message: "at least one content track field is required" });
+    }
+  });
+
+export type UpdateContentTrackInput = z.input<typeof updateContentTrackSchema>;
 
 export interface ContentTrackRow {
   id: string;
@@ -90,6 +114,65 @@ export function buildContentTrackRow(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function buildContentTrackPatch(
+  input: UpdateContentTrackInput,
+  opts: { now?: Date } = {},
+): Partial<ContentTrackRow> {
+  const parsed = updateContentTrackSchema.parse(input);
+  const patch: Partial<ContentTrackRow> = {};
+  for (const [key, value] of Object.entries(parsed) as Array<[keyof typeof parsed, unknown]>) {
+    if (value !== undefined) {
+      (patch as Record<string, unknown>)[key] = value;
+    }
+  }
+  patch.updatedAt = opts.now ?? new Date();
+  return patch;
+}
+
+function voiceValueToText(value: unknown): string {
+  if (Array.isArray(value)) return value.map(voiceValueToText).filter(Boolean).join("; ");
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nested]) => `${key}: ${voiceValueToText(nested)}`)
+      .filter((part) => !part.endsWith(": "))
+      .join("; ");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function voiceProfileLines(profile: Record<string, unknown>): string[] {
+  const lines = Object.entries(profile)
+    .map(([key, value]) => {
+      const text = voiceValueToText(value);
+      return text ? `- ${key}: ${text}` : "";
+    })
+    .filter(Boolean);
+  return lines.length ? lines : ["(none set)"];
+}
+
+export function getContentTrackPersonaName(track: ContentTrackRow): string | null {
+  const direct = track.voiceProfile.founderName ?? track.voiceProfile.personaName ?? track.metadata.founderName;
+  return typeof direct === "string" && direct.trim() ? direct.trim() : null;
+}
+
+export function buildContentTrackPromptBlock(track: ContentTrackRow): string {
+  const personaName = getContentTrackPersonaName(track);
+  const lines = [
+    `Content track: ${track.label} (${track.slug})`,
+    `Track type: ${track.ownerType}`,
+    track.ownerType === "founder" ? `Founder/persona: ${personaName ?? track.label}` : "",
+    "Voice profile:",
+    ...voiceProfileLines(track.voiceProfile),
+    `Goals: ${track.goals.join(", ") || "(none set)"}`,
+    `Allowed topics: ${track.allowedTopics.join(", ") || "(none set)"}`,
+    `Do-not-say / banned phrases: ${track.bannedPhrases.join(", ") || "(none set)"}`,
+    `Aggression range: ${track.aggressionRange.min}-${track.aggressionRange.max}/10`,
+    `Platform priorities: ${track.platformPriorities.join(", ") || "(model may choose from request/context)"}`,
+    `Approval required: ${track.approvalRequired ? "yes" : "no"}`,
+  ];
+  return lines.filter(Boolean).join("\n");
 }
 
 const carouselSlideSchema = z.union([

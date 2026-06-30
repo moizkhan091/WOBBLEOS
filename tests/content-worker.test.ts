@@ -30,6 +30,26 @@ const track = buildContentTrackRow(
   { id: "track_wobble_company", now },
 );
 
+const founderTrack = buildContentTrackRow(
+  {
+    slug: "moiz_founder_pov",
+    label: "Moiz Founder POV",
+    ownerType: "founder",
+    voiceProfile: {
+      founderName: "Moiz",
+      tone: "founder-led, direct, educational, operator POV",
+      signatureBeliefs: ["teach what we are building", "show the OS not the agency package"],
+    },
+    goals: ["founder authority", "education"],
+    allowedTopics: ["AI OS builds", "agency dependency"],
+    bannedPhrases: ["easy money"],
+    aggressionRange: { min: 3, max: 9 },
+    platformPriorities: ["linkedin", "x", "instagram"],
+    approvalRequired: true,
+  },
+  { id: "track_moiz_founder", now },
+);
+
 const brain = [
   {
     slug: "brand-voice",
@@ -203,6 +223,21 @@ describe("content worker domain", () => {
     expect(prompt.memoryChunkIds).toEqual(["memorychunk_content_strategy"]);
   });
 
+  it("loads founder track voice profile into the same content worker prompt", () => {
+    const prompt = buildContentGenerationPrompt({
+      request: { contentTrackId: "track_moiz_founder", requestedBy: "Moiz", objective: "same insight, founder POV" },
+      track: founderTrack,
+      brain,
+      memory,
+      sources,
+    });
+
+    expect(prompt.messages[0]?.content).toContain("Track type: founder");
+    expect(prompt.messages[0]?.content).toContain("Founder/persona: Moiz");
+    expect(prompt.messages[0]?.content).toContain("founder-led, direct, educational");
+    expect(prompt.messages[0]?.content).toContain("easy money");
+  });
+
   it("parses multiple generated packets and rejects non-JSON model output", () => {
     const parsed = parseContentWorkerModelOutput(providerJson);
     expect(parsed.packets).toHaveLength(2);
@@ -265,6 +300,29 @@ describe("content worker service", () => {
     expect(result.approvalsCreated).toBe(1);
     expect(result.failedDrafts).toBe(1);
     expect(audit.some((event) => event.eventType === "content_worker.completed")).toBe(true);
+  });
+
+  it("uses the same content generation engine for founder POV tracks", async () => {
+    const created: Array<CreateContentPacketInput & { requestApproval?: boolean }> = [];
+
+    const result = await runContentGenerationJob(
+      { contentTrackId: "track_moiz_founder", requestedBy: "Moiz", objective: "same source, founder POV", maxPackets: 1 },
+      deps({
+        getContentTrack: async () => founderTrack,
+        createPacket: async (input) => {
+          created.push(input);
+          return fakeCreatePacket(input);
+        },
+      }),
+    );
+
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      contentTrackId: "track_moiz_founder",
+      createdBy: "Moiz",
+      requestApproval: true,
+    });
+    expect(result.contentTrackId).toBe("track_moiz_founder");
   });
 
   it("enqueues a real content.generate job with idempotency and module linkage", async () => {
