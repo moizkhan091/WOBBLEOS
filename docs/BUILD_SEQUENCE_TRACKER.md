@@ -13,6 +13,8 @@ Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not 
 
 Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`. Chunk 15 is the pipe; Chunk 17/21/22/34/36/38 make the output elite.
 
+The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use it when building researcher AIs, ingestion stores, performance loops, competitor transcript flows, and auto-pickup behavior.
+
 ## Full master order (all 50 chunks, 00-49)
 
 ### Phase 1 - Core spine + data layer (DONE)

@@ -1384,3 +1384,62 @@ Workers QUERY the data layer each run (Brain, memory, approved sources, knowledg
 
 ### VPS-safety verification (closest local test to the VPS)
 Codex works in `C:\Wobble OS` and has Docker working now (handoff above: `pgvector/pgvector:pg16` pulled, `docker compose up -d` starts `wobble-os-postgres`). Closest-to-VPS check before relying on a change: `docker compose up -d` then `npm run verify` (typecheck + test + build on a clean DB) - mirrors `scripts/deploy.sh`, which gates the real VPS deploy and aborts before restart if verify fails. CI also runs verify on every push. So broken code cannot reach the VPS.
+
+---
+
+## 2026-06-30 - Codex - Verified Claude Chunk 17/Content Gate Work + Captured Intelligence Map
+
+Context:
+
+- Moiz asked Codex to review the pasted Claude handoff, inspect what Claude actually changed, and test it locally so the VPS path does not rely on chat claims.
+- Claude had pushed `be60fea` and left `docs/INTELLIGENCE_LAYER_MAP.md` untracked when the session ran out of credits.
+
+What Codex verified:
+
+- Reviewed the pasted Claude transcript and the latest handoff entries.
+- Inspected `src/lib/content-worker/index.ts`, `tests/content-worker-gate.test.ts`, `src/lib/domain/content-excellence.ts`, `src/lib/domain/content-brief.ts`, and `src/lib/domain/reference-selection.ts`.
+- Confirmed the live content worker enables the objective Content Excellence Gate while service-level tests can still inject or omit the gate.
+- Confirmed banned/do-not-say phrases are read from `content_tracks.bannedPhrases` at runtime and passed into `gradeContentExcellence(...)`, so founder-approved track changes auto-apply without code changes.
+- Confirmed the untracked intelligence map is useful and should be kept as the canonical map for data stores, researcher AIs, competitor transcript ingestion, research targets, and self-improvement loops.
+
+Verification run locally in `C:\Wobble OS`:
+
+- `npm run verify`
+  - Typecheck passed.
+  - Vitest passed: 22 test files, 147 tests.
+  - Next production build passed.
+- `docker compose up -d`
+  - `wobble-os-postgres` running and healthy.
+- `npm run db:migrate`
+  - Migrations applied successfully.
+- `npm run db:seed`
+  - `db_seed=ok`
+  - `ask_wobble_model=openai/gpt-4o-mini`
+  - `content_strategy_model=anthropic/claude-sonnet-4.5`
+- `npm run content:live-check`
+  - `content_live_check=ok`
+  - provider `openrouter`
+  - model `anthropic/claude-sonnet-4.5`
+  - estimated cost `0.008989`
+  - packets created `3`
+  - passed packets `3`
+  - approvals created `3`
+- `npm run ask:live-check`
+  - `ask_live_check=ok`
+  - provider `openrouter`
+  - model `openai/gpt-4o-mini`
+  - estimated cost `0.000205`
+  - confidence `high`
+  - citations `10`
+
+Files updated by Codex:
+
+- `docs/INTELLIGENCE_LAYER_MAP.md` kept and staged for commit.
+- `docs/BUILD_SEQUENCE_TRACKER.md` now links the intelligence map near the top.
+- `docs/AI_HANDOFF_LOG.md` now records this verification entry.
+
+Next backend remains:
+
+- Chunk 16 - Founder Content Tracks.
+- Then UI-C1 frontend wiring checkpoint.
+- Then Chunk 18 - n8n Signed Handoff.
