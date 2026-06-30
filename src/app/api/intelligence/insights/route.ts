@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { intelligenceInsightInputSchema } from "@/lib/domain/intelligence";
+import { createIntelligenceInsight } from "@/lib/intelligence";
+
+export const dynamic = "force-dynamic";
+
+function dbUnavailable() {
+  return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+}
+
+export async function POST(request: Request) {
+  if (!process.env.DATABASE_URL) return dbUnavailable();
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = intelligenceInsightInputSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  }
+
+  try {
+    const result = await createIntelligenceInsight(parsed.data);
+    return NextResponse.json({ ok: true, ...result }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
+  }
+}

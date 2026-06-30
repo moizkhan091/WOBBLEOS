@@ -1443,3 +1443,131 @@ Next backend remains:
 - Chunk 16 - Founder Content Tracks.
 - Then UI-C1 frontend wiring checkpoint.
 - Then Chunk 18 - n8n Signed Handoff.
+
+---
+
+## 2026-06-30 - Codex - Chunk 50 Self-Improving Intelligence Foundation
+
+Context:
+
+- Moiz asked for the full Self-Improving Intelligence Layer before moving to the next backend chunk.
+- The key requirement: WOBBLE OS must not be a simple competitor tracker. It must become a living intelligence system where market data, competitor activity, transcripts, performance stats, SEO/blog data, client notes, offers, decisions, suggestions, and experiments flow into approved data stores and automatically improve future outputs.
+- Important boundary: the real data is mostly not populated yet. The system must show empty states/gaps and accept data through manual entry, n8n, and AI research agents. It must not invent competitors, stats, trends, or performance numbers.
+
+Architecture/documentation added:
+
+- `docs/SELF_IMPROVING_INTELLIGENCE_LAYER.md`
+  - Full A-P architecture requested by Moiz:
+    - data categories
+    - storage architecture
+    - AI agent registry and cadences
+    - manual/n8n/AI data flows
+    - approval rules
+    - auto-pickup retrieval
+    - freshness and old-vs-new comparison
+    - stale knowledge detection
+    - Dreamer/Suggestion Engine
+    - UI screens
+    - DB/API/worker changes
+- `docs/INTELLIGENCE_LAYER_MAP.md`
+  - Updated to reflect the built substrate.
+  - Clarifies that most real-world data is still empty and must be populated through targets, n8n, and agents.
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+  - Added Chunk 50 as completed.
+  - Next backend remains Chunk 16.
+- `docs/V2_BUILD_ACCEPTANCE_PLAN.md`
+  - Added Chunk 50 acceptance criteria.
+
+Code/database added:
+
+- `src/db/schema.ts`
+  - Added `researchTargets`
+  - Added `intelligenceItems`
+  - Added `intelligenceInsights`
+  - Added `intelligenceSuggestions`
+  - Added `experiments`
+  - Added `outputIntelligenceUsage`
+- `src/db/migrations/0002_intelligence_foundation.sql`
+  - Creates the six intelligence tables.
+  - Adds indexes for scope/status/type, suggestion priority, experiments, output usage, and pgvector summary embeddings.
+- `src/db/migrations/meta/_journal.json`
+  - Added the 0002 migration entry.
+- `src/lib/domain/intelligence.ts`
+  - Pure domain layer:
+    - intelligence scopes/statuses/types
+    - 16-agent registry
+    - research target builder
+    - intelligence item builder
+    - insight builder
+    - suggestion builder
+    - experiment builder
+    - freshness scoring
+    - task-specific retrieval/context plan builder
+    - approved-context selector with empty-state gap reporting
+- `src/lib/intelligence/index.ts`
+  - Service layer with injectable store:
+    - create/list research targets
+    - record/list intelligence items
+    - create insights
+    - create suggestions
+    - create experiments
+    - build approved intelligence context
+    - default Drizzle store
+    - audit events and approval creation for targets/suggestions
+- API routes:
+  - `GET/POST /api/intelligence/targets`
+  - `GET/POST /api/intelligence/items`
+  - `POST /api/intelligence/insights`
+  - `POST /api/intelligence/suggestions`
+  - `POST /api/intelligence/experiments`
+  - `POST /api/intelligence/context`
+
+Real vs empty:
+
+- Real now:
+  - Schema and migration exist.
+  - Manual/API entry points exist for targets/items/insights/suggestions/experiments/context.
+  - Research targets and Dreamer suggestions create approvals.
+  - Raw intelligence items can be stored without becoming trusted knowledge.
+  - Approved context retrieval excludes pending records and reports gaps.
+- Still empty/not built:
+  - Real competitor list is not populated.
+  - n8n inbound endpoints for competitor transcripts/stats are not wired yet.
+  - Specific researcher workers are not built yet.
+  - Social analytics, SEO/blog analytics, website analytics, VoC mining, attribution, and Dreamer worker loops still need their later chunks.
+  - Future workers must use this substrate instead of creating parallel stores.
+
+Verification:
+
+- TDD red run first:
+  - `npm run test -- tests/intelligence.test.ts tests/db-foundation.test.ts`
+  - Failed because `@/lib/domain/intelligence` and table exports/migrations did not exist.
+- Focused green runs:
+  - `npm run test -- tests/intelligence.test.ts tests/db-foundation.test.ts`
+  - 2 test files passed, 16 tests passed.
+- Typecheck:
+  - `npm run typecheck`
+  - Passed after fixing test audit callback return types.
+- DB migration:
+  - `docker compose up -d`
+  - `npm run db:migrate`
+  - Migration applied successfully on local pgvector Postgres.
+- Full verify:
+  - `npm run verify`
+  - Typecheck passed.
+  - Vitest passed: 23 test files, 159 tests.
+  - Next production build passed and listed the new `/api/intelligence/*` routes.
+- Seed:
+  - `npm run db:seed`
+  - `db_seed=ok`
+  - `ask_wobble_model=openai/gpt-4o-mini`
+  - `content_strategy_model=anthropic/claude-sonnet-4.5`
+
+Next backend:
+
+- Chunk 16 - Founder Content Tracks.
+- Important integration after Chunk 16/43:
+  - feed content track/Brain do-not-say and voice rules into the Content Excellence Gate.
+  - make Content Worker call the intelligence context builder once content knowledge/performance/competitor stores are populated enough.
+- Important integration after Chunk 18:
+  - n8n signed inbound webhooks should normalize competitor transcripts, social stats, website analytics, Search Console data, CRM/lead quality, and ad captures into `intelligence_items`.

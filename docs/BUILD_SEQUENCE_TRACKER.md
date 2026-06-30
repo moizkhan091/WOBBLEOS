@@ -15,7 +15,7 @@ Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SY
 
 The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use it when building researcher AIs, ingestion stores, performance loops, competitor transcript flows, and auto-pickup behavior.
 
-## Full master order (all 50 chunks, 00-49)
+## Full master order (all 51 chunks, 00-50)
 
 ### Phase 1 - Core spine + data layer (DONE)
 1. [x] Chunk 00 - Project Hygiene / docs / handoff (ongoing)
@@ -34,8 +34,9 @@ The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use i
 12. [x] Chunk 14 - Content Command Backend
 13. [x] Chunk 15 - Content Worker V1
 14. [x] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)
-15. [ ] Chunk 16 - Founder Content Tracks   <- NEXT BACKEND
-16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
+15. [x] Chunk 50 - Self-Improving Intelligence Foundation (data substrate, retrieval plans, Dreamer suggestions, research targets)
+16. [ ] Chunk 16 - Founder Content Tracks   <- NEXT BACKEND
+17. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
 Frontend checkpoint:
 
@@ -122,6 +123,7 @@ Frontend checkpoint:
 - Chunk 40 Invoice Builder: invoice templates, guided field capture, generated invoice files/PDFs, audit trail, approval/final status, and export/download.
 - Chunk 41 Presentation Maker Intake & Claude Design Bridge: client brief form/intake, Claude Design-ready brief generation, deck version tracking, asset references, and approval/export flow. This deepens Chunk 23 rather than replacing it.
 - Chunk 42 Business Docs Engine: reusable client reports, briefs, proposals, exports, and business docs built from approved Brain/client/context data.
+- Chunk 50 Self-Improving Intelligence Foundation: shared tables/domain/service/API for research targets, normalized intelligence items, insights, Dreamer suggestions, experiments, output-intelligence usage, task-specific context plans, freshness scoring, and empty-state-aware retrieval. Built before the individual researcher agents so every later module uses one substrate.
 
 ## Content and creative excellence rules
 

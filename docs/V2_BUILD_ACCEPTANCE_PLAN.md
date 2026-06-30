@@ -156,12 +156,67 @@ V2 includes:
 - Prompt/Agent Registry
 - WOBBLE company content track
 - Founder content tracks
+- Self-Improving Intelligence Foundation
 
-No major main module is currently missing. The main risk is missing second-level depth inside each module.
+No major main module is currently missing. The main risk is missing second-level depth inside each module and disconnected intelligence stores. Chunk 50 exists to prevent later researchers, SEO, social analytics, Dreamer, and client intelligence from inventing parallel data shapes.
 
 ---
 
 # Build Chunks
+
+## Chunk 50: Self-Improving Intelligence Foundation
+
+**Purpose:** Create the shared data substrate that makes WOBBLE OS a living intelligence system rather than a set of isolated tools.
+
+**Owns:**
+
+- research target config
+- normalized intelligence items
+- intelligence insights
+- Dreamer suggestions
+- experiments
+- output-to-intelligence usage tracking
+- freshness scoring
+- task-specific intelligence retrieval plans
+- empty-state-safe intelligence context
+
+**First successful build looks like:**
+
+- Founders can create a research target for a competitor, creator, keyword set, website, client account, or analytics connector.
+- Research targets start pending and create an approval request.
+- n8n or a manual API can record a competitor reel/post/transcript/stat as an `intelligence_item` without promoting it as trusted knowledge.
+- Agents can create insights and Dreamer suggestions with evidence links, confidence, priority, freshness, and approval state.
+- Content/blog/decision/offer/media/client workers can ask for an approved intelligence context by task and receive only approved, scoped, current records plus explicit gaps.
+- Empty state returns gaps instead of fake competitors, fake metrics, or invented assumptions.
+
+**Must not hardcode:**
+
+- competitor names
+- performance numbers
+- market trends
+- winning hooks
+- source trust
+- client-specific facts
+- suggestions as truth
+
+**Manual test:**
+
+- Create a research target through `/api/intelligence/targets`.
+- Record a competitor reel transcript through `/api/intelligence/items`.
+- Request `/api/intelligence/context` for `social_content`.
+- Confirm pending items are excluded until approved and gaps are reported.
+
+**Automated test:**
+
+- Domain tests verify approval defaults, freshness, context plans, empty-state gaps, and suggestion defaults.
+- Service tests verify target approval creation, raw item storage, approved context filtering, and suggestion approval creation.
+- Schema tests verify all intelligence tables exist in Drizzle and SQL migrations.
+
+**Done when:**
+
+- `npm run verify` passes.
+- Local migration applies on pgvector Postgres.
+- Handoff log records what is built and which future chunks consume it.
 
 ## Chunk 00: Project Hygiene And Shared Memory
 

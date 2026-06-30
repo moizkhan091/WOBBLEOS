@@ -42,6 +42,12 @@ const requiredTableExports = [
   "backupRuns",
   "providerConnections",
   "promptSkills",
+  "researchTargets",
+  "intelligenceItems",
+  "intelligenceInsights",
+  "intelligenceSuggestions",
+  "experiments",
+  "outputIntelligenceUsage",
 ] as const;
 
 const requiredSqlTables = [
@@ -76,6 +82,15 @@ const requiredSqlTables = [
   "prompt_skills",
 ] as const;
 
+const requiredIntelligenceSqlTables = [
+  "research_targets",
+  "intelligence_items",
+  "intelligence_insights",
+  "intelligence_suggestions",
+  "experiments",
+  "output_intelligence_usage",
+] as const;
+
 describe("database foundation", () => {
   it("exports every foundational V2 table from the Drizzle schema", () => {
     for (const tableName of requiredTableExports) {
@@ -98,6 +113,17 @@ describe("database foundation", () => {
 
     for (const tableName of requiredSqlTables) {
       expect(migration, `${tableName} is missing from the initial migration`).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
+    }
+  });
+
+  it("creates every intelligence foundation table in SQL migrations", () => {
+    const migrations = [
+      readFileSync(join(process.cwd(), "src/db/migrations/0000_init_pgvector.sql"), "utf8"),
+      readFileSync(join(process.cwd(), "src/db/migrations/0002_intelligence_foundation.sql"), "utf8"),
+    ].join("\n");
+
+    for (const tableName of requiredIntelligenceSqlTables) {
+      expect(migrations, `${tableName} is missing from SQL migrations`).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
     }
   });
 

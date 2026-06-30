@@ -15,6 +15,13 @@
       "when": 1782807000000,
       "tag": "0001_content_command_tracks",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782840000000,
+      "tag": "0002_intelligence_foundation",
+      "breakpoints": true
     }
   ]
 }
