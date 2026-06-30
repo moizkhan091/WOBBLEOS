@@ -1143,3 +1143,107 @@ Next recommended action:
   - Packet detail reads real packet/version/quality/evidence.
   - Generate button triggers `/api/content/generate`.
 - Next backend chunk after UI-C1: Chunk 17 Quality Gate & Do-Not-Say.
+
+---
+
+## 2026-06-30 - Codex - Chunk 15 OpenRouter Live Check + Content Quality Lesson
+
+Context:
+
+- Moiz asked to test Chunk 15 with OpenRouter, not only mocked tests.
+- Live testing proved the provider/packet/cost/audit path works, but also exposed the key product truth: a working content pipe is not the same as world-class WOBBLE content.
+- Cheap `openai/gpt-4o-mini` successfully connected but repeatedly produced generic, mid content that self-failed the quality gate. This is good evidence that quality gate protection works, but it is not good enough as the default content strategy model.
+- A stronger OpenRouter model, `anthropic/claude-sonnet-4.5`, produced passing packets and approvals through the same worker path.
+
+Files changed after live testing:
+
+- `src/scripts/live-content-check.ts`
+  - New live check script.
+  - Seeds a tiny approved source + chunk for verification.
+  - Runs the real `runContentGenerationJob(...)` path.
+  - Verifies:
+    - successful `model_runs` row
+    - `content_worker.completed` audit row
+    - stored content packets
+    - stored quality reviews
+    - passing packets create approvals
+    - failed packets do not create approvals
+- `package.json`
+  - Added `npm run content:live-check`.
+- `src/lib/domain/content-worker.ts`
+  - Tightened quality prompt instructions after real OpenRouter output showed generic hooks/captions.
+  - Clarified the self-review rubric, especially `aggressionControl`.
+  - Added parser normalization so blank captions on text posts fall back to main copy/hook instead of killing an otherwise valid provider response.
+- `tests/content-worker.test.ts`
+  - Added regression test for blank-caption provider responses.
+- `.env.example`
+  - Changed default `CONTENT_STRATEGY_MODEL` from `openai/gpt-4o-mini` to `anthropic/claude-sonnet-4.5`.
+- `src/db/seed-runner.ts`
+  - Changed seeded default `content_strategy` model to `anthropic/claude-sonnet-4.5`, still editable via env/settings.
+
+Live verification:
+
+- `npm run content:live-check` with default mini connected but produced failed drafts:
+  - provider: `openrouter`
+  - model: `openai/gpt-4o-mini`
+  - estimated costs observed around `$0.000455`, `$0.00048`, `$0.000888`
+  - result: packets stored, reviews stored, no approvals because quality failed.
+- `CONTENT_STRATEGY_MODEL=anthropic/claude-sonnet-4.5 npm run content:live-check` passed:
+  - provider: `openrouter`
+  - model: `anthropic/claude-sonnet-4.5`
+  - estimated_cost: `0.00892`
+  - packets_created: `3`
+  - passed_packets: `3`
+  - approvals_created: `3`
+
+Important lesson:
+
+- Do not solve content excellence by overstuffing Chunk 15. Chunk 15 is the pipe.
+- World-class output needs a dedicated excellence layer:
+  - content framework knowledge base
+  - hook/caption/carousel/reel/pov examples
+  - competitor and top-creator pattern research
+  - social performance feedback
+  - design reference library
+  - reference selection, not reference blending
+  - multimodal creative QA
+  - rewrite/regenerate loops before approvals
+
+Next planning note:
+
+- Chunk 17 should be expanded from a basic do-not-say gate into **Content Excellence Gate**.
+- Media/Design chunks must include a **Creative Reference Library** where each design reference is classified by use case, format, platform, visual style, and approval status.
+- For image/static/carousel generation, the worker must select one dominant reference or one carousel-reference set per output instead of blending all references into a generic hybrid.
+
+---
+
+## 2026-06-30 - Codex - Content + Creative Excellence Scope Locked
+
+Context:
+
+- Moiz clarified that WOBBLE OS must create elite content and elite visuals, not merely functional drafts.
+- Specific founder requirement: for design references, the system should not feed every reference into one model call and create a generic hybrid. Static outputs should select one dominant reference; carousel outputs should select one approved carousel reference set.
+- Moiz also wants future design-hunter/research AI that discovers design references, sends them for approval, and only then lets production workers use them.
+
+Files changed:
+
+- `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`
+  - New canonical doctrine for world-class content and visual generation.
+  - Defines writing excellence architecture, design reference architecture, reference selection rule, design research AI, provider-adapter direction, feedback loops, and hard rules.
+- `docs/V2_BUILD_ACCEPTANCE_PLAN.md`
+  - Chunk 17 renamed/expanded to Content Excellence Gate And Do-Not-Say Rules.
+  - Chunk 21 expanded with Creative Reference Library requirements.
+  - Chunk 22 expanded with reference-conditioned generation and multimodal creative QA requirements.
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+  - Linked `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`.
+  - Renamed Chunk 17/21/22 labels to reflect creative excellence scope.
+
+OpenAI/Image provider note:
+
+- Official OpenAI Image API docs were checked on 2026-06-30. They list `gpt-image-2` for image generation. Use this through a provider adapter with budget approval, cost logging, and reference-selection rules; do not hardcode it as the only provider route.
+
+Important implementation rule:
+
+- Do not solve "world-class content" by making Chunk 15 a giant prompt.
+- Keep Chunk 15 as the pipe.
+- Build excellence in Chunk 17 (writing QA/rewrite loops), Chunk 21 (reference library), Chunk 22 (reference-conditioned image/media worker), Chunk 34 (editable skills/prompts), Chunk 36 (Dreaming Engine), and Chunk 38 (social performance feedback).

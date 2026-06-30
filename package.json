@@ -18,7 +18,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/db/seed-runner.ts",
-    "ask:live-check": "tsx src/scripts/live-ask-check.ts"
+    "ask:live-check": "tsx src/scripts/live-ask-check.ts",
+    "content:live-check": "tsx src/scripts/live-content-check.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

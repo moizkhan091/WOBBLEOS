@@ -11,6 +11,8 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 
 Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not an end-only task and not a pre-backend task. The rule is: backend capability -> tested API/job/approval flow -> frontend wiring checkpoint -> next backend cluster.
 
+Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`. Chunk 15 is the pipe; Chunk 17/21/22/34/36/38 make the output elite.
+
 ## Full master order (all 43 chunks, 00-42)
 
 ### Phase 1 - Core spine + data layer (DONE)
@@ -29,7 +31,7 @@ Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not 
 ### Phase 2 - Content loop
 12. [x] Chunk 14 - Content Command Backend
 13. [x] Chunk 15 - Content Worker V1
-14. [ ] Chunk 17 - Quality Gate & Do-Not-Say (pairs with the content worker)              <- NEXT BACKEND
+14. [ ] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)              <- NEXT BACKEND
 15. [ ] Chunk 16 - Founder Content Tracks
 16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
@@ -51,8 +53,8 @@ Frontend checkpoint:
 ### Phase 4 - Cadence, media, decisions, clients
 21. [ ] Chunk 19 - Automations Registry (scheduling/cadence)
 22. [ ] Chunk 20 - Workers Health Page
-23. [ ] Chunk 21 - Media Studio Backend
-24. [ ] Chunk 22 - Media / Video Worker
+23. [ ] Chunk 21 - Media Studio Backend + Creative Reference Library
+24. [ ] Chunk 22 - Media / Video Worker + Reference-Conditioned Generation
 25. [ ] Chunk 23 - Presentation Maker
 26. [ ] Chunk 24 - Decision Room
 27. [ ] Chunk 25 - Offer Lab
@@ -111,6 +113,14 @@ Frontend checkpoint:
 - Chunk 40 Invoice Builder: invoice templates, guided field capture, generated invoice files/PDFs, audit trail, approval/final status, and export/download.
 - Chunk 41 Presentation Maker Intake & Claude Design Bridge: client brief form/intake, Claude Design-ready brief generation, deck version tracking, asset references, and approval/export flow. This deepens Chunk 23 rather than replacing it.
 - Chunk 42 Business Docs Engine: reusable client reports, briefs, proposals, exports, and business docs built from approved Brain/client/context data.
+
+## Content and creative excellence rules
+
+- Chunk 15 is the content pipe: it generates, stores, reviews, and approval-gates packets. It must stay stable and not become a giant hardcoded prompt blob.
+- Chunk 17 is the writing excellence layer: weak-hook detection, anti-fluff scoring, CTA strength, proof strength, WOBBLE voice fit, and targeted rewrite instructions.
+- Chunk 21 stores approved creative references. References must have metadata: platform, format, style, use case, approval status, brand fit, and source.
+- Chunk 22 uses references carefully: static outputs choose one dominant reference; carousel outputs choose one approved carousel reference set. Do not feed every reference into one image job by default.
+- Chunk 36/38/12/13 feed the system over time: content research, competitor patterns, creator patterns, social performance, and founder-approved updates. Nothing updates Core Brain or production references without approval.
 
 ## Notes
 

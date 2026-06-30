@@ -856,23 +856,31 @@ No major main module is currently missing. The main risk is missing second-level
 
 - Founder content exists as track/profile, not new system.
 
-## Chunk 17: Quality Gate And Do-Not-Say Rules
+## Chunk 17: Content Excellence Gate And Do-Not-Say Rules
 
-**Purpose:** Keep WOBBLE content sharp, useful, and brand-safe.
+**Purpose:** Keep WOBBLE content sharp, useful, original, brand-safe, and actually approval-worthy. This is the serious content-quality layer above Chunk 15's generation pipe.
 
 **Owns:**
 
 - quality_reviews
 - banned phrases
 - weak words
+- weak hooks
+- generic AI/business fluff detection
+- caption and CTA strength checks
+- WOBBLE voice fit
 - proof checks
 - aggression control
+- rewrite/regenerate recommendations
 
 **First successful build looks like:**
 
 - Every content packet has quality scores.
 - Failing drafts do not enter approval queue.
 - Do-not-say rules are editable in Brain/Settings.
+- The gate explains why a draft is weak: generic hook, weak CTA, unsupported claim, bad WOBBLE fit, too salesy, too vague, poor proof, or bad aggression control.
+- The gate can recommend targeted revision instructions for the content worker instead of only saying "fail".
+- Hook/caption/CTA rules are loaded from approved content skills/Brain/settings when available, not buried permanently in code.
 
 **Quality dimensions:**
 
@@ -883,26 +891,39 @@ No major main module is currently missing. The main risk is missing second-level
 - aggression control
 - proof strength
 - post-worthiness
+- hook strength
+- CTA strength
+- specificity
+- anti-fluff score
 
 **Must not hardcode:**
 
 - permanent phrase list only in code
 - blind pass/fail without reasons
+- one fixed hook formula
+- one permanent definition of "good content"
+- fake high scores to force approvals
 
 **Manual test:**
 
 - Add banned phrase.
 - Generate or edit content with that phrase.
 - Confirm gate flags it.
+- Add a new approved hook/caption rule to Brain/Skill Registry.
+- Run content generation.
+- Confirm quality feedback changes without code edits.
 
 **Automated test:**
 
 - Rule matcher flags banned phrase.
 - Score threshold blocks approval creation.
+- Generic hook detector flags tired openings such as "Tired of..." when not explicitly allowed.
+- Gate returns revision instructions with evidence, not just a boolean.
+- Passing draft creates/keeps approval eligibility; failing draft remains outside approval queue.
 
 **Done when:**
 
-- Quality gate visibly explains why a draft passed or failed.
+- Quality gate visibly explains why a draft passed or failed and can feed concrete revision instructions back into the content worker.
 
 ## Chunk 18: n8n Signed Handoff
 
@@ -1028,6 +1049,9 @@ No major main module is currently missing. The main risk is missing second-level
 - prompts
 - provider metadata
 - approvals
+- creative reference library
+- reference metadata and approval status
+- design directions linked to content packets
 
 **First successful build looks like:**
 
@@ -1035,25 +1059,35 @@ No major main module is currently missing. The main risk is missing second-level
 - Asset metadata saved.
 - Clip approval item can be created.
 - Media Studio shows real jobs/assets.
+- A founder can add/upload a design reference.
+- The reference is classified by platform, format, style, use case, brand fit, and approval status.
+- Media jobs can link to one selected design reference or one selected carousel reference set.
 
 **Must not hardcode:**
 
 - provider-only assumptions
 - final media status without generated asset metadata
+- blending every available reference into one generic hybrid
+- treating unapproved references as production-ready
 
 **Manual test:**
 
 - Create mock media job.
 - Upload or generate placeholder asset.
 - Approve/reject clip.
+- Add 5 static-post design references.
+- Create one static media brief and confirm the system selects one dominant reference, not all five.
 
 **Automated test:**
 
 - Media job requires provider, prompt, status, linked module.
+- Reference selector returns one dominant reference for static output.
+- Carousel output can select one approved carousel-reference set.
+- Blocked/unapproved references are excluded from production selection.
 
 **Done when:**
 
-- Media Studio has real data model and approval flow.
+- Media Studio has real data model, approval flow, and approved creative-reference selection.
 
 ## Chunk 22: Media / Video Worker
 
@@ -1063,9 +1097,12 @@ No major main module is currently missing. The main risk is missing second-level
 
 - provider calls
 - fal/Seedance-style adapter
+- GPT Image/OpenAI image adapter where configured
 - HyperFrames/FFmpeg render jobs
 - clip review
 - final MP4 approval
+- reference-conditioned prompt building
+- multimodal creative QA
 
 **First successful build looks like:**
 
@@ -1073,22 +1110,31 @@ No major main module is currently missing. The main risk is missing second-level
 - Expensive media job requires budget approval.
 - Worker can call mock provider or real provider when keys exist.
 - Clips are stored and reviewed before final stitch.
+- Static/carousel image jobs can use one selected design reference or carousel reference set.
+- The worker records which reference was used and why.
+- Generated image/media output is quality-scored before approval.
 
 **Must not hardcode:**
 
 - API keys
 - one provider as permanent only route
 - FFmpeg in Next.js API route
+- one image provider as permanent route
+- using all references at once by default
 
 **Manual test:**
 
 - Trigger media job with mock provider.
 - Confirm worker produces asset record and approval item.
+- Trigger a static image job with 3 approved references.
+- Confirm exactly one reference was selected and linked to the generated asset.
 
 **Automated test:**
 
 - Budget guard blocks expensive job without approval.
 - Video worker handler rejects missing prompt/reference.
+- Reference-conditioned media job stores selected_reference_id or selected_reference_set_id.
+- Expensive image/video jobs require budget approval.
 
 **Done when:**
 

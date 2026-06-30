@@ -209,6 +209,15 @@ describe("content worker domain", () => {
     expect(parsed.packets[0].sourceIdsUsed).toEqual(["source_aios_course"]);
     expect(() => parseContentWorkerModelOutput("write a nice post")).toThrowError(/JSON/);
   });
+
+  it("normalizes blank text-post captions to main copy instead of killing a provider response", () => {
+    const raw = JSON.parse(providerJson);
+    raw.packets[0].caption = "";
+
+    const parsed = parseContentWorkerModelOutput(JSON.stringify(raw));
+
+    expect(parsed.packets[0].caption).toBe(parsed.packets[0].mainCopy);
+  });
 });
 
 describe("content worker service", () => {
