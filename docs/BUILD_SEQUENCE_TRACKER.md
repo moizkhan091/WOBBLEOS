@@ -9,6 +9,8 @@ Full acceptance criteria for every chunk live in `docs/V2_BUILD_ACCEPTANCE_PLAN.
 
 Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- NEXT` marks the next chunk.
 
+Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not an end-only task and not a pre-backend task. The rule is: backend capability -> tested API/job/approval flow -> frontend wiring checkpoint -> next backend cluster.
+
 ## Full master order (all 43 chunks, 00-42)
 
 ### Phase 1 - Core spine + data layer (DONE)
@@ -31,11 +33,20 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 15. [ ] Chunk 16 - Founder Content Tracks
 16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
+Frontend checkpoint:
+
+- After Chunk 15: run UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` and wire Content Command to real packets/tracks/generation.
+- After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.
+
 ### Phase 3 - Registries + intelligence inputs
 17. [ ] Chunk 34 - Prompt/Skill Registry
 18. [ ] Chunk 35 - Connections Registry
 19. [ ] Chunk 12 - Research Radar
 20. [ ] Chunk 13 - Learning Engine
+
+Frontend checkpoint:
+
+- After Chunks 34, 35, 12, and 13: run UI-I1 from `docs/FRONTEND_WIRING_PLAN.md`.
 
 ### Phase 4 - Cadence, media, decisions, clients
 21. [ ] Chunk 19 - Automations Registry (scheduling/cadence)
@@ -47,6 +58,10 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 27. [ ] Chunk 25 - Offer Lab
 28. [ ] Chunk 26 - Client AIOS Lab
 
+Frontend checkpoint:
+
+- Wire each Phase 4 module shortly after its backend/worker is verified; do not wait until the end. See UI-M1 in `docs/FRONTEND_WIRING_PLAN.md`.
+
 ### Phase 5 - Operations + the self-improving brain
 29. [ ] Chunk 27 - Backup & Restore
 30. [ ] Chunk 28 - Settings, Budgets & Kill Switches
@@ -54,11 +69,19 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 32. [ ] Chunk 36 - AI OS Auditor / WOBBLE Dreaming Engine (self-improving intelligence)
 33. [ ] Chunk 02 - Shared Auth & Founder Attribution (MUST be done before VPS deploy)
 
+Frontend checkpoint:
+
+- After Chunks 27, 28, and 29: run UI-O1 from `docs/FRONTEND_WIRING_PLAN.md`.
+
 ### Phase 6 - End-to-end proofs + hardening (last)
 34. [ ] Chunk 30 - End-to-End WOBBLE Content Flow
 35. [ ] Chunk 31 - End-to-End Research-to-Decision Flow
 36. [ ] Chunk 32 - End-to-End Media Flow
 37. [ ] Chunk 33 - Health, Recovery & Failure States
+
+Frontend checkpoint:
+
+- Run UI-FINAL from `docs/FRONTEND_WIRING_PLAN.md`. This is final polish, not the first frontend pass.
 
 ### Phase 7 - Growth, docs, and business operations expansion
 38. [ ] Chunk 37 - SEO & Blog Growth Engine
@@ -67,6 +90,10 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 41. [ ] Chunk 40 - Invoice Builder
 42. [ ] Chunk 41 - Presentation Maker Intake & Claude Design Bridge
 43. [ ] Chunk 42 - Business Docs Engine (reports, briefs, proposals, exports)
+
+Frontend checkpoint:
+
+- Wire each growth module after its backend is complete. See UI-G1 in `docs/FRONTEND_WIRING_PLAN.md`.
 
 ## Why the order looks non-numeric
 

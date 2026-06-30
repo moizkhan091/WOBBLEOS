@@ -998,3 +998,51 @@ Next recommended action:
 - It should create content packets through `createContentPacket`, not direct DB writes.
 - Passing packets enter approvals; failed drafts remain saved outside approvals with reasons.
 - After Chunk 15 is real, flip Ask WOBBLE `content_generation` from `planned` to an available queued content job route.
+
+---
+
+## 2026-06-30 - Codex - Frontend Wiring Timing Locked
+
+Context:
+
+- Moiz asked for one clear decision on when the Claude Design frontend should be wired, because "frontend at the end" vs "after Chunk 15" sounded contradictory.
+- Decision: frontend is **not** an end-only task and **not** a pre-backend task. It is wired at mandatory checkpoints after real backend/API/job loops exist.
+
+Files changed:
+
+- `docs/FRONTEND_WIRING_PLAN.md`
+  - New canonical frontend wiring plan.
+  - Lists the existing Claude Design assets:
+    - `dashboard-interface-design-brief/project/WOBBLE OS.dc.html`
+    - `dashboard-interface-design-brief/project/WOBBLE OS-print-qbwnpk.dc.html`
+    - `dashboard-interface-design-brief/project/support.js`
+    - `dashboard-interface-design-brief/project/uploads/`
+    - `Dashboard Interface Design Brief-handoff (1).zip`
+  - Defines wiring checkpoints UI-C1, UI-C2, UI-I1, UI-M1, UI-O1, UI-G1, and UI-FINAL.
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+  - Linked the frontend wiring plan.
+  - Added frontend checkpoint notes under each phase.
+
+Locked rule:
+
+```text
+backend capability -> tested API/job/approval flow -> frontend wiring checkpoint -> next backend cluster
+```
+
+Current frontend decision:
+
+- Do not wire Content Command before Chunk 15.
+- Build Chunk 15 next.
+- Immediately after Chunk 15, run UI-C1:
+  - Content Command board reads real packets.
+  - Packet detail reads real packet detail/version/quality/evidence data.
+  - Track filter reads real content tracks.
+  - Generate button triggers the real content worker job/API.
+
+Verification:
+
+- Docs-only change; no runtime code changed.
+
+Next recommended action:
+
+- Continue with Chunk 15 Content Worker V1.
