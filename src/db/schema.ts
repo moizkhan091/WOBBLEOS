@@ -222,8 +222,27 @@ export const approvalActions = pgTable("approval_actions", {
   updatedAt: updatedAt(),
 });
 
+export const contentTracks = pgTable("content_tracks", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  label: varchar("label", { length: 160 }).notNull(),
+  ownerType: varchar("owner_type", { length: 64 }).notNull().default("company"),
+  voiceProfile: jsonb("voice_profile").$type<Record<string, unknown>>().notNull().default({}),
+  goals: jsonb("goals").$type<string[]>().notNull().default([]),
+  allowedTopics: jsonb("allowed_topics").$type<string[]>().notNull().default([]),
+  bannedPhrases: jsonb("banned_phrases").$type<string[]>().notNull().default([]),
+  aggressionRange: jsonb("aggression_range").$type<{ min: number; max: number }>().notNull().default({ min: 0, max: 10 }),
+  platformPriorities: jsonb("platform_priorities").$type<string[]>().notNull().default([]),
+  approvalRequired: boolean("approval_required").notNull().default(true),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
 export const contentPackets = pgTable("content_packets", {
   id: id(),
+  contentTrackId: text("content_track_id").notNull().default("track_wobble_company"),
   platform: varchar("platform", { length: 80 }).notNull(),
   format: varchar("format", { length: 80 }).notNull(),
   objective: text("objective").notNull(),
@@ -244,6 +263,7 @@ export const contentPackets = pgTable("content_packets", {
   qualityStatus: varchar("quality_status", { length: 32 }).notNull().default("not_reviewed"),
   approvalStatus: varchar("approval_status", { length: 32 }).notNull().default("draft"),
   n8nHandoffStatus: varchar("n8n_handoff_status", { length: 32 }).notNull().default("not_sent"),
+  createdBy: varchar("created_by", { length: 120 }).notNull().default("system"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

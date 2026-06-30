@@ -80,6 +80,45 @@ export const initialApprovalActions = [
   { id: "approval_action_mark_final", slug: "mark_final", label: "Mark as Final", description: "Mark the item as the final approved version.", riskLevel: "normal", requiresConfirmation: false },
 ] as const;
 
+export const initialContentTracks = [
+  {
+    id: "track_wobble_company",
+    slug: "wobble_company",
+    label: "WOBBLE Company",
+    ownerType: "company",
+    voiceProfile: {
+      tone: "teach-first, sharp, premium, rebellious, anti-agency dependency",
+      audience: "Pakistani owner-led growth businesses",
+    },
+    goals: ["AI OS education", "WOBBLE authority", "anti-agency dependency positioning"],
+    allowedTopics: ["AI operating systems", "AI employees", "automation", "agency dependency", "Pakistan business AI adoption"],
+    bannedPhrases: ["generic AI agency", "fully replace your team", "automate everything"],
+    aggressionRange: { min: 2, max: 8 },
+    platformPriorities: ["linkedin", "instagram", "x"],
+    approvalRequired: true,
+    status: "active",
+    metadata: { primary: true },
+  },
+  {
+    id: "track_moiz_founder",
+    slug: "moiz_founder_pov",
+    label: "Moiz Founder POV",
+    ownerType: "founder",
+    voiceProfile: {
+      tone: "founder-led, direct, educational, operator POV",
+      audience: "business owners, founders, operators",
+    },
+    goals: ["founder authority", "education", "market point of view"],
+    allowedTopics: ["AI adoption", "WOBBLE builds", "business operating systems", "agency dependency"],
+    bannedPhrases: ["guru", "easy money", "guaranteed results"],
+    aggressionRange: { min: 3, max: 9 },
+    platformPriorities: ["linkedin", "x", "instagram"],
+    approvalRequired: true,
+    status: "active",
+    metadata: { primaryFounder: "Moiz" },
+  },
+] as const;
+
 export const initialWobbleBrainRecords = [
   {
     id: "brain_about_wobble",

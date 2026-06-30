@@ -5,6 +5,7 @@ import { closeDb, getDb, schema } from "@/db";
 import {
   initialApprovalActions,
   initialBudgetCaps,
+  initialContentTracks,
   initialFounderProfiles,
   initialProviderConnections,
   initialSourceTrustLevels,
@@ -60,6 +61,25 @@ export async function seedDatabase() {
     .values(initialApprovalActions.map((row) => ({ ...row })))
     .onConflictDoUpdate({
       target: schema.approvalActions.id,
+      set: { updatedAt: now },
+    });
+
+  await db
+    .insert(schema.contentTracks)
+    .values(
+      initialContentTracks.map((row) => ({
+        ...row,
+        voiceProfile: { ...row.voiceProfile },
+        goals: [...row.goals],
+        allowedTopics: [...row.allowedTopics],
+        bannedPhrases: [...row.bannedPhrases],
+        aggressionRange: { ...row.aggressionRange },
+        platformPriorities: [...row.platformPriorities],
+        metadata: { ...row.metadata },
+      })),
+    )
+    .onConflictDoUpdate({
+      target: schema.contentTracks.id,
       set: { updatedAt: now },
     });
 

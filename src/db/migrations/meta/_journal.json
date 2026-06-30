@@ -8,6 +8,13 @@
       "when": 1782777600000,
       "tag": "0000_init_pgvector",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782807000000,
+      "tag": "0001_content_command_tracks",
+      "breakpoints": true
     }
   ]
 }

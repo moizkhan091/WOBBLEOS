@@ -25,8 +25,8 @@ Legend: `[x]` done & CI-green · `[~]` in progress · `[ ]` not started · `<- N
 11. [x] Chunk 11 - Ask WOBBLE V1
 
 ### Phase 2 - Content loop
-12. [ ] Chunk 14 - Content Command Backend        <- NEXT
-13. [ ] Chunk 15 - Content Worker V1
+12. [x] Chunk 14 - Content Command Backend
+13. [ ] Chunk 15 - Content Worker V1              <- NEXT
 14. [ ] Chunk 17 - Quality Gate & Do-Not-Say (pairs with the content worker)
 15. [ ] Chunk 16 - Founder Content Tracks
 16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)

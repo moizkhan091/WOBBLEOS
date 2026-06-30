@@ -907,3 +907,94 @@ Implications for future chunks:
 - Successes and provider-attempt failures must be recorded when a provider call is attempted.
 - Cost records are long-term operational records, not temporary logs.
 - Monthly, weekly, daily, provider, module, and job-level totals must be derivable from stored rows.
+
+---
+
+## 2026-06-30 - Codex - Chunk 14 Content Command Backend Complete
+
+Context:
+
+- Moiz confirmed the real build folder is `C:\Wobble OS`. The OneDrive `WOBBLE` folder is an old/uncommitted repo and must not be used for this OS build.
+- Chunk 14 was built after a TDD red test. The first focused test failed correctly because `@/lib/domain/content-command` did not exist yet.
+- A temporary Vitest `EPERM` was caused by the non-escalated sandbox being unable to write Vite temp files under `C:\Wobble OS`; rerunning verification with explicit repo permission resolved it.
+
+Files changed:
+
+- `src/db/schema.ts`
+  - Added `contentTracks`.
+  - Added `contentTrackId` and `createdBy` to `contentPackets`.
+- `src/db/migrations/0001_content_command_tracks.sql`
+  - Creates `content_tracks`.
+  - Adds/backfills `content_packets.content_track_id`.
+  - Adds `content_packets.created_by`.
+- `src/db/migrations/meta/_journal.json`
+  - Added `0001_content_command_tracks`.
+- `src/db/seed.ts`
+  - Added seed content tracks: `track_wobble_company` and `track_moiz_founder`.
+- `src/db/seed-runner.ts`
+  - Seeds content tracks idempotently.
+- `src/lib/domain/content-command.ts`
+  - Pure domain builders/validation for content tracks, content packets, versions, and quality reviews.
+  - Enforces serious/researched claim evidence: source IDs and evidence summary.
+  - Enforces hook and body/slide copy requirements.
+  - Derives `qualityStatus` from self-review gate.
+- `src/lib/content/index.ts`
+  - Content Command service with injectable store.
+  - Supports create/list tracks, create/list/detail packets, create versions, quality reviews, approval-ready flow, and audit events.
+  - Passing packets can create `content_packet` approvals; failing drafts stay out of approvals.
+- `src/app/api/content/tracks/route.ts`
+  - `GET`/`POST` tracks.
+- `src/app/api/content/packets/route.ts`
+  - `GET`/`POST` packets.
+- `src/app/api/content/packets/[id]/route.ts`
+  - `GET` packet detail.
+- `src/app/api/content/packets/[id]/versions/route.ts`
+  - `POST` packet version.
+- `tests/content-command.test.ts`
+  - 8 tests covering tracks, evidence validation, copy validation, packet/version/review row builders, approval-ready packet flow, failed-draft behavior, board/detail reads, and version updates.
+- `docs/BUILD_SEQUENCE_TRACKER.md`
+  - Chunk 14 marked done; Chunk 15 is NEXT.
+
+Real vs not yet:
+
+- Real:
+  - Database schema and migration for content tracks/packet attribution.
+  - Seeded WOBBLE Company + Moiz Founder POV tracks.
+  - Content Packet backend create/list/detail/version storage.
+  - Quality review row creation.
+  - Approval creation for passing approval-requested packets.
+  - Failed drafts saved but not sent to approvals.
+  - Audit events for track creation, packet creation, approval skip, and version creation.
+  - Production build exposes `/api/content/tracks`, `/api/content/packets`, `/api/content/packets/[id]`, and `/api/content/packets/[id]/versions`.
+- Not yet:
+  - Chunk 15 content worker does not generate AI content yet.
+  - Ask WOBBLE still has `content_generation` as planned until Chunk 15 registers a real content job handler.
+  - Chunk 17 full do-not-say/quality gate module is still pending; Chunk 14 only stores self-review scores and blocks failed drafts from approvals.
+  - Frontend Content Command board still needs UI wiring to these APIs.
+
+Verification:
+
+- `npm run test -- tests/content-command.test.ts` initially failed correctly before implementation because the content command modules were missing.
+- `npm run test -- tests/content-command.test.ts` passed after implementation: 8/8.
+- `npm run typecheck` passed.
+- `npm run test` passed: 17 files, 113 tests.
+- `npm run db:migrate` passed against local Postgres.
+- `npm run db:seed` passed and seeded content tracks.
+- `npm run verify` passed: typecheck + 113 tests + Next build.
+
+Schema-key check:
+
+- Drizzle `.values({...})`/`.set({...})` keys were checked against `src/db/schema.ts` property names for:
+  - `contentTracks`
+  - `contentPackets`
+  - `contentVersions`
+  - `qualityReviews`
+  - `approvals` via existing `createApproval`
+
+Next recommended action:
+
+- Build Chunk 15 Content Worker V1.
+- It should load WOBBLE Brain, do-not-say basics, approved sources, relevant memory, content track settings, and provider role `content_strategy`.
+- It should create content packets through `createContentPacket`, not direct DB writes.
+- Passing packets enter approvals; failed drafts remain saved outside approvals with reasons.
+- After Chunk 15 is real, flip Ask WOBBLE `content_generation` from `planned` to an available queued content job route.
