@@ -27,6 +27,7 @@ import {
   type ContentWorkerSourceRef,
   type ParsedContentGenerationRequest,
 } from "@/lib/domain/content-worker";
+import { gradeContentExcellence, type ContentDraft, type ExcellenceRules } from "@/lib/domain/content-excellence";
 
 export interface RunProviderInput {
   role: string;
@@ -44,6 +45,12 @@ export interface ContentGenerationDeps {
   retrieveMemory?: (query: string, request: ParsedContentGenerationRequest) => Promise<ContentWorkerMemoryChunk[]>;
   retrieveSources?: (request: ParsedContentGenerationRequest) => Promise<ContentWorkerSourceRef[]>;
   runProvider?: (input: RunProviderInput) => Promise<{ text: string; run: { id: string } }>;
+  /**
+   * Chunk 17 objective Content Excellence Gate. When provided, a draft must pass
+   * it to be enqueued for approval. Default (undefined) preserves prior behavior
+   * so existing callers/tests are unaffected; the live job handler enables it.
+   */
+  excellenceGate?: (draft: ContentDraft, rules?: Partial<ExcellenceRules>) => { passed: boolean };
   createPacket?: (input: CreateContentPacketServiceInput) => Promise<ContentPacketCreationResult>;
   enqueueJob?: (input: EnqueueJobInput) => Promise<ContentGenerationEnqueueResult>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -159,12 +166,22 @@ export async function runContentGenerationJob(
     const approvalIds: string[] = [];
     let failedDrafts = 0;
 
+    // Data-driven (rule #3 auto-pickup): the gate's banned/do-not-say list comes
+    // from the founder-editable track, NOT hardcoded. Add a phrase to the track
+    // and the very next run enforces it with no code change.
+    const gateRules: Partial<ExcellenceRules> = { bannedPhrases: track.bannedPhrases ?? [] };
+
     for (const candidate of candidates) {
+      // Chunk 17: the objective Content Excellence Gate decides approval
+      // eligibility. Default (no gate dep) keeps prior behavior; the live job
+      // handler enables it so weak/blocked drafts are still stored but NEVER
+      // enqueued for approval.
+      const gatePassed = deps.excellenceGate ? deps.excellenceGate(toExcellenceDraft(candidate), gateRules).passed : true;
       const result = await createPacket({
         ...candidate,
         contentTrackId: track.id,
         createdBy: parsed.requestedBy,
-        requestApproval: true,
+        requestApproval: gatePassed,
       });
       packetIds.push(result.packet.id);
       if (result.approval) approvalIds.push(result.approval.id);
@@ -215,8 +232,36 @@ export async function runContentGenerationJob(
 }
 
 export async function runContentGenerateJobHandler(job: JobRow): Promise<Record<string, unknown>> {
-  const result = await runContentGenerationJob(job.payload as ContentGenerationRequest);
+  // Production path: enforce the objective Content Excellence Gate so weak or
+  // blocked drafts never reach the founder approval queue.
+  const result = await runContentGenerationJob(job.payload as ContentGenerationRequest, {
+    excellenceGate: (draft, rules) => ({ passed: gradeContentExcellence(draft, rules).passed }),
+  });
   return { ...result };
+}
+
+/** Map a generated content candidate into the Excellence Gate's draft shape (defensive). */
+function toExcellenceDraft(input: unknown): ContentDraft {
+  const c = (input ?? {}) as Record<string, unknown>;
+  const slides = Array.isArray(c.carouselSlides)
+    ? (c.carouselSlides as unknown[]).map((s) => (typeof s === "string" ? s : JSON.stringify(s)))
+    : undefined;
+  const sourceIds = Array.isArray(c.sourceIdsUsed) ? (c.sourceIdsUsed as unknown[]) : [];
+  const evidence = typeof c.evidenceSummary === "string" ? c.evidenceSummary : "";
+  const risk = c.claimRiskLevel;
+  return {
+    hook: typeof c.hook === "string" ? c.hook : "",
+    mainCopy: typeof c.mainCopy === "string" ? c.mainCopy : "",
+    caption: typeof c.caption === "string" ? c.caption : "",
+    cta: typeof c.cta === "string" ? c.cta : "",
+    slides,
+    platform: typeof c.platform === "string" ? c.platform : undefined,
+    format: typeof c.format === "string" ? c.format : undefined,
+    claimRiskLevel: risk === "medium" || risk === "high" ? risk : "low",
+    proofRequired: c.proofRequired === true,
+    hasSources: sourceIds.length > 0,
+    hasEvidence: evidence.trim().length > 0,
+  };
 }
 
 async function defaultGetContentTrack(contentTrackId: string): Promise<ContentTrackRow> {

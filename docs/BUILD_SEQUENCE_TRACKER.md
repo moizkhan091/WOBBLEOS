@@ -13,7 +13,7 @@ Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not 
 
 Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`. Chunk 15 is the pipe; Chunk 17/21/22/34/36/38 make the output elite.
 
-## Full master order (all 45 chunks, 00-44)
+## Full master order (all 50 chunks, 00-49)
 
 ### Phase 1 - Core spine + data layer (DONE)
 1. [x] Chunk 00 - Project Hygiene / docs / handoff (ongoing)
@@ -94,6 +94,11 @@ Frontend checkpoint:
 43. [ ] Chunk 42 - Business Docs Engine (reports, briefs, proposals, exports)
 44. [ ] Chunk 43 - Content Knowledge Base (how-to-write frameworks/hooks/angles/post-types/voice/swipe, queryable + auto-picked-up; see docs/CONTENT_INTELLIGENCE_SYSTEM.md)
 45. [ ] Chunk 44 - Knowledge & Competitor Hunters (propose knowledge/competitor patterns to approval queue; approval-gated; feed learning loop)
+46. [ ] Chunk 45 - Content Strategy & Calendar Planner (goal-aware pillars + cadence + repurposing; data-driven)
+47. [ ] Chunk 46 - Engagement & Community AI (read comments/DMs, draft on-brand replies, route leads; approval-gated)
+48. [ ] Chunk 47 - Performance Feedback & Attribution Loop (post stats -> attribute to hook/angle/format/reference/goal -> update what-works + reference winRate; closes self-improvement)
+49. [ ] Chunk 48 - Voice-of-Customer Mining (real audience language -> hooks/angles)
+50. [ ] Chunk 49 - Repurposing Engine (1 idea -> many formats)
 
 Frontend checkpoint:
 
