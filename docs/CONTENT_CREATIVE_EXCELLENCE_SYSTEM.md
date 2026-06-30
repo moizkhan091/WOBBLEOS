@@ -207,3 +207,69 @@ Chunk 12/13:
 - Do not let image/video jobs bypass budget approval.
 - Every paid provider run must be cost-logged.
 - Every serious output must keep evidence/source references.
+
+---
+
+# Founder Creative Vision - Expanded (2026-06-30, Claude)
+
+Goal restated: WOBBLE content is the BEST the world has seen - writing AND visuals. Generated images, carousels, and statics must look like a million-dollar designer made them. The OS is one stop to run the whole agency (content, blog, presentations, invoices, etc.), and it improves itself over time.
+
+## The reference rule (NON-NEGOTIABLE): one reference per asset, never a hybrid
+
+When many design references exist, the system must NOT merge them into one ugly hybrid. For EACH asset it picks exactly ONE reference:
+
+- Static image -> exactly one approved `static` reference, chosen PER asset and diversified across a batch (static #1 may pick ref 4, static #2 ref 2).
+- Carousel -> exactly one approved `carousel_set` reference (a multi-slide set), matched to the needed slide count. Never a blend of carousel refs.
+- Video -> exactly one approved `video` reference.
+
+This is already enforced in code: `src/lib/domain/reference-selection.ts` (`selectReferenceForAsset`, `selectReferencesForBatch`) - pure, deterministic, tested. Chunk 22 MUST call this to choose the single reference per asset before each image job; it must never pass all references into one generation call.
+
+## Creative Reference Library (Chunk 21) - data model
+
+A `creative_references` store. Each reference has:
+
+- id, kind (`static` | `carousel_set` | `video`)
+- styleTags[] (e.g. bold, dark, editorial, minimal), useCases[] (e.g. hook-card, quote, data-viz)
+- platform (optional), format
+- brandFit (0-10), slideCount (for carousel sets)
+- approvalStatus (`pending`/`approved`/`rejected`) - only approved refs are usable
+- negative (boolean) - a style to AVOID; its tags become "avoid" guidance, never copied
+- pinned (boolean) - founder can force a reference for a use case
+- source, addedBy, imageRef/storage path, createdAt
+- learning fields later: timesUsed, winRate (from performance feedback)
+
+References are added two ways: (1) manual upload/approve by the founder; (2) the Design Hunter proposes them and the founder approves.
+
+## Design Hunter (Chunk 38 + 21)
+
+An AI that hunts for great design references (by platform/style/use-case), proposes them to an approval queue with metadata + why-it-fits. On founder approval, the reference enters the library. Never auto-adds to production references without approval (same approval discipline as the rest of the OS). It also learns what WOBBLE approves to hunt better over time.
+
+## Image/Video provider (Chunks 08/21/22)
+
+- Image generation uses a provider adapter (swappable), defaulting to a strong current model (OpenAI `gpt-image-2`-class). NOT hardcoded; chosen via Settings model roles like text is. Every image/video call logs `model_runs`/cost and expensive jobs require budget approval (reuse Chunk 05 guardBudget).
+- Brand kit layering: the chosen ONE reference sets the visual style; WOBBLE brand kit (colors, fonts, logo, safe-zones) is layered as hard constraints on top, so output is on-brand AND in the reference's style.
+
+## Visual Excellence Gate (Chunk 22) - the image equivalent of Chunk 17
+
+After an asset is generated it passes a visual gate before approval:
+
+- reference adherence (does it follow the chosen ONE reference's style?), brand-kit compliance (colors/fonts/logo/safe-zones), legibility (text contrast, not cut off), composition/balance, platform spec (aspect ratio, slide count for carousels), and "no AI tells" (garbled text, extra fingers, watermark).
+- On fail -> targeted design rewrite instructions + regenerate (bounded retries), never silently ships a weak asset. Mirrors Chunk 17's gate-then-rewrite loop.
+- Stores a design rationale per asset (which reference, why, what was avoided) for the learning loop (Chunk 36/38/13).
+
+## Improvements added beyond the brief
+
+- Per-asset fit scoring (style/use-case/brand/platform) so the RIGHT reference is chosen for THIS post, not a random one.
+- Batch diversity so a set of statics spreads across references instead of repeating.
+- Negative references (styles to avoid) feed "avoid" guidance into the prompt.
+- A/B visual variants: optionally generate 2 variants from the same single reference for founder choice (still one reference each, never blended).
+- Carousel slide-count matching: pick the smallest approved set that covers the needed slides.
+- Design rationale stored per asset -> the learning loop can later prefer references that perform.
+
+## Chunk mapping (what to build where)
+
+- Chunk 17 (DONE): writing excellence gate. (objective)
+- Chunk 21: Creative Reference Library backend (table, CRUD, approval queue, trust/approval, brand kit storage).
+- Chunk 22: Reference-conditioned media worker. MUST use `reference-selection.ts` (one ref per asset) + brand-kit layering + Visual Excellence Gate + cost/budget + approval before final asset.
+- Chunk 38: Design Hunter + social/performance feedback into reference winRate.
+- Chunk 36/13: learning loop proposes reference/library updates (approval-gated).

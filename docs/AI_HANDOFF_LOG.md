@@ -1247,3 +1247,81 @@ Important implementation rule:
 - Do not solve "world-class content" by making Chunk 15 a giant prompt.
 - Keep Chunk 15 as the pipe.
 - Build excellence in Chunk 17 (writing QA/rewrite loops), Chunk 21 (reference library), Chunk 22 (reference-conditioned image/media worker), Chunk 34 (editable skills/prompts), Chunk 36 (Dreaming Engine), and Chunk 38 (social performance feedback).
+
+---
+
+## 2026-06-30 - Claude - Chunk 17 Content Excellence Gate (objective)
+
+Files created:
+
+- `src/lib/domain/content-excellence.ts` - the OBJECTIVE quality brain (pure). Analyzes the ACTUAL draft text (not just the model's self-review): weak-hook openers, anti-fluff/clarity, CTA strength (vague vs strong action verb), proof strength (claim words / risk / proofRequired => must have approved source + evidence, else hard BLOCK), generic-AI-agency language, banned/do-not-say phrases (hard BLOCK), and aggression control (caps/exclamations/insults). Returns the 6 WOBBLE dimensions (maps straight to `quality_reviews`), pass/fail, qualityStatus, blocked + blockReasons, and TARGETED rewriteInstructions. All phrase lists are config (`DEFAULT_EXCELLENCE_RULES`) and overridable per call (track.bannedPhrases / do-not-say Brain rule / Settings) - nothing strategy-specific hardcoded in scoring.
+- `src/lib/quality/index.ts` - `gateContentPacket`: grade -> record a `quality_reviews` row -> set packet qualityStatus -> audit (`content.quality_passed|failed`). FAILED drafts are stored WITH rewrite reasons and are NOT eligible for approval (weak content never reaches the founder's queue). Injectable store + audit. `buildQualityReviewFromGrade` rounds scores to the integer `quality_reviews` columns.
+- `src/app/api/content/quality/route.ts` - POST scores a draft on demand; records when `entityId` given.
+- `tests/content-excellence.test.ts` - strong draft passes; weak-hook+fluff+agency fails; unproven risky claim BLOCKS; proof clears with source+evidence; aggression/insults fail; custom banned phrase blocks; service records/blocks correctly; integer mapping.
+
+Verification: vitest can't run in the sandbox; verified ALL logic via Node replica (strong scores 8/9/10/10/10/7 -> pass; all failure/block cases correct; custom rules honored). Confirmed all 13 `quality_reviews` columns align. CI on push.
+
+INTEGRATION TODO (one step to fully close 17 into Codex's Chunk 15 pipe; do carefully, do not break the worker):
+- In the content worker (`runContentGenerateJobHandler`), after a packet draft is generated, call `gateContentPacket({ entityId: packet.id, draft: {hook,mainCopy,caption,cta,slides,platform,format,claimRiskLevel,proofRequired,hasSources: sourceIdsUsed.length>0, hasEvidence: evidenceSummary.length>0} }, { ... })`. Only create the approval item when `eligibleForApproval === true`. On fail, leave qualityStatus "failed" with the rewrite notes and DO NOT enqueue an approval. (The gate already records the review + status + audit.)
+
+Codex LIVE-TEST steps (need local Postgres + ROTATED OpenRouter key; keep spend tiny, founder balance ~$0.88):
+1. `npm run db:seed`
+2. Seed `settings.model_roles` with `ask_wobble` and `content_writer` -> `{ provider:"openrouter", model:"openai/gpt-4o-mini" }` (cheap), low max tokens; confirm `openrouter` connection enabled + modules allowed.
+3. `npm run content:live-check` (cheap model, low tokens, budget guard on).
+4. POST `/api/content/quality` with a draft to see the excellence scores + rewrite instructions live.
+Rotate the OpenRouter key first (it was exposed in chat).
+
+Next: Chunk 16 Founder Content Tracks, then UI-C1 (wire Content Command), then Chunk 18 n8n Signed Handoff.
+
+---
+
+## 2026-06-30 - Claude - Creative reference-selection engine + expanded design vision
+
+Founder vision: best-ever content AND million-dollar-designer visuals; never blend many design references into one hybrid. Encoded the vision AND built the core safeguard.
+
+Built (real, CI-verifiable now):
+
+- `src/lib/domain/reference-selection.ts` (pure) - enforces ONE reference per asset, never blended. `selectReferenceForAsset` + `selectReferencesForBatch`: static -> one approved `static` ref chosen per-asset with batch diversity; carousel -> one approved `carousel_set` matched to slide count; video -> one `video` ref. Fit scoring (style-tag overlap + use-case + platform + brandFit), founder-pin override, negative references excluded but their tags returned as `avoidStyleTags`, null + brand-kit fallback when nothing eligible. `scoreReference`, `collectAvoidTags` exported.
+- `tests/reference-selection.test.ts` - one-ref-per-asset, batch diversity (static#1->ref1, static#2->ref2), carousel set slide-count match, pending/rejected/negative excluded, pin honored, null fallback, scoring. Verified via Node replica: ALL PASSED.
+
+Spec updated (so the vision is implemented in the right chunks):
+
+- `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md` - added "Founder Creative Vision - Expanded": the one-reference rule, Creative Reference Library data model (Chunk 21), Design Hunter (Chunk 38+21), image/video provider (gpt-image-2-class via swappable cost-logged budget-gated adapter), Visual Excellence Gate (Chunk 22 = image equivalent of Chunk 17: reference adherence + brand-kit + legibility + platform spec + no-AI-tells, gate-then-regenerate), brand-kit layering, design rationale, A/B variants, negative refs, and the chunk mapping.
+- `docs/BUILD_SEQUENCE_TRACKER.md` - Chunk 22 rule now points at `reference-selection.ts` + Visual Excellence Gate.
+
+Chunk wiring for whoever builds 21/22 (Codex or Claude):
+- Chunk 21: `creative_references` table + CRUD + approval queue + brand-kit storage. Each ref: kind, styleTags, useCases, platform, brandFit, slideCount (carousel), approvalStatus, negative, pinned, source, storage path.
+- Chunk 22: per asset -> `selectReferencesForBatch` to pick the single reference -> layer brand kit -> image job via provider adapter (cost-logged, budget-gated) -> Visual Excellence Gate -> approval -> handoff. NEVER pass all refs into one generation.
+- Chunk 38: Design Hunter proposes refs to an approval queue; performance feedback updates ref winRate (learning loop, approval-gated).
+
+Verification: vitest can't run in sandbox; reference-selection verified via replica. CI on push.
+
+Next backend: Chunk 16 Founder Content Tracks (then UI-C1, then 18).
+
+---
+
+## 2026-06-30 - Claude - Content Intelligence: data-driven brief + knowledge architecture
+
+Founder direction: content must be impactful/result-driving (not generic); reason from a how-to-write KNOWLEDGE BASE + our stats + competitor signals; goal-aware (awareness/followers/leads/authority/engagement/sales) with CTA the founder sets OR the system suggests; NEVER hallucinate when data is missing; NEW data must auto-flow in without code changes; knowledge grows via founder + approval-gated hunter AIs.
+
+Built (real, CI-verifiable):
+
+- `src/lib/domain/content-brief.ts` (pure) - `buildContentBrief` assembles a goal-aware, data-driven generation brief from approved knowledge (framework/hook/angle/post_type/voice/swipe/do_not_say/offer) + performance stats + competitor signals. Bakes in 4 non-negotiable rules: data-driven, no-hallucination ("if missing, say so, do not fabricate"; empty blocks render "(none provided - do not invent any)"), dynamic auto-pickup (caller passes live data each run), goal-aware. `assessDataReadiness` (grounding score + missing list), `suggestCtaForGoal`. + `tests/content-brief.test.ts`. Verified via Node replica: ALL PASSED.
+
+Spec written:
+
+- `docs/CONTENT_INTELLIGENCE_SYSTEM.md` (canonical) - the 4 rules, the Content Knowledge Base (kinds + seed from the 9 transcripts + founder + hunters), goal-aware content, performance/competitor inputs, hunter AIs, MORE proposed modules (Hook Bank, Angle Library, Swipe File, Performance Memory, Competitor Pattern Library, Voice-of-Customer mining, Trend Radar, per-goal playbooks), and chunk mapping.
+
+Tracker:
+
+- Added Chunk 43 (Content Knowledge Base) + Chunk 44 (Knowledge & Competitor Hunters); now 45 chunks (00-44).
+
+Wiring for builders (Chunk 15 worker + 34/12/38/13/36):
+- Chunk 15 content worker MUST call `buildContentBrief` with knowledge/performance/competitor data loaded LIVE from the data layer each run (so new approved data is auto-used). Never hardcode strategy.
+- Chunk 34 + 09/10: store/serve the knowledge base by `kind`. Chunk 12/38: competitor + performance + hunters. Chunk 13/36: turn signals + approvals into proposed knowledge/Brain updates (approval-gated). Chunk 43/44: dedicated knowledge base + hunters.
+
+Note: the anti-hallucination + data-driven + auto-pickup rules apply to ALL LLM paths (Ask WOBBLE already follows this; content now does via content-brief; research/decision/media must too).
+
+This session also shipped (uncommitted, push together): Chunk 17 Content Excellence Gate (content-excellence.ts + quality service + /api/content/quality), reference-selection engine (reference-selection.ts), and these docs.
+
+Next backend: Chunk 16 Founder Content Tracks (then UI-C1, then 18).

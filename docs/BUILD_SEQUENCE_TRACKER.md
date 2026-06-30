@@ -13,7 +13,7 @@ Frontend wiring timing lives in `docs/FRONTEND_WIRING_PLAN.md`. Frontend is not 
 
 Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`. Chunk 15 is the pipe; Chunk 17/21/22/34/36/38 make the output elite.
 
-## Full master order (all 43 chunks, 00-42)
+## Full master order (all 45 chunks, 00-44)
 
 ### Phase 1 - Core spine + data layer (DONE)
 1. [x] Chunk 00 - Project Hygiene / docs / handoff (ongoing)
@@ -31,8 +31,8 @@ Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SY
 ### Phase 2 - Content loop
 12. [x] Chunk 14 - Content Command Backend
 13. [x] Chunk 15 - Content Worker V1
-14. [ ] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)              <- NEXT BACKEND
-15. [ ] Chunk 16 - Founder Content Tracks
+14. [x] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)
+15. [ ] Chunk 16 - Founder Content Tracks   <- NEXT BACKEND
 16. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
 Frontend checkpoint:
@@ -92,6 +92,8 @@ Frontend checkpoint:
 41. [ ] Chunk 40 - Invoice Builder
 42. [ ] Chunk 41 - Presentation Maker Intake & Claude Design Bridge
 43. [ ] Chunk 42 - Business Docs Engine (reports, briefs, proposals, exports)
+44. [ ] Chunk 43 - Content Knowledge Base (how-to-write frameworks/hooks/angles/post-types/voice/swipe, queryable + auto-picked-up; see docs/CONTENT_INTELLIGENCE_SYSTEM.md)
+45. [ ] Chunk 44 - Knowledge & Competitor Hunters (propose knowledge/competitor patterns to approval queue; approval-gated; feed learning loop)
 
 Frontend checkpoint:
 
@@ -119,7 +121,7 @@ Frontend checkpoint:
 - Chunk 15 is the content pipe: it generates, stores, reviews, and approval-gates packets. It must stay stable and not become a giant hardcoded prompt blob.
 - Chunk 17 is the writing excellence layer: weak-hook detection, anti-fluff scoring, CTA strength, proof strength, WOBBLE voice fit, and targeted rewrite instructions.
 - Chunk 21 stores approved creative references. References must have metadata: platform, format, style, use case, approval status, brand fit, and source.
-- Chunk 22 uses references carefully: static outputs choose one dominant reference; carousel outputs choose one approved carousel reference set. Do not feed every reference into one image job by default.
+- Chunk 22 uses `src/lib/domain/reference-selection.ts` (`selectReferencesForBatch`): exactly ONE reference per asset (statics diversified; carousel = one matched carousel_set), brand-kit layered on top, then a Visual Excellence Gate before approval. NEVER blend all references into one image job. Full spec: docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md "Founder Creative Vision - Expanded".
 - Chunk 36/38/12/13 feed the system over time: content research, competitor patterns, creator patterns, social performance, and founder-approved updates. Nothing updates Core Brain or production references without approval.
 
 ## Notes
