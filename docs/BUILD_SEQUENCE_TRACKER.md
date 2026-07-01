@@ -42,11 +42,12 @@ The long Self-Improving Intelligence Layer founder brief is covered in `docs/INT
 
 Frontend checkpoint:
 
-- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due for Claude/frontend work. Wire Content Command to real packets/tracks/generation.   <- NEXT FRONTEND
+- [x] UI-SHELL (2026-07-01): real React dashboard shell built - `src/lib/os/modules.ts` + `src/components/os/os-ui.tsx` + `src/app/[module]/*`. All 26 modules are real routes in the WOBBLE design; 9 pages WIRED to live APIs (Command Center, Ask WOBBLE, Brain, Memory, Source Library, Content Command + packet detail, Approvals + working approve/reject, Costs, Audit) with real loading/empty/error/503 states; rest show honest planned/backend-ready states. Old static `page.tsx` replaced with redirect to `/command`. Codex verified with `npm run verify` and dev-route smoke checks.
+- [x] UI-C1 COMPLETE (2026-07-01): Content Command board + packet-detail drawer + track filter + Generate form (real POST /api/content/generate) wired; Ask/Brain/Memory/Sources wired; Approvals approve/reject working. 9 of 26 pages live. Codex verified with `npm run verify`; dev server returned 200 for `/`, `/command`, `/content`, `/approvals`, `/ask`, `/brain`, `/memory`, `/sources`, and `/seo`.
 - After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.   <- NEXT FULL-LOOP FRONTEND AFTER UI-C1
 
 ### Phase 3 - Registries + intelligence inputs
-17. [ ] Chunk 34 - Prompt/Skill Registry
+17. [x] Chunk 34 - Prompt/Skill Registry
 18. [ ] Chunk 35 - Connections Registry
 19. [ ] Chunk 12 - Research Radar
 20. [ ] Chunk 13 - Learning Engine
@@ -134,6 +135,41 @@ Frontend checkpoint:
 - Chunk 21 stores approved creative references. References must have metadata: platform, format, style, use case, approval status, brand fit, and source.
 - Chunk 22 uses `src/lib/domain/reference-selection.ts` (`selectReferencesForBatch`): exactly ONE reference per asset (statics diversified; carousel = one matched carousel_set), brand-kit layered on top, then a Visual Excellence Gate before approval. NEVER blend all references into one image job. Full spec: docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md "Founder Creative Vision - Expanded".
 - Chunk 36/38/12/13 feed the system over time: content research, competitor patterns, creator patterns, social performance, and founder-approved updates. Nothing updates Core Brain or production references without approval.
+
+## Dashboard sidebar <-> chunk coverage (2026-07-01 audit)
+
+Audited the live design (`dashboard-interface-design-brief/project/WOBBLE OS.dc.html`) against all 51 chunks.
+
+Result: EVERY current sidebar module has a backing chunk. Nothing on screen is orphaned.
+
+- WORKSPACE: Command Center (C29), Ask WOBBLE (C11), WOBBLE Brain (C10)
+- PIPELINE: Research Radar (C12), Source Library (C9), Learning Engine (C13), Content Command (C14/15/16/17), Media Studio (C21/22), Presentation Maker (C23 + C41)
+- STRATEGY: Decision Room (C24), Offer Lab (C25), Client AIOS Lab (C26)
+- OPERATIONS: Automations (C19), Approvals (C4), Workers (C20), n8n Handoff (C18)
+- SYSTEM: Memory (C10), Costs (C5), Audit Log (C3), Backup & Restore (C27), Settings (C28)
+
+GAP - these chunks exist in the plan but have NO sidebar entry in the current dashboard design (they were added to the plan on 2026-06-30, after the design was made):
+
+- Chunk 40 - Invoice Builder
+- Chunk 37 - SEO & Blog Growth Engine
+- Chunk 38 - Social Intelligence & Platform Analytics
+- Chunk 39 - Website Analytics Connector
+- Chunk 42 - Business Docs Engine
+
+ACTION REQUIRED (rule: never remove features, always add):
+
+- DONE 2026-07-01 in the local design file `dashboard-interface-design-brief/project/WOBBLE OS.dc.html`: added a new sidebar group "GROWTH & BUSINESS" containing SEO & Blog Engine (seo), Social Intelligence (social), Website Analytics (webstats), Invoice Builder (invoices), and Business Docs (docs). Each has a nav entry, a `meta` entry, and a fully-styled `buildView` archetype (seo/social = feed+stats, webstats = progress, invoices = ops table, docs = library) matching the existing Claude Design style/tone/palette.
+- STILL TO DO: the SAME change must be made in the Claude Design cloud project (editing the local .dc.html does NOT sync back to Claude Design). Either re-create the group there, or treat the local file as the new source of truth on the next export.
+- CARRY INTO REACT: when Chunks 37/38/39/40/42 are wired, these five sidebar items must exist in the production React sidebar too.
+- Chunks 43-49 are intelligence/feedback loops that surface inside existing modules (mainly Content Command); they do not each need their own sidebar item.
+
+## Dashboard state + dashboard-driven testing (2026-07-01)
+
+Full detail: `docs/DASHBOARD_COMPLETION_PLAN.md`. Short version:
+
+- The production React dashboard is NOT built yet. `src/app/` has one static `page.tsx` and an empty `src/components/os/`. The "dashboard" you click today is the Claude Design PROTOTYPE (`WOBBLE OS.dc.html`) - a mockup with dead buttons and no detail sub-pages. The backend under it (audit, approvals, sources, memory, providers, ask, content, n8n, costs, intelligence, jobs/workers, health) is largely built and CI-green.
+- "Complete the dashboard" = build the real React shell + wire the ~10 pages whose backend exists (Command Center, Ask WOBBLE, Brain, Source Library, Content Command, Approvals, n8n Handoff, Memory, Costs, Audit) + honest "Planned - Chunk NN not built" states for the ~16 whose backend does not exist yet + build the missing detail drawers (source/memory approval queues, content packet detail, quality gate, dead-letter, model-runs drilldown). True 100% is reached incrementally as each chunk's UI checkpoint lands (UI-C1 -> ... -> UI-FINAL). Founder rule stands: no fake buttons, no fake data.
+- NEW TESTING RULE for ALL builders incl. Codex: after a chunk, also verify it THROUGH the dashboard (`npm run dev`, open the page, confirm real data + working actions + real state changes), and note the dashboard check in the handoff log. This is IN ADDITION to `npm run verify` / API tests, not instead. Becomes meaningful once the real shell exists; wire-now pages first.
 
 ## Notes
 

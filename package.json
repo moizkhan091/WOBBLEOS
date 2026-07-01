@@ -19,7 +19,8 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/db/seed-runner.ts",
     "ask:live-check": "tsx src/scripts/live-ask-check.ts",
-    "content:live-check": "tsx src/scripts/live-content-check.ts"
+    "content:live-check": "tsx src/scripts/live-content-check.ts",
+    "skill:live-check": "tsx src/scripts/live-skill-check.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

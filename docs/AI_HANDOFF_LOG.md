@@ -1765,3 +1765,318 @@ Next backend:
   - Chunk 35 Connections Registry
   - Chunk 12 Research Radar
   - Chunk 13 Learning Engine
+
+---
+
+## 2026-07-01 - Claude - Dashboard <-> Chunk Coverage Audit
+
+Context:
+
+- Moiz built the frontend via Claude Design and asked for a full cross-check of the live dashboard sidebar against the whole chunk plan. Rule restated by founder: we never remove features, we always add.
+
+What was done:
+
+- Extracted the complete sidebar nav from `dashboard-interface-design-brief/project/WOBBLE OS.dc.html` (21 modules across WORKSPACE / PIPELINE / STRATEGY / OPERATIONS / SYSTEM).
+- Mapped every sidebar module to its backing chunk. Result: no orphaned UI - every on-screen module has a chunk. Presentation Maker is covered by Chunk 23 (+ Chunk 41 intake/Claude Design bridge).
+- Found the real gap in the OTHER direction: 5 planned chunks have NO sidebar entry in the current design (added to the plan 2026-06-30, after the design was made): Chunk 40 Invoice Builder, Chunk 37 SEO & Blog Growth Engine, Chunk 38 Social Intelligence & Platform Analytics, Chunk 39 Website Analytics Connector, Chunk 42 Business Docs Engine.
+
+Files changed:
+
+- `docs/BUILD_SEQUENCE_TRACKER.md` - added "Dashboard sidebar <-> chunk coverage (2026-07-01 audit)" section with the full mapping, the 5-module gap, and the ACTION REQUIRED note.
+
+ACTION REQUIRED (open):
+
+- THE DASHBOARD ITSELF MUST BE UPDATED. Add a new sidebar group (suggested "GROWTH & BUSINESS") with Invoice, SEO/Blog, Social Intelligence, Website Analytics, and Business Docs. Do it in the Claude Design project (design source of truth), then carry into the React build when those chunks are wired.
+- Chunks 43-49 (intelligence/feedback loops) surface inside existing modules; they do not each need their own sidebar item.
+
+Note on Claude Design MCP:
+
+- The `claude_design` MCP import is not needed for the build - the design files are already in the repo at `dashboard-interface-design-brief/`. The real frontend task remains UI-C1 (wire Content Command to real APIs), not re-importing the design.
+
+Next:
+
+- Frontend: UI-C1 (still the next frontend checkpoint). Backend: Phase 3 (Chunk 34 -> 35 -> 12 -> 13).
+
+---
+
+## 2026-07-01 - Claude - Dashboard Design: Added GROWTH & BUSINESS sidebar group (5 modules)
+
+Context:
+
+- Follow-up to the coverage audit. Moiz asked to actually add the 5 missing modules into the dashboard design, replicating Claude Design's exact style so the additions are indistinguishable from the original.
+- Note: the `claude_design` MCP is NOT connected in this Cowork session (only the Canva design MCP is). Import was unnecessary anyway - the design file is already in the repo.
+
+Files changed:
+
+- `dashboard-interface-design-brief/project/WOBBLE OS.dc.html` - the Claude Design prototype (a `DCLogic` class-driven `.dc.html`). Made three coordinated edits so the new modules render natively:
+  1. `nav` array: added a new group `GROWTH & BUSINESS` with items seo, social, webstats, invoices, docs (lucide icons: search-check, share-2, bar-chart-3, receipt-text, file-stack), inserted between STRATEGY and OPERATIONS.
+  2. `meta` object: added group/title/icon/tagline entries for all 5 ids (group `GROWTH & BUSINESS`), matching the existing tagline voice.
+  3. `buildView(id)`: added 5 `else if` branches reusing existing archetypes so they render through the existing sc-if blocks with zero new render code - seo & social = `feed` + `hasStats` (like brain/memory), webstats = `progress` (like learning), invoices = `ops` table (like workers/handoff, status dots Paid/Sent/Overdue/Draft), docs = `library` cards (like presentations). Placeholder data uses the same palette (#B8FF2C/#2563FF/#FF6B00/#EAF2FF/#7a7f74), agent names (Scribe-01, Radar-03), and confident WOBBLE tone as the rest of the prototype.
+
+Verified (static, since a .dc.html has no build step here):
+
+- All 5 ids present in nav + meta + buildView (grep-confirmed 3 hits each).
+- Reused archetypes all have existing render blocks (isFeed line 285 supports view.hasStats/view.stats with label/value/sub; isLibrary/isOps/isProgress confirmed present). Field shapes of the new data match the render bindings exactly, so no module renders blank.
+- Existing 21 modules untouched; nothing removed (founder rule: always add, never remove).
+
+Still open:
+
+- The SAME group must be added in the Claude Design CLOUD project - editing the local .dc.html does not sync back. Or treat the local file as the new source of truth on next export.
+- When Chunks 37/38/39/40/42 are built, the production React sidebar must include these 5 items.
+- Real behavior for these modules still comes from their Phase 7 backend chunks; the design is prototype placeholder data only.
+
+Next:
+
+- Unchanged: Frontend UI-C1; Backend Phase 3 (Chunk 34 -> 35 -> 12 -> 13).
+
+---
+
+## 2026-07-01 - Claude - Dashboard State Audit + Completion Plan + Dashboard-Driven Testing
+
+Context:
+
+- Moiz flagged that the dashboard is incomplete (buttons dead, features not wired, sub-pages missing) and asked for a real audit of built-vs-left, the dashboard finished before moving on, then testing built work THROUGH the dashboard - and that discipline applied to Codex too.
+
+Audit finding (important, corrects an assumption):
+
+- The production React dashboard is essentially NOT built. `src/app/` = one static `page.tsx` (~272 lines) + EMPTY `src/components/os/`. Only API routes + `src/lib` are real.
+- The clickable "dashboard" is the Claude Design PROTOTYPE (`WOBBLE OS.dc.html`) - a visual mockup: dead buttons, placeholder data, no record detail drawers. Correct for a design file; it is the reference, not the product.
+- Backend is rich and CI-green: audit, approvals, sources, memory/Brain, providers, Ask WOBBLE, content + content-worker, n8n handoff, intelligence substrate, jobs/workers, model-runs/costs, health.
+- Net: buttons "don't work" because the production dashboard was never built - not because the backend is missing.
+
+Files created:
+
+- `docs/DASHBOARD_COMPLETION_PLAN.md` - the single source of truth for dashboard state. Contains: the 3-meanings-of-dashboard breakdown; why truthful 100%-now is impossible without fake data (~10 of 26 pages have live backend, ~16 do not); the completion definition (real shell + wire live pages + honest "Planned - Chunk NN" states + missing detail drawers); a page-by-page WIRE NOW / PLANNED / PARTIAL table; the missing sub-pages/drawers list; the build sequence (shell -> UI-C1 -> UI-C2 -> wire remaining live pages -> per-chunk checkpoints -> UI-FINAL); and the dashboard-driven testing rule.
+
+Files changed:
+
+- `docs/BUILD_SEQUENCE_TRACKER.md` - added a "Dashboard state + dashboard-driven testing" section summarizing the above and stating the NEW rule.
+
+NEW RULE for ALL builders incl. Codex (dashboard-driven testing):
+
+- After finishing a chunk, ALSO verify it through the dashboard: `npm run dev`, open the page, confirm real data + working actions + real state changes (row moves, audit written, approval created, job enqueued) with correct loading/empty/error states. Note the dashboard check in the handoff entry. This is IN ADDITION to `npm run verify`/API tests, not instead. Becomes meaningful once the real React shell exists; wire-now pages first.
+
+Reconciliation with existing plan:
+
+- This does NOT override backend-first. It matches `FRONTEND_WIRING_PLAN.md`: build the shell, wire pages whose backend exists (UI-C1/UI-C2 are DUE now since Chunks 15 and 18 are done), honest placeholders for the rest, and flip each PLANNED page to wired at its UI checkpoint. Founder rule preserved: no fake buttons, no fake data.
+
+Next (proposed, pending founder go):
+
+- Start building the real React dashboard shell in `src/components/os/` (sidebar 5 groups incl. GROWTH & BUSINESS, topbar, 26 routes, WOBBLE Liquid Glass tokens from the .dc.html), then UI-C1 (Content Command wired), then wire the other live pages. Backend Phase 3 (34 -> 35 -> 12 -> 13) continues in parallel; each new chunk now also gets dashboard-verified.
+
+---
+
+## 2026-07-01 - Claude - Real React Dashboard Shell (slice 1) + first wired pages
+
+Founder chose: real shell + wire live pages + honest "Planned" states (no fake data). Slice 1 built.
+
+Files created:
+
+- `src/lib/os/modules.ts` - single source of truth for the dashboard: `MODULES` (26 modules with id/label/title/icon/tagline/status/chunk/api), `NAV_GROUPS` (6 groups incl. GROWTH & BUSINESS), status per module = `wired` | `backend-ready` | `planned`. Adding a module here makes it appear in the shell.
+- `src/components/os/os-ui.tsx` (client) - the whole shell + shared UI + wired pages, styled with inline objects ported from `WOBBLE OS.dc.html` (black/electric-lime Liquid Glass; no Tailwind dependency). Contains: dynamic lucide `Icon` (safe fallback to Circle so an unknown icon never crashes), `Shell` (sidebar with active-highlight via usePathname + topbar), `PageHeader`, `StateBlock` (loading/empty/error/OFFLINE-503), `PlannedState` (distinct copy for planned vs backend-ready), `useApi` fetch hook, and 4 WIRED pages reading real APIs: CommandPage (`/api/approvals` pending + `/api/costs` today + `/api/audit` recent), ApprovalsPage (`/api/approvals?status=pending`), CostsPage (`/api/costs` summary + model_runs), AuditPage (`/api/audit`).
+- `src/app/[module]/layout.tsx` - wraps every module route in `<Shell>`.
+- `src/app/[module]/page.tsx` (client) - reads the `[module]` param and renders `<ModuleContent id>` (wired component or honest PlannedState).
+
+Files changed:
+
+- `src/app/page.tsx` - was the old static 272-line overview mockup; replaced with a redirect to `/command` (the real dashboard now lives under `/[module]`). Old mockup intentionally removed (superseded, not a feature loss).
+
+Design/behavior:
+
+- Every one of the 26 modules is a real route with the exact WOBBLE look. Sidebar shows all 6 groups; a lime dot marks `wired` pages.
+- WIRED pages show real loading/empty/error states and a friendly OFFLINE state on HTTP 503 (no DATABASE_URL) - honest, since locally without Postgres the APIs return 503.
+- Approve/Reject buttons on Approvals are intentionally VISIBLY DISABLED (labelled) - action wiring is the next slice. Per founder rule this is allowed ("visibly disabled/planned"); no fake success.
+- PLANNED pages state "Planned - Chunk NN, no fake data"; BACKEND-READY pages (ask/brain/sources/content/handoff/memory) state "backend built, UI wiring queued".
+
+Verification:
+
+- Sandbox cannot run the full toolchain (known). Ran a TypeScript parse check (ts.createSourceFile) on all 5 new/changed files: ALL parse clean, no syntax errors. Fixed one JSX unescaped-quote and hardened the dynamic-icon type to avoid a union-as-JSX-component TS error. Full `npm run verify` + `next build` must run on Windows/CI to confirm typecheck+build green.
+- DASHBOARD-DRIVEN TEST (now actionable): `npm run dev`, then open `/command`, `/approvals`, `/costs`, `/audit`. With Postgres up + seeded they show real data; without a DB they show the honest OFFLINE state. Other sidebar pages show planned/backend-ready states.
+
+Next slices:
+
+- Slice 2: wire the backend-ready pages (Ask WOBBLE, Brain/Memory, Source Library + approval queue, Content Command board+packet detail = UI-C1), and enable Approvals approve/reject via `/api/approvals/[id]/action`.
+- Then UI-C2 full loop, and flip each PLANNED page as its chunk lands. Backend Phase 3 (34 -> 35 -> 12 -> 13) continues; dashboard-verify each.
+
+---
+
+## 2026-07-01 - Claude - Dashboard slice 2 (wired 5 more live pages + approve/reject actions)
+
+Continues the real React dashboard. Now 9 of 26 pages are wired to live APIs.
+
+Files changed:
+
+- `src/components/os/os-ui.tsx` - added wired pages: ContentPage (board grouped by approvalStatus + track filter from `/api/content/tracks` + PacketDrawer detail reading `/api/content/packets/[id]`), AskPage (chat -> POST `/api/ask`), BrainPage + MemoryPage (`/api/memory`, Brain filters memoryTier=core), SourcesPage (`/api/sources`, All / Pending-approval toggle). Upgraded ApprovalsPage: founder selector + working Approve/Reject that POST to `/api/approvals/[id]/action` (approvedBy + confirmationProvided:false) and reload the queue. Upgraded `useApi` with a `reload()` for post-action refresh. Registered all in the WIRED map.
+- `src/lib/os/modules.ts` - flipped ask, brain, content, memory, sources from `backend-ready` to `wired`.
+
+Still deferred (honest, not faked): the content "Generate" button is visibly disabled (needs a brief form) - wire next. n8n Handoff stays `backend-ready` (no GET endpoint yet). The 16 planned modules still show their honest planned state.
+
+IMPORTANT verification/environment note for the next builder (Codex on Windows):
+
+- The Cowork sandbox mounts the repo over a FUSE filesystem that did NOT reliably truncate/flush tool-based writes (Edit/Write) - it left NUL bytes or truncated files mid-way on disk (e.g. os-ui.tsx got cut at ~line 490). Shell writes (`cat > file`, `>>`) DO write correctly. So os-ui.tsx and page.tsx were finalized via shell to guarantee clean bytes.
+- Verified all 5 dashboard files parse clean with the TypeScript parser (ts.createSourceFile, 0 syntax diagnostics, no NUL bytes). Full typecheck + `next build` still must run on Windows: `npm run verify`. If any dashboard file looks truncated in git, re-pull - the shell-written versions are the source of truth (os-ui.tsx = 645 lines / ~39KB).
+
+Dashboard-driven test (Codex): `npm run dev` -> open /command /approvals /costs /audit /content /ask /brain /memory /sources. With Postgres seeded they render real data; Approvals approve/reject mutate real rows + audit. Without a DB they show the honest offline state.
+
+Next: content Generate form; n8n handoff read view; then flip PLANNED pages as their chunks land. Backend Phase 3 (34 -> 35 -> 12 -> 13) continues, dashboard-verified.
+
+---
+
+## 2026-07-01 - Claude - UI-C1 COMPLETE (Content Generate wired) - CHUNK DONE, ready for Codex verify
+
+This closes the dashboard frontend chunk (UI-SHELL + UI-C1). It is COMPLETE - not left mid-way.
+
+Final piece added:
+
+- `src/components/os/os-ui.tsx` - added `GenerateModal`: the "Generate WOBBLE content" button on Content Command now opens a real form (track, objective, platform focus, format focus, max packets, requested-by) and POSTs to `/api/content/generate` (the Chunk 15 content-generation job via `contentGenerationRequestSchema`). Handles 202 enqueued / 200 deduped / 503 offline / 422 validation, then reloads the board. No generation strategy, prompts, or model choices are hardcoded in the frontend - it only calls the backend API (honors the founder frontend rule).
+
+State of the chunk (all done):
+
+- Real Next.js dashboard shell (`src/lib/os/modules.ts`, `src/components/os/os-ui.tsx` [721 lines], `src/app/[module]/layout.tsx`, `src/app/[module]/page.tsx`, `src/app/page.tsx` redirect). 26 modules = real routes in the WOBBLE design.
+- 9 pages WIRED to live APIs with real loading/empty/error/503 states: Command Center, Ask WOBBLE, WOBBLE Brain, Memory, Source Library, Content Command (board + packet-detail drawer + track filter + Generate), Approvals (working approve/reject via `/api/approvals/[id]/action`), Costs, Audit.
+- 17 remaining modules show honest planned / backend-ready states (no fake data), because their backend chunks are not built.
+
+=== CODEX: VERIFY THIS CHUNK (do this when your limit resets) ===
+
+1. `npm run verify`  (typecheck + tests + `next build`). This is the gate. Everything below is code the sandbox could only PARSE-check, not full-typecheck/build - so this is the real proof.
+2. If typecheck/build errors appear: they are expected to be small (import path, a stray type). FIX them - do not delete features or stub pages to make it pass. The intent is a working wired dashboard.
+3. `npm run dev`, then click every sidebar item. Expected:
+   - Without Postgres: wired pages show the honest "Database not connected" state (503). That is correct, not a bug.
+   - With Postgres up + `npm run db:migrate` + `npm run db:seed`: Command/Costs/Audit/Approvals/Sources/Memory/Brain render real rows; Content shows packets; Approvals approve/reject actually change the queue + write audit; Generate enqueues a real job.
+4. Dashboard-driven test (new rule): confirm each wired page shows real data and its actions cause real state changes (row moves, audit row appears, job enqueued).
+5. Push so CI confirms green.
+
+Environment caveat that matters for Codex:
+- The Cowork sandbox mounts the repo over FUSE and did NOT reliably flush large tool-writes - `os-ui.tsx` was truncated mid-file once and finalized via shell. On the real Windows repo the files should be intact, but if `git diff` shows any of these truncated or with stray bytes, the correct sizes are: `os-ui.tsx` ~721 lines / ~46KB, `modules.ts` 83 lines. Re-pull or re-open if needed before running verify.
+
+Nothing is left mid-way in this chunk. Next work (separate): content Generate is done; remaining dashboard pages are blocked on their backend chunks (Phase 3+). Backend continues at Chunk 34 -> 35 -> 12 -> 13; each new chunk also gets dashboard-verified going forward.
+
+---
+
+## 2026-07-01 - Claude - Chunk 34 Prompt/Skill Registry (code-complete, CODEX TO VERIFY)
+
+Built the Prompt/Skill Registry so workers load approved, versioned SOPs instead of hardcoded prompts.
+
+Files created:
+
+- `src/lib/domain/prompt-skills.ts` - statuses (draft/approved/archived), zod schemas (create + propose-version), `buildPromptSkillRow`, pure helpers `pickLatestApproved` / `nextVersion`, and `DEFAULT_PROMPT_SKILLS` seed (command-skills `prime`/`explore`/`brainstorm` + core `content_generation`/`research_brief`/`decision_brief`).
+- `src/lib/prompt-skills/index.ts` - service (injectable store + approvals + audit, default Drizzle store on the existing `prompt_skills` table): `createPromptSkill` (v1 draft + approval), `proposeSkillVersion` (v+1 draft carrying prior fields + patch -> `skill_update` approval), `approveSkillVersion` (approves + archives the previous approved so exactly one is live), `rejectSkillVersion`, `loadApprovedSkill` (worker loader = latest APPROVED by slug; excludes draft/archived), `listPromptSkills`.
+- `src/app/api/skills/route.ts` (GET list / POST create), `src/app/api/skills/[id]/version/route.ts` (POST propose version), `src/app/api/skills/[id]/approval/route.ts` (POST approve/reject).
+- `tests/prompt-skills.test.ts` - domain + service: build/validate, pick-latest/next-version, create+approval+audit, propose carries fields + increments, approve archives previous + loader returns new, reject archives + loader ignores draft-only, not-found, list filters.
+
+Files changed (worker integration = the "Done when"):
+
+- `src/lib/domain/content-worker.ts` - `buildContentGenerationPrompt` accepts optional `skill`; when present its promptBody + rules become the system-prompt preamble. Absent = built-in default (non-breaking).
+- `src/lib/content-worker/index.ts` - `runContentGenerationJob` now loads the approved `content_generation` skill via `loadApprovedSkill` (injectable `deps.loadSkill`; `defaultLoadSkill` returns null when no DB / no approved skill, so nothing breaks). So a real worker loads an approved skill from the registry.
+- `src/db/seed-runner.ts` - seeds `DEFAULT_PROMPT_SKILLS` as APPROVED v1 (idempotent, `skill_<slug>_v1`, `onConflictDoNothing`).
+
+Verified here: all 9 touched files pass the TypeScript PARSER (0 syntax diagnostics, no NUL bytes). `prompt_skills` table confirmed present in `src/db/migrations/0000_init_pgvector.sql`, so `db:migrate` creates it.
+
+=== CODEX: VERIFY CHUNK 34 (do this when your limit resets - do NOT skip) ===
+
+1. `npm run verify` (typecheck + tests + `next build`). Sandbox could only PARSE-check; this is the real gate. New test file `tests/prompt-skills.test.ts` must pass, and existing content-worker tests must STILL pass (the skill load is fallback-safe).
+2. If small errors appear (import path/type), FIX them - do not stub or delete features.
+3. Live path (needs Postgres): `docker compose up -d` -> `npm run db:migrate` -> `npm run db:seed` -> confirm `prompt_skills` has the 6 approved seed skills. Then:
+   - GET `/api/skills` lists them.
+   - POST `/api/skills/[id]/version` on `content_generation` -> a v2 draft + a `skill_update` item appears in `/api/approvals` (and in the dashboard Approvals page).
+   - Approve it via `/api/skills/[id]/approval` (or dashboard) -> v2 becomes approved, v1 archived, `loadApprovedSkill("content_generation")` returns v2.
+   - Run a content generation job -> the worker uses the approved skill's prompt (change the skill body, re-approve, re-run -> new behavior with NO code change = the acceptance test).
+4. Dashboard check: the new `skill` / `skill_update` approvals show in the Approvals page; approve/reject works.
+5. Push so CI confirms green.
+
+Acceptance mapping: registry create/version/approve/archive [done]; worker loads approved version, excludes unapproved/archived [done + tested]; seed includes prime/explore/brainstorm + content/research/decision [done]; founder feedback proposes update -> Approvals [done]. "Done when" (a worker loads an approved skill + update flows through approval) [done, pending live confirm].
+
+Next backend after 34 verified: Chunk 35 Connections Registry.
+
+---
+
+## 2026-07-01 - Codex - Verified Claude Dashboard UI-SHELL/UI-C1 + Chunk 34
+
+Context:
+
+- Moiz ran the previous Chunk 18 push, then Claude built:
+  - real React dashboard shell + UI-C1 wiring
+  - Chunk 34 Prompt/Skill Registry
+  - extra creative-reference requirements in `docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`
+- Claude's handoff specifically asked Codex to verify on Windows because the Cowork sandbox could only parse-check and had a FUSE truncation issue.
+
+Repo/state checks:
+
+- Confirmed last pushed commit before this verification:
+  - `c420f95 Chunk 18: n8n signed handoff and intelligence coverage matrix`
+- Confirmed dashboard files are not truncated or NUL-corrupted:
+  - `src/components/os/os-ui.tsx`: 720 lines / 45138 bytes / no NUL
+  - `src/app/page.tsx`: 7 lines / 220 bytes / no NUL
+  - `src/lib/os/modules.ts`: 82 lines / 7986 bytes / no NUL
+
+Verification:
+
+- `npm run typecheck`
+  - passed
+- `npm run test`
+  - 25 test files passed
+  - 178 tests passed
+- `npm run build`
+  - passed after using a long enough timeout; initial 5-minute timeout was a tooling timeout, not a build failure.
+- Final full gate:
+  - `npm run verify`
+  - typecheck passed
+  - Vitest passed: 25 files, 178 tests
+  - Next production build passed
+
+Live DB checks:
+
+- Docker was initially not ready; Moiz fixed Docker.
+- Confirmed `wobble-os-postgres` is running and healthy on port 5432.
+- Confirmed DB connectivity:
+  - `db_connection=ok`
+  - `db=wobble_os`
+- Ran:
+  - `npm run db:migrate` -> migrations applied successfully
+  - `npm run db:seed` -> `db_seed=ok`
+
+Chunk 34 live check:
+
+- Added reusable script:
+  - `src/scripts/live-skill-check.ts`
+  - package script `skill:live-check`
+- Ran:
+  - `npm run skill:live-check`
+- Result:
+  - `skill_live_check=ok`
+  - approved seed skills found: 6
+  - proved a draft skill version is not loaded before approval
+  - approved a temporary `content_generation` skill version and verified `loadApprovedSkill("content_generation")` returned it
+  - restored the original `content_generation` prompt body as the active approved version so the DB is not left with a test prompt
+  - verified skill approval audit exists
+
+Dashboard smoke check:
+
+- Started local dev server via job, hit routes, then stopped it.
+- Routes returning 200:
+  - `/`
+  - `/command`
+  - `/content`
+  - `/approvals`
+  - `/ask`
+  - `/brain`
+  - `/memory`
+  - `/sources`
+  - `/seo`
+
+Tracker updates:
+
+- UI-SHELL remains `[x]`, now Codex-verified.
+- UI-C1 remains `[x]`, now Codex-verified.
+- Chunk 34 changed from `[~]` to `[x]`.
+
+Notes for next builder:
+
+- The dashboard shell is now real product UI, not the Claude Design prototype.
+- The frontend remains thin: Generate calls `/api/content/generate`; it does not hardcode prompts/models/strategy.
+- Chunk 34 is complete: workers can load approved registry skills, and prompt updates flow through approval before becoming active.
+- Do not remove the planned/placeholder pages. They are honest states for chunks whose backends are not built.
+
+Next backend:
+
+- Chunk 35 - Connections Registry.

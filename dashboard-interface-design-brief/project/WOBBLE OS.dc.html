@@ -660,6 +660,13 @@ class Component extends DCLogic {
       { id:'offers', label:'Offer Lab', icon:'tag' },
       { id:'clients', label:'Client AIOS Lab', icon:'building-2' },
     ]},
+    { label:'GROWTH & BUSINESS', items:[
+      { id:'seo', label:'SEO & Blog Engine', icon:'search-check' },
+      { id:'social', label:'Social Intelligence', icon:'share-2' },
+      { id:'webstats', label:'Website Analytics', icon:'bar-chart-3' },
+      { id:'invoices', label:'Invoice Builder', icon:'receipt-text' },
+      { id:'docs', label:'Business Docs', icon:'file-stack' },
+    ]},
     { label:'OPERATIONS', items:[
       { id:'automations', label:'Automations', icon:'workflow' },
       { id:'approvals', label:'Approvals', icon:'badge-check' },
@@ -698,6 +705,11 @@ class Component extends DCLogic {
     audit:{ group:'SYSTEM', title:'Audit Log', icon:'scroll-text', tagline:'Immutable record of every action, approval and system event with founder attribution.' },
     backup:{ group:'SYSTEM', title:'Backup & Restore', icon:'hard-drive', tagline:'Point-in-time snapshots. Company assets are never auto-deleted.' },
     settings:{ group:'SYSTEM', title:'Settings', icon:'settings', tagline:'Models, security, secrets and operational controls for the whole OS.' },
+    seo:{ group:'GROWTH & BUSINESS', title:'SEO & Blog Engine', icon:'search-check', tagline:'Keyword targets, blog pipeline and AI-search visibility — drafted by the workforce, published on your say-so.' },
+    social:{ group:'GROWTH & BUSINESS', title:'Social Intelligence', icon:'share-2', tagline:'Platform stats, post performance and competitor patterns — feeding the next post back into Content Command.' },
+    webstats:{ group:'GROWTH & BUSINESS', title:'Website Analytics', icon:'bar-chart-3', tagline:'Traffic, top pages and conversion signals for wobblepk.com — rolled up into Memory and Ask WOBBLE.' },
+    invoices:{ group:'GROWTH & BUSINESS', title:'Invoice Builder', icon:'receipt-text', tagline:'Draft, send and track client invoices. Every issue and status change lands in the audit trail.' },
+    docs:{ group:'GROWTH & BUSINESS', title:'Business Docs', icon:'file-stack', tagline:'Reports, briefs and proposals built from approved Brain and client context — approved before they leave the building.' },
   };
 
   glow(){ const lvl=this.props.accentLevel||'moderate'; return lvl==='bold'?'0 0 28px -4px rgba(184,255,44,0.65)':lvl==='subtle'?'0 0 12px -6px rgba(184,255,44,0.35)':'0 0 18px -4px rgba(184,255,44,0.5)'; }
@@ -889,6 +901,48 @@ class Component extends DCLogic {
         {icon:'webhook',color:'#B8FF2C',name:'media.distribute',sub:'HMAC · isolated',status:'Healthy',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'1.2s',end:'12 ✓'},
         {icon:'webhook',color:'#2563FF',name:'outbound.send',sub:'replay-protected',status:'Paused',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'—',end:'0'},
         {icon:'alert-triangle',color:'#FF6B00',name:'crm.sync',sub:'1 in dead-letter',status:'Retry',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'timeout',end:'1 ✗'},
+      ]; }
+
+    else if(id==='seo'){ v.archetype='feed'; v.hasStats=true; v.actions=[actGhost('Keywords','search'),actDraft];
+      v.stats=[{label:'Keywords tracked',value:'184'},{label:'Avg position',value:'11.4',sub:'+3.2 this month'},{label:'Blog drafts',value:'6'},{label:'AI-search cites',value:'27'}];
+      v.feed=[
+        {icon:'trending-up',color:'#B8FF2C',title:'"AI operating system" moved to position 6',...T('RANKING','#B8FF2C'),body:'Up from 14 after the pillar rewrite. Now on page one — snippet opportunity flagged for the blog worker.',meta:'Search Console · Scribe-01 · vol 2.4k/mo',time:'3h ago'},
+        {icon:'file-text',color:'#2563FF',title:'Blog brief ready: "Hire vs build an AI workforce"',...T('BRIEF','#2563FF'),body:'Outline, target keyword, internal links and an AEO answer block drafted. Awaiting a founder before it enters production.',meta:'SEO worker · difficulty 32 · intent: commercial',time:'6h ago'},
+        {icon:'link',color:'#FF6B00',title:'3 backlink opportunities from the competitor teardown',...T('BACKLINKS','#FF6B00'),body:'Founder communities linking to Competitor X. The same context fits our pricing-teardown piece — outreach drafts queued.',meta:'Radar-03 → SEO worker · DR 54-71',time:'1d ago'},
+      ]; }
+
+    else if(id==='social'){ v.archetype='feed'; v.hasStats=true; v.actions=[actGhost('Platforms','share-2'),actDraft];
+      v.stats=[{label:'Followers',value:'38.4k',sub:'+1.2k · 30d'},{label:'Engagement',value:'4.8%'},{label:'Reach · 7d',value:'212k'},{label:'Top platform',value:'LinkedIn'}];
+      v.feed=[
+        {icon:'flame',color:'#B8FF2C',title:'"Anatomy of an AI employee" is an outlier — 6.1x reach',...T('OUTLIER','#B8FF2C'),body:'The hook and format beat your last 20 posts. Repurposing worker queued a carousel and a short-form cut from the same angle.',meta:'LinkedIn · Scribe-01 · 6.1x median',time:'2h ago'},
+        {icon:'users',color:'#2563FF',title:'Competitor X doubled posting cadence this week',...T('COMPETITOR','#2563FF'),body:'Shift toward pricing-transparency content. Pattern logged for the Content Strategy planner — do not react blind.',meta:'Radar-01 · 3 platforms',time:'8h ago'},
+        {icon:'message-circle',color:'#FF6B00',title:'14 comments flagged for a founder reply',...T('ENGAGE','#FF6B00'),body:'On-brand replies drafted; 2 look like warm leads and are routed to Offer Lab. Nothing sends without approval.',meta:'Engagement AI · confidence 0.83',time:'1d ago'},
+      ]; }
+
+    else if(id==='webstats'){ v.archetype='progress'; v.actions=[actGhost('Range · 30d','calendar')];
+      v.tracks=[
+        {icon:'search',color:'#B8FF2C',barColor:'#B8FF2C',name:'Organic search',meta:'11.2k sessions · +18% vs prev',pct:62},
+        {icon:'link',color:'#2563FF',barColor:'#2563FF',name:'Direct',meta:'3.4k sessions',pct:24},
+        {icon:'share-2',color:'#FF6B00',barColor:'#FF6B00',name:'Social',meta:'1.9k sessions · LinkedIn-led',pct:11},
+        {icon:'external-link',color:'#EAF2FF',barColor:'#EAF2FF',name:'Referral',meta:'620 sessions · 3.1% to signup',pct:6},
+      ]; }
+
+    else if(id==='invoices'){ v.archetype='ops'; v.actions=[actDraft];
+      v.colName='INVOICE'; v.colMid='CLIENT'; v.colEnd='AMOUNT';
+      v.rows=[
+        {icon:'receipt-text',color:'#B8FF2C',name:'INV-1042',sub:'Retainer · June',status:'Paid',dot:'#B8FF2C',statusStyle:this._st('#B8FF2C'),mid:'Northwind',end:'$4,200'},
+        {icon:'receipt-text',color:'#2563FF',name:'INV-1043',sub:'AIOS build · milestone 1',status:'Sent',dot:'#2563FF',statusStyle:this._st('#2563FF'),mid:'Meridian',end:'$6,800'},
+        {icon:'receipt-text',color:'#FF6B00',name:'INV-1039',sub:'Playbook · May',status:'Overdue',dot:'#FF6B00',statusStyle:this._st('#FF6B00'),mid:'Atlas Freight',end:'$2,150'},
+        {icon:'receipt-text',color:'#7a7f74',name:'INV-1044',sub:'Awaiting approval',status:'Draft',dot:'#7a7f74',statusStyle:this._st('#7a7f74'),mid:'Northwind',end:'$3,400'},
+      ]; }
+
+    else if(id==='docs'){ v.archetype='library'; v.actions=[actGhost('Templates','layout-template'),actDraft];
+      const th=[this.stripeA,this.stripeB];
+      v.cards=[
+        {icon:'file-text',kind:'REPORT',title:'Northwind — monthly results report',meta:'Built from client data · awaiting approval',thumb:th[0],...T('REVIEW','#B8FF2C')},
+        {icon:'file-badge',kind:'PROPOSAL',title:'Meridian Health — AIOS proposal',meta:'Draft · 6 sections',thumb:th[1],...T('DRAFT','#2563FF')},
+        {icon:'clipboard-list',kind:'BRIEF',title:'Q3 growth brief — leadership',meta:'From approved Brain context',thumb:th[0],...T('DONE','#B8FF2C')},
+        {icon:'layout-template',kind:'TEMPLATE',title:'Client onboarding one-pager',meta:'Reusable · 3 layouts',thumb:th[1],...T('TEMPLATE','#EAF2FF')},
       ]; }
 
     else if(id==='settings'||id==='backup'){ v.archetype='settings';

@@ -273,3 +273,38 @@ After an asset is generated it passes a visual gate before approval:
 - Chunk 22: Reference-conditioned media worker. MUST use `reference-selection.ts` (one ref per asset) + brand-kit layering + Visual Excellence Gate + cost/budget + approval before final asset.
 - Chunk 38: Design Hunter + social/performance feedback into reference winRate.
 - Chunk 36/13: learning loop proposes reference/library updates (approval-gated).
+
+---
+
+## Founder clarifications - 2026-07-01 (Chunk 21/22 visual references + design self-healing)
+
+These are binding requirements for Chunks 21 (Media Studio + Creative Reference Library) and 22 (Media/Video Worker + Reference-Conditioned Generation). Captured now so they are not missed when those chunks are built.
+
+### 1. How the reference image is "read" (Chunk 22)
+
+Decision to implement: **describe-then-generate with the real image attached**, not a blind image-to-image blend.
+
+- When a reference is APPROVED into the bank (Chunk 21), a vision model looks at the actual image and writes a structured **style descriptor** stored on the reference row: layout, grid, type treatment, color system, spacing, motif, mood, what makes it work, and its use-case (hook slide, data slide, quote, CTA, static ad, etc.).
+- At generation time (Chunk 22), the image model is conditioned on **one** reference: its stored descriptor PLUS the reference image itself (as a style/structure reference), so the model both "sees" it and has a controllable text spec. This keeps output on-style AND explainable/auditable, and lets the Visual Excellence Gate check the result against the descriptor.
+- Rationale: pure "see the image" alone is uncontrollable; pure "describe only" loses fidelity. Do both, per single reference.
+
+### 2. ONE reference per asset - NEVER a blended hybrid (reinforced)
+
+Hard rule (already in `selectReferencesForBatch`, restated with the founder's example):
+
+- If the bank has, say, 6 static references and 5 carousel references, and a batch needs multiple assets, then **each asset draws from exactly ONE reference pack**. Example: carousel asset A is conditioned on carousel reference pack #4; carousel asset B on pack #3; static asset A on static reference #2; etc.
+- NEVER take all 5 carousel references and merge them into a single hybrid carousel. NEVER average/blend references. One asset = one reference (a carousel = one matched `carousel_set` reference; statics diversified across different single references), brand kit layered on top, then the Visual Excellence Gate.
+- Selection should diversify across the available packs (round-robin / performance-weighted) so we use the whole bank over time, not the same one.
+
+### 3. Design self-healing - a Design/Reference Hunter (NEW capability to add)
+
+Self-improvement must cover **design**, not just text:
+
+- A **Design Reference Hunter** worker scouts new design inspiration (e.g., Pinterest, Dribbble, top creators, competitor creatives) for the styles/use-cases we care about.
+- It PROPOSES candidates to the approval queue (approval-gated, like sources/knowledge). On founder approval, the reference is filed into the **relevant** bank - static reference bank or carousel reference bank - with its vision-model style descriptor (see #1), tags, use-case, and brand-fit.
+- Over time the reference banks grow and improve themselves; the Performance/Attribution loop (Chunk 47) tracks a `winRate` per reference so weak references are demoted and strong ones favored in selection (#2).
+- This is analogous to Chunk 44 (Knowledge & Competitor Hunters) but for VISUAL references. Add it as an explicit capability - either extend Chunk 44 or a dedicated "Design Reference Hunter" chunk. Do not drop it. Rule stands: nothing enters a production reference bank without founder approval.
+
+### 4. Standing task - audit for MISSED self-healing/improving loops
+
+The founder flagged there are likely more self-healing/improving loops we have not captured, across the whole OS. Add a recurring audit (part of the Dreaming Engine / Chunk 36 and periodic review): sweep every module and ask "where should a self-improving loop exist here?" - candidates include hooks, angles, formats, post-types, captions, CTAs, offers, outbound sequences, SEO keywords/briefs, design references, client playbooks, and pricing. Log gaps as approval-gated improvement proposals. Treat this list as living, not final.

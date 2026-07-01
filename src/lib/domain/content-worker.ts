@@ -145,6 +145,9 @@ export interface BuildContentGenerationPromptInput {
   brain: ContentWorkerBrainRecord[];
   memory: ContentWorkerMemoryChunk[];
   sources: ContentWorkerSourceRef[];
+  // Chunk 34: an approved prompt-skill loaded from the registry drives the
+  // system instruction. When absent, the built-in default below is used.
+  skill?: { promptBody: string; rules: string[] };
 }
 
 export interface ContentGenerationPrompt {
@@ -170,7 +173,11 @@ export function buildContentGenerationPrompt(input: BuildContentGenerationPrompt
     })
     .join("\n");
 
+  const skillPreamble = input.skill
+    ? [input.skill.promptBody, ...(input.skill.rules.length ? ["Skill rules:\n" + input.skill.rules.map((r) => "- " + r).join("\n")] : [])]
+    : [];
   const systemPrompt = [
+    ...skillPreamble,
     "You are the WOBBLE Content Worker. Generate WOBBLE company content packets from current approved context only.",
     "Do not invent facts, citations, metrics, trends, offers, or source IDs. Use the source IDs and memory chunk IDs provided below.",
     "Do not hardcode a fixed content mix. Choose the useful number of packets for the request, up to the requested max.",

@@ -28,6 +28,7 @@ import {
   type ParsedContentGenerationRequest,
 } from "@/lib/domain/content-worker";
 import { gradeContentExcellence, type ContentDraft, type ExcellenceRules } from "@/lib/domain/content-excellence";
+import { loadApprovedSkill } from "@/lib/prompt-skills";
 
 export interface RunProviderInput {
   role: string;
@@ -40,6 +41,7 @@ export interface RunProviderInput {
 }
 
 export interface ContentGenerationDeps {
+  loadSkill?: (slug: string) => Promise<{ promptBody: string; rules: string[] } | null>;
   getContentTrack?: (contentTrackId: string) => Promise<ContentTrackRow>;
   retrieveBrain?: () => Promise<ContentWorkerBrainRecord[]>;
   retrieveMemory?: (query: string, request: ParsedContentGenerationRequest) => Promise<ContentWorkerMemoryChunk[]>;
@@ -87,6 +89,18 @@ export interface ContentGenerationRunResult {
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
   await writeAuditEvent(input);
+}
+
+// Chunk 34: load the latest APPROVED content_generation skill from the registry.
+// Safe fallback: returns null (built-in prompt) when no DB or no approved skill.
+async function defaultLoadSkill(slug: string): Promise<{ promptBody: string; rules: string[] } | null> {
+  if (!process.env.DATABASE_URL) return null;
+  try {
+    const skill = await loadApprovedSkill(slug);
+    return skill ? { promptBody: skill.promptBody, rules: skill.rules } : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function enqueueContentGenerationJob(
@@ -147,7 +161,8 @@ export async function runContentGenerationJob(
     ]);
 
     assertContentGenerationContext({ brain, sources });
-    const prompt = buildContentGenerationPrompt({ request: parsed, track, brain, memory, sources });
+    const skill = (await (deps.loadSkill ?? defaultLoadSkill)("content_generation")) ?? undefined;
+    const prompt = buildContentGenerationPrompt({ request: parsed, track, brain, memory, sources, skill });
     const provider = deps.runProvider ?? defaultRunProvider;
     const providerResult = await provider({
       role: CONTENT_STRATEGY_ROLE,

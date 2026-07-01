@@ -11,6 +11,7 @@ import {
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
 } from "@/db/seed";
+import { DEFAULT_PROMPT_SKILLS, buildPromptSkillRow } from "@/lib/domain/prompt-skills";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -164,6 +165,17 @@ export async function seedDatabase() {
       target: schema.settings.id,
       set: { value: modelRoles(), updatedAt: now },
     });
+
+  await db
+    .insert(schema.promptSkills)
+    .values(
+      DEFAULT_PROMPT_SKILLS.map((skill) => ({
+        ...buildPromptSkillRow(skill, { id: `skill_${skill.slug}_v1`, version: 1, status: "approved" }),
+        approvedBy: "system_seed",
+        approvedAt: new Date(),
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
