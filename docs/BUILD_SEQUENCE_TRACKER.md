@@ -15,6 +15,8 @@ Content and visual excellence rules live in `docs/CONTENT_CREATIVE_EXCELLENCE_SY
 
 The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use it when building researcher AIs, ingestion stores, performance loops, competitor transcript flows, and auto-pickup behavior.
 
+The long Self-Improving Intelligence Layer founder brief is covered in `docs/INTELLIGENCE_REQUIREMENTS_COVERAGE_MATRIX.md`. Treat that matrix as V2 scope, not optional notes.
+
 ## Full master order (all 51 chunks, 00-50)
 
 ### Phase 1 - Core spine + data layer (DONE)
@@ -36,12 +38,12 @@ The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use i
 14. [x] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)
 15. [x] Chunk 50 - Self-Improving Intelligence Foundation (data substrate, retrieval plans, Dreamer suggestions, research targets)
 16. [x] Chunk 16 - Founder Content Tracks
-17. [ ] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)   <- NEXT BACKEND AFTER UI-C1
+17. [x] Chunk 18 - n8n Signed Handoff (completes source -> memory -> content -> approval -> handoff)
 
 Frontend checkpoint:
 
-- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due before the next backend chunk. Wire Content Command to real packets/tracks/generation.   <- NEXT FRONTEND
-- After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.
+- [ ] UI-C1 from `docs/FRONTEND_WIRING_PLAN.md` is now due for Claude/frontend work. Wire Content Command to real packets/tracks/generation.   <- NEXT FRONTEND
+- After Chunk 18: run UI-C2 and polish the full source -> memory -> content -> approval -> handoff loop.   <- NEXT FULL-LOOP FRONTEND AFTER UI-C1
 
 ### Phase 3 - Registries + intelligence inputs
 17. [ ] Chunk 34 - Prompt/Skill Registry

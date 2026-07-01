@@ -1665,3 +1665,103 @@ Next:
 - Run full `npm run verify`, commit, and push.
 - Next product checkpoint is UI-C1: wire Content Command frontend to real tracks/packets/generation.
 - Next backend after UI-C1 is Chunk 18 - n8n Signed Handoff.
+
+---
+
+## 2026-07-01 - Codex - Intelligence Coverage Audit + Chunk 18 n8n Signed Handoff
+
+Context:
+
+- Moiz re-pasted the long Self-Improving Intelligence Layer founder brief and asked us to confirm all of it remains in scope, document it for Claude/other builders, then keep building while Claude limit resets.
+- Codex audited the tracker/docs and confirmed the requirements are covered by:
+  - `docs/SELF_IMPROVING_INTELLIGENCE_LAYER.md`
+  - `docs/INTELLIGENCE_LAYER_MAP.md`
+  - `docs/CONTENT_INTELLIGENCE_SYSTEM.md`
+  - `docs/V2_BUILD_ACCEPTANCE_PLAN.md`
+  - new `docs/INTELLIGENCE_REQUIREMENTS_COVERAGE_MATRIX.md`
+- The coverage matrix explicitly states the non-negotiable rule:
+  - `data arrives -> structured DB row -> approval/trust state -> retrieval/context builder -> worker/model output -> usage logged -> performance measured -> learning proposal`
+
+Official n8n docs checked:
+
+- `https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/`
+- `https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.respondtowebhook/`
+
+Chunk 18 completed:
+
+- Added domain layer:
+  - `src/lib/domain/n8n-handoff.ts`
+  - stable signed payload builder
+  - content readiness guard
+  - webhook/dead-letter row builders
+  - header constants
+- Added service layer:
+  - `src/lib/n8n/index.ts`
+  - `sendApprovedContentToN8n(...)`
+  - `receiveN8nCallback(...)`
+  - injectable store/transport/secret/audit deps
+  - default Drizzle store using existing `webhook_endpoints`, `webhook_events`, `dead_letters`, and `content_packets`
+- Added API routes:
+  - `POST /api/n8n/handoff/content`
+  - `POST /api/n8n/callback`
+- Added tests:
+  - `tests/n8n-handoff.test.ts`
+- Updated docs:
+  - `docs/BUILD_SEQUENCE_TRACKER.md`
+  - `docs/INTELLIGENCE_REQUIREMENTS_COVERAGE_MATRIX.md`
+
+Real behavior now:
+
+- Approved + quality-passed content can be sent to an n8n Webhook Trigger URL.
+- Outbound handoff uses:
+  - `X-Wobble-Timestamp`
+  - `X-Wobble-Signature`
+  - `X-Wobble-Idempotency-Key`
+  - `X-Wobble-Event-Type`
+- Signature is HMAC over `timestamp.payload`.
+- Duplicate idempotency keys do not send again.
+- Failed outbound handoffs create `webhook_events` and `dead_letters`, and mark the content packet handoff status as `failed`.
+- Successful outbound handoffs mark content packet handoff status as `sent`.
+- n8n can call back into WOBBLE using `POST /api/n8n/callback` with the same signed-header pattern.
+- Invalid callback signatures are rejected and audited.
+- Callback duplicates are ignored idempotently.
+- Secrets are never stored in code, docs, webhook payloads, test snapshots, or audit metadata.
+
+Still empty / needs future UI or setup:
+
+- Real n8n endpoint rows must be created in `webhook_endpoints` once the production n8n workflows exist.
+- Production secret env vars must exist on local/VPS, for example:
+  - outbound endpoint-specific secret refs such as `N8N_CONTENT_WEBHOOK_SECRET`
+  - inbound callback secret `N8N_WEBHOOK_SECRET`
+- UI-C1/UI-C2 should expose handoff status, retry/dead-letter states, and real error messages.
+- Chunk 19 should add automation registry/kill-switch control around n8n workflows.
+
+Verification:
+
+- Focused tests:
+  - `npm run test -- tests/n8n-handoff.test.ts tests/webhooks.test.ts`
+  - 2 test files passed, 8 tests passed.
+- Full verify:
+  - `npm run verify`
+  - Typecheck passed.
+  - Vitest passed: 24 test files, 169 tests.
+  - Next production build passed and listed:
+    - `/api/n8n/callback`
+    - `/api/n8n/handoff/content`
+
+Next for Claude when limit resets:
+
+- UI-C1 remains the next frontend checkpoint:
+  - wire Content Command to real content tracks, packets, generation, quality review, approvals, and n8n handoff status.
+  - use the real APIs, do not fake data.
+- UI-C2 after UI-C1:
+  - show the full source -> memory -> content -> approval -> handoff loop.
+  - include n8n events, callback status, dead letters, and retry states.
+
+Next backend:
+
+- Per tracker, continue Phase 3:
+  - Chunk 34 Prompt/Skill Registry
+  - Chunk 35 Connections Registry
+  - Chunk 12 Research Radar
+  - Chunk 13 Learning Engine
