@@ -54,6 +54,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
   // OPERATIONS
   automations: { id: "automations", label: "Automations", title: "Automations", icon: "Workflow", status: "planned", chunk: 19, tagline: "Recurring jobs and triggers that keep the OS moving while you sleep." },
+  skills: { id: "skills", label: "Skill Registry", title: "Prompt / Skill Registry", icon: "Wand2", status: "wired", chunk: 34, api: "/api/skills", tagline: "Versioned, approval-gated SOPs the workers run. Edit a skill, approve it, and behavior changes with no code." },
   approvals: { id: "approvals", label: "Approvals", title: "Approvals", icon: "BadgeCheck", status: "wired", chunk: 4, api: "/api/approvals", tagline: "The single gate. Every output here cleared self-review - your decision is logged with explicit attribution." },
   workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "planned", chunk: 20, tagline: "Persistent worker processes running outside the web lifecycle. Live load, queue and health." },
   handoff: { id: "handoff", label: "n8n Handoff", title: "n8n Handoff", icon: "Webhook", status: "backend-ready", chunk: 18, api: "/api/n8n", tagline: "The bridge to execution - HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery." },
@@ -71,7 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "PIPELINE", items: ["radar", "sources", "learning", "content", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers", "clients"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
-  { label: "OPERATIONS", items: ["automations", "approvals", "workers", "handoff"] },
+  { label: "OPERATIONS", items: ["automations", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "costs", "audit", "backup", "settings"] },
 ];
 

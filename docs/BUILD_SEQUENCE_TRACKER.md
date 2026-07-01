@@ -17,7 +17,11 @@ The intelligence/data-store map lives in `docs/INTELLIGENCE_LAYER_MAP.md`. Use i
 
 The long Self-Improving Intelligence Layer founder brief is covered in `docs/INTELLIGENCE_REQUIREMENTS_COVERAGE_MATRIX.md`. Treat that matrix as V2 scope, not optional notes.
 
-## Full master order (all 51 chunks, 00-50)
+ENGINEERING STANDARD (binding, all builders incl. Codex): `docs/ENGINEERING_STANDARDS.md` - build every chunk COMPLETE + deploy-ready; no generic stubs that look done but do not complete the real effect (this caused the approvals bug). Verify the EFFECT, not the appearance.
+
+Knowledge + creative architecture (founder vision, locked): `docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md` - the Karpathy 'compile-the-knowledge' engine (Chunk 13 upgraded to a Knowledge Compiler, not a summarizer) + the multi-agent creative workflow (Chunk 15 evolves to an agent graph; visuals 21/22; references 21/51) + the approval-learning loop with a founder taste profile + novelty control (NEW - flag under Chunk 45/47).
+
+## Full master order (all 52 chunks, 00-51)
 
 ### Phase 1 - Core spine + data layer (DONE)
 1. [x] Chunk 00 - Project Hygiene / docs / handoff (ongoing)
@@ -105,6 +109,7 @@ Frontend checkpoint:
 48. [ ] Chunk 47 - Performance Feedback & Attribution Loop (post stats -> attribute to hook/angle/format/reference/goal -> update what-works + reference winRate; closes self-improvement)
 49. [ ] Chunk 48 - Voice-of-Customer Mining (real audience language -> hooks/angles)
 50. [ ] Chunk 49 - Repurposing Engine (1 idea -> many formats)
+51. [ ] Chunk 51 - Design Reference Hunter (scout Pinterest/Dribbble/creators/competitor creatives, vision-describe references, approval-gated filing into static/carousel/video banks, feed reference winRate and demotion)
 
 Frontend checkpoint:
 
@@ -127,6 +132,7 @@ Frontend checkpoint:
 - Chunk 41 Presentation Maker Intake & Claude Design Bridge: client brief form/intake, Claude Design-ready brief generation, deck version tracking, asset references, and approval/export flow. This deepens Chunk 23 rather than replacing it.
 - Chunk 42 Business Docs Engine: reusable client reports, briefs, proposals, exports, and business docs built from approved Brain/client/context data.
 - Chunk 50 Self-Improving Intelligence Foundation: shared tables/domain/service/API for research targets, normalized intelligence items, insights, Dreamer suggestions, experiments, output-intelligence usage, task-specific context plans, freshness scoring, and empty-state-aware retrieval. Built before the individual researcher agents so every later module uses one substrate.
+- Chunk 51 Design Reference Hunter: AI design scout that finds visual references from Pinterest/Dribbble/top creators/competitor creatives, writes a vision-model style descriptor, proposes references to approval, and on approval files them into the correct Creative Reference Library bank. It never adds production references silently. It surfaces inside Media Studio / Creative Reference Library and Dreaming Engine, not as a required standalone sidebar page.
 
 ## Content and creative excellence rules
 
@@ -134,11 +140,11 @@ Frontend checkpoint:
 - Chunk 17 is the writing excellence layer: weak-hook detection, anti-fluff scoring, CTA strength, proof strength, WOBBLE voice fit, and targeted rewrite instructions.
 - Chunk 21 stores approved creative references. References must have metadata: platform, format, style, use case, approval status, brand fit, and source.
 - Chunk 22 uses `src/lib/domain/reference-selection.ts` (`selectReferencesForBatch`): exactly ONE reference per asset (statics diversified; carousel = one matched carousel_set), brand-kit layered on top, then a Visual Excellence Gate before approval. NEVER blend all references into one image job. Full spec: docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md "Founder Creative Vision - Expanded".
-- Chunk 36/38/12/13 feed the system over time: content research, competitor patterns, creator patterns, social performance, and founder-approved updates. Nothing updates Core Brain or production references without approval.
+- Chunk 36/38/12/13/51 feed the system over time: content research, competitor patterns, creator patterns, social performance, design-reference scouting, and founder-approved updates. Nothing updates Core Brain or production references without approval.
 
 ## Dashboard sidebar <-> chunk coverage (2026-07-01 audit)
 
-Audited the live design (`dashboard-interface-design-brief/project/WOBBLE OS.dc.html`) against all 51 chunks.
+Audited the live design (`dashboard-interface-design-brief/project/WOBBLE OS.dc.html`) against all 52 chunks.
 
 Result: EVERY current sidebar module has a backing chunk. Nothing on screen is orphaned.
 

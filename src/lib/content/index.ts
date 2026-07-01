@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { contentPackets, contentTracks, contentVersions, qualityReviews } from "@/db/schema";
 import { getDb, type Db } from "@/db";
-import { createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
+import { applyApprovalAction, createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
@@ -408,4 +408,63 @@ export function defaultStore(db: Db = getDb()): ContentCommandStore {
         .orderBy(desc(qualityReviews.createdAt)) as Promise<QualityReviewRow[]>;
     },
   };
+}
+
+
+export interface ContentPacketActionInput {
+  packetId: string;
+  approvalId: string;
+  approvedBy: string;
+  notes?: string;
+}
+
+async function contentRecordAudit(deps: ContentDeps, input: AuditEventInput): Promise<void> {
+  if (deps.recordAudit) return deps.recordAudit(input);
+  await writeAuditEvent(input);
+}
+
+/** Approve a content packet: transition the approval AND flip the packet live. */
+export async function approveContentPacket(input: ContentPacketActionInput, deps: ContentDeps = {}): Promise<ContentPacketRow> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const packet = await store.getPacketById(input.packetId);
+  if (!packet) throw new Error(`content packet '${input.packetId}' not found`);
+  await applyApprovalAction(
+    { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
+    { store: deps.approvalStore, recordAudit: (e) => contentRecordAudit(deps, e), now },
+  );
+  const fields: Partial<ContentPacketRow> = { approvalStatus: "approved" as ContentApprovalStatus, updatedAt: now };
+  await store.updatePacket(packet.id, fields);
+  await contentRecordAudit(deps, {
+    eventType: "content_packet.approved",
+    module: "content_command",
+    entityType: "content_packet",
+    entityId: packet.id,
+    actor: input.approvedBy,
+    metadata: { approvalId: input.approvalId },
+  });
+  return { ...packet, ...fields };
+}
+
+/** Reject a content packet: transition the approval AND mark the packet rejected. */
+export async function rejectContentPacket(input: ContentPacketActionInput, deps: ContentDeps = {}): Promise<ContentPacketRow> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const packet = await store.getPacketById(input.packetId);
+  if (!packet) throw new Error(`content packet '${input.packetId}' not found`);
+  await applyApprovalAction(
+    { approvalId: input.approvalId, action: "reject", approvedBy: input.approvedBy, notes: input.notes },
+    { store: deps.approvalStore, recordAudit: (e) => contentRecordAudit(deps, e), now },
+  );
+  const fields: Partial<ContentPacketRow> = { approvalStatus: "rejected" as ContentApprovalStatus, updatedAt: now };
+  await store.updatePacket(packet.id, fields);
+  await contentRecordAudit(deps, {
+    eventType: "content_packet.rejected",
+    module: "content_command",
+    entityType: "content_packet",
+    entityId: packet.id,
+    actor: input.approvedBy,
+    metadata: { approvalId: input.approvalId, reason: input.notes },
+  });
+  return { ...packet, ...fields };
 }

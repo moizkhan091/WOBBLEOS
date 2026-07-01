@@ -240,7 +240,7 @@ A `creative_references` store. Each reference has:
 
 References are added two ways: (1) manual upload/approve by the founder; (2) the Design Hunter proposes them and the founder approves.
 
-## Design Hunter (Chunk 38 + 21)
+## Design Hunter (Chunk 51 + 21 + 47)
 
 An AI that hunts for great design references (by platform/style/use-case), proposes them to an approval queue with metadata + why-it-fits. On founder approval, the reference enters the library. Never auto-adds to production references without approval (same approval discipline as the rest of the OS). It also learns what WOBBLE approves to hunt better over time.
 
@@ -271,7 +271,7 @@ After an asset is generated it passes a visual gate before approval:
 - Chunk 17 (DONE): writing excellence gate. (objective)
 - Chunk 21: Creative Reference Library backend (table, CRUD, approval queue, trust/approval, brand kit storage).
 - Chunk 22: Reference-conditioned media worker. MUST use `reference-selection.ts` (one ref per asset) + brand-kit layering + Visual Excellence Gate + cost/budget + approval before final asset.
-- Chunk 38: Design Hunter + social/performance feedback into reference winRate.
+- Chunk 51: Design Reference Hunter scouts and proposes new visual references. Chunk 47 later feeds performance/reference winRate.
 - Chunk 36/13: learning loop proposes reference/library updates (approval-gated).
 
 ---
@@ -300,7 +300,7 @@ Hard rule (already in `selectReferencesForBatch`, restated with the founder's ex
 
 Self-improvement must cover **design**, not just text:
 
-- A **Design Reference Hunter** worker scouts new design inspiration (e.g., Pinterest, Dribbble, top creators, competitor creatives) for the styles/use-cases we care about.
+- A **Design Reference Hunter** worker (Chunk 51) scouts new design inspiration (e.g., Pinterest, Dribbble, top creators, competitor creatives) for the styles/use-cases we care about.
 - It PROPOSES candidates to the approval queue (approval-gated, like sources/knowledge). On founder approval, the reference is filed into the **relevant** bank - static reference bank or carousel reference bank - with its vision-model style descriptor (see #1), tags, use-case, and brand-fit.
 - Over time the reference banks grow and improve themselves; the Performance/Attribution loop (Chunk 47) tracks a `winRate` per reference so weak references are demoted and strong ones favored in selection (#2).
 - This is analogous to Chunk 44 (Knowledge & Competitor Hunters) but for VISUAL references. Add it as an explicit capability - either extend Chunk 44 or a dedicated "Design Reference Hunter" chunk. Do not drop it. Rule stands: nothing enters a production reference bank without founder approval.

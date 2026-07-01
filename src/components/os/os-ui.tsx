@@ -209,13 +209,16 @@ function offlineIf(s: ApiState<unknown>): React.ReactNode | null {
   return null;
 }
 
-const FOUNDERS = ["Moiz", "Aarav Rao", "Kira Sol", "Mara Vance", "Jonah Pike"];
+const FOUNDERS = ["Moiz", "Ali", "Ibrahim", "Haad"];
 const selectStyle: React.CSSProperties = { padding: "8px 11px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: C.white, fontSize: 12.5 };
 const primaryBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 11, border: "none", background: C.lime, color: "#0A0A0A", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const rejectBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 11, border: "1px solid rgba(255,107,0,0.35)", background: "rgba(255,107,0,0.08)", color: C.orange, fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const disabledBtn: React.CSSProperties = { padding: "9px 14px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", color: muted, fontSize: 12.5, fontWeight: 600, opacity: 0.6, cursor: "not-allowed" };
 const PLATFORMS = ["instagram", "linkedin", "x", "youtube", "multi"];
 const FORMATS = ["static", "carousel", "text", "thread", "reel_script", "youtube_script"];
+const MEM_TIERS = ["core", "working", "episodic"];
+const MEM_TRUST = ["founder_core", "approved_expert", "monitored", "experimental"];
+const inputStyle: React.CSSProperties = { width: "100%", padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: C.white, fontSize: 13, outline: "none" };
 const labelStyle: React.CSSProperties = { fontSize: 10.5, letterSpacing: "0.06em", color: faint, fontWeight: 600, marginBottom: 6 };
 function toggleBtn(active: boolean): React.CSSProperties {
   return { padding: "8px 14px", borderRadius: 10, border: "1px solid " + (active ? "rgba(184,255,44,0.4)" : "rgba(255,255,255,0.12)"), background: active ? "rgba(184,255,44,0.12)" : "rgba(255,255,255,0.03)", color: active ? C.lime : muted, fontSize: 12, fontWeight: 600, cursor: "pointer" };
@@ -307,16 +310,67 @@ function CostsPage() {
   );
 }
 
+function MemoryApproveModal({ approvalId, entityId, who, onClose, onDone }: { approvalId: string; entityId: string; who: string; onClose: () => void; onDone: () => void }) {
+  const [slug, setSlug] = useState("");
+  const [title, setTitle] = useState("");
+  const [tier, setTier] = useState(MEM_TIERS[1]);
+  const [trust, setTrust] = useState(MEM_TRUST[2]);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function go(action: "approve" | "reject") {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body =
+        action === "approve"
+          ? { action, approvalId, approvedBy: who, slug: slug.trim() || "memory_" + entityId.slice(-6), title: title.trim() || slug.trim() || "Memory note", memoryTier: tier, trustLevel: trust }
+          : { action, approvalId, rejectedBy: who, reason: reason.trim() || "rejected by founder" };
+      const r = await fetch("/api/memory/proposals/" + entityId + "/approval", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json()) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setMsg(action === "approve" ? "Approved - memory created." : "Rejected."); setTimeout(onDone, 800); }
+    } catch (e) { setMsg("Error: " + String(e)); }
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(4,5,8,0.6)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...glass, width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", padding: "24px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Review memory update</div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 12, color: muted }}>Approving inserts this into WOBBLE memory. Set how it should be filed.</div>
+          <div><div style={labelStyle}>SLUG</div><input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="brand_voice_rule" style={inputStyle} /></div>
+          <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short human title" style={inputStyle} /></div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div><div style={labelStyle}>TIER</div><select value={tier} onChange={(e) => setTier(e.target.value)} style={selectStyle}>{MEM_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><div style={labelStyle}>TRUST</div><select value={trust} onChange={(e) => setTrust(e.target.value)} style={selectStyle}>{MEM_TRUST.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+          </div>
+          <div><div style={labelStyle}>REJECT REASON <span style={{ color: faint, fontWeight: 400 }}>(if rejecting)</span></div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="why not" style={inputStyle} /></div>
+          {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button onClick={() => go("reject")} disabled={busy} style={{ ...rejectBtn, opacity: busy ? 0.6 : 1 }}>Reject</button>
+            <button onClick={() => go("approve")} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Working…" : "Approve"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalsPage() {
   const s = useApi<{ items: Record<string, unknown>[]; pendingCount: number }>("/api/approvals?status=pending&limit=50");
   const [who, setWho] = useState(FOUNDERS[0]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [memItem, setMemItem] = useState<{ approvalId: string; entityId: string } | null>(null);
   async function act(id: string, action: "approve" | "reject") {
     setBusyId(id);
     setNote(null);
     try {
-      const r = await fetch("/api/approvals/" + id + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, approvedBy: who, confirmationProvided: false }) });
+      const r = await fetch("/api/approvals/" + id + "/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, approvedBy: who }) });
       const j = (await r.json()) as Record<string, unknown>;
       if (!r.ok || j.ok === false) setNote("Could not " + action + ": " + String(j.error ?? "HTTP " + r.status));
       else { setNote(action === "approve" ? "Approved by " + who + " · logged to audit." : "Rejected · returned to the agent."); s.reload(); }
@@ -344,6 +398,8 @@ function ApprovalsPage() {
       {items.map((a, i) => {
         const id = String(a.id ?? i);
         const busy = busyId === id;
+        const isMem = a.approvalType === "memory_update";
+        const eid = String(a.entityId ?? "");
         return (
           <div key={id} style={{ ...glass, padding: "20px 22px", display: "flex", gap: 18, alignItems: "flex-start" }}>
             <span style={{ width: 44, height: 44, flex: "none", borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="BadgeCheck" size={19} /></span>
@@ -357,12 +413,13 @@ function ApprovalsPage() {
               <div style={{ fontSize: 11, color: faint, marginTop: 12 }}>{String(a.entityType ?? "")}{a.entityId ? " · " + String(a.entityId) : ""} · {fmtTime(a.createdAt)}</div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "none", width: 160 }}>
-              <button onClick={() => act(id, "approve")} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>{busy ? "Working…" : "Approve as " + who.split(" ")[0]}</button>
-              <button onClick={() => act(id, "reject")} disabled={busy} style={{ ...rejectBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>Reject</button>
+              <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "approve"))} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>{busy ? "Working…" : isMem ? "Review & approve" : "Approve as " + who.split(" ")[0]}</button>
+              <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "reject"))} disabled={busy} style={{ ...rejectBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>Reject</button>
             </div>
           </div>
         );
       })}
+      {memItem ? <MemoryApproveModal approvalId={memItem.approvalId} entityId={memItem.entityId} who={who} onClose={() => setMemItem(null)} onDone={() => { setMemItem(null); s.reload(); }} /> : null}
     </div>
   );
 }
@@ -644,11 +701,32 @@ function MemoryRecords({ url, emptyMsg }: { url: string; emptyMsg: string }) {
     </div>
   );
 }
-function BrainPage() { return <MemoryRecords url="/api/memory?memoryTier=core&limit=50" emptyMsg="No Core Brain records yet." />; }
-function MemoryPage() { return <MemoryRecords url="/api/memory?limit=50" emptyMsg="No memory records yet." />; }
+function BrainPage() {
+  const [open, setOpen] = useState(false);
+  const [k, setK] = useState(0);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div><button onClick={() => setOpen(true)} style={primaryBtn}>Add knowledge</button></div>
+      <MemoryRecords key={k} url="/api/memory?memoryTier=core&limit=50" emptyMsg="No Core Brain records yet." />
+      {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); setK((x) => x + 1); }} /> : null}
+    </div>
+  );
+}
+function MemoryPage() {
+  const [open, setOpen] = useState(false);
+  const [k, setK] = useState(0);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div><button onClick={() => setOpen(true)} style={primaryBtn}>Add memory</button></div>
+      <MemoryRecords key={k} url="/api/memory?limit=50" emptyMsg="No memory records yet." />
+      {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); setK((x) => x + 1); }} /> : null}
+    </div>
+  );
+}
 
 function SourcesPage() {
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [open, setOpen] = useState(false);
   const url = "/api/sources?limit=100" + (pendingOnly ? "&approvalStatus=pending" : "");
   const s = useApi<{ sources: Record<string, unknown>[] }>(url);
   const guard = offlineIf(s);
@@ -656,10 +734,13 @@ function SourcesPage() {
   const items = s.data?.sources ?? [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button onClick={() => setPendingOnly(false)} style={toggleBtn(!pendingOnly)}>All</button>
         <button onClick={() => setPendingOnly(true)} style={toggleBtn(pendingOnly)}>Pending approval</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setOpen(true)} style={primaryBtn}>Add source</button>
       </div>
+      {open ? <AddSourceModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); s.reload(); }} /> : null}
       {items.length === 0 ? (
         <StateBlock kind="empty" message={pendingOnly ? "No sources pending approval." : "No sources captured yet."} />
       ) : (
@@ -685,6 +766,182 @@ function SourcesPage() {
   );
 }
 
+const SOURCE_TYPES = ["web", "pdf", "doc", "transcript", "data", "note", "image", "audio"];
+
+function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [who, setWho] = useState(FOUNDERS[0]);
+  const [title, setTitle] = useState("");
+  const [sourceType, setSourceType] = useState(SOURCE_TYPES[0]);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function submit() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body: Record<string, unknown> = { title: title.trim(), sourceType, addedBy: who };
+      if (url.trim()) body.url = url.trim();
+      const r = await fetch("/api/sources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json()) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setMsg("Source added - pending approval."); setTimeout(onDone, 900); }
+    } catch (e) { setMsg("Error: " + String(e)); }
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(4,5,8,0.6)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...glass, width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", padding: "24px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Add source</div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 12, color: muted }}>New sources start pending and enter the approval queue before the workforce can use them.</div>
+          <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Competitor pricing teardown" style={inputStyle} /></div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={selectStyle}>{SOURCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><div style={labelStyle}>ADDED BY</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((fo) => <option key={fo} value={fo}>{fo}</option>)}</select></div>
+          </div>
+          <div><div style={labelStyle}>URL <span style={{ color: faint, fontWeight: 400 }}>(optional)</span></div><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={inputStyle} /></div>
+          {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+            <button onClick={submit} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Adding…" : "Add source"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddMemoryModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [who, setWho] = useState(FOUNDERS[0]);
+  const [proposedMemory, setProposedMemory] = useState("");
+  const [affectedArea, setAffectedArea] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function submit() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body = { proposedMemory: proposedMemory.trim(), affectedArea: affectedArea.trim() || "general", reason: reason.trim() || "founder capture", proposedBy: who };
+      const r = await fetch("/api/memory/proposals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json()) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setMsg("Proposed - approve it in the queue to file it into memory."); setTimeout(onDone, 1000); }
+    } catch (e) { setMsg("Error: " + String(e)); }
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(4,5,8,0.6)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...glass, width: 520, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", padding: "24px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Add to WOBBLE memory</div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 12, color: muted }}>Captured as a proposal that enters the approval queue - nothing is written to Core Brain until you approve it.</div>
+          <div><div style={labelStyle}>MEMORY</div><textarea value={proposedMemory} onChange={(e) => setProposedMemory(e.target.value)} rows={5} placeholder="What should WOBBLE remember?" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} /></div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 150 }}><div style={labelStyle}>AREA</div><input value={affectedArea} onChange={(e) => setAffectedArea(e.target.value)} placeholder="brand_voice / client" style={inputStyle} /></div>
+            <div><div style={labelStyle}>BY</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((fo) => <option key={fo} value={fo}>{fo}</option>)}</select></div>
+          </div>
+          <div><div style={labelStyle}>REASON</div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="why this matters" style={inputStyle} /></div>
+          {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+            <button onClick={submit} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Propose"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreateSkillModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [f, setF] = useState({ slug: "", name: "", module: "ask_wobble", trigger: "", goal: "", promptBody: "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const set = (k: string, v: string) => setF((o) => ({ ...o, [k]: v }));
+  async function submit() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/skills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
+      const j = (await r.json()) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setMsg("Skill created - pending approval."); setTimeout(onDone, 900); }
+    } catch (e) { setMsg("Error: " + String(e)); }
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(4,5,8,0.6)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...glass, width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", padding: "24px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>New skill</div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>SLUG</div><input value={f.slug} onChange={(e) => set("slug", e.target.value)} placeholder="lowercase_underscore" style={inputStyle} /></div>
+            <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>NAME</div><input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Human name" style={inputStyle} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>MODULE</div><input value={f.module} onChange={(e) => set("module", e.target.value)} placeholder="ask_wobble / content_command" style={inputStyle} /></div>
+            <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>TRIGGER</div><input value={f.trigger} onChange={(e) => set("trigger", e.target.value)} placeholder="/command or job.type" style={inputStyle} /></div>
+          </div>
+          <div><div style={labelStyle}>GOAL</div><input value={f.goal} onChange={(e) => set("goal", e.target.value)} placeholder="What this skill is for" style={inputStyle} /></div>
+          <div><div style={labelStyle}>PROMPT BODY</div><textarea value={f.promptBody} onChange={(e) => set("promptBody", e.target.value)} rows={6} placeholder="The instruction the worker will run…" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} /></div>
+          {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+            <button onClick={submit} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Creating…" : "Create skill"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillsPage() {
+  const s = useApi<{ skills: Record<string, unknown>[] }>("/api/skills?limit=100");
+  const [open, setOpen] = useState(false);
+  const guard = offlineIf(s);
+  if (guard) return guard;
+  const skills = s.data?.skills ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div><button onClick={() => setOpen(true)} style={primaryBtn}>New skill</button></div>
+      {skills.length === 0 ? (
+        <StateBlock kind="empty" message="No skills yet. Create one, or run the seed (6 command/core skills ship approved)." />
+      ) : (
+        <div style={{ ...glass, padding: "8px 10px" }}>
+          {skills.map((k, i) => {
+            const st = String(k.status ?? "draft");
+            const col = st === "approved" ? C.lime : st === "archived" ? C.gray : C.blue;
+            return (
+              <div key={String(k.id ?? i)} style={{ display: "flex", gap: 14, padding: 14, alignItems: "center", borderBottom: i < skills.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="Wand2" size={15} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{String(k.name ?? k.slug ?? "skill")}</span>
+                    <Tag text={String(k.slug ?? "")} color={C.blue} />
+                    <Tag text={"v" + String(k.version ?? 1)} color={C.gray} />
+                    <StatusPill label={st} color={col} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{String(k.module ?? "")} · {String(k.goal ?? "")}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {open ? <CreateSkillModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); s.reload(); }} /> : null}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   approvals: ApprovalsPage,
@@ -695,6 +952,7 @@ const WIRED: Record<string, React.ComponentType> = {
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
+  skills: SkillsPage,
 };
 
 export function ModuleContent({ id }: { id: string }) {

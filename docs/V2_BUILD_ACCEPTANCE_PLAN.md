@@ -1692,6 +1692,55 @@ These three were listed in the Full Feature Coverage Check and the master plan b
 
 - The manual optimizer works end to end; only then is the nightly cadence enabled via Chunk 19. Maturity stays Inform + Recommend + Confirm (no autonomy in V2).
 
+## Chunk 51: Design Reference Hunter
+
+**Purpose:** Make WOBBLE's visual reference library self-improving without silently adding random inspiration. The hunter scouts high-quality design references, vision-describes them, and proposes them for founder approval before they can influence production media.
+
+**Owns:**
+
+- design-source targets such as Pinterest, Dribbble, top creators, competitor creatives, founder-supplied galleries, and approved design newsletters
+- candidate reference capture
+- vision-model style descriptors
+- reference approval proposals
+- filing approved references into the correct static/carousel/video bank
+- reference learning metadata, including `timesUsed`, `winRate`, and demotion signals from Chunk 47
+
+**First successful build looks like:**
+
+- A founder can add or approve design-hunting targets.
+- The hunter can ingest or receive candidate references from a configured source/n8n flow.
+- Each candidate stores source URL/path, platform, format, kind, use case, style tags, brand-fit score, and a structured style descriptor: layout, grid, type treatment, color system, spacing, motif, mood, what makes it work, and what not to copy.
+- Candidates enter Approvals before becoming production references.
+- On approval, the reference is filed into the correct Creative Reference Library bank from Chunk 21.
+- Media generation in Chunk 22 can use the approved reference descriptor plus the actual image, still following the one-reference-per-asset rule.
+
+**Must not hardcode:**
+
+- scraping random sources into production reference banks
+- bypassing approval
+- blending many references into one hybrid
+- treating source popularity as brand fit
+- provider/API keys in code or UI
+
+**Manual test:**
+
+- Add a design-hunting target.
+- Run a hunter job on a small candidate set.
+- Approve one static reference and one carousel set.
+- Confirm each lands in the right bank with descriptor metadata and is eligible for reference selection.
+
+**Automated test:**
+
+- Pending/rejected candidates are excluded from production reference selection.
+- Approved candidate creates or links to a Creative Reference Library row.
+- Descriptor fields are required before approval.
+- Duplicate source URL/path is idempotent.
+- Reference `winRate` can demote weak references without deleting them.
+
+**Done when:**
+
+- Design references can be discovered, described, approved, filed, and later selected by Chunk 22 without manual code changes or silent production mutation.
+
 ## Transcript-Derived Additions To Existing Chunks
 
 These sharpen existing chunks without changing their numbers. Detail in `docs/WOBBLE_OS_INTELLIGENCE_BUILD_MAP.md`.

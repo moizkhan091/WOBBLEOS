@@ -2080,3 +2080,178 @@ Notes for next builder:
 Next backend:
 
 - Chunk 35 - Connections Registry.
+
+---
+
+## 2026-07-01 - Codex browser audit (relayed) + Claude fix of the verify blocker
+
+Codex ran a real in-app-browser pass over the live dashboard, then hit a tool usage-limit block before it could write this entry or finish `npm run verify`. Recording the evidence + the fix here so the repo state is honest.
+
+Codex browser audit (dashboard, live against local Postgres):
+
+- Clicked through all 26 sidebar routes - no broken route, no browser console errors.
+- Planned/backend-ready modules show honest states (no fake data).
+- Command Center hydrated real data (pending approvals, today spend, live audit rows).
+- Content Command shows real DB packets; the Generate modal opens with track, objective, platform focus, format focus, max packets, requested-by.
+- Submitted Generate -> it POSTed `/api/content/generate` and created a real `content.generate` job (proved via `/api/jobs`). Codex then CANCELLED that smoke-test job (status=cancelled) so it cannot spend OpenRouter credits later. No worker was running, so no spend occurred.
+- Screenshot capture on 127.0.0.1 was blocked by browser policy; DOM/click/API checks stood in.
+
+Docs Codex confirmed/added (Chunk 51 + self-healing ownership):
+
+- Design Reference Hunter is now an explicit tracked chunk: `Chunk 51` in `docs/V2_BUILD_ACCEPTANCE_PLAN.md` with full acceptance (design-source targets, vision style-descriptor, approval-gate, one-reference-per-asset, reference winRate).
+- `docs/SELF_HEALING_LOOPS_AUDIT.md` gained ownership notes for the gap loops (outbound, pricing, provider health, dashboard health, retrieval coverage, reference quality).
+
+The verify blocker Codex hit, and the FIX (done by Claude):
+
+- ROOT CAUSE: running `next dev` rewrites `next-env.d.ts` to `import "./.next/dev/types/routes.d.ts";` (the DEV route-types variant). That generated dev file was malformed, and because `next-env.d.ts` is in tsconfig `include`, `npm run typecheck` followed it and failed. This is a Next dev-server side effect, NOT a code bug.
+- FIX: restored `next-env.d.ts` to its committed form `import "./.next/types/routes.d.ts";` (production route types). `next-env.d.ts` now matches HEAD again.
+- GOTCHA for all builders: run `npm run verify` / `npm run typecheck` with the Next dev server STOPPED (or run `next build` first). If `next-env.d.ts` shows `./.next/dev/types/...` in git status, restore it to `./.next/types/...` before typechecking. Do not commit the dev variant.
+
+Current repo state (uncommitted, ready to commit):
+
+- Modified docs only: `BUILD_SEQUENCE_TRACKER.md`, `CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md`, `SELF_HEALING_LOOPS_AUDIT.md`, `V2_BUILD_ACCEPTANCE_PLAN.md` (Chunk 51 + audit ownership + this handoff). No source-code changes pending. `next-env.d.ts` restored (no longer a pending change).
+- Chunk 34 + dashboard UI-SHELL/UI-C1 remain done & verified (commit 9978e96: typecheck + 178 tests + build green; Chunk 34 live skill-check passed).
+
+Remaining steps (when tokens/permissions allow, Codex or Moiz):
+
+1. Ensure Next dev server is stopped, then `npm run verify` -> should pass (it was green at 9978e96; only the dev-server next-env rewrite broke it).
+2. `git add docs/*.md next-env.d.ts && git commit -m "Track Chunk 51 Design Reference Hunter + self-healing audit ownership; restore next-env production types" && git push`.
+3. Then proceed to Chunk 35 (Connections Registry).
+
+---
+
+## 2026-07-01 - Claude - Dashboard: fixed approval-completion bug + added founder "add" flows (CODEX TO VERIFY)
+
+Founder flagged the dashboard was view-first: you could watch/ask/generate/approve but couldn't ADD things, and (worse) approving didn't actually complete the entity action. Fixed both.
+
+### THE BUG (correctness): approvals were not completing the entity action
+
+- The Approvals page called the GENERIC `/api/approvals/[id]/action`, which only transitions the approval row. It did NOT run the entity side-effects, so approving a source/skill/memory/content packet flipped the queue but did not actually approve the underlying record (verified: `applyApprovalAction` writes nothing to those tables).
+- FIX (backend): new **approval router** that completes the real action by type.
+  - `src/lib/approvals/index.ts` - added `getApproval(id)` (full-row loader).
+  - `src/lib/content/index.ts` - added `approveContentPacket` / `rejectContentPacket` (transition approval AND flip packet `approvalStatus`).
+  - `src/lib/approval-router/index.ts` (NEW) - `resolveApproval({approvalId,action,approvedBy,notes,trustLevel?})` dispatches by `approvalType`: source -> approveSource/rejectSource (trust from approval metadata), skill/skill_update -> approveSkillVersion/reject, content_packet -> approve/rejectContentPacket, memory_update -> throws (needs the founder form), else -> generic applyApprovalAction (n8n_handoff etc).
+  - `src/app/api/approvals/[id]/resolve/route.ts` (NEW) - POST -> resolveApproval.
+- FIX (frontend): Approvals page now calls `/api/approvals/[id]/resolve`. For `memory_update` items it opens a **MemoryApproveModal** (slug/title/tier/trust) that calls `/api/memory/proposals/[entityId]/approval` - because memory approval requires those founder-set fields.
+
+### Added founder "add" ability (backends already existed; UI was missing)
+
+- `src/lib/os/modules.ts` - new sidebar module **Skill Registry** (`skills`, OPERATIONS group) - makes Chunk 34 visible/usable.
+- `src/components/os/os-ui.tsx`:
+  - **SkillsPage** + **CreateSkillModal** (list skills by status/version; create a new skill -> POST /api/skills -> pending approval).
+  - **AddSourceModal** on Source Library (POST /api/sources -> pending).
+  - **AddMemoryModal** on WOBBLE Brain ("Add knowledge") and Memory ("Add memory") -> POST /api/memory/proposals (proposal -> approval -> memory, honest loop; nothing hits Core Brain without approval).
+  - All new modals reuse the WOBBLE glass style, founder selector, and show real success/error states.
+
+Wired live pages now: 10 (added Skills). Founder can create sources, memory/knowledge, and skills - all correctly entering the approval queue - and approvals now truly complete.
+
+### Verified here
+
+- All 6 touched files pass the TypeScript parser (0 syntax diagnostics, no NUL). Could not run full typecheck/build/tests in the sandbox.
+
+### CODEX: VERIFY (when tokens reset)
+
+1. Ensure Next dev server is STOPPED (so it doesn't rewrite next-env.d.ts to the dev variant), then `npm run verify`. If `next-env.d.ts` shows `./.next/dev/types/...`, restore to `./.next/types/...` first.
+2. Live (Postgres up + seeded), `npm run dev`, and check the ACTUAL completion, not just the queue:
+   - Source Library -> Add source -> appears in Approvals. Approve it there -> confirm the SOURCE row is now approvalStatus=approved with a trust tier (not just the approval row).
+   - Brain/Memory -> Add knowledge/memory -> appears in Approvals as memory_update -> "Review & approve" opens the form -> approve -> confirm a memory_record + chunk were actually inserted.
+   - Skill Registry -> New skill -> appears in Approvals (type skill) -> approve -> confirm the skill row is status=approved.
+   - Content Command -> a content_packet approval -> approve -> confirm packet approvalStatus=approved.
+3. Confirm audit rows exist for each (source.approved, skill.approved, content_packet.approved, memory approval).
+4. Push so CI confirms.
+
+### Still not built (honest follow-ups, logged so not forgotten)
+
+- Detail drawers for source/memory/skill rows (only content packets open a drawer today).
+- Topbar "Capture" quick-add + the search box are still decorative.
+- Command Center dropped the prototype's Ask box + quick-prompts (home is read-only KPIs + activity).
+- Source approval from the Sources page itself (today approvals happen on the Approvals page).
+
+Next backend remains Chunk 35 (Connections Registry).
+
+---
+
+## 2026-07-01 - Claude - Engineering standard (no generic stubs) + Knowledge/Creative Engine design
+
+Two docs added after founder direction. No code in this entry.
+
+- `docs/ENGINEERING_STANDARDS.md` (BINDING, all builders incl. Codex): the generic-endpoint approval bug is the motivating failure. Rule: build every chunk COMPLETE + VPS-deploy-ready; a feature that looks done (200 / row disappeared) but does not complete the real effect (entity row changed, memory inserted, packet flipped) is a DEFECT. Definition of Done verifies the EFFECT, not the appearance. Prefer entity-complete endpoints over generic transitions. No hardcoded prompts/models/strategy; run verify with dev server stopped.
+- `docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md` (founder vision, locked, researched): 
+  - Part A: Karpathy "LLM Wiki / compiler" knowledge engine - approved sources are COMPILED by an LLM into synthesized, interlinked, deduped knowledge notes (memory = synthesis, not just retrieval), stored with provenance + embeddings, hybrid-retrieved (synthesis + raw RAG) via ONE contract so every agent auto-picks-up new knowledge/references with zero code changes. Upgrades Chunk 13 to a Knowledge Compiler.
+  - Part B: multi-agent creative workflow (agency-style graph): Strategist/Planner (reads all ~1000 signals + knowledge -> topic/angle/format), Researcher, Copywriter, Art Director (one reference per asset, never blended), Vision, format-specific Image/Carousel generators, Visual QA, Assembler. Answers the founder Q: the copywriter does NOT make images - separate specialized agents. Evolves Chunk 15.
+  - Part C: approval-learning loop - log approved content with WHY, a founder TASTE profile, generation memory + NOVELTY control across independent dimensions (topic/angle/hook/format/reference), performance winRate (Chunk 47). NEW: taste profile + novelty scorer flagged under Chunk 45/47.
+  - Part D: improvements (compile-then-retrieve hybrid, provenance everywhere, per-agent critique loops, cost/model routing per node, all approval-gated) + full chunk mapping so it is buildable.
+
+Action for builders: when Chunks 13/15/21/22/43/45/47/51 are built, follow `KNOWLEDGE_AND_CREATIVE_ENGINE.md`. Treat `ENGINEERING_STANDARDS.md` as the Definition of Done from now on.
+
+Still open (dashboard interaction follow-ups, not yet built): detail drawers for source/memory/skill rows, topbar Capture + search wiring, Command Center Ask box + quick prompts. Logged earlier; next up.
+
+---
+
+## 2026-07-01 - Claude - Production-continuation handoff pack + logging system + creative/taste spec + founders fix
+
+No app-behavior code beyond a data fix; this entry sets up a SAFE Codex continuation.
+
+Added/updated:
+- `docs/CODEX_HANDOFF_2026-07-01.md` - the exact "continue from here" instructions for Codex: first steps (pull, read, verify BEFORE anything), what's done-and-verified vs done-but-parse-only-uncommitted, what Codex must finish (fix type errors to the complete path, ADD the missing approval-router + content-packet-approval tests, live effect tests), a full testing checklist, and strict risks. Codex must not reset/overwrite/duplicate.
+- `docs/DECISION_LOG.md` (NEW) - shared decision/context log for all AI builders (distinct from the code handoff log); seeded with this conversation's decisions (production-grade rule, Karpathy knowledge, multi-agent creative, dual taste, Chunk 51, no-duplication). MANDATORY going forward.
+- `CLAUDE.md` - added a "Logging & standards" mandate (read handoff + decision + standards + knowledge/creative docs before working; log to both; no duplication; real founders Moiz/Ali/Ibrahim/Haad).
+- `docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md` - extended: full creative agent roster (Parts E), elite Image Prompt Engineering agent + model capability profile (F), cost controls (G), dual taste system brand+per-founder with conflict resolution (H), and an explicit IMPLEMENTED-vs-SPEC honesty section.
+- `docs/ENGINEERING_STANDARDS.md` (added earlier this session) - Definition of Done: no generic stubs, verify the EFFECT, deploy-ready.
+- CODE: `src/components/os/os-ui.tsx` FOUNDERS corrected to the REAL founders (Moiz, Ali, Ibrahim, Haad) - were placeholder names. Parse-verified.
+
+HONEST STATUS: the approval-completion fix + add-flows from earlier today remain PARSE-verified only and UNCOMMITTED. They need `npm run verify` + new tests (Codex). Nothing new here is committed/pushed.
+
+---
+
+## 2026-07-01 - Claude - De-risked the approval fix (injectable deps + tests) - do NOT start Chunk 35 yet
+
+Decision: NOT starting Chunk 35. The dashboard approval-fix + add-flows are uncommitted + were parse-only. Stacking a new chunk on unverified work violates ENGINEERING_STANDARDS. Correct order: Codex verifies + commits + pushes the CURRENT state (clean checkpoint) -> then Chunk 35.
+
+Done this entry (parse-verified):
+- `src/lib/approval-router/index.ts` - refactored `resolveApproval` to accept injectable deps (loadApproval + entity approve/reject fns), real fns as defaults. Now unit-testable, matches codebase convention.
+- `tests/approval-router.test.ts` (NEW) - 7 cases proving the router completes the REAL entity action per type and throws for memory_update / not-found.
+- Updated `docs/CODEX_HANDOFF_2026-07-01.md`: approval-router test is DONE; only `tests/content-packet-approval.test.ts` remains for Codex.
+
+Still: everything uncommitted, parse-only. Codex must `npm run verify` (with dev server stopped) + add the content-packet test + live effect test + commit/push. See CODEX_HANDOFF doc.
+
+---
+
+## 2026-07-01 - Codex - Verified dashboard approval completion + added missing content-packet approval tests
+
+Completed the verification pass requested in `docs/CODEX_HANDOFF_2026-07-01.md`. No Chunk 35 work was started.
+
+Code/test additions:
+- Added `tests/content-packet-approval.test.ts`.
+- The new test proves `approveContentPacket` transitions the approval row AND flips the underlying `content_packets.approvalStatus` to `approved` with audit, and proves reject flips the packet to `rejected`.
+- Kept Claude's approval router/add-flow work intact; no duplicate approval/source/skill/memory systems were created.
+- Added `scripts/clean-next-dev-types.mjs` and wired `typecheck`/`build` through it so stale `.next/dev/types` from `next dev` cannot poison `tsc`/`next build`.
+
+Verification:
+- Confirmed `next-env.d.ts` imports `./.next/types/routes.d.ts`.
+- `npm run verify` passed locally:
+  - typecheck passed
+  - tests passed: 27 files / 187 tests
+  - production build passed
+
+Live dashboard EFFECT tests against local Postgres:
+- Source Library -> Add source -> Approvals -> approve:
+  - source `source_daa7f49f-51d8-428a-b691-98ad98609509` became `approvalStatus=approved`, `trustLevel=tier_4_experimental`
+  - audit included `source.approved`
+- Skill Registry -> New skill -> Approvals -> approve:
+  - skill `skill_25873c37-4d0d-4ecb-a451-b82163bb9d87` / `codex_live_skill_1782908208122` became `status=approved`
+  - audit included `skill.approved`
+- Memory -> Add memory -> Approvals memory form -> approve:
+  - proposal `memproposal_985a5b0b-0e98-43fc-adb6-543028584999` became `status=approved`
+  - memory record `memory_3016aff7-ac09-4022-8c7d-0bfbafcdcf0a` and chunk `memorychunk_bf1bae81-a681-477a-8343-018fc742d985` were inserted
+  - audit included `memory_update.approved`
+- Approvals -> content packet approve:
+  - packet `content_29517e61-b82e-4110-a326-22ca72dfdc3e` became `approvalStatus=approved`
+  - approval `approval_80ca5534-0694-4ede-b4fb-183356b7ed3d` became `status=approved`
+  - audit included `content_packet.approved`
+- Checked pending/running job queue after smoke tests: no pending/running jobs remained, so nothing needed cancellation and nothing could later spend credits.
+- Route smoke: all 27 dashboard module routes returned HTTP 200 while the local dev server was running.
+
+Notes:
+- During live queue testing, the UI briefly showed stale toast text after memory approval, but the database effect was correct and verified directly.
+- Next backend remains Chunk 35 - Connections Registry.

@@ -16,3 +16,7 @@ This project is intentionally in `C:\Wobble OS` so multiple AI builders can work
 Do not reduce V2 scope without explicit founder approval. Build order can be technical, but the planned system is a full internal OS.
 
 After meaningful work or architecture discussion, append a short update to `docs/AI_HANDOFF_LOG.md`. Treat it as the shared memory between Codex, Claude, Gemini, Antigravity, and any other builder.
+
+## Logging & standards (MANDATORY for every builder)
+
+Before working: pull latest, then read `docs/AI_HANDOFF_LOG.md` (code-work log), `docs/DECISION_LOG.md` (decisions/context/why), `docs/ENGINEERING_STANDARDS.md` (Definition of Done - no generic stubs, verify the EFFECT), and `docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md` (knowledge compiler + multi-agent creative + taste). After working: append code changes to the handoff log AND decisions/context to the decision log. Never duplicate schemas/routes/tables/agents - extend what exists. Real founders: Moiz, Ali, Ibrahim, Haad.

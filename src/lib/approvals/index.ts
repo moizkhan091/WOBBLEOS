@@ -248,3 +248,13 @@ export async function countPendingApprovals(db: Db = getDb()): Promise<number> {
     .where(eq(approvals.status, "pending"));
   return Number(rows[0]?.value ?? 0);
 }
+
+
+/**
+ * Load a full approval row by id (used by the approval router to dispatch to
+ * the correct entity-specific approve/reject).
+ */
+export async function getApproval(id: string, db: Db = getDb()): Promise<ApprovalRow | null> {
+  const rows = await db.select().from(approvals).where(eq(approvals.id, id)).limit(1);
+  return (rows[0] as ApprovalRow | undefined) ?? null;
+}

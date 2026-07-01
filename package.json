@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
-    "build": "next build",
+    "build": "npm run clean:next-dev-types && next build",
     "start": "next start --hostname 127.0.0.1",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "clean:next-dev-types": "node scripts/clean-next-dev-types.mjs",
+    "typecheck": "npm run clean:next-dev-types && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run typecheck && npm run test && npm run build",

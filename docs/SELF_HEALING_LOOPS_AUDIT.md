@@ -46,6 +46,19 @@ Non-negotiable rule for EVERY loop below: it observes real data -> proposes an i
 - **#12 Pricing loop:** no explicit self-improving pricing loop. Decide owner (Offer Lab 25 adjacent) before pricing work.
 - **#7 Offers, #15/#16 gate + guardrail tuning, #14 auto-skill-proposals:** these must be built as LOOPS (observe -> propose -> approve), not just CRUD screens. Flag in each chunk's acceptance.
 
+## Codex review additions - 2026-07-01
+
+Claude created the first audit. Codex re-checked it before Chunk 35 and tightened the build ownership:
+
+- **Design Reference Hunter is now explicit Chunk 51** in both `docs/BUILD_SEQUENCE_TRACKER.md` and `docs/V2_BUILD_ACCEPTANCE_PLAN.md`. It is not just a note in this file.
+- **Outbound performance loop owner:** default owner should be Chunk 46 Engagement & Community AI, with Chunk 47 Attribution feeding outcome metrics. If outbound grows into a large product surface later, split it into a dedicated chunk, but do not leave it ownerless.
+- **Pricing loop owner:** default owner should be Chunk 25 Offer Lab, with Chunk 47 Attribution measuring outcomes and Chunk 36 Dreaming Engine proposing price/packaging experiments. Pricing changes must be high-risk approvals.
+- **Connection/provider health loop:** Chunk 35 Connections Registry should not only store connections; it should later expose health/cost/permission signals for Chunk 36 to recommend provider/model/connection changes. No auto-switching providers without approval.
+- **Dashboard/UI health loop:** Chunk 29 Command Center and Chunk 33 Health/Recovery should treat broken dashboard states, failed actions, dead UI buttons, and missing empty/error states as OS-health findings. Dashboard-driven testing is now a standing rule in `docs/DASHBOARD_COMPLETION_PLAN.md`.
+- **Retrieval coverage loop:** Chunk 36 should detect when new module data exists but is not yet retrievable by Ask WOBBLE/workers. The fix is not prompt branching; it is `structured DB row -> approved/trusted state -> retrieval/context builder`.
+- **Reference quality loop:** Chunk 47 must attribute performance not only to hook/angle/format, but also to selected visual reference id/style descriptor so weak references can be demoted and strong ones favored.
+- **Loop status field requirement:** future module tables that feed self-improvement should include enough metadata to answer: source, date collected, confidence, approval status, owner module, linked output ids, and last-used/last-evaluated when relevant.
+
 ## How the Dreaming Engine (Chunk 36) uses this doc
 
 Chunk 36 (AI OS Auditor / WOBBLE Dreaming Engine) should treat rows 1-22 as its standing checklist. Each nightly run: for each area, check whether the loop exists and is producing approved improvements; if an area has data but no improvement proposals, raise an "under-served loop" proposal. This is how we catch loops we missed - the auditor audits its own coverage.
