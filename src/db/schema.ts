@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, varchar, vector } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, varchar, vector } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -609,3 +609,64 @@ export const outputIntelligenceUsage = pgTable("output_intelligence_usage", {
   metadata: metadata(),
   createdAt: createdAt(),
 });
+
+
+// ---- Chunk 52: Agent Registry & Orchestration (the hive-mind backbone) ----
+// Every AI agent/sub-agent is registered here (visible, not hidden) and every
+// run is logged with cost/quality/provenance so we can see the team working.
+export const agents = pgTable("agents", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  role: varchar("role", { length: 80 }).notNull(),
+  module: varchar("module", { length: 80 }).notNull(),
+  team: varchar("team", { length: 80 }),
+  purpose: text("purpose").notNull(),
+  inputTypes: jsonb("input_types").$type<string[]>().notNull().default([]),
+  outputTypes: jsonb("output_types").$type<string[]>().notNull().default([]),
+  tools: jsonb("tools").$type<string[]>().notNull().default([]),
+  memoryBanks: jsonb("memory_banks").$type<string[]>().notNull().default([]),
+  modelRole: varchar("model_role", { length: 80 }),
+  costProfile: varchar("cost_profile", { length: 40 }).notNull().default("mid"),
+  cadence: varchar("cadence", { length: 40 }).notNull().default("manual"),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  qualityScore: numeric("quality_score", { precision: 5, scale: 2 }),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  runCount: integer("run_count").notNull().default(0),
+  failureCount: integer("failure_count").notNull().default(0),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("agents_slug_unique").on(table.slug),
+  index("agents_module_idx").on(table.module),
+  index("agents_team_idx").on(table.team),
+  index("agents_status_idx").on(table.status),
+]);
+
+export const agentRuns = pgTable("agent_runs", {
+  id: id(),
+  agentId: text("agent_id").notNull(),
+  agentSlug: varchar("agent_slug", { length: 120 }).notNull(),
+  jobId: text("job_id"),
+  status: varchar("status", { length: 32 }).notNull().default("running"),
+  inputSummary: text("input_summary"),
+  outputSummary: text("output_summary"),
+  modelRunIds: jsonb("model_run_ids").$type<string[]>().notNull().default([]),
+  sourceIdsUsed: jsonb("source_ids_used").$type<string[]>().notNull().default([]),
+  memoryIdsUsed: jsonb("memory_ids_used").$type<string[]>().notNull().default([]),
+  costEstimate: numeric("cost_estimate", { precision: 12, scale: 6 }),
+  latencyMs: integer("latency_ms"),
+  qualityScore: numeric("quality_score", { precision: 5, scale: 2 }),
+  error: text("error"),
+  ownerScope: varchar("owner_scope", { length: 40 }),
+  ownerId: text("owner_id"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [
+  index("agent_runs_agent_id_idx").on(table.agentId),
+  index("agent_runs_agent_slug_idx").on(table.agentSlug),
+  index("agent_runs_status_idx").on(table.status),
+  index("agent_runs_created_at_idx").on(table.createdAt),
+]);

@@ -12,6 +12,7 @@ import {
   initialWobbleBrainRecords,
 } from "@/db/seed";
 import { DEFAULT_PROMPT_SKILLS, buildPromptSkillRow } from "@/lib/domain/prompt-skills";
+import { DEFAULT_AGENTS, buildAgentRow } from "@/lib/domain/agents";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -175,6 +176,11 @@ export async function seedDatabase() {
         approvedAt: new Date(),
       })),
     )
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.agents)
+    .values(DEFAULT_AGENTS.map((a) => buildAgentRow(a, { id: `agent_${a.slug}` })))
     .onConflictDoNothing();
 }
 

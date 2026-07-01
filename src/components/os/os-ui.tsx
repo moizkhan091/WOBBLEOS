@@ -942,8 +942,44 @@ function SkillsPage() {
   );
 }
 
+function AgentsPage() {
+  const s = useApi<{ agents: Record<string, unknown>[] }>("/api/agents?limit=200");
+  const guard = offlineIf(s);
+  if (guard) return guard;
+  const items = s.data?.agents ?? [];
+  if (!items.length) return <StateBlock kind="empty" message="No agents registered yet. Run the seed (npm run db:seed) - it registers the current + creative/research agents." />;
+  return (
+    <div style={{ ...glass, padding: "8px 10px" }}>
+      {items.map((a, i) => {
+        const st = String(a.status ?? "active");
+        const col = st === "active" ? C.lime : st === "paused" ? C.blue : C.gray;
+        return (
+          <div key={String(a.id ?? i)} style={{ display: "flex", gap: 14, padding: 14, alignItems: "center", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+            <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="Bot" size={15} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{String(a.name ?? a.slug ?? "agent")}</span>
+                <Tag text={String(a.role ?? "")} color={C.blue} />
+                {a.team ? <Tag text={String(a.team)} color={C.gray} /> : null}
+                <Tag text={String(a.costProfile ?? "mid")} color={C.orange} />
+                <StatusPill label={st} color={col} />
+              </div>
+              <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{String(a.purpose ?? "")}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 11, color: faint, whiteSpace: "nowrap" }}>
+              <div>{String(a.runCount ?? 0)} runs</div>
+              <div style={{ color: Number(a.failureCount ?? 0) > 0 ? C.orange : faint }}>{String(a.failureCount ?? 0)} fails</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
+  agents: AgentsPage,
   approvals: ApprovalsPage,
   costs: CostsPage,
   audit: AuditPage,

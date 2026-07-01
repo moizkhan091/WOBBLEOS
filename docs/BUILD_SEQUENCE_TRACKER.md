@@ -21,7 +21,7 @@ ENGINEERING STANDARD (binding, all builders incl. Codex): `docs/ENGINEERING_STAN
 
 Knowledge + creative architecture (founder vision, locked): `docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md` - the Karpathy 'compile-the-knowledge' engine (Chunk 13 upgraded to a Knowledge Compiler, not a summarizer) + the multi-agent creative workflow (Chunk 15 evolves to an agent graph; visuals 21/22; references 21/51) + the approval-learning loop with a founder taste profile + novelty control (NEW - flag under Chunk 45/47).
 
-## Full master order (all 52 chunks, 00-51)
+## Full master order (all 57 chunks, 00-56)
 
 ### Phase 1 - Core spine + data layer (DONE)
 1. [x] Chunk 00 - Project Hygiene / docs / handoff (ongoing)
@@ -38,7 +38,7 @@ Knowledge + creative architecture (founder vision, locked): `docs/KNOWLEDGE_AND_
 
 ### Phase 2 - Content loop
 12. [x] Chunk 14 - Content Command Backend
-13. [x] Chunk 15 - Content Worker V1
+13. [x] Chunk 15 - Content Worker V1  [VISION UPGRADE PENDING: built as a single LLM call; must EVOLVE into the multi-agent creative graph (Strategy/Research/Competitor/Brand-voice/Founder-taste/Ideation/Copy/Art-Director/Image-Prompt/QA/Scoring/Learning agents) using the Agent Registry (52); visuals gated behind content-pack approval. See docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md Part B/E.]
 14. [x] Chunk 17 - Content Excellence Gate & Do-Not-Say (pairs with the content worker)
 15. [x] Chunk 50 - Self-Improving Intelligence Foundation (data substrate, retrieval plans, Dreamer suggestions, research targets)
 16. [x] Chunk 16 - Founder Content Tracks
@@ -54,7 +54,7 @@ Frontend checkpoint:
 17. [x] Chunk 34 - Prompt/Skill Registry
 18. [ ] Chunk 35 - Connections Registry
 19. [ ] Chunk 12 - Research Radar
-20. [ ] Chunk 13 - Learning Engine
+20. [ ] Chunk 13 - Learning Engine  [VISION: build as the KNOWLEDGE COMPILER (Karpathy compile-not-just-retrieve): approved sources -> synthesized, deduped, interlinked knowledge notes with provenance, routed to memory banks (54); hybrid retrieval + auto-pickup. NOT a summarizer. See docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md Part A.]
 
 Frontend checkpoint:
 
@@ -63,8 +63,8 @@ Frontend checkpoint:
 ### Phase 4 - Cadence, media, decisions, clients
 21. [ ] Chunk 19 - Automations Registry (scheduling/cadence)
 22. [ ] Chunk 20 - Workers Health Page
-23. [ ] Chunk 21 - Media Studio Backend + Creative Reference Library
-24. [ ] Chunk 22 - Media / Video Worker + Reference-Conditioned Generation
+23. [ ] Chunk 21 - Media Studio Backend + Creative Reference Library  [VISION: static + carousel + video reference BANKS; each approved reference gets a vision-model STYLE DESCRIPTOR (see docs/CONTENT_CREATIVE_EXCELLENCE_SYSTEM.md founder clarifications). Feeds Design Reference Hunter (51).]
+24. [ ] Chunk 22 - Media / Video Worker + Reference-Conditioned Generation  [VISION: exactly ONE reference per asset (never blended); format-specific image/carousel models; the ELITE Image-Prompt-Engineering agent (large structured prompts, model-capability profile) + Visual QA loop; visuals only AFTER content-pack approval. See docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md Part F.]
 25. [ ] Chunk 23 - Presentation Maker
 26. [ ] Chunk 24 - Decision Room
 27. [ ] Chunk 25 - Offer Lab
@@ -102,14 +102,31 @@ Frontend checkpoint:
 41. [ ] Chunk 40 - Invoice Builder
 42. [ ] Chunk 41 - Presentation Maker Intake & Claude Design Bridge
 43. [ ] Chunk 42 - Business Docs Engine (reports, briefs, proposals, exports)
-44. [ ] Chunk 43 - Content Knowledge Base (how-to-write frameworks/hooks/angles/post-types/voice/swipe, queryable + auto-picked-up; see docs/CONTENT_INTELLIGENCE_SYSTEM.md)
+44. [ ] Chunk 43 - Content Knowledge Base (how-to-write frameworks/hooks/angles/post-types/voice/swipe, queryable + auto-picked-up; see docs/CONTENT_INTELLIGENCE_SYSTEM.md)  [VISION: this IS a set of memory banks (54) the creative graph reads; populated by the Knowledge Compiler (13).]
 45. [ ] Chunk 44 - Knowledge & Competitor Hunters (propose knowledge/competitor patterns to approval queue; approval-gated; feed learning loop)
 46. [ ] Chunk 45 - Content Strategy & Calendar Planner (goal-aware pillars + cadence + repurposing; data-driven)
 47. [ ] Chunk 46 - Engagement & Community AI (read comments/DMs, draft on-brand replies, route leads; approval-gated)
-48. [ ] Chunk 47 - Performance Feedback & Attribution Loop (post stats -> attribute to hook/angle/format/reference/goal -> update what-works + reference winRate; closes self-improvement)
+48. [ ] Chunk 47 - Performance Feedback & Attribution Loop (post stats -> attribute to hook/angle/format/reference/goal -> update what-works + reference winRate; closes self-improvement)  [VISION: also feeds the taste_profiles (56) + novelty control; pairs with Chunk 56 Taste/Learning.]
 49. [ ] Chunk 48 - Voice-of-Customer Mining (real audience language -> hooks/angles)
 50. [ ] Chunk 49 - Repurposing Engine (1 idea -> many formats)
 51. [ ] Chunk 51 - Design Reference Hunter (scout Pinterest/Dribbble/creators/competitor creatives, vision-describe references, approval-gated filing into static/carousel/video banks, feed reference winRate and demotion)
+
+## Vision upgrades to EXISTING chunks (2026-07-01 alignment - read before building these)
+
+The hive-mind vision is delivered by (a) 6 NEW chunks 51-56, and (b) UPGRADES to chunks that already existed. Do not build the old/basic version of these - build the upgraded version:
+- Chunk 15 (BUILT V1) -> evolve into the multi-agent creative graph (uses Agent Registry 52). Visuals gated behind pack approval.
+- Chunk 13 (not built) -> the Knowledge Compiler (Karpathy), routes to memory banks 54. NOT a summarizer.
+- Chunk 21/22 (not built) -> reference banks + vision descriptors + one-ref-per-asset + elite image-prompt agent + visual QA.
+- Chunk 43 (not built) -> content knowledge banks read by the creative graph, populated by 13.
+- Chunk 47 (not built) -> attribution feeds taste_profiles (56) + novelty.
+FULL DETAILED per-chunk specs (what/why/inputs/agent-team/data-flow/memory-banks/acceptance): docs/FOUNDER_VISION_BRIEF.md (the canonical vision) + docs/KNOWLEDGE_AND_CREATIVE_ENGINE.md + docs/ARCHITECTURE_ALIGNMENT_REVIEW.md. Only Chunk 15 is built; the rest carry their upgrade so Codex builds the right (upgraded) thing the first time.
+
+### Phase A - Hive-mind foundations (NEW - from the 2026-07-01 alignment review; see docs/ARCHITECTURE_ALIGNMENT_REVIEW.md)
+52. [x] Chunk 52 - Agent Registry & Orchestration (Codex-verified 2026-07-02: focused migration generated/reviewed/applied, 6 agents seeded, verify green, live agent_run effect tested)
+53. [ ] Chunk 53 - Source Registry + per-type Intake (extend sources schema; youtube/ig-reel/ig-carousel/website/reddit/... intake handlers)
+54. [ ] Chunk 54 - Memory Banks + LLM Router (memory_banks registry + multi-bank routing + suggest/approve placement)
+55. [ ] Chunk 55 - Intelligence / Research Review Inbox (surface intelligence_* + approve/reject-reason/edit/route/merge)
+56. [ ] Chunk 56 - Taste + Feedback Learning (taste_profiles brand+per-founder+client + feedback_events with rejection reasons)
 
 Frontend checkpoint:
 

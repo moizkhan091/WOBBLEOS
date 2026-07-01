@@ -31,6 +31,7 @@ export const MODULES: Record<string, ModuleDef> = {
   command: { id: "command", label: "Command Center", title: "Command Center", icon: "LayoutDashboard", status: "wired", api: "/api/approvals,/api/costs,/api/audit", tagline: "One pane of glass over the entire WOBBLE workforce - research, content, media, decisions, and the founder approvals that gate it all." },
   ask: { id: "ask", label: "Ask WOBBLE", title: "Ask WOBBLE", icon: "Sparkles", status: "wired", chunk: 11, api: "/api/ask", tagline: "A direct line into the OS. Ask across every module, kick off the golden workflow, or interrogate memory in natural language." },
   brain: { id: "brain", label: "WOBBLE Brain", title: "WOBBLE Brain", icon: "Brain", status: "wired", chunk: 10, api: "/api/memory", tagline: "The shared knowledge core - everything the workforce has learned, embedded and retrievable." },
+  agents: { id: "agents", label: "Agent Registry", title: "Agent Registry", icon: "Bot", status: "wired", chunk: 52, api: "/api/agents", tagline: "The AI workforce - every agent, what it does, its runs, cost and quality. The hive-mind, made visible." },
 
   // PIPELINE
   radar: { id: "radar", label: "Research Radar", title: "Research Radar", icon: "Radar", status: "planned", chunk: 12, tagline: "Continuous signal scan across markets, competitors and culture. Surfaced, scored and ready to feed learning." },
@@ -68,7 +69,7 @@ export const MODULES: Record<string, ModuleDef> = {
 };
 
 export const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", items: ["command", "ask", "brain"] },
+  { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "learning", "content", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers", "clients"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },

@@ -2217,41 +2217,103 @@ Still: everything uncommitted, parse-only. Codex must `npm run verify` (with dev
 
 ---
 
-## 2026-07-01 - Codex - Verified dashboard approval completion + added missing content-packet approval tests
+## 2026-07-01 - Checkpoint GREEN + pushed (commit 0c796fb) + one open UI finding
 
-Completed the verification pass requested in `docs/CODEX_HANDOFF_2026-07-01.md`. No Chunk 35 work was started.
+Codex verified Claude's dashboard work + Chunk 34, fixed the verify blocker properly, live-tested all approval effects against Postgres, and pushed.
+- `npm run verify` GREEN: typecheck + 27 test files / 187 tests + Next build.
+- Verify pipeline hardened: `scripts/clean-next-dev-types.mjs` + `clean:next-dev-types` runs before typecheck/build so the Next dev-server route-type corruption can't break verify again.
+- LIVE EFFECT tests (real DB rows changed, not just the queue): source -> sources.approvalStatus=approved + trust tier; skill -> prompt_skills.status=approved; memory -> memory_records + memory_chunks inserted; content packet -> content_packets.approvalStatus=approved. Audit rows written for each. No pending jobs left.
 
-Code/test additions:
-- Added `tests/content-packet-approval.test.ts`.
-- The new test proves `approveContentPacket` transitions the approval row AND flips the underlying `content_packets.approvalStatus` to `approved` with audit, and proves reject flips the packet to `rejected`.
-- Kept Claude's approval router/add-flow work intact; no duplicate approval/source/skill/memory systems were created.
-- Added `scripts/clean-next-dev-types.mjs` and wired `typecheck`/`build` through it so stale `.next/dev/types` from `next dev` cannot poison `tsc`/`next build`.
+OPEN FINDING (cosmetic UX defect, effect is CORRECT):
+- The Memory approval form showed a "Rejected" success toast even though the memory was correctly APPROVED and the memory_record + memory_chunk were inserted. The DB effect is right; the success MESSAGE is wrong. Fix in the next dashboard pass: the memory approve modal's success message should say "Approved - memory created" on the approve path. Investigate the message/branch in `MemoryApproveModal` in `src/components/os/os-ui.tsx`. Not blocking; committed because the effect passed.
+
+Next backend: Chunk 35 - Connections Registry (base is now green + pushed, so new work no longer stacks on unverified code).
+
+---
+
+## 2026-07-01 - Claude - Architecture & vision alignment review (STOP-and-audit, no code)
+
+Founder asked to stop and verify the build matches the real hive-mind vision. Did a schema-grounded audit (37 tables). Output: `docs/ARCHITECTURE_ALIGNMENT_REVIEW.md` - full current-state audit + correction plan across all 9 requested areas (architecture, dashboard, content command, source intake, agent orchestration, self-improvement, risks, implementation). Honest verdict: real foundation (~25-30%), NOT the hive-mind; schema for Source Registry / memory banks / agent registry / research inbox / creative graph / taste does NOT exist yet. Correction: schema+backend first then UI; recommended start = Phase A1 Agent Registry. No code changed this entry (audit-first, per founder). See DECISION_LOG for the binding decision.
+
+---
+
+## 2026-07-01 - Claude - Chunk 52 Agent Registry & Orchestration (code-complete, CODEX MUST db:generate)
+
+First hive-mind foundation from the alignment review. Makes the AI workforce a first-class, VISIBLE, logged system (no hidden agents).
+
+Files created (parse-verified, uncommitted):
+- SCHEMA: `src/db/schema.ts` - added `agents` + `agent_runs` tables. NOTE: NO migration written by hand - Codex must run `npm run db:generate` (drizzle-kit) to produce the migration from the schema, then `db:migrate`.
+- `src/lib/domain/agents.ts` - statuses/cost-profiles/cadences, AgentRow/AgentRunRow, zod (registerAgentSchema, recordAgentRunSchema), builders, and DEFAULT_AGENTS (ask_wobble, content_worker, content_excellence_gate, dreamer, knowledge_compiler, memory_router).
+- `src/lib/agents/index.ts` - service (injectable deps + audit + Drizzle store): registerAgent (idempotent by slug), recordAgentRun (logs run + rolls runCount/failureCount/quality/lastRun + audits agent.run.completed/failed), listAgents, getAgent (by id or slug), listAgentRuns.
+- API: `GET/POST /api/agents`, `GET /api/agents/[id]` (+recent runs), `GET/POST /api/agents/[id]/runs`.
+- `tests/agents.test.ts` - 10 cases (build/validate, run row, idempotent register, run rolls counters + audit, failure count, not-found, list/get by slug+id).
+- SEED: `src/db/seed-runner.ts` registers DEFAULT_AGENTS (`agent_<slug>`, onConflictDoNothing).
+- DASHBOARD: new `agents` module (WORKSPACE group) + AgentsPage in `src/components/os/os-ui.tsx` (lists agents: name/role/team/cost/status/runCount/failureCount) -> the "AI workforce, visible".
+
+Intent: every worker/agent should call `recordAgentRun(...)` (attributing model_run ids + sources/memory used + cost) so the whole hive-mind is observable. Wiring existing workers to record runs is a fast follow (Chunk 52b) - the registry + run log + dashboard exist now.
+
+=== CODEX: VERIFY CHUNK 52 (order matters) ===
+1. Pull. `git status` (uncommitted work - keep it).
+2. `npm run db:generate` (drizzle-kit creates the migration for agents + agent_runs from schema.ts). Review the generated 0003_*.sql. THEN `npm run db:migrate`.
+3. `npm run db:seed` -> confirm 6 agents registered (query `agents`).
+4. Ensure dev server stopped + next-env production types, then `npm run verify` (fix any tsc/vitest issues to the complete path).
+5. Live effect: `npm run dev`, open the new Agent Registry page (/agents) -> the 6 seeded agents show. POST a run via `/api/agents/[slug]/runs` (or a quick script) -> confirm an `agent_runs` row + the agent's runCount incremented + audit `agent.run.completed`.
+6. Commit + push.
+
+NOTE (sandbox only): Claude's mount showed `package.json` truncated - that is a FUSE read artifact; the real repo package.json is valid (your last verify passed on it). If `npm run verify` ever reports invalid package.json, restore it from git.
+
+Next hive-mind chunks (tracker Phase A): 53 Source Registry + per-type intake, 54 Memory Banks + Router, 55 Intelligence Inbox, 56 Taste/Learning. Then creative graph (15 evolution + 21/22/51). See docs/ARCHITECTURE_ALIGNMENT_REVIEW.md.
+
+---
+
+## 2026-07-02 - Codex - Chunk 52 verified, migrated, live-tested
+
+Codex completed the required Chunk 52 verification and pushed only after real DB effects were proven. Chunk 53 was NOT started.
+
+Why this chunk matters:
+- The architecture alignment review says the build was a real foundation but not yet the hive-mind. Chunk 52 is the first hive-mind foundation: agents are now first-class, visible, auditable records instead of hidden worker strings.
+
+Implementation fixes during verification:
+- Added DB-level protection/query paths to `src/db/schema.ts`:
+  - `agents.slug` unique index so the registry is truly idempotent under concurrency.
+  - indexes for agent module/team/status and agent run history/status.
+- Ran `npm run db:generate`.
+- Reviewed generated `0003_smooth_lyja.sql` and caught that Drizzle generated a full-schema create migration, which would break existing databases.
+- Replaced it with a focused migration that creates only `agents`, `agent_runs`, and the Chunk 52 indexes while keeping the generated snapshot/journal for future Drizzle diffing.
+
+DB verification:
+- `npm run db:migrate` applied successfully.
+- `npm run db:seed` completed.
+- Query confirmed exactly 6 seeded agents:
+  - `ask_wobble`
+  - `content_worker`
+  - `content_excellence_gate`
+  - `dreamer`
+  - `knowledge_compiler`
+  - `memory_router`
 
 Verification:
-- Confirmed `next-env.d.ts` imports `./.next/types/routes.d.ts`.
-- `npm run verify` passed locally:
+- Dev server stopped and `next-env.d.ts` confirmed on `./.next/types/routes.d.ts` before verify.
+- `npm run verify` passed:
   - typecheck passed
-  - tests passed: 27 files / 187 tests
-  - production build passed
+  - tests passed: 28 files / 196 tests
+  - Next production build passed and listed `/api/agents`, `/api/agents/[id]`, `/api/agents/[id]/runs`
 
-Live dashboard EFFECT tests against local Postgres:
-- Source Library -> Add source -> Approvals -> approve:
-  - source `source_daa7f49f-51d8-428a-b691-98ad98609509` became `approvalStatus=approved`, `trustLevel=tier_4_experimental`
-  - audit included `source.approved`
-- Skill Registry -> New skill -> Approvals -> approve:
-  - skill `skill_25873c37-4d0d-4ecb-a451-b82163bb9d87` / `codex_live_skill_1782908208122` became `status=approved`
-  - audit included `skill.approved`
-- Memory -> Add memory -> Approvals memory form -> approve:
-  - proposal `memproposal_985a5b0b-0e98-43fc-adb6-543028584999` became `status=approved`
-  - memory record `memory_3016aff7-ac09-4022-8c7d-0bfbafcdcf0a` and chunk `memorychunk_bf1bae81-a681-477a-8343-018fc742d985` were inserted
-  - audit included `memory_update.approved`
-- Approvals -> content packet approve:
-  - packet `content_29517e61-b82e-4110-a326-22ca72dfdc3e` became `approvalStatus=approved`
-  - approval `approval_80ca5534-0694-4ede-b4fb-183356b7ed3d` became `status=approved`
-  - audit included `content_packet.approved`
-- Checked pending/running job queue after smoke tests: no pending/running jobs remained, so nothing needed cancellation and nothing could later spend credits.
-- Route smoke: all 27 dashboard module routes returned HTTP 200 while the local dev server was running.
+Live EFFECT test:
+- Started local dashboard and opened `/agents`.
+- API confirmed `GET /api/agents?limit=200` returned 6 agents.
+- POSTed to `/api/agents/content_worker/runs` with:
+  - `{ "status": "succeeded", "costEstimate": 0.2, "qualityScore": 8 }`
+- Verified in Postgres, not just UI:
+  - inserted `agent_runs` row `agentrun_465fbb36-6d93-455c-a9f9-e6447ec92cd3`
+  - `agents.run_count` for `content_worker` changed from 0 to 1
+  - `agents.quality_score` rolled to `8.00`
+  - audit row `agent.run.completed` was written with cost estimate and run metadata
+- Checked pending/running jobs after the smoke test: none.
 
-Notes:
-- During live queue testing, the UI briefly showed stale toast text after memory approval, but the database effect was correct and verified directly.
-- Next backend remains Chunk 35 - Connections Registry.
+Dashboard:
+- Local dev dashboard left running for founder demo at `http://127.0.0.1:3000/agents`.
+
+Next:
+- Chunk 53 - Source Registry + per-type Intake.
+- Do not build more dashboard-only surfaces before schema/backend support exists.
