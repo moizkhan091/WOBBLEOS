@@ -2317,3 +2317,82 @@ Dashboard:
 Next:
 - Chunk 53 - Source Registry + per-type Intake.
 - Do not build more dashboard-only surfaces before schema/backend support exists.
+
+---
+
+## 2026-07-02 - Codex - Chunk 53 Source Registry + per-type Intake verified, migrated, live-tested
+
+Codex built and verified the second hive-mind foundation chunk: Source Library is now a real Source Registry foundation, not a flat list. This chunk exists so future research/creative/SEO/content agents can ingest different source types through explicit source definitions, log every intake run, route extracted data toward memory banks, and expose source status/cost/errors in the OS.
+
+What changed:
+- `src/db/schema.ts`
+  - Extended `sources` with owner scope/id, intended use, connected agents, refresh frequency, last scraped time, processing status, confidence, cost used, memory banks fed, related output ids, extracted data, and last error.
+  - Added `source_type_definitions` for typed source intake configuration.
+  - Added `source_intake_runs` for every scrape/analyze/route attempt.
+- `src/db/migrations/0004_source_registry.sql` + `meta/0004_snapshot.json`
+  - Generated with Drizzle, reviewed, then renamed to the stable Source Registry migration name.
+- `src/lib/domain/sources.ts`
+  - Added 24 source type definitions: website, blog, RSS, YouTube video/channel, Instagram reel/post/carousel/profile, TikTok video/profile, Reddit post/feed, competitor website/social profile, design reference, brand reference, market research source, client source, internal company document, uploaded file, manual note, API source, n8n source.
+  - Added typed intake run builders/statuses/triggers.
+- `src/lib/sources/index.ts`
+  - Added list source types, create intake run, complete/fail/cancel/routed intake run, and DB-backed store methods.
+  - Source approval now moves processing to `ready`; rejected sources move to `archived`.
+  - Intake completion updates the real source row: processing status, extracted data, memory banks fed, related outputs, confidence, cost, last scraped time, and last error.
+- API:
+  - `GET /api/sources/types`
+  - `GET/POST /api/sources/[id]/intake`
+  - `PATCH /api/sources/[id]/intake/[runId]`
+- `src/lib/domain/agents.ts`
+  - Expanded seeded agent registry from 6 to 17 with source/intelligence agents: source intake orchestrator, competitor scout, social content analyst, transcript analyst, visual reference analyst, website/SEO scout, source quality checker, performance learning agent, market researcher, trend radar, brand voice guardian.
+- `src/db/seed-runner.ts` / `src/db/seed.ts`
+  - Seeds all source type definitions and expanded agents idempotently.
+- Dashboard:
+  - `Source Library` renamed to `Source Registry`.
+  - Source cards now show registry metadata using the existing Claude glass/card/tag language: processing status, owner/refresh, memory bank count, agent count, cost, intended-use tags.
+  - Add Source modal remains design-consistent and now captures source type, owner scope, owner id, refresh frequency, intended use. No new visual system was introduced.
+- Tests:
+  - `tests/source-registry.test.ts`
+  - `tests/db-foundation.test.ts` updated for 0004 migration and seeded source types.
+
+Verification:
+- `npm run db:generate` completed.
+- Migration reviewed and renamed to `0004_source_registry.sql`.
+- `npm run db:migrate` succeeded.
+- `npm run db:seed` succeeded.
+- Seed query confirmed 24 source types and 17 agents.
+- Focused tests passed:
+  - `tests/source-registry.test.ts`
+  - `tests/db-foundation.test.ts`
+- Full `npm run verify` passed before docs-only handoff edits:
+  - typecheck passed
+  - tests passed: 29 files / 203 tests
+  - Next production build passed, including new source intake routes.
+
+Live EFFECT test:
+- Local server health: `/api/health/web` returned DB connected.
+- Created source through `POST /api/sources`.
+- Approved it through the real source approval route with trust level `tier_2_approved_expert`.
+- Created source intake run through `POST /api/sources/[id]/intake`.
+- Completed intake through `PATCH /api/sources/[id]/intake/[runId]`.
+- Verified in Postgres, not just UI:
+  - source `source_e7979bd5-9089-4c15-b222-70720640496a`
+  - `approval_status=approved`
+  - `trust_level=tier_2_approved_expert`
+  - `processing_status=succeeded`
+  - `confidence=0.87`
+  - `cost_used=0.03`
+  - `memory_banks_fed=["competitor","content","design"]`
+  - `extracted_data` stored
+  - source intake run `sourceintake_76ac577f-3ddc-4335-8282-042ee115fd32` stored with `status=succeeded`, `actual_cost=0.03`, raw payload ref, extracted insight id
+  - audit events written: `source.added`, `source.approved`, `source.intake.queued`, `source.intake.succeeded`
+
+Design verification:
+- Captured local dashboard screenshot at `http://127.0.0.1:3000/sources`.
+- Source Registry page visually matches the existing Claude OS shell: same dark glass cards, lime accents, tag treatment, sidebar rhythm, and spacing. Changes are deliberately folded into the existing design language.
+
+Important nuance:
+- This chunk is the registry/intake foundation. It does NOT implement real Apify/Instagram/YouTube/vision scrapers yet. Those plug in through Connections/n8n/tool chunks. This is intentional and honest: the DB/API/run-log contract now exists so those connectors can write real data without redesigning the OS.
+
+Next:
+- Chunk 54 - Memory Banks + LLM Router.
+- Build multi-bank memory placement on top of Chunk 53 so new source data can flow: source -> intake run -> extracted intelligence -> suggested memory banks -> approval -> retrievable knowledge.

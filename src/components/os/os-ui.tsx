@@ -753,9 +753,19 @@ function SourcesPage() {
                 <div style={{ display: "flex", gap: 7, marginBottom: 9, flexWrap: "wrap" }}>
                   <Tag text={String(r.sourceType ?? "source")} color={C.gray} />
                   <Tag text={st} color={col} />
+                  {r.processingStatus ? <Tag text={String(r.processingStatus)} color={String(r.processingStatus).includes("failed") ? C.orange : C.lime} /> : null}
                   {r.trustLevel ? <Tag text={String(r.trustLevel)} color={C.blue} /> : null}
                 </div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.4 }}>{String(r.title ?? "Untitled source")}</div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 7 }}>
+                  owner {String(r.ownerScope ?? "company")} - refresh {String(r.refreshFrequency ?? "manual")}
+                </div>
+                <div style={{ fontSize: 11, color: faint, lineHeight: 1.5, marginTop: 5 }}>
+                  banks {Array.isArray(r.memoryBanksFed) ? r.memoryBanksFed.length : 0} - agents {Array.isArray(r.connectedAgents) ? r.connectedAgents.length : 0} - cost ${String(r.costUsed ?? "0")}
+                </div>
+                {Array.isArray(r.intendedUse) && r.intendedUse.length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>{r.intendedUse.slice(0, 3).map((item) => <Tag key={String(item)} text={String(item)} color={C.blue} />)}</div>
+                ) : null}
                 <div style={{ fontSize: 10.5, color: faint, marginTop: 7 }}>{fmtTime(r.createdAt)}</div>
               </div>
             );
@@ -766,20 +776,49 @@ function SourcesPage() {
   );
 }
 
-const SOURCE_TYPES = ["web", "pdf", "doc", "transcript", "data", "note", "image", "audio"];
+type SourceTypeOption = {
+  slug: string;
+  label: string;
+  category: string;
+  description: string;
+  defaultRefreshFrequency: string;
+};
+
+const FALLBACK_SOURCE_TYPES: SourceTypeOption[] = [
+  { slug: "website", label: "Website", category: "web", description: "Website or page set.", defaultRefreshFrequency: "weekly" },
+  { slug: "youtube_video", label: "YouTube Video", category: "video", description: "Video transcript and metadata.", defaultRefreshFrequency: "never" },
+  { slug: "instagram_reel", label: "Instagram Reel", category: "social", description: "Reel caption, transcript, frames and engagement.", defaultRefreshFrequency: "weekly" },
+  { slug: "instagram_carousel", label: "Instagram Carousel", category: "social", description: "Carousel slides, copy and visual hierarchy.", defaultRefreshFrequency: "weekly" },
+  { slug: "manual_note", label: "Manual Note", category: "manual", description: "Founder-entered source note.", defaultRefreshFrequency: "never" },
+];
 
 function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [who, setWho] = useState(FOUNDERS[0]);
   const [title, setTitle] = useState("");
-  const [sourceType, setSourceType] = useState(SOURCE_TYPES[0]);
+  const typeApi = useApi<{ types: SourceTypeOption[] }>("/api/sources/types?limit=200");
+  const sourceTypes = typeApi.data?.types?.length ? typeApi.data.types : FALLBACK_SOURCE_TYPES;
+  const [sourceType, setSourceType] = useState(FALLBACK_SOURCE_TYPES[0].slug);
+  const [ownerScope, setOwnerScope] = useState("company");
+  const [ownerId, setOwnerId] = useState("");
+  const [refreshFrequency, setRefreshFrequency] = useState("manual");
+  const [intendedUse, setIntendedUse] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const selectedType = sourceTypes.find((type) => type.slug === sourceType) ?? sourceTypes[0];
   async function submit() {
     setBusy(true);
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { title: title.trim(), sourceType, addedBy: who };
+      const body: Record<string, unknown> = {
+        title: title.trim(),
+        sourceType,
+        ownerScope,
+        refreshFrequency,
+        intendedUse: intendedUse.split(",").map((item) => item.trim()).filter(Boolean),
+        addedBy: who,
+      };
+      if (ownerId.trim()) body.ownerId = ownerId.trim();
       if (url.trim()) body.url = url.trim();
       const r = await fetch("/api/sources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = (await r.json()) as Record<string, unknown>;
@@ -799,9 +838,16 @@ function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           <div style={{ fontSize: 12, color: muted }}>New sources start pending and enter the approval queue before the workforce can use them.</div>
           <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Competitor pricing teardown" style={inputStyle} /></div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={selectStyle}>{SOURCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={selectStyle}>{sourceTypes.map((t) => <option key={t.slug} value={t.slug}>{t.label}</option>)}</select></div>
             <div><div style={labelStyle}>ADDED BY</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((fo) => <option key={fo} value={fo}>{fo}</option>)}</select></div>
           </div>
+          <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>{selectedType?.category ?? "source"} - {selectedType?.description ?? "Per-type intake runs after approval."}</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div><div style={labelStyle}>OWNER</div><select value={ownerScope} onChange={(e) => setOwnerScope(e.target.value)} style={selectStyle}>{["global", "company", "client", "project"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}</select></div>
+            <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>OWNER ID <span style={{ color: faint, fontWeight: 400 }}>(optional)</span></div><input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} placeholder="client/project id later" style={inputStyle} /></div>
+            <div><div style={labelStyle}>REFRESH</div><select value={refreshFrequency} onChange={(e) => setRefreshFrequency(e.target.value)} style={selectStyle}>{["manual", "hourly", "daily", "weekly", "monthly", "never"].map((freq) => <option key={freq} value={freq}>{freq}</option>)}</select></div>
+          </div>
+          <div><div style={labelStyle}>INTENDED USE <span style={{ color: faint, fontWeight: 400 }}>(comma separated)</span></div><input value={intendedUse} onChange={(e) => setIntendedUse(e.target.value)} placeholder="content_strategy, design_reference, seo" style={inputStyle} /></div>
           <div><div style={labelStyle}>URL <span style={{ color: faint, fontWeight: 400 }}>(optional)</span></div><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={inputStyle} /></div>
           {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>

@@ -1,5 +1,5 @@
 import { and, desc, eq, ne } from "drizzle-orm";
-import { files as filesTable, sourceChunks, sources, sourceTrustLevels } from "@/db/schema";
+import { files as filesTable, sourceChunks, sourceIntakeRuns, sources, sourceTrustLevels, sourceTypeDefinitions } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
@@ -7,20 +7,28 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   buildFileRow,
   buildSourceChunkRows,
+  buildSourceIntakeRunRow,
+  buildSourceTypeDefinitionRow,
   buildSourceRow,
+  DEFAULT_SOURCE_TYPE_DEFINITIONS,
   resolveSourceTrust,
+  resolveSourceTypeDefinition,
   type AddSourceInput,
   type SourceApprovalStatus,
   type SourceChunkRow,
   type SourceChunksInput,
   type SourceFileInput,
   type SourceFileRow,
+  type SourceIntakeRunRow,
+  type SourceIntakeStatus,
+  type SourceProcessingStatus,
   type SourceRecordStatus,
   type SourceRow,
+  type SourceTypeDefinitionRow,
   type SourceTrustLevel,
 } from "@/lib/domain/sources";
 
-export type { SourceChunkRow, SourceFileRow, SourceRow, SourceTrustLevel };
+export type { SourceChunkRow, SourceFileRow, SourceIntakeRunRow, SourceRow, SourceTypeDefinitionRow, SourceTrustLevel };
 
 export interface ListSourcesQuery {
   approvalStatus?: SourceApprovalStatus;
@@ -49,6 +57,11 @@ export interface SourceLibraryStore {
   listApprovedSourcesForJobs(query: { limit: number; sourceType?: string; trustLevel?: string }): Promise<SourceRow[]>;
   listSourceChunks?(sourceId: string, limit: number): Promise<SourceChunkRow[]>;
   listTrustLevels?(): Promise<SourceTrustLevel[]>;
+  insertSourceIntakeRun?(row: SourceIntakeRunRow): Promise<void>;
+  getSourceIntakeRunById?(id: string): Promise<SourceIntakeRunRow | null>;
+  updateSourceIntakeRun?(id: string, fields: Partial<SourceIntakeRunRow>): Promise<void>;
+  listSourceIntakeRuns?(query: { sourceId?: string; status?: SourceIntakeStatus; limit: number }): Promise<SourceIntakeRunRow[]>;
+  listSourceTypeDefinitions?(query: { category?: string; limit: number }): Promise<SourceTypeDefinitionRow[]>;
 }
 
 export interface SourceDeps {
@@ -103,6 +116,11 @@ export async function createSource(input: CreateSourceInput, deps: SourceDeps = 
     metadata: {
       title: source.title,
       sourceType: source.sourceType,
+      ownerScope: source.ownerScope,
+      ownerId: source.ownerId,
+      intendedUse: source.intendedUse,
+      connectedAgents: source.connectedAgents,
+      refreshFrequency: source.refreshFrequency,
       trustLevel: source.trustLevel,
       hasFile: Boolean(file),
       approvalStatus: source.approvalStatus,
@@ -120,6 +138,9 @@ export async function createSource(input: CreateSourceInput, deps: SourceDeps = 
       metadata: {
         title: source.title,
         sourceType: source.sourceType,
+        ownerScope: source.ownerScope,
+        intendedUse: source.intendedUse,
+        connectedAgents: source.connectedAgents,
         requestedTrustLevel: source.trustLevel,
       },
     },
@@ -167,6 +188,7 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     approvalStatus: "approved",
     trustLevel: trust.slug,
     status: "active",
+    processingStatus: "ready",
     approvedBy: input.approvedBy,
     approvedAt: now,
     updatedAt: now,
@@ -216,6 +238,7 @@ export async function rejectSource(input: RejectSourceInput, deps: SourceDeps = 
   const fields: Partial<SourceRow> = {
     approvalStatus: "rejected",
     status: "archived",
+    processingStatus: "archived",
     updatedAt: now,
   };
   await store.updateSource(source.id, fields);
@@ -287,11 +310,213 @@ export async function listSourceChunks(
   return store.listSourceChunks(sourceId, clampSourceLimit(input.limit));
 }
 
+export interface ListSourceTypeDefinitionsQuery {
+  category?: string;
+  limit?: number;
+  store?: SourceLibraryStore;
+}
+
+export async function listSourceTypeDefinitions(input: ListSourceTypeDefinitionsQuery = {}): Promise<SourceTypeDefinitionRow[]> {
+  const store = input.store ?? defaultStore();
+  if (store.listSourceTypeDefinitions) {
+    return store.listSourceTypeDefinitions({ category: input.category, limit: clampSourceLimit(input.limit) });
+  }
+  const now = new Date();
+  return DEFAULT_SOURCE_TYPE_DEFINITIONS
+    .map((definition) => buildSourceTypeDefinitionRow(definition, { id: `sourcetype_${definition.slug}`, now }))
+    .filter((definition) => (input.category ? definition.category === input.category : true))
+    .slice(0, clampSourceLimit(input.limit));
+}
+
+export interface ListSourceIntakeRunsQuery {
+  sourceId?: string;
+  status?: SourceIntakeStatus;
+  limit?: number;
+  store?: SourceLibraryStore;
+}
+
+export async function listSourceIntakeRuns(input: ListSourceIntakeRunsQuery = {}): Promise<SourceIntakeRunRow[]> {
+  const store = input.store ?? defaultStore();
+  if (!store.listSourceIntakeRuns) return [];
+  return store.listSourceIntakeRuns({ sourceId: input.sourceId, status: input.status, limit: clampSourceLimit(input.limit) });
+}
+
+export interface CreateSourceIntakeRunInput {
+  sourceId: string;
+  trigger?: "manual" | "n8n" | "schedule" | "agent";
+  status?: SourceIntakeStatus;
+  tool?: string;
+  agentRunId?: string;
+  jobId?: string;
+  rawPayloadRef?: string;
+  costEstimate?: number;
+  logs?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SourceIntakeRunResult {
+  run: SourceIntakeRunRow;
+  source: SourceRow;
+}
+
+export async function createSourceIntakeRun(
+  input: CreateSourceIntakeRunInput,
+  deps: SourceDeps = {},
+): Promise<SourceIntakeRunResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  if (!store.insertSourceIntakeRun) throw new Error("source intake run store is not configured");
+
+  const source = await getExistingSource(store, input.sourceId);
+  const definition = resolveSourceTypeForIntake(source.sourceType);
+  const run = buildSourceIntakeRunRow(
+    {
+      sourceId: source.id,
+      sourceType: source.sourceType,
+      handlerSlug: definition.intakeHandlerSlug,
+      trigger: input.trigger ?? "manual",
+      status: input.status ?? "queued",
+      tool: input.tool,
+      agentRunId: input.agentRunId,
+      jobId: input.jobId,
+      rawPayloadRef: input.rawPayloadRef,
+      costEstimate: input.costEstimate,
+      logs: input.logs ?? [],
+      metadata: input.metadata ?? {},
+    },
+    { now },
+  );
+
+  await store.insertSourceIntakeRun(run);
+  await store.updateSource(source.id, {
+    processingStatus: statusToProcessing(run.status),
+    lastError: null,
+    updatedAt: now,
+  });
+
+  await recordAudit({
+    eventType: "source.intake.queued",
+    module: "source_registry",
+    entityType: "source",
+    entityId: source.id,
+    actor: source.addedBy ?? source.discoveredBy ?? undefined,
+    costEstimate: run.costEstimate !== null ? Number(run.costEstimate) : undefined,
+    metadata: {
+      intakeRunId: run.id,
+      sourceType: run.sourceType,
+      handlerSlug: run.handlerSlug,
+      trigger: run.trigger,
+      tool: run.tool,
+      agentRunId: run.agentRunId,
+    },
+  });
+
+  return { run, source: { ...source, processingStatus: statusToProcessing(run.status), updatedAt: now } };
+}
+
+export interface CompleteSourceIntakeRunInput {
+  intakeRunId: string;
+  status: Extract<SourceIntakeStatus, "routed" | "succeeded" | "failed" | "cancelled">;
+  rawPayloadRef?: string;
+  extractedInsightId?: string;
+  extractedData?: Record<string, unknown>;
+  memoryBanksFed?: string[];
+  relatedOutputIds?: string[];
+  confidence?: number;
+  costUsed?: number;
+  actualCost?: number;
+  logs?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+export async function markSourceIntakeRunComplete(
+  input: CompleteSourceIntakeRunInput,
+  deps: SourceDeps = {},
+): Promise<SourceIntakeRunResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  if (!store.getSourceIntakeRunById || !store.updateSourceIntakeRun) throw new Error("source intake run store is not configured");
+
+  const existingRun = await store.getSourceIntakeRunById(input.intakeRunId);
+  if (!existingRun) throw new Error(`source intake run '${input.intakeRunId}' not found`);
+  const source = await getExistingSource(store, existingRun.sourceId);
+  const runFields: Partial<SourceIntakeRunRow> = {
+    status: input.status,
+    rawPayloadRef: input.rawPayloadRef ?? existingRun.rawPayloadRef,
+    extractedInsightId: input.extractedInsightId ?? existingRun.extractedInsightId,
+    actualCost: input.actualCost !== undefined ? String(input.actualCost) : existingRun.actualCost,
+    logs: input.logs ?? existingRun.logs,
+    error: input.error ?? null,
+    completedAt: now,
+    updatedAt: now,
+  };
+  await store.updateSourceIntakeRun(existingRun.id, runFields);
+
+  const processingStatus = statusToProcessing(input.status);
+  const sourceFields: Partial<SourceRow> = {
+    processingStatus,
+    extractedData: input.extractedData ?? source.extractedData,
+    memoryBanksFed: input.memoryBanksFed ?? source.memoryBanksFed,
+    relatedOutputIds: input.relatedOutputIds ?? source.relatedOutputIds,
+    confidence: input.confidence !== undefined ? String(input.confidence) : source.confidence,
+    costUsed: input.costUsed !== undefined ? String(input.costUsed) : source.costUsed,
+    lastScrapedAt: input.status === "failed" || input.status === "cancelled" ? source.lastScrapedAt : now,
+    lastError: input.error ?? null,
+    updatedAt: now,
+  };
+  await store.updateSource(source.id, sourceFields);
+
+  const eventType = input.status === "failed" ? "source.intake.failed" : `source.intake.${input.status}`;
+  await recordAudit({
+    eventType,
+    module: "source_registry",
+    entityType: "source",
+    entityId: source.id,
+    costEstimate: input.costUsed,
+    metadata: {
+      intakeRunId: existingRun.id,
+      sourceType: existingRun.sourceType,
+      handlerSlug: existingRun.handlerSlug,
+      extractedInsightId: sourceFields.extractedData ? input.extractedInsightId : undefined,
+      memoryBanksFed: sourceFields.memoryBanksFed,
+      confidence: sourceFields.confidence,
+      error: input.error,
+    },
+  });
+
+  return { run: { ...existingRun, ...runFields }, source: { ...source, ...sourceFields } };
+}
+
 async function getExistingSource(store: SourceLibraryStore, sourceId: string): Promise<SourceRow> {
   if (!sourceId.trim()) throw new Error("sourceId is required");
   const source = await store.getSourceById(sourceId);
   if (!source) throw new Error(`source '${sourceId}' not found`);
   return source;
+}
+
+function resolveSourceTypeForIntake(sourceType: string): SourceTypeDefinitionRow {
+  try {
+    return resolveSourceTypeDefinition(sourceType);
+  } catch {
+    return buildSourceTypeDefinitionRow(
+      {
+        slug: sourceType,
+        label: sourceType,
+        category: "custom",
+        description: "Custom legacy source type. It can be stored, but should be migrated into a registered type before advanced automation.",
+        intakeHandlerSlug: sourceType,
+      },
+      { id: `sourcetype_${sourceType}` },
+    );
+  }
+}
+
+function statusToProcessing(status: SourceIntakeStatus): SourceProcessingStatus {
+  if (status === "cancelled") return "ready";
+  if (status === "succeeded") return "succeeded";
+  return status;
 }
 
 export function defaultStore(db: Db = getDb()): SourceLibraryStore {
@@ -359,6 +584,44 @@ export function defaultStore(db: Db = getDb()): SourceLibraryStore {
         priority: row.priority,
         canUpdateBrain: row.canUpdateBrain,
       }));
+    },
+    async insertSourceIntakeRun(row) {
+      await db.insert(sourceIntakeRuns).values(row);
+    },
+    async getSourceIntakeRunById(id) {
+      const rows = await db.select().from(sourceIntakeRuns).where(eq(sourceIntakeRuns.id, id)).limit(1);
+      return (rows[0] as SourceIntakeRunRow | undefined) ?? null;
+    },
+    async updateSourceIntakeRun(id, fields) {
+      await db.update(sourceIntakeRuns).set(fields).where(eq(sourceIntakeRuns.id, id));
+    },
+    async listSourceIntakeRuns(query) {
+      const conditions = [];
+      if (query.sourceId) conditions.push(eq(sourceIntakeRuns.sourceId, query.sourceId));
+      if (query.status) conditions.push(eq(sourceIntakeRuns.status, query.status));
+      const where = conditions.length ? and(...conditions) : undefined;
+      return db
+        .select()
+        .from(sourceIntakeRuns)
+        .where(where)
+        .orderBy(desc(sourceIntakeRuns.createdAt))
+        .limit(query.limit) as Promise<SourceIntakeRunRow[]>;
+    },
+    async listSourceTypeDefinitions(query) {
+      const conditions = [];
+      if (query.category) conditions.push(eq(sourceTypeDefinitions.category, query.category));
+      const where = conditions.length ? and(...conditions) : undefined;
+      const rows = await db
+        .select()
+        .from(sourceTypeDefinitions)
+        .where(where)
+        .orderBy(sourceTypeDefinitions.category, sourceTypeDefinitions.label)
+        .limit(query.limit);
+      if (rows.length > 0) return rows as SourceTypeDefinitionRow[];
+      return DEFAULT_SOURCE_TYPE_DEFINITIONS
+        .map((definition) => buildSourceTypeDefinitionRow(definition, { id: `sourcetype_${definition.slug}` }))
+        .filter((definition) => (query.category ? definition.category === query.category : true))
+        .slice(0, query.limit);
     },
   };
 }

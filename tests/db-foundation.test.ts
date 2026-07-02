@@ -7,6 +7,7 @@ import {
   initialBudgetCaps,
   initialFounderProfiles,
   initialProviderConnections,
+  initialSourceTypeDefinitions,
   initialPromptSkills,
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
@@ -20,6 +21,8 @@ const requiredTableExports = [
   "jobAttempts",
   "workerHeartbeats",
   "sources",
+  "sourceTypeDefinitions",
+  "sourceIntakeRuns",
   "files",
   "sourceChunks",
   "memoryRecords",
@@ -48,6 +51,11 @@ const requiredTableExports = [
   "intelligenceSuggestions",
   "experiments",
   "outputIntelligenceUsage",
+] as const;
+
+const requiredSourceRegistrySqlTables = [
+  "source_type_definitions",
+  "source_intake_runs",
 ] as const;
 
 const requiredSqlTables = [
@@ -127,6 +135,17 @@ describe("database foundation", () => {
     }
   });
 
+  it("creates every source registry table in SQL migrations", () => {
+    const migrations = [
+      readFileSync(join(process.cwd(), "src/db/migrations/0000_init_pgvector.sql"), "utf8"),
+      readFileSync(join(process.cwd(), "src/db/migrations/0004_source_registry.sql"), "utf8"),
+    ].join("\n");
+
+    for (const tableName of requiredSourceRegistrySqlTables) {
+      expect(migrations, `${tableName} is missing from SQL migrations`).toContain(`CREATE TABLE "${tableName}"`);
+    }
+  });
+
   it("ships seed data for the WOBBLE Brain, approvals, trust, providers, prompts, founders, and budgets", () => {
     expect(initialWobbleBrainRecords.map((record) => record.slug)).toEqual([
       "about-wobble",
@@ -148,6 +167,7 @@ describe("database foundation", () => {
       "tier_4_experimental",
       "blocked",
     ]);
+    expect(initialSourceTypeDefinitions.map((definition) => definition.slug)).toEqual(expect.arrayContaining(["youtube_video", "instagram_reel", "instagram_carousel", "competitor_website", "design_reference", "n8n_source"]));
 
     expect(initialApprovalActions.map((action) => action.slug)).toEqual([
       "approve",

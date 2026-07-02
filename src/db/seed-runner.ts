@@ -8,11 +8,13 @@ import {
   initialContentTracks,
   initialFounderProfiles,
   initialProviderConnections,
+  initialSourceTypeDefinitions,
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
 } from "@/db/seed";
 import { DEFAULT_PROMPT_SKILLS, buildPromptSkillRow } from "@/lib/domain/prompt-skills";
 import { DEFAULT_AGENTS, buildAgentRow } from "@/lib/domain/agents";
+import { buildSourceTypeDefinitionRow } from "@/lib/domain/sources";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -59,6 +61,14 @@ export async function seedDatabase() {
     .values(initialSourceTrustLevels.map((row) => ({ ...row })))
     .onConflictDoUpdate({
       target: schema.sourceTrustLevels.id,
+      set: { updatedAt: now },
+    });
+
+  await db
+    .insert(schema.sourceTypeDefinitions)
+    .values(initialSourceTypeDefinitions.map((definition) => buildSourceTypeDefinitionRow(definition, { id: `sourcetype_${definition.slug}` })))
+    .onConflictDoUpdate({
+      target: schema.sourceTypeDefinitions.id,
       set: { updatedAt: now },
     });
 

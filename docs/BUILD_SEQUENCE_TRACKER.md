@@ -123,7 +123,7 @@ FULL DETAILED per-chunk specs (what/why/inputs/agent-team/data-flow/memory-banks
 
 ### Phase A - Hive-mind foundations (NEW - from the 2026-07-01 alignment review; see docs/ARCHITECTURE_ALIGNMENT_REVIEW.md)
 52. [x] Chunk 52 - Agent Registry & Orchestration (Codex-verified 2026-07-02: focused migration generated/reviewed/applied, 6 agents seeded, verify green, live agent_run effect tested)
-53. [ ] Chunk 53 - Source Registry + per-type Intake (extend sources schema; youtube/ig-reel/ig-carousel/website/reddit/... intake handlers)
+53. [x] Chunk 53 - Source Registry + per-type Intake (Codex-verified 2026-07-02: rich registry schema, 24 source type definitions seeded, per-type intake run foundation/API/dashboard, verify green, live source approval+intake DB effect tested)
 54. [ ] Chunk 54 - Memory Banks + LLM Router (memory_banks registry + multi-bank routing + suggest/approve placement)
 55. [ ] Chunk 55 - Intelligence / Research Review Inbox (surface intelligence_* + approve/reject-reason/edit/route/merge)
 56. [ ] Chunk 56 - Taste + Feedback Learning (taste_profiles brand+per-founder+client + feedback_events with rejection reasons)

@@ -1,3 +1,5 @@
+import { DEFAULT_SOURCE_TYPE_DEFINITIONS } from "@/lib/domain/sources";
+
 export const initialFounderProfiles = [
   {
     id: "founder_moiz",
@@ -67,6 +69,8 @@ export const initialSourceTrustLevels = [
     canUpdateBrain: false,
   },
 ] as const;
+
+export const initialSourceTypeDefinitions = DEFAULT_SOURCE_TYPE_DEFINITIONS;
 
 export const initialApprovalActions = [
   { id: "approval_action_approve", slug: "approve", label: "Approve", description: "Approve the item as final-ready.", riskLevel: "normal", requiresConfirmation: false },
