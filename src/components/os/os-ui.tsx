@@ -233,6 +233,53 @@ function Field({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function formatDetailValue(value: unknown): string {
+  if (value == null || value === "") return "-";
+  if (value instanceof Date) return value.toLocaleString();
+  if (Array.isArray(value)) return value.length ? value.map((item) => String(item)).join(", ") : "-";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function DetailField({ label, value }: { label: string; value: unknown }) {
+  return <Field label={label} value={formatDetailValue(value)} />;
+}
+
+function JsonBlock({ value }: { value: unknown }) {
+  return (
+    <pre style={{ ...card, margin: 0, padding: "12px 13px", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11.5, lineHeight: 1.5, color: "rgba(242,244,241,0.72)" }}>
+      {JSON.stringify(value ?? {}, null, 2)}
+    </pre>
+  );
+}
+
+function DetailDrawer({ title, subtitle, tags, fields, raw, children, onClose }: { title: string; subtitle?: string; tags?: { text: string; color: string }[]; fields?: { label: string; value: unknown }[]; raw?: unknown; children?: React.ReactNode; onClose: () => void }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(4,5,8,0.62)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)", display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 610, maxWidth: "100%", height: "100%", overflowY: "auto", padding: 26, background: "linear-gradient(180deg,#0b0d0a,#070807)", borderLeft: "1px solid rgba(255,255,255,0.11)", boxShadow: "-34px 0 60px -44px rgba(0,0,0,0.9)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "flex-start", marginBottom: 18 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}>{title}</div>
+            {subtitle ? <div style={{ fontSize: 11.5, color: faint, marginTop: 5, lineHeight: 1.45 }}>{subtitle}</div> : null}
+            {tags?.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{tags.map((tag) => <Tag key={tag.text} text={tag.text} color={tag.color} />)}</div> : null}
+          </div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", flex: "none" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {fields?.map((field) => <DetailField key={field.label} label={field.label} value={field.value} />)}
+          {children}
+          {raw !== undefined ? (
+            <div>
+              <div style={labelStyle}>RAW RECORD</div>
+              <JsonBlock value={raw} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuditPage() {
   const s = useApi<{ events: Record<string, unknown>[] }>("/api/audit?limit=50");
   const guard = offlineIf(s);
@@ -366,6 +413,7 @@ function ApprovalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [memItem, setMemItem] = useState<{ approvalId: string; entityId: string } | null>(null);
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   async function act(id: string, action: "approve" | "reject") {
     setBusyId(id);
     setNote(null);
@@ -401,7 +449,7 @@ function ApprovalsPage() {
         const isMem = a.approvalType === "memory_update";
         const eid = String(a.entityId ?? "");
         return (
-          <div key={id} style={{ ...glass, padding: "20px 22px", display: "flex", gap: 18, alignItems: "flex-start" }}>
+          <div key={id} onClick={() => setSelected(a)} style={{ ...glass, padding: "20px 22px", display: "flex", gap: 18, alignItems: "flex-start", cursor: "pointer" }}>
             <span style={{ width: 44, height: 44, flex: "none", borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="BadgeCheck" size={19} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
@@ -412,13 +460,36 @@ function ApprovalsPage() {
               <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55, maxWidth: 680 }}>{String(a.summary ?? "")}</div>
               <div style={{ fontSize: 11, color: faint, marginTop: 12 }}>{String(a.entityType ?? "")}{a.entityId ? " · " + String(a.entityId) : ""} · {fmtTime(a.createdAt)}</div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "none", width: 160 }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 8, flex: "none", width: 160 }}>
+              <button onClick={() => setSelected(a)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Open details</button>
               <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "approve"))} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>{busy ? "Working…" : isMem ? "Review & approve" : "Approve as " + who.split(" ")[0]}</button>
               <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "reject"))} disabled={busy} style={{ ...rejectBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>Reject</button>
             </div>
           </div>
         );
       })}
+      {selected ? (
+        <DetailDrawer
+          title={String(selected.title ?? selected.approvalType ?? "Approval item")}
+          subtitle={String(selected.id ?? "")}
+          tags={[
+            { text: String(selected.approvalType ?? "approval"), color: C.blue },
+            { text: String(selected.status ?? "pending"), color: C.lime },
+            { text: String(selected.riskLevel ?? "normal"), color: selected.riskLevel === "high" ? C.orange : C.gray },
+          ]}
+          fields={[
+            { label: "Summary", value: selected.summary ?? selected.notes },
+            { label: "Entity", value: String(selected.entityType ?? "") + (selected.entityId ? " / " + String(selected.entityId) : "") },
+            { label: "Requested by", value: selected.requestedBy },
+            { label: "Confirmation required", value: selected.confirmationRequired },
+            { label: "Metadata", value: selected.metadata },
+            { label: "Created", value: fmtTime(selected.createdAt) },
+            { label: "Updated", value: fmtTime(selected.updatedAt) },
+          ]}
+          raw={selected}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
       {memItem ? <MemoryApproveModal approvalId={memItem.approvalId} entityId={memItem.entityId} who={who} onClose={() => setMemItem(null)} onDone={() => { setMemItem(null); s.reload(); }} /> : null}
     </div>
   );
@@ -633,7 +704,7 @@ function ContentPage() {
 function AskPage() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string }[]>([]);
+  const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string; citations?: Record<string, unknown>[]; needsFounderJudgment?: string[]; modelRunId?: string | null }[]>([]);
   async function send() {
     const question = q.trim();
     if (!question || busy) return;
@@ -646,9 +717,21 @@ function AskPage() {
       if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
       else {
         const res = (j.result ?? {}) as Record<string, unknown>;
-        const text = String(res.answer ?? res.message ?? (res.type === "route" ? "Intent recognized and routed." : JSON.stringify(res)));
-        const meta = res.confidence != null ? "confidence " + String(res.confidence) : undefined;
-        setTurns((t) => [...t, { role: "wob", text, meta }]);
+        if (res.type === "answer") {
+          const answer = (res.answer ?? {}) as Record<string, unknown>;
+          const citations = Array.isArray(answer.citations) ? answer.citations as Record<string, unknown>[] : [];
+          const needsFounderJudgment = Array.isArray(answer.needsFounderJudgment) ? answer.needsFounderJudgment.map((item) => String(item)) : [];
+          const metaParts = [
+            answer.confidence != null ? "confidence " + String(answer.confidence) : null,
+            citations.length ? citations.length + " citation" + (citations.length === 1 ? "" : "s") : null,
+            answer.modelRunId ? "run " + String(answer.modelRunId) : null,
+          ].filter(Boolean);
+          setTurns((t) => [...t, { role: "wob", text: String(answer.answer ?? ""), meta: metaParts.join(" - "), citations, needsFounderJudgment, modelRunId: answer.modelRunId ? String(answer.modelRunId) : null }]);
+        } else {
+          const text = String(res.message ?? (res.type === "route" ? "Intent recognized and routed." : JSON.stringify(res)));
+          const meta = [res.intent ? "intent " + String(res.intent) : null, res.module ? "module " + String(res.module) : null, res.status ? "status " + String(res.status) : null].filter(Boolean).join(" - ");
+          setTurns((t) => [...t, { role: "wob", text, meta }]);
+        }
       }
     } catch (e) { setTurns((t) => [...t, { role: "wob", text: "Error: " + String(e) }]); }
     setBusy(false);
@@ -668,6 +751,17 @@ function AskPage() {
               <div style={{ maxWidth: "78%", padding: "12px 15px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, border: "1px solid " + (m.role === "you" ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.09)"), background: m.role === "you" ? "linear-gradient(135deg,rgba(184,255,44,0.16),rgba(184,255,44,0.06))" : "rgba(255,255,255,0.05)" }}>
                 {m.text}
                 {m.meta ? <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{m.meta}</div> : null}
+                {m.needsFounderJudgment?.length ? (
+                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+                    {m.needsFounderJudgment.map((item) => <div key={item} style={{ fontSize: 11.5, color: C.orange }}>{item}</div>)}
+                  </div>
+                ) : null}
+                {m.citations?.length ? (
+                  <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {m.citations.slice(0, 8).map((c, idx) => <Tag key={String(c.id ?? idx)} text={String(c.kind ?? "source") + " - " + String(c.label ?? c.id ?? idx).slice(0, 48)} color={String(c.kind) === "source" ? C.blue : C.lime} />)}
+                    {m.citations.length > 8 ? <Tag text={"+" + String(m.citations.length - 8) + " more"} color={C.gray} /> : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -679,14 +773,16 @@ function AskPage() {
 
 function MemoryRecords({ url, emptyMsg }: { url: string; emptyMsg: string }) {
   const s = useApi<{ records: Record<string, unknown>[] }>(url);
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const guard = offlineIf(s);
   if (guard) return guard;
   const recs = s.data?.records ?? [];
   if (!recs.length) return <StateBlock kind="empty" message={emptyMsg} />;
   return (
+    <>
     <div style={{ ...glass, padding: "8px 10px" }}>
       {recs.map((r, i) => (
-        <div key={String(r.id ?? i)} style={{ display: "flex", gap: 14, padding: 14, borderBottom: i < recs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+        <button key={String(r.id ?? i)} onClick={() => setSelected(r)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, cursor: "pointer", borderBottom: i < recs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
           <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="Database" size={15} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -697,9 +793,33 @@ function MemoryRecords({ url, emptyMsg }: { url: string; emptyMsg: string }) {
             </div>
             <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{String(r.area ?? r.entityType ?? "")} · {fmtTime(r.createdAt)}</div>
           </div>
-        </div>
+          <span style={{ color: faint, display: "inline-flex", alignItems: "center" }}><Icon name="ChevronRight" size={16} /></span>
+        </button>
       ))}
     </div>
+    {selected ? (
+      <DetailDrawer
+        title={String(selected.title ?? selected.slug ?? "Memory record")}
+        subtitle={String(selected.id ?? "")}
+        tags={[
+          { text: String(selected.memoryTier ?? "memory"), color: C.lime },
+          { text: String(selected.trustLevel ?? "trust"), color: C.blue },
+          { text: String(selected.status ?? "active"), color: C.gray },
+        ]}
+        fields={[
+          { label: "Content", value: selected.content },
+          { label: "Area", value: selected.area },
+          { label: "Bank slugs", value: selected.bankSlugs },
+          { label: "Source", value: selected.sourceId },
+          { label: "Approved by", value: selected.approvedBy },
+          { label: "Created", value: fmtTime(selected.createdAt) },
+          { label: "Updated", value: fmtTime(selected.updatedAt) },
+        ]}
+        raw={selected}
+        onClose={() => setSelected(null)}
+      />
+    ) : null}
+    </>
   );
 }
 function BrainPage() {
@@ -708,6 +828,7 @@ function BrainPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div><button onClick={() => setOpen(true)} style={primaryBtn}>Add knowledge</button></div>
+      <div style={{ fontSize: 12, color: muted }}>WOBBLE Brain is the core, always-on tier of Memory. The Memory page shows every tier and bank.</div>
       <MemoryRecords key={k} url="/api/memory?memoryTier=core&limit=50" emptyMsg="No Core Brain records yet." />
       {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); setK((x) => x + 1); }} /> : null}
     </div>
@@ -719,15 +840,77 @@ function MemoryPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div><button onClick={() => setOpen(true)} style={primaryBtn}>Add memory</button></div>
+      <div style={{ fontSize: 12, color: muted }}>Memory includes core Brain, working memory, episodic archive, and routed banks like content, design, SEO, offer, founder taste, and performance.</div>
       <MemoryRecords key={k} url="/api/memory?limit=50" emptyMsg="No memory records yet." />
       {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); setK((x) => x + 1); }} /> : null}
     </div>
   );
 }
 
+function SourceDetailDrawer({ source, onClose }: { source: Record<string, unknown>; onClose: () => void }) {
+  const id = String(source.id ?? "");
+  const chunks = useApi<{ chunks: Record<string, unknown>[] }>(id ? "/api/sources/" + encodeURIComponent(id) + "/chunks?limit=20" : "/api/sources/no-source/chunks");
+  const intake = useApi<{ runs: Record<string, unknown>[] }>(id ? "/api/sources/" + encodeURIComponent(id) + "/intake?limit=20" : "/api/sources/no-source/intake");
+  return (
+    <DetailDrawer
+      title={String(source.title ?? "Source")}
+      subtitle={id}
+      tags={[
+        { text: String(source.sourceType ?? "source"), color: C.gray },
+        { text: String(source.approvalStatus ?? "pending"), color: source.approvalStatus === "approved" ? C.lime : C.blue },
+        { text: String(source.processingStatus ?? "ready"), color: String(source.processingStatus).includes("failed") ? C.orange : C.lime },
+        { text: String(source.trustLevel ?? "tier"), color: C.blue },
+      ]}
+      fields={[
+        { label: "URL", value: source.url },
+        { label: "Owner", value: String(source.ownerScope ?? "company") + (source.ownerId ? " / " + String(source.ownerId) : "") },
+        { label: "Intended use", value: source.intendedUse },
+        { label: "Connected agents", value: source.connectedAgents },
+        { label: "Memory banks fed", value: source.memoryBanksFed },
+        { label: "Refresh frequency", value: source.refreshFrequency },
+        { label: "Last scraped", value: fmtTime(source.lastScrapedAt) },
+        { label: "Confidence", value: source.confidence },
+        { label: "Cost used", value: fmtMoney(source.costUsed) },
+        { label: "Last error", value: source.lastError },
+        { label: "Extracted data", value: source.extractedData },
+      ]}
+      raw={source}
+      onClose={onClose}
+    >
+      <div>
+        <div style={labelStyle}>SOURCE CHUNKS</div>
+        {chunks.loading ? <StateBlock kind="loading" /> : chunks.error ? <StateBlock kind={chunks.status === 503 ? "offline" : "error"} message={chunks.error} /> : (chunks.data?.chunks ?? []).length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(chunks.data?.chunks ?? []).map((chunk, idx) => <Field key={String(chunk.id ?? idx)} label={"Chunk " + String(chunk.chunkIndex ?? idx)} value={chunk.content} />)}
+          </div>
+        ) : <StateBlock kind="empty" message="No chunks attached yet. Intake/connector workers will attach them after the source is approved and processed." />}
+      </div>
+      <div>
+        <div style={labelStyle}>INTAKE RUNS</div>
+        {intake.loading ? <StateBlock kind="loading" /> : intake.error ? <StateBlock kind={intake.status === 503 ? "offline" : "error"} message={intake.error} /> : (intake.data?.runs ?? []).length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(intake.data?.runs ?? []).map((run, idx) => (
+              <div key={String(run.id ?? idx)} style={{ ...card, padding: "11px 12px" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 7 }}>
+                  <Tag text={String(run.status ?? "run")} color={String(run.status).includes("failed") ? C.orange : C.lime} />
+                  <Tag text={String(run.trigger ?? "manual")} color={C.blue} />
+                  <Tag text={String(run.handlerSlug ?? "handler")} color={C.gray} />
+                </div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{String(run.tool ?? "")} {run.error ? "- " + String(run.error) : ""}</div>
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{fmtTime(run.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        ) : <StateBlock kind="empty" message="No intake runs yet. A source can exist before a scraper/transcript/vision workflow processes it." />}
+      </div>
+    </DetailDrawer>
+  );
+}
+
 function SourcesPage() {
   const [pendingOnly, setPendingOnly] = useState(false);
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const url = "/api/sources?limit=100" + (pendingOnly ? "&approvalStatus=pending" : "");
   const s = useApi<{ sources: Record<string, unknown>[] }>(url);
   const guard = offlineIf(s);
@@ -750,7 +933,7 @@ function SourcesPage() {
             const st = String(r.approvalStatus ?? "pending");
             const col = st === "approved" ? C.lime : st === "rejected" ? C.orange : C.blue;
             return (
-              <div key={String(r.id ?? i)} style={{ ...card, padding: "16px 17px" }}>
+              <button key={String(r.id ?? i)} onClick={() => setSelected(r)} style={{ ...card, padding: "16px 17px", textAlign: "left", color: C.white, cursor: "pointer" }}>
                 <div style={{ display: "flex", gap: 7, marginBottom: 9, flexWrap: "wrap" }}>
                   <Tag text={String(r.sourceType ?? "source")} color={C.gray} />
                   <Tag text={st} color={col} />
@@ -768,11 +951,12 @@ function SourcesPage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>{r.intendedUse.slice(0, 3).map((item) => <Tag key={String(item)} text={String(item)} color={C.blue} />)}</div>
                 ) : null}
                 <div style={{ fontSize: 10.5, color: faint, marginTop: 7 }}>{fmtTime(r.createdAt)}</div>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
+      {selected ? <SourceDetailDrawer source={selected} onClose={() => setSelected(null)} /> : null}
     </div>
   );
 }
@@ -954,6 +1138,7 @@ function CreateSkillModal({ onClose, onDone }: { onClose: () => void; onDone: ()
 function SkillsPage() {
   const s = useApi<{ skills: Record<string, unknown>[] }>("/api/skills?limit=100");
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const guard = offlineIf(s);
   if (guard) return guard;
   const skills = s.data?.skills ?? [];
@@ -968,7 +1153,7 @@ function SkillsPage() {
             const st = String(k.status ?? "draft");
             const col = st === "approved" ? C.lime : st === "archived" ? C.gray : C.blue;
             return (
-              <div key={String(k.id ?? i)} style={{ display: "flex", gap: 14, padding: 14, alignItems: "center", borderBottom: i < skills.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+              <button key={String(k.id ?? i)} onClick={() => setSelected(k)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, alignItems: "center", cursor: "pointer", borderBottom: i < skills.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
                 <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="Wand2" size={15} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -979,29 +1164,108 @@ function SkillsPage() {
                   </div>
                   <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{String(k.module ?? "")} · {String(k.goal ?? "")}</div>
                 </div>
-              </div>
+                <span style={{ color: faint, display: "inline-flex", alignItems: "center" }}><Icon name="ChevronRight" size={16} /></span>
+              </button>
             );
           })}
         </div>
       )}
       {open ? <CreateSkillModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); s.reload(); }} /> : null}
+      {selected ? (
+        <DetailDrawer
+          title={String(selected.name ?? selected.slug ?? "Skill")}
+          subtitle={String(selected.id ?? "")}
+          tags={[
+            { text: String(selected.slug ?? "skill"), color: C.blue },
+            { text: "v" + String(selected.version ?? 1), color: C.gray },
+            { text: String(selected.status ?? "draft"), color: selected.status === "approved" ? C.lime : C.blue },
+          ]}
+          fields={[
+            { label: "Module", value: selected.module },
+            { label: "Trigger", value: selected.trigger },
+            { label: "Goal", value: selected.goal },
+            { label: "Prompt body", value: selected.promptBody },
+            { label: "Rules", value: selected.rules },
+            { label: "Reference paths", value: selected.referencePaths },
+            { label: "Approved by", value: selected.approvedBy },
+            { label: "Approved at", value: fmtTime(selected.approvedAt) },
+          ]}
+          raw={selected}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function AgentDetailDrawer({ agent, onClose }: { agent: Record<string, unknown>; onClose: () => void }) {
+  const id = String(agent.id ?? agent.slug ?? "");
+  const detail = useApi<{ agent: Record<string, unknown>; runs: Record<string, unknown>[] }>(id ? "/api/agents/" + encodeURIComponent(id) : "/api/agents/no-agent");
+  const full = detail.data?.agent ?? agent;
+  const runs = detail.data?.runs ?? [];
+  return (
+    <DetailDrawer
+      title={String(full.name ?? full.slug ?? "Agent")}
+      subtitle={String(full.id ?? "")}
+      tags={[
+        { text: String(full.role ?? "agent"), color: C.blue },
+        { text: String(full.team ?? full.module ?? "team"), color: C.gray },
+        { text: String(full.status ?? "active"), color: full.status === "active" ? C.lime : C.orange },
+        { text: String(full.costProfile ?? "mid"), color: C.orange },
+      ]}
+      fields={[
+        { label: "Purpose", value: full.purpose },
+        { label: "Module", value: full.module },
+        { label: "Model role", value: full.modelRole },
+        { label: "Cadence", value: full.cadence },
+        { label: "Tools", value: full.tools },
+        { label: "Memory banks", value: full.memoryBanks },
+        { label: "Input types", value: full.inputTypes },
+        { label: "Output types", value: full.outputTypes },
+        { label: "Quality score", value: full.qualityScore },
+        { label: "Runs / failures", value: String(full.runCount ?? 0) + " / " + String(full.failureCount ?? 0) },
+        { label: "Last run", value: fmtTime(full.lastRunAt) },
+      ]}
+      raw={full}
+      onClose={onClose}
+    >
+      <div>
+        <div style={labelStyle}>RECENT RUNS</div>
+        {detail.loading ? <StateBlock kind="loading" /> : detail.error ? <StateBlock kind={detail.status === 503 ? "offline" : "error"} message={detail.error} /> : runs.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {runs.map((run, idx) => (
+              <div key={String(run.id ?? idx)} style={{ ...card, padding: "11px 12px" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 7 }}>
+                  <Tag text={String(run.status ?? "run")} color={String(run.status).includes("failed") ? C.orange : C.lime} />
+                  {run.costEstimate ? <Tag text={fmtMoney(run.costEstimate)} color={C.orange} /> : null}
+                  {run.qualityScore ? <Tag text={"q " + String(run.qualityScore)} color={C.blue} /> : null}
+                </div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{String(run.outputSummary ?? run.inputSummary ?? run.error ?? "")}</div>
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{fmtTime(run.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        ) : <StateBlock kind="empty" message="No agent runs logged yet. The registry defines visible agents; module workers must record runs here when they execute." />}
+      </div>
+    </DetailDrawer>
   );
 }
 
 function AgentsPage() {
   const s = useApi<{ agents: Record<string, unknown>[] }>("/api/agents?limit=200");
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const guard = offlineIf(s);
   if (guard) return guard;
   const items = s.data?.agents ?? [];
   if (!items.length) return <StateBlock kind="empty" message="No agents registered yet. Run the seed (npm run db:seed) - it registers the current + creative/research agents." />;
   return (
+    <>
     <div style={{ ...glass, padding: "8px 10px" }}>
       {items.map((a, i) => {
         const st = String(a.status ?? "active");
         const col = st === "active" ? C.lime : st === "paused" ? C.blue : C.gray;
         return (
-          <div key={String(a.id ?? i)} style={{ display: "flex", gap: 14, padding: 14, alignItems: "center", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+          <button key={String(a.id ?? i)} onClick={() => setSelected(a)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, alignItems: "center", cursor: "pointer", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
             <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="Bot" size={15} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -1017,10 +1281,13 @@ function AgentsPage() {
               <div>{String(a.runCount ?? 0)} runs</div>
               <div style={{ color: Number(a.failureCount ?? 0) > 0 ? C.orange : faint }}>{String(a.failureCount ?? 0)} fails</div>
             </div>
-          </div>
+            <span style={{ color: faint, display: "inline-flex", alignItems: "center" }}><Icon name="ChevronRight" size={16} /></span>
+          </button>
         );
       })}
     </div>
+    {selected ? <AgentDetailDrawer agent={selected} onClose={() => setSelected(null)} /> : null}
+    </>
   );
 }
 

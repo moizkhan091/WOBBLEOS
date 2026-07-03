@@ -2492,3 +2492,39 @@ Important nuance:
 Next:
 - Chunk 55 - Intelligence / Research Review Inbox.
 - Chunk 55 should use Chunk 52 agents + Chunk 53 source intake + Chunk 54 memory routing so every research finding can be reviewed, edited, rejected with reason, or routed into approved banks.
+
+### 2026-07-03 - Codex - Dashboard usability repair: Ask rendering + detail drawers
+
+Context:
+- Founder reported Ask WOBBLE rendered `[object Object]` and core registries could not be opened/read from the dashboard.
+- Root cause: the backend APIs returned structured records correctly, but the dashboard was rendering summary cards only; Ask WOBBLE stringified the structured answer object instead of rendering `answer.answer` plus citations/metadata.
+
+Changed:
+- `src/components/os/os-ui.tsx` now renders Ask WOBBLE answer text, confidence, citations, model run id, and founder-judgment notes.
+- Memory/WOBBLE Brain rows now open a detail drawer with the real memory record, bank slugs, source id, approval metadata, and raw record.
+- Source Registry cards now open a detail drawer backed by real `/api/sources/:id/chunks` and `/api/sources/:id/intake` calls.
+- Approvals now open a detail drawer showing entity, approval type/status/risk, notes, metadata, and raw approval record.
+- Skill Registry rows now open a detail drawer with prompt body, rules, trigger, module, reference paths, approval metadata, and raw skill record.
+- Agent Registry rows now open a detail drawer backed by real `/api/agents/:id`, including agent metadata and recent runs.
+- Brain page copy now clarifies that WOBBLE Brain is the core, always-on tier of Memory; Memory is the wider system of tiers and routed banks.
+
+Verification:
+- Live `/api/ask` call before patch proved OpenRouter was connected and returned a grounded answer with `modelRunId`.
+- `/api/costs` confirmed the Ask WOBBLE OpenRouter call was cost-logged as `openrouter/openai/gpt-4o-mini`.
+- `npm run verify` passed after the UI patch:
+  - typecheck passed
+  - tests passed: 29 files / 206 tests
+  - Next production build passed
+
+Important nuance:
+- Agent Registry is real infrastructure: it stores visible agent definitions and run logs. It does not mean every registered future agent is already autonomously executing.
+- Actual working model-backed paths today include Ask WOBBLE and the content worker. Future module workers/connectors must call the registered agents and write `agent_runs`.
+- Do not tell the founder all agents are "working" just because they appear in the registry. Say the registry/logging backbone works, and built module agents work where their workers are already wired.
+
+Known limitation:
+- In-app browser automation timed out during visual inspection, and a temporary Playwright download was rejected by policy. UI was verified by API evidence plus typecheck/test/build, not by an automated screenshot.
+- Prefer `npm run start` for local demo stability; the dev/Turbopack server can hang on this Windows machine.
+
+Next:
+- Treat this as a dashboard hotfix checkpoint before continuing Chunk 55.
+- Preserve the Claude glass/lime visual system for future dashboard work and use real API data only.
