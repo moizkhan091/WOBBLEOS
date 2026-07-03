@@ -82,3 +82,11 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Affects: Chunk 53, Chunk 54 Memory Banks + Router, Chunk 55 Intelligence Inbox, Chunk 13/43 Knowledge Compiler, Chunk 15/21/22 creative graph, Connections/n8n chunks.
 - Do NOT change: new sources still start pending and untrusted; unknown/random sources must not auto-update WOBBLE Brain. Real scrapers/connectors plug into the typed intake contract instead of bypassing it.
 - Risks / open questions: real Apify/social/vision/SEO connectors are not implemented in Chunk 53; they must write into this registry and intake-run contract when built.
+
+### 2026-07-03 - Codex - Memory is routed into approved banks, not one generic Brain
+- Decision: Chunk 54 adds `memory_banks` and `memory_bank_links` as the routing contract for company knowledge. Memory updates can suggest multiple banks, but approved memory is only written after founder approval. Approved memory records/chunks store `bank_slugs` and durable membership links.
+- Context / why: founder explicitly wants one source or research output to feed multiple places: competitor, content, hook library, design, founder taste, audience response, SEO, offer, and more. Ask WOBBLE and future agents should auto-pick up new approved data by querying banks, not by adding hardcoded prompt branches.
+- Alternatives rejected: keeping only `memory_records.area`; forcing one source into one bank; silently updating Core Brain; bypassing approval because a router suggested placement.
+- Affects: Chunk 54, Chunk 55 Intelligence Inbox, Chunk 13 Knowledge Compiler, Chunk 43 Content Knowledge Base, Chunk 15 creative graph, Ask WOBBLE retrieval.
+- Do NOT change: routing suggestions are not trusted truth. The flow is source/intelligence -> suggested banks -> approval/edit/reject -> memory records/chunks + bank links -> retrieval.
+- Risks / open questions: current router is deterministic and data-driven with a seeded `memory_router` model role. Future provider-backed LLM routing should write into the same proposal/bank-link contract, not replace it.

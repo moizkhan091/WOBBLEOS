@@ -17,6 +17,7 @@ const approveSchema = z.object({
   title: z.string().trim().min(1),
   memoryTier: z.enum(MEMORY_TIERS),
   trustLevel: z.enum(MEMORY_TRUST_LEVELS),
+  bankSlugs: z.array(z.string().trim().min(1)).optional(),
   tags: z.array(z.string().trim().min(1)).optional(),
   notes: z.string().trim().min(1).optional(),
 });

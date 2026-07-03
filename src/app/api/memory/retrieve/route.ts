@@ -14,6 +14,7 @@ const retrieveSchema = z.object({
   queryMode: z.enum(["current", "historical", "include_archived"]).default("current"),
   tiers: z.array(z.enum(MEMORY_TIERS)).optional(),
   trustLevels: z.array(z.enum(MEMORY_TRUST_LEVELS)).optional(),
+  bankSlugs: z.array(z.string().trim().min(1)).optional(),
   limit: z.number().int().positive().optional(),
 });
 

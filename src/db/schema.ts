@@ -206,6 +206,30 @@ export const sourceChunks = pgTable("source_chunks", {
   updatedAt: updatedAt(),
 });
 
+export const memoryBanks = pgTable("memory_banks", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  label: varchar("label", { length: 160 }).notNull(),
+  scope: varchar("scope", { length: 40 }).notNull(),
+  purpose: text("purpose").notNull(),
+  description: text("description").notNull(),
+  defaultTier: varchar("default_tier", { length: 32 }).notNull(),
+  allowedTrustLevels: jsonb("allowed_trust_levels").$type<string[]>().notNull().default([]),
+  ownerScope: varchar("owner_scope", { length: 40 }),
+  ownerId: text("owner_id"),
+  parentSlug: varchar("parent_slug", { length: 120 }),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  priority: integer("priority").notNull().default(100),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("memory_banks_slug_unique").on(table.slug),
+  index("memory_banks_scope_idx").on(table.scope),
+  index("memory_banks_status_idx").on(table.status),
+  index("memory_banks_parent_slug_idx").on(table.parentSlug),
+]);
+
 export const memoryRecords = pgTable("memory_records", {
   id: id(),
   slug: varchar("slug", { length: 120 }).notNull(),
@@ -216,6 +240,7 @@ export const memoryRecords = pgTable("memory_records", {
   status: varchar("status", { length: 32 }).notNull().default("active"),
   sourceId: text("source_id"),
   confidence: numeric("confidence"),
+  bankSlugs: jsonb("bank_slugs").$type<string[]>().notNull().default([]),
   approvedBy: varchar("approved_by", { length: 120 }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -235,6 +260,7 @@ export const memoryChunks = pgTable("memory_chunks", {
   status: varchar("status", { length: 32 }).notNull().default("active"),
   archived: boolean("archived").notNull().default(false),
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  bankSlugs: jsonb("bank_slugs").$type<string[]>().notNull().default([]),
   sourceTimestamp: timestamp("source_timestamp", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -245,17 +271,43 @@ export const memoryUpdateProposals = pgTable("memory_update_proposals", {
   proposedMemory: text("proposed_memory").notNull(),
   reason: text("reason").notNull(),
   sourceId: text("source_id"),
+  sourceIntakeRunId: text("source_intake_run_id"),
   affectedArea: varchar("affected_area", { length: 80 }).notNull(),
+  knowledgeType: varchar("knowledge_type", { length: 80 }),
   confidence: numeric("confidence"),
+  suggestedBankSlugs: jsonb("suggested_bank_slugs").$type<string[]>().notNull().default([]),
+  approvedBankSlugs: jsonb("approved_bank_slugs").$type<string[]>().notNull().default([]),
+  routerReason: text("router_reason"),
+  routerConfidence: numeric("router_confidence"),
   approvalId: text("approval_id"),
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   approvedBy: varchar("approved_by", { length: 120 }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   rejectedBy: varchar("rejected_by", { length: 120 }),
   rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+  rejectedReason: text("rejected_reason"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+export const memoryBankLinks = pgTable("memory_bank_links", {
+  id: id(),
+  memoryBankSlug: varchar("memory_bank_slug", { length: 120 }).notNull(),
+  memoryRecordId: text("memory_record_id"),
+  memoryChunkId: text("memory_chunk_id"),
+  sourceId: text("source_id"),
+  proposalId: text("proposal_id"),
+  linkType: varchar("link_type", { length: 40 }).notNull().default("membership"),
+  createdBy: varchar("created_by", { length: 120 }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("memory_bank_links_bank_slug_idx").on(table.memoryBankSlug),
+  index("memory_bank_links_record_id_idx").on(table.memoryRecordId),
+  index("memory_bank_links_chunk_id_idx").on(table.memoryChunkId),
+  index("memory_bank_links_source_id_idx").on(table.sourceId),
+  index("memory_bank_links_proposal_id_idx").on(table.proposalId),
+]);
 
 export const approvals = pgTable("approvals", {
   id: id(),

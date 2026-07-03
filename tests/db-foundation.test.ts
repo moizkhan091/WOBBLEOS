@@ -6,6 +6,7 @@ import {
   initialApprovalActions,
   initialBudgetCaps,
   initialFounderProfiles,
+  initialMemoryBanks,
   initialProviderConnections,
   initialSourceTypeDefinitions,
   initialPromptSkills,
@@ -25,9 +26,11 @@ const requiredTableExports = [
   "sourceIntakeRuns",
   "files",
   "sourceChunks",
+  "memoryBanks",
   "memoryRecords",
   "memoryChunks",
   "memoryUpdateProposals",
+  "memoryBankLinks",
   "approvals",
   "approvalActions",
   "contentPackets",
@@ -56,6 +59,11 @@ const requiredTableExports = [
 const requiredSourceRegistrySqlTables = [
   "source_type_definitions",
   "source_intake_runs",
+] as const;
+
+const requiredMemoryBankSqlTables = [
+  "memory_banks",
+  "memory_bank_links",
 ] as const;
 
 const requiredSqlTables = [
@@ -146,6 +154,17 @@ describe("database foundation", () => {
     }
   });
 
+  it("creates every memory bank table in SQL migrations", () => {
+    const migrations = [
+      readFileSync(join(process.cwd(), "src/db/migrations/0000_init_pgvector.sql"), "utf8"),
+      readFileSync(join(process.cwd(), "src/db/migrations/0005_memory_banks.sql"), "utf8"),
+    ].join("\n");
+
+    for (const tableName of requiredMemoryBankSqlTables) {
+      expect(migrations, `${tableName} is missing from SQL migrations`).toContain(`CREATE TABLE "${tableName}"`);
+    }
+  });
+
   it("ships seed data for the WOBBLE Brain, approvals, trust, providers, prompts, founders, and budgets", () => {
     expect(initialWobbleBrainRecords.map((record) => record.slug)).toEqual([
       "about-wobble",
@@ -168,6 +187,9 @@ describe("database foundation", () => {
       "blocked",
     ]);
     expect(initialSourceTypeDefinitions.map((definition) => definition.slug)).toEqual(expect.arrayContaining(["youtube_video", "instagram_reel", "instagram_carousel", "competitor_website", "design_reference", "n8n_source"]));
+    expect(initialMemoryBanks.map((bank) => bank.slug)).toEqual(
+      expect.arrayContaining(["company", "competitor", "brand", "design", "content", "seo", "founder_moiz", "approved_output", "agent_learning"]),
+    );
 
     expect(initialApprovalActions.map((action) => action.slug)).toEqual([
       "approve",

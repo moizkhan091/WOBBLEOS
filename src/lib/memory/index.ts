@@ -1,13 +1,19 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { memoryChunks as memoryChunksTable, memoryRecords, memoryUpdateProposals } from "@/db/schema";
+import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   buildMemoryChunkRows,
+  buildMemoryBankLinkRow,
   buildMemoryRecordRow,
   buildMemoryUpdateProposalRow,
+  suggestMemoryBanks,
+  type MemoryBankLinkRow,
+  type MemoryBankRow,
+  type MemoryBankRoutingInput,
+  type MemoryBankRoutingSuggestion,
   rankMemoryChunks,
   type MemoryChunkRow,
   type MemoryProposalStatus,
@@ -21,11 +27,12 @@ import {
   type TrustLevel,
 } from "@/lib/domain/memory";
 
-export type { MemoryChunkRow, MemoryRecordRow, MemoryUpdateProposalRow, RetrievalMemoryChunk };
+export type { MemoryBankLinkRow, MemoryBankRow, MemoryChunkRow, MemoryRecordRow, MemoryUpdateProposalRow, RetrievalMemoryChunk };
 
 export interface ListMemoryRecordsQuery {
   memoryTier?: MemoryTier;
   area?: string;
+  bankSlug?: string;
   status?: "active" | "archived";
   limit?: number;
 }
@@ -41,6 +48,13 @@ export interface RetrieveMemoryQuery {
   queryMode?: QueryMode;
   tiers?: MemoryTier[];
   trustLevels?: TrustLevel[];
+  bankSlugs?: string[];
+  limit?: number;
+}
+
+export interface ListMemoryBanksQuery {
+  scope?: string;
+  status?: "active" | "archived";
   limit?: number;
 }
 
@@ -48,6 +62,8 @@ export interface MemoryStore {
   insertProposal(row: MemoryUpdateProposalRow): Promise<void>;
   getProposalById(id: string): Promise<MemoryUpdateProposalRow | null>;
   updateProposal(id: string, fields: Partial<MemoryUpdateProposalRow>): Promise<void>;
+  listMemoryBanks(query?: ListMemoryBanksQuery & { limit: number }): Promise<MemoryBankRow[]>;
+  insertMemoryBankLinks?(rows: MemoryBankLinkRow[]): Promise<void>;
   insertMemoryRecord(row: MemoryRecordRow): Promise<void>;
   insertMemoryChunks(rows: MemoryChunkRow[]): Promise<void>;
   retrieveMemoryCandidates(input: RetrieveMemoryQuery & { limit: number }): Promise<RetrievalMemoryChunk[]>;
@@ -68,6 +84,30 @@ export const MAX_MEMORY_LIMIT = 200;
 export function clampMemoryLimit(limit?: number): number {
   if (limit === undefined || Number.isNaN(limit)) return DEFAULT_MEMORY_LIMIT;
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_MEMORY_LIMIT);
+}
+
+export async function listMemoryBanks(query: ListMemoryBanksQuery = {}, deps: MemoryDeps = {}) {
+  const store = deps.store ?? defaultStore();
+  return store.listMemoryBanks({ ...query, limit: clampMemoryLimit(query.limit) });
+}
+
+export async function routeMemoryPlacement(
+  input: MemoryBankRoutingInput,
+  deps: Pick<MemoryDeps, "store"> = {},
+): Promise<MemoryBankRoutingSuggestion> {
+  const store = deps.store ?? defaultStore();
+  const banks = await store.listMemoryBanks({ status: "active", limit: MAX_MEMORY_LIMIT });
+  return suggestMemoryBanks(input, banks);
+}
+
+async function resolveApprovedBankSlugs(bankSlugs: string[], store: MemoryStore): Promise<string[]> {
+  const unique = [...new Set(bankSlugs.map((slug) => slug.trim()).filter(Boolean))];
+  if (!unique.length) throw new Error("at least one memory bank is required");
+  const banks = await store.listMemoryBanks({ status: "active", limit: MAX_MEMORY_LIMIT });
+  const active = new Set(banks.map((bank) => bank.slug));
+  const unknown = unique.filter((slug) => !active.has(slug));
+  if (unknown.length) throw new Error(`unknown or inactive memory bank(s): ${unknown.join(", ")}`);
+  return unique;
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -91,7 +131,35 @@ export async function proposeMemoryUpdate(
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
   const now = deps.now ?? new Date();
 
-  const proposal = buildMemoryUpdateProposalRow(input, { now });
+  const routing =
+    input.suggestedBankSlugs?.length
+      ? {
+          bankSlugs: input.suggestedBankSlugs,
+          reason: input.routerReason ?? "Founder or upstream agent supplied suggested memory banks.",
+          confidence: input.routerConfidence ?? input.confidence ?? 0.7,
+          needsApproval: true as const,
+        }
+      : await routeMemoryPlacement(
+          {
+            content: input.proposedMemory,
+            affectedArea: input.affectedArea,
+            knowledgeType: input.knowledgeType,
+            sourceId: input.sourceId,
+            sourceIntakeRunId: input.sourceIntakeRunId,
+            tags: [input.affectedArea, input.knowledgeType].filter(Boolean) as string[],
+          },
+          { store },
+        );
+
+  const proposal = buildMemoryUpdateProposalRow(
+    {
+      ...input,
+      suggestedBankSlugs: routing.bankSlugs,
+      routerReason: routing.reason,
+      routerConfidence: routing.confidence,
+    },
+    { now },
+  );
   await store.insertProposal(proposal);
 
   await recordAudit({
@@ -103,7 +171,11 @@ export async function proposeMemoryUpdate(
     metadata: {
       affectedArea: proposal.affectedArea,
       sourceId: proposal.sourceId,
+      sourceIntakeRunId: proposal.sourceIntakeRunId,
       confidence: proposal.confidence,
+      suggestedBankSlugs: proposal.suggestedBankSlugs,
+      routerReason: proposal.routerReason,
+      routerConfidence: proposal.routerConfidence,
     },
   });
 
@@ -118,7 +190,10 @@ export async function proposeMemoryUpdate(
       metadata: {
         affectedArea: proposal.affectedArea,
         sourceId: proposal.sourceId,
+        sourceIntakeRunId: proposal.sourceIntakeRunId,
         confidence: proposal.confidence,
+        suggestedBankSlugs: proposal.suggestedBankSlugs,
+        routerReason: proposal.routerReason,
       },
     },
     { store: deps.approvalStore, recordAudit, now },
@@ -137,6 +212,7 @@ export interface ApproveMemoryUpdateInput {
   title: string;
   memoryTier: MemoryTier;
   trustLevel: TrustLevel;
+  bankSlugs?: string[];
   tags?: string[];
   notes?: string;
 }
@@ -156,6 +232,10 @@ export async function approveMemoryUpdate(
   const now = deps.now ?? new Date();
 
   const proposal = await getPendingProposal(store, input.proposalId);
+  const approvedBankSlugs = await resolveApprovedBankSlugs(
+    input.bankSlugs?.length ? input.bankSlugs : proposal.suggestedBankSlugs.length ? proposal.suggestedBankSlugs : [proposal.affectedArea],
+    store,
+  );
 
   await applyApprovalAction(
     {
@@ -177,6 +257,7 @@ export async function approveMemoryUpdate(
       sourceId: proposal.sourceId ?? undefined,
       confidence: proposal.confidence !== null ? Number(proposal.confidence) : undefined,
       approvedBy: input.approvedBy,
+      bankSlugs: approvedBankSlugs,
     },
     { now },
   );
@@ -189,16 +270,47 @@ export async function approveMemoryUpdate(
       sourceId: proposal.sourceId ?? undefined,
       parentEntityId: memoryRecord.id,
       entityType: "memory_record",
-      tags: input.tags ?? [proposal.affectedArea],
+      tags: input.tags ?? [proposal.affectedArea, ...approvedBankSlugs],
+      bankSlugs: approvedBankSlugs,
     },
     { now },
   );
 
   await store.insertMemoryRecord(memoryRecord);
   await store.insertMemoryChunks(memoryChunks);
+  if (store.insertMemoryBankLinks) {
+    await store.insertMemoryBankLinks(
+      approvedBankSlugs.flatMap((bankSlug) => [
+        buildMemoryBankLinkRow(
+          {
+            memoryBankSlug: bankSlug,
+            memoryRecordId: memoryRecord.id,
+            sourceId: proposal.sourceId ?? undefined,
+            proposalId: proposal.id,
+            createdBy: input.approvedBy,
+          },
+          { now },
+        ),
+        ...memoryChunks.map((chunk) =>
+          buildMemoryBankLinkRow(
+            {
+              memoryBankSlug: bankSlug,
+              memoryRecordId: memoryRecord.id,
+              memoryChunkId: chunk.id,
+              sourceId: proposal.sourceId ?? undefined,
+              proposalId: proposal.id,
+              createdBy: input.approvedBy,
+            },
+            { now },
+          ),
+        ),
+      ]),
+    );
+  }
 
   const fields: Partial<MemoryUpdateProposalRow> = {
     status: "approved",
+    approvedBankSlugs,
     approvedBy: input.approvedBy,
     approvedAt: now,
     updatedAt: now,
@@ -217,6 +329,7 @@ export async function approveMemoryUpdate(
       memoryRecordId: memoryRecord.id,
       memoryTier: input.memoryTier,
       trustLevel: input.trustLevel,
+      approvedBankSlugs,
     },
   });
 
@@ -251,6 +364,7 @@ export async function rejectMemoryUpdate(input: RejectMemoryUpdateInput, deps: M
     status: "rejected",
     rejectedBy: input.rejectedBy,
     rejectedAt: now,
+    rejectedReason: input.reason ?? null,
     updatedAt: now,
   };
   await store.updateProposal(proposal.id, fields);
@@ -322,6 +436,22 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
     async updateProposal(id, fields) {
       await db.update(memoryUpdateProposals).set(fields).where(eq(memoryUpdateProposals.id, id));
     },
+    async listMemoryBanks(query = { limit: DEFAULT_MEMORY_LIMIT }) {
+      const conditions = [];
+      if (query.scope) conditions.push(eq(memoryBanks.scope, query.scope));
+      if (query.status) conditions.push(eq(memoryBanks.status, query.status));
+      const where = conditions.length ? and(...conditions) : undefined;
+      return db
+        .select()
+        .from(memoryBanks)
+        .where(where)
+        .orderBy(memoryBanks.priority, memoryBanks.label)
+        .limit(query.limit) as Promise<MemoryBankRow[]>;
+    },
+    async insertMemoryBankLinks(rows) {
+      if (!rows.length) return;
+      await db.insert(memoryBankLinks).values(rows);
+    },
     async insertMemoryRecord(row) {
       await db.insert(memoryRecords).values(row);
     },
@@ -332,6 +462,15 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
       const conditions = [];
       if (input.tiers?.length) conditions.push(inArray(memoryChunksTable.memoryTier, input.tiers));
       if (input.trustLevels?.length) conditions.push(inArray(memoryChunksTable.trustLevel, input.trustLevels));
+      if (input.bankSlugs?.length) {
+        const links = await db
+          .select({ memoryChunkId: memoryBankLinks.memoryChunkId })
+          .from(memoryBankLinks)
+          .where(inArray(memoryBankLinks.memoryBankSlug, input.bankSlugs));
+        const chunkIds = [...new Set(links.map((link) => link.memoryChunkId).filter((id): id is string => Boolean(id)))];
+        if (!chunkIds.length) return [];
+        conditions.push(inArray(memoryChunksTable.id, chunkIds));
+      }
       const where = conditions.length ? and(...conditions) : undefined;
       const rows = await db
         .select()
@@ -353,6 +492,7 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         status: row.status as "active" | "archived",
         archived: row.archived,
         tags: row.tags,
+        bankSlugs: row.bankSlugs,
         createdAt: asIsoDate(row.createdAt),
       }));
     },
@@ -361,6 +501,15 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
       if (query.memoryTier) conditions.push(eq(memoryRecords.memoryTier, query.memoryTier));
       if (query.area) conditions.push(eq(memoryRecords.area, query.area));
       if (query.status) conditions.push(eq(memoryRecords.status, query.status));
+      if (query.bankSlug) {
+        const links = await db
+          .select({ memoryRecordId: memoryBankLinks.memoryRecordId })
+          .from(memoryBankLinks)
+          .where(eq(memoryBankLinks.memoryBankSlug, query.bankSlug));
+        const recordIds = [...new Set(links.map((link) => link.memoryRecordId).filter((id): id is string => Boolean(id)))];
+        if (!recordIds.length) return [];
+        conditions.push(inArray(memoryRecords.id, recordIds));
+      }
       const where = conditions.length ? and(...conditions) : undefined;
       return db
         .select()

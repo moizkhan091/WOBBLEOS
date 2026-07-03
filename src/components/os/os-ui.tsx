@@ -693,6 +693,7 @@ function MemoryRecords({ url, emptyMsg }: { url: string; emptyMsg: string }) {
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{String(r.title ?? r.summary ?? r.content ?? "memory")}</span>
               {r.memoryTier ? <Tag text={String(r.memoryTier)} color={C.lime} /> : null}
               {r.trustLevel ? <Tag text={String(r.trustLevel)} color={C.blue} /> : null}
+              {Array.isArray(r.bankSlugs) ? r.bankSlugs.slice(0, 4).map((bank) => <Tag key={String(bank)} text={String(bank)} color={C.orange} />) : null}
             </div>
             <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{String(r.area ?? r.entityType ?? "")} · {fmtTime(r.createdAt)}</div>
           </div>

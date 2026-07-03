@@ -1,3 +1,4 @@
+import { DEFAULT_MEMORY_BANKS } from "@/lib/domain/memory";
 import { DEFAULT_SOURCE_TYPE_DEFINITIONS } from "@/lib/domain/sources";
 
 export const initialFounderProfiles = [
@@ -71,6 +72,7 @@ export const initialSourceTrustLevels = [
 ] as const;
 
 export const initialSourceTypeDefinitions = DEFAULT_SOURCE_TYPE_DEFINITIONS;
+export const initialMemoryBanks = DEFAULT_MEMORY_BANKS;
 
 export const initialApprovalActions = [
   { id: "approval_action_approve", slug: "approve", label: "Approve", description: "Approve the item as final-ready.", riskLevel: "normal", requiresConfirmation: false },

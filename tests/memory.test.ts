@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildMemoryChunkRows,
+  buildMemoryBankRow,
   buildMemoryRecordRow,
   buildMemoryUpdateProposalRow,
   rankMemoryChunks,
+  DEFAULT_MEMORY_BANKS,
+  suggestMemoryBanks,
+  type MemoryBankLinkRow,
+  type MemoryBankRow,
   type MemoryChunkRow,
   type MemoryRecordRow,
   type MemoryUpdateProposalRow,
@@ -50,6 +55,21 @@ describe("rankMemoryChunks", () => {
 });
 
 describe("memory domain builders", () => {
+  it("routes extracted source knowledge into multiple memory banks with approval still required", () => {
+    const suggestion = suggestMemoryBanks({
+      content: "Instagram carousel has a strong hook, premium visual hierarchy, and audience comments worth studying.",
+      sourceType: "instagram_carousel",
+      affectedArea: "content",
+      tags: ["carousel", "design"],
+    });
+
+    expect(suggestion.needsApproval).toBe(true);
+    expect(suggestion.bankSlugs).toEqual(
+      expect.arrayContaining(["content", "design", "carousel_structure", "visual_reference"]),
+    );
+    expect(suggestion.confidence).toBeGreaterThan(0.5);
+  });
+
   it("builds metadata-rich memory records and chunks", () => {
     const record = buildMemoryRecordRow(
       {
@@ -85,6 +105,7 @@ describe("memory domain builders", () => {
         parentEntityId: "memory_1",
         entityType: "memory_record",
         tags: ["brand", "do-not-say"],
+        bankSlugs: ["brand"],
       },
       { ids: ["chunk_1"], now },
     );
@@ -96,6 +117,7 @@ describe("memory domain builders", () => {
       archived: false,
       status: "active",
       tags: ["brand", "do-not-say"],
+      bankSlugs: ["brand"],
     });
   });
 
@@ -107,6 +129,9 @@ describe("memory domain builders", () => {
         sourceId: "source_1",
         affectedArea: "brand",
         confidence: 0.8,
+        suggestedBankSlugs: ["brand", "company"],
+        routerReason: "Brand source should feed brand and company memory.",
+        routerConfidence: 0.74,
       },
       { id: "memproposal_1", now },
     );
@@ -116,6 +141,9 @@ describe("memory domain builders", () => {
       status: "pending",
       approvalId: null,
       confidence: "0.8",
+      suggestedBankSlugs: ["brand", "company"],
+      approvedBankSlugs: [],
+      routerConfidence: "0.74",
       approvedBy: null,
       rejectedBy: null,
     });
@@ -139,8 +167,10 @@ function fakeApprovalStore(status: "pending" | "approved" | "rejected" = "pendin
 
 function makeMemoryStore(seedProposals: MemoryUpdateProposalRow[] = [], seedCandidates: RetrievalMemoryChunk[] = []) {
   const proposals = new Map(seedProposals.map((proposal) => [proposal.id, proposal]));
+  const banks: MemoryBankRow[] = DEFAULT_MEMORY_BANKS.map((bank) => buildMemoryBankRow(bank, { id: `memorybank_${bank.slug}`, now }));
   const records: MemoryRecordRow[] = [];
   const chunks: MemoryChunkRow[] = [];
+  const links: MemoryBankLinkRow[] = [];
   const calls = {
     updateProposal: [] as Array<{ id: string; fields: Partial<MemoryUpdateProposalRow> }>,
   };
@@ -155,18 +185,29 @@ function makeMemoryStore(seedProposals: MemoryUpdateProposalRow[] = [], seedCand
       const current = proposals.get(id);
       if (current) proposals.set(id, { ...current, ...fields });
     },
+    listMemoryBanks: async (query) =>
+      banks
+        .filter((bank) => (query?.status ? bank.status === query.status : true))
+        .filter((bank) => (query?.scope ? bank.scope === query.scope : true))
+        .slice(0, query?.limit ?? banks.length),
+    insertMemoryBankLinks: async (rows) => {
+      links.push(...rows);
+    },
     insertMemoryRecord: async (row) => {
       records.push(row);
     },
     insertMemoryChunks: async (rows) => {
       chunks.push(...rows);
     },
-    retrieveMemoryCandidates: async () => seedCandidates,
+    retrieveMemoryCandidates: async (query) =>
+      query.bankSlugs?.length
+        ? seedCandidates.filter((candidate) => candidate.bankSlugs.some((slug) => query.bankSlugs?.includes(slug)))
+        : seedCandidates,
     listMemoryRecords: async () => records,
     listMemoryProposals: async () => [...proposals.values()],
   };
 
-  return { store, proposals, records, chunks, calls };
+  return { store, proposals, records, chunks, links, calls };
 }
 
 describe("memory service", () => {
@@ -214,7 +255,7 @@ describe("memory service", () => {
       },
       { id: "proposal_1", now },
     );
-    const { store, records, chunks, calls } = makeMemoryStore([proposal]);
+    const { store, records, chunks, links, calls } = makeMemoryStore([proposal]);
     const audit: AuditEventInput[] = [];
 
     const result = await approveMemoryUpdate(
@@ -226,6 +267,7 @@ describe("memory service", () => {
         title: "Do not say generic AI agency",
         memoryTier: "core",
         trustLevel: "founder_core",
+        bankSlugs: ["brand", "company"],
         tags: ["brand", "do-not-say"],
       },
       {
@@ -241,8 +283,22 @@ describe("memory service", () => {
     expect(result.memoryRecord.id.startsWith("memory_")).toBe(true);
     expect(records).toHaveLength(1);
     expect(chunks).toHaveLength(1);
-    expect(chunks[0]).toMatchObject({ memoryTier: "core", trustLevel: "founder_core", sourceId: "source_1" });
-    expect(calls.updateProposal[0].fields).toMatchObject({ status: "approved", approvedBy: "Moiz", approvedAt: now });
+    expect(records[0]).toMatchObject({ bankSlugs: ["brand", "company"] });
+    expect(chunks[0]).toMatchObject({ memoryTier: "core", trustLevel: "founder_core", sourceId: "source_1", bankSlugs: ["brand", "company"] });
+    expect(links.map((link) => [link.memoryBankSlug, link.memoryRecordId, link.memoryChunkId])).toEqual(
+      expect.arrayContaining([
+        ["brand", result.memoryRecord.id, null],
+        ["brand", result.memoryRecord.id, chunks[0].id],
+        ["company", result.memoryRecord.id, null],
+        ["company", result.memoryRecord.id, chunks[0].id],
+      ]),
+    );
+    expect(calls.updateProposal[0].fields).toMatchObject({
+      status: "approved",
+      approvedBankSlugs: ["brand", "company"],
+      approvedBy: "Moiz",
+      approvedAt: now,
+    });
     expect(audit.some((event) => event.eventType === "approval.approve")).toBe(true);
     expect(audit.some((event) => event.eventType === "memory_update.approved")).toBe(true);
   });
@@ -265,7 +321,12 @@ describe("memory service", () => {
 
     expect(records).toHaveLength(0);
     expect(chunks).toHaveLength(0);
-    expect(calls.updateProposal[0].fields).toMatchObject({ status: "rejected", rejectedBy: "Haad", rejectedAt: now });
+    expect(calls.updateProposal[0].fields).toMatchObject({
+      status: "rejected",
+      rejectedBy: "Haad",
+      rejectedAt: now,
+      rejectedReason: "Not strong enough",
+    });
   });
 
   it("retrieves only active, trusted, metadata-rich memory and ranks it", async () => {
@@ -283,6 +344,7 @@ describe("memory service", () => {
         status: "active",
         archived: false,
         tags: [],
+        bankSlugs: [],
         createdAt: "2026-06-29T00:00:00.000Z",
       },
       {
@@ -298,6 +360,7 @@ describe("memory service", () => {
         status: "active",
         archived: false,
         tags: ["market"],
+        bankSlugs: ["research"],
         createdAt: "2024-01-01T00:00:00.000Z",
       },
       {
@@ -313,6 +376,7 @@ describe("memory service", () => {
         status: "active",
         archived: false,
         tags: ["market"],
+        bankSlugs: ["research"],
         createdAt: "2026-06-28T00:00:00.000Z",
       },
     ];
@@ -330,5 +394,47 @@ describe("memory service", () => {
       memoryRecordId: "memory_fresh",
       score: expect.any(Number),
     });
+  });
+
+  it("filters retrieval by selected memory banks", async () => {
+    const candidates: RetrievalMemoryChunk[] = [
+      {
+        id: "brand",
+        memoryRecordId: "memory_brand",
+        content: "Brand rule",
+        similarity: 0.8,
+        tier: "core",
+        trustLevel: "founder_core",
+        sourceId: null,
+        parentEntityId: "memory_brand",
+        entityType: "memory_record",
+        status: "active",
+        archived: false,
+        tags: ["brand"],
+        bankSlugs: ["brand"],
+        createdAt: "2026-06-29T00:00:00.000Z",
+      },
+      {
+        id: "seo",
+        memoryRecordId: "memory_seo",
+        content: "SEO rule",
+        similarity: 0.8,
+        tier: "working",
+        trustLevel: "approved_expert",
+        sourceId: null,
+        parentEntityId: "memory_seo",
+        entityType: "memory_record",
+        status: "active",
+        archived: false,
+        tags: ["seo"],
+        bankSlugs: ["seo"],
+        createdAt: "2026-06-29T00:00:00.000Z",
+      },
+    ];
+    const { store } = makeMemoryStore([], candidates);
+
+    const result = await retrieveMemoryContext({ query: "brand", bankSlugs: ["brand"], limit: 10 }, { store, now });
+
+    expect(result.map((chunk) => chunk.id)).toEqual(["brand"]);
   });
 });

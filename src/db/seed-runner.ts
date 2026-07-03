@@ -8,6 +8,7 @@ import {
   initialContentTracks,
   initialFounderProfiles,
   initialProviderConnections,
+  initialMemoryBanks,
   initialSourceTypeDefinitions,
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
@@ -15,6 +16,7 @@ import {
 import { DEFAULT_PROMPT_SKILLS, buildPromptSkillRow } from "@/lib/domain/prompt-skills";
 import { DEFAULT_AGENTS, buildAgentRow } from "@/lib/domain/agents";
 import { buildSourceTypeDefinitionRow } from "@/lib/domain/sources";
+import { buildMemoryBankRow } from "@/lib/domain/memory";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -40,7 +42,25 @@ function modelRoles() {
       provider: "openrouter",
       model: process.env.CONTENT_STRATEGY_MODEL?.trim() || "anthropic/claude-sonnet-4.5",
     },
+    memory_router: {
+      provider: "openrouter",
+      model: process.env.MEMORY_ROUTER_MODEL?.trim() || "openai/gpt-4o-mini",
+    },
   };
+}
+
+function seedMemoryBanksForArea(area: string): string[] {
+  const areaMap: Record<string, string[]> = {
+    brand: ["brand", "company"],
+    icp: ["brand", "company"],
+    offer: ["offer", "company"],
+    content: ["content", "company"],
+    founder: ["founder_taste", "company"],
+    team: ["company", "agent_learning"],
+    strategy: ["company", "research"],
+    market: ["research", "competitor"],
+  };
+  return areaMap[area] ?? ["company"];
 }
 
 export async function seedDatabase() {
@@ -69,6 +89,14 @@ export async function seedDatabase() {
     .values(initialSourceTypeDefinitions.map((definition) => buildSourceTypeDefinitionRow(definition, { id: `sourcetype_${definition.slug}` })))
     .onConflictDoUpdate({
       target: schema.sourceTypeDefinitions.id,
+      set: { updatedAt: now },
+    });
+
+  await db
+    .insert(schema.memoryBanks)
+    .values(initialMemoryBanks.map((bank) => buildMemoryBankRow(bank, { id: `memorybank_${bank.slug}` })))
+    .onConflictDoUpdate({
+      target: schema.memoryBanks.id,
       set: { updatedAt: now },
     });
 
@@ -107,6 +135,7 @@ export async function seedDatabase() {
         status: "active",
         sourceId: null,
         confidence: "1",
+        bankSlugs: seedMemoryBanksForArea(row.area),
         approvedBy: "system_seed",
         approvedAt: now,
       })),
@@ -131,11 +160,45 @@ export async function seedDatabase() {
         status: "active",
         archived: false,
         tags: [row.area, "seed"],
+        bankSlugs: seedMemoryBanksForArea(row.area),
       })),
     )
     .onConflictDoUpdate({
       target: schema.memoryChunks.id,
       set: { archived: false, status: "active", updatedAt: now },
+    });
+
+  await db
+    .insert(schema.memoryBankLinks)
+    .values(
+      initialWobbleBrainRecords.flatMap((row) =>
+        seedMemoryBanksForArea(row.area).flatMap((bankSlug) => [
+          {
+            id: `memorybanklink_${row.slug}_${bankSlug}_record`,
+            memoryBankSlug: bankSlug,
+            memoryRecordId: row.id,
+            memoryChunkId: null,
+            sourceId: null,
+            proposalId: null,
+            linkType: "seed",
+            createdBy: "system_seed",
+          },
+          {
+            id: `memorybanklink_${row.slug}_${bankSlug}_chunk`,
+            memoryBankSlug: bankSlug,
+            memoryRecordId: row.id,
+            memoryChunkId: `memorychunk_${row.slug}`,
+            sourceId: null,
+            proposalId: null,
+            linkType: "seed",
+            createdBy: "system_seed",
+          },
+        ]),
+      ),
+    )
+    .onConflictDoUpdate({
+      target: schema.memoryBankLinks.id,
+      set: { updatedAt: now },
     });
 
   await db
@@ -200,6 +263,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
       console.log("db_seed=ok");
       console.log(`ask_wobble_model=${process.env.ASK_WOBBLE_MODEL?.trim() || "openai/gpt-4o-mini"}`);
       console.log(`content_strategy_model=${process.env.CONTENT_STRATEGY_MODEL?.trim() || "anthropic/claude-sonnet-4.5"}`);
+      console.log(`memory_router_model=${process.env.MEMORY_ROUTER_MODEL?.trim() || "openai/gpt-4o-mini"}`);
     })
     .catch((error) => {
       console.error("db_seed=failed");
