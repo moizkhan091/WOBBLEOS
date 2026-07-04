@@ -37,11 +37,28 @@ describe("approval router - completes the real entity action, not just the row",
 
   it("routes content_packet reject to rejectContentPacket", async () => {
     const rejectContentPacket = vi.fn(async () => ({}));
+    const recordFeedbackEvent = vi.fn(async () => ({}));
     await resolveApproval(
       { approvalId: "a", action: "reject", approvedBy: "Ibrahim", notes: "weak" },
-      { loadApproval: async () => makeApproval({ approvalType: "content_packet", entityId: "pkt_3" }), rejectContentPacket },
+      { loadApproval: async () => makeApproval({ approvalType: "content_packet", entityId: "pkt_3" }), rejectContentPacket, recordFeedbackEvent },
     );
     expect(rejectContentPacket).toHaveBeenCalledWith(expect.objectContaining({ packetId: "pkt_3", approvedBy: "Ibrahim", notes: "weak" }));
+    expect(recordFeedbackEvent).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: "content_packet",
+      targetId: "pkt_3",
+      decision: "reject",
+      actor: "Ibrahim",
+      reason: "weak",
+    }));
+  });
+
+  it("requires a rejection reason before routing approval feedback", async () => {
+    await expect(
+      resolveApproval(
+        { approvalId: "a", action: "reject", approvedBy: "Ibrahim" },
+        { loadApproval: async () => makeApproval({ approvalType: "content_packet", entityId: "pkt_3" }), rejectContentPacket: vi.fn(async () => ({})) },
+      ),
+    ).rejects.toThrow(/rejection reason/i);
   });
 
   it("routes generic types (n8n_handoff) to applyApprovalAction", async () => {

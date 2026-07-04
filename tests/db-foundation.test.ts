@@ -10,6 +10,7 @@ import {
   initialProviderConnections,
   initialSourceTypeDefinitions,
   initialPromptSkills,
+  initialTasteProfiles,
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
 } from "@/db/seed";
@@ -54,6 +55,8 @@ const requiredTableExports = [
   "intelligenceSuggestions",
   "experiments",
   "outputIntelligenceUsage",
+  "tasteProfiles",
+  "feedbackEvents",
 ] as const;
 
 const requiredSourceRegistrySqlTables = [
@@ -64,6 +67,11 @@ const requiredSourceRegistrySqlTables = [
 const requiredMemoryBankSqlTables = [
   "memory_banks",
   "memory_bank_links",
+] as const;
+
+const requiredTasteLearningSqlTables = [
+  "taste_profiles",
+  "feedback_events",
 ] as const;
 
 const requiredSqlTables = [
@@ -172,6 +180,16 @@ describe("database foundation", () => {
     }
   });
 
+  it("creates every taste learning table in SQL migrations", () => {
+    const migrations = [
+      readFileSync(join(process.cwd(), "src/db/migrations/0006_taste_feedback_learning.sql"), "utf8"),
+    ].join("\n");
+
+    for (const tableName of requiredTasteLearningSqlTables) {
+      expect(migrations, `${tableName} is missing from SQL migrations`).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
+    }
+  });
+
   it("ships seed data for the WOBBLE Brain, approvals, trust, providers, prompts, founders, and budgets", () => {
     expect(initialWobbleBrainRecords.map((record) => record.slug)).toEqual([
       "about-wobble",
@@ -211,7 +229,10 @@ describe("database foundation", () => {
     ]);
 
     expect(initialFounderProfiles.map((founder) => founder.displayName)).toContain("Moiz");
+    expect(initialFounderProfiles.map((founder) => founder.displayName)).toContain("Ali");
+    expect(initialFounderProfiles.map((founder) => founder.displayName)).toContain("Ibrahim");
     expect(initialFounderProfiles.map((founder) => founder.displayName)).toContain("Haad");
+    expect(initialTasteProfiles.map((profile) => profile.profileKey)).toEqual(expect.arrayContaining(["brand:wobble", "founder:moiz", "founder:ali", "founder:ibrahim", "founder:haad"]));
     expect(initialBudgetCaps.map((cap) => cap.category)).toEqual(expect.arrayContaining(["openrouter", "search", "media", "video"]));
     expect(initialProviderConnections.map((provider) => provider.slug)).toEqual(expect.arrayContaining(["openrouter", "n8n", "fal_seedance"]));
     expect(initialPromptSkills.map((skill) => skill.slug)).toEqual(expect.arrayContaining(["wobble_linkedin_post", "research_radar", "decision_brief"]));

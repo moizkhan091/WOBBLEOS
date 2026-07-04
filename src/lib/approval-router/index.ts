@@ -2,6 +2,8 @@ import { getApproval, applyApprovalAction, type ApprovalRow } from "@/lib/approv
 import { approveSource, rejectSource } from "@/lib/sources";
 import { approveSkillVersion, rejectSkillVersion } from "@/lib/prompt-skills";
 import { approveContentPacket, rejectContentPacket } from "@/lib/content";
+import { recordFeedbackEvent, type RecordFeedbackEventResult } from "@/lib/taste";
+import { FEEDBACK_REASON_CATEGORIES, type FeedbackEventInput, type FeedbackReasonCategory } from "@/lib/domain/taste";
 
 /**
  * Approval router (Chunk 04 completion): the founder's single Approvals gate
@@ -36,6 +38,36 @@ export interface ResolveApprovalDeps {
   approveContentPacket?: (i: { packetId: string; approvalId: string; approvedBy: string; notes?: string }) => Promise<unknown>;
   rejectContentPacket?: (i: { packetId: string; approvalId: string; approvedBy: string; notes?: string }) => Promise<unknown>;
   applyApprovalAction?: (i: { approvalId: string; action: "approve" | "reject"; approvedBy: string; notes?: string }) => Promise<unknown>;
+  recordFeedbackEvent?: (i: FeedbackEventInput) => Promise<RecordFeedbackEventResult | unknown>;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function asDimensions(value: unknown): FeedbackEventInput["dimensions"] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const obj = item as Record<string, unknown>;
+      if (typeof obj.key !== "string" || typeof obj.value !== "string") return null;
+      return {
+        key: obj.key,
+        value: obj.value,
+        weight: typeof obj.weight === "number" ? obj.weight : undefined,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function asReasonCategory(value: unknown): FeedbackReasonCategory | undefined {
+  if (typeof value !== "string") return undefined;
+  return FEEDBACK_REASON_CATEGORIES.includes(value as FeedbackReasonCategory) ? (value as FeedbackReasonCategory) : undefined;
 }
 
 export async function resolveApproval(input: ResolveApprovalInput, deps: ResolveApprovalDeps = {}): Promise<ResolveApprovalResult> {
@@ -46,6 +78,9 @@ export async function resolveApproval(input: ResolveApprovalInput, deps: Resolve
   const type = approval.approvalType;
   const entityId = approval.entityId;
   const approve = input.action === "approve";
+  if (!approve && !input.notes?.trim()) {
+    throw new Error("rejection reason is required before WOBBLE can learn from the decision");
+  }
 
   if (type === "source") {
     if (approve) {
@@ -70,6 +105,29 @@ export async function resolveApproval(input: ResolveApprovalInput, deps: Resolve
     throw new Error("memory_update approvals require the memory approval form (slug, title, tier, trust)");
   } else {
     await (deps.applyApprovalAction ?? applyApprovalAction)({ approvalId: input.approvalId, action: approve ? "approve" : "reject", approvedBy: input.approvedBy, notes: input.notes });
+  }
+
+  const feedback = deps.recordFeedbackEvent ?? (Object.keys(deps).length ? undefined : recordFeedbackEvent);
+  if (feedback) {
+    await feedback({
+      targetType: type,
+      targetId: entityId,
+      decision: input.action,
+      actor: input.approvedBy,
+      reason: input.notes,
+      reasonCategory: !approve ? asReasonCategory(approval.metadata?.reasonCategory) ?? "other" : asReasonCategory(approval.metadata?.reasonCategory),
+      outputType: asOptionalString(approval.metadata?.outputType),
+      module: asOptionalString(approval.metadata?.module) ?? asOptionalString(approval.entityType),
+      agentSlug: asOptionalString(approval.metadata?.agentSlug),
+      sourceIds: asStringArray(approval.metadata?.sourceIds),
+      memoryBankSlugs: asStringArray(approval.metadata?.memoryBankSlugs),
+      dimensions: asDimensions(approval.metadata?.tasteDimensions),
+      metadata: {
+        approvalId: input.approvalId,
+        approvalType: type,
+        entityType: approval.entityType,
+      },
+    });
   }
 
   return { approvalType: type, entityId, action: input.action };

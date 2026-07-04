@@ -9,6 +9,7 @@ import {
   initialFounderProfiles,
   initialProviderConnections,
   initialMemoryBanks,
+  initialTasteProfiles,
   initialSourceTypeDefinitions,
   initialSourceTrustLevels,
   initialWobbleBrainRecords,
@@ -17,6 +18,7 @@ import { DEFAULT_PROMPT_SKILLS, buildPromptSkillRow } from "@/lib/domain/prompt-
 import { DEFAULT_AGENTS, buildAgentRow } from "@/lib/domain/agents";
 import { buildSourceTypeDefinitionRow } from "@/lib/domain/sources";
 import { buildMemoryBankRow } from "@/lib/domain/memory";
+import { buildTasteProfileRow } from "@/lib/domain/taste";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -97,6 +99,21 @@ export async function seedDatabase() {
     .values(initialMemoryBanks.map((bank) => buildMemoryBankRow(bank, { id: `memorybank_${bank.slug}` })))
     .onConflictDoUpdate({
       target: schema.memoryBanks.id,
+      set: { updatedAt: now },
+    });
+
+  await db
+    .insert(schema.tasteProfiles)
+    .values(
+      initialTasteProfiles.map((profile) =>
+        buildTasteProfileRow(profile, {
+          id: `taste_${String(profile.profileKey ?? profile.scope).replace(/[^a-zA-Z0-9_]+/g, "_")}`,
+          now,
+        }),
+      ),
+    )
+    .onConflictDoUpdate({
+      target: schema.tasteProfiles.profileKey,
       set: { updatedAt: now },
     });
 

@@ -1,5 +1,6 @@
 import { DEFAULT_MEMORY_BANKS } from "@/lib/domain/memory";
 import { DEFAULT_SOURCE_TYPE_DEFINITIONS } from "@/lib/domain/sources";
+import { DEFAULT_TASTE_PROFILES } from "@/lib/domain/taste";
 
 export const initialFounderProfiles = [
   {
@@ -15,14 +16,14 @@ export const initialFounderProfiles = [
     approvalDefault: false,
   },
   {
-    id: "founder_3",
-    displayName: "Founder 3",
+    id: "founder_ali",
+    displayName: "Ali",
     role: "Founder",
     approvalDefault: false,
   },
   {
-    id: "founder_4",
-    displayName: "Founder 4",
+    id: "founder_ibrahim",
+    displayName: "Ibrahim",
     role: "Founder",
     approvalDefault: false,
   },
@@ -73,6 +74,7 @@ export const initialSourceTrustLevels = [
 
 export const initialSourceTypeDefinitions = DEFAULT_SOURCE_TYPE_DEFINITIONS;
 export const initialMemoryBanks = DEFAULT_MEMORY_BANKS;
+export const initialTasteProfiles = DEFAULT_TASTE_PROFILES;
 
 export const initialApprovalActions = [
   { id: "approval_action_approve", slug: "approve", label: "Approve", description: "Approve the item as final-ready.", riskLevel: "normal", requiresConfirmation: false },

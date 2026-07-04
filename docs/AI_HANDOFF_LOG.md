@@ -2599,3 +2599,78 @@ Important nuance:
 Next:
 - Chunk 56 - Taste + Feedback Learning.
 - Chunk 56 should connect approvals/rejections and rejection reasons to global WOBBLE taste, per-founder taste, client/project taste, and agent learning without overwriting brand truth too quickly.
+
+### 2026-07-04 - Codex - Chunk 56 Taste + Feedback Learning
+
+Context:
+- Chunk 56 closes the Phase A hive-mind foundation by turning founder approval/rejection/edit signals into durable learning.
+- Founder vision: WOBBLE needs separate brand taste, per-founder taste, client/project taste, and agent learning. Founder taste can tune outputs, but it must not silently overwrite WOBBLE brand truth.
+
+Changed:
+- Added `taste_profiles` and `feedback_events` to `src/db/schema.ts`.
+- Added `src/db/migrations/0006_taste_feedback_learning.sql` and registered it in Drizzle's migration journal.
+- Added pure domain logic in `src/lib/domain/taste.ts`:
+  - profile keys for brand/founder/client/project/agent scopes
+  - default WOBBLE + Moiz/Ali/Ibrahim/Haad profiles
+  - feedback event builder
+  - rejection reason validation
+  - profile update math with slower brand learning and stronger founder/client/project/agent learning
+  - conflict counting when later feedback disagrees with prior learned weights
+- Added service layer in `src/lib/taste/index.ts` with injectable store/audit deps and real Drizzle defaults.
+- Added APIs:
+  - `GET/POST /api/taste/profiles`
+  - `GET /api/taste/profiles/[profileKey]`
+  - `GET/POST /api/taste/feedback`
+- Wired `resolveApproval` so approval decisions can record feedback signals after the underlying entity action completes.
+  - Rejects now require notes/reason before routing.
+  - Approval metadata can provide `tasteDimensions`, `agentSlug`, `module`, `outputType`, `sourceIds`, and `memoryBankSlugs`.
+- Seed runner now seeds the default taste profiles idempotently without wiping learned weights.
+- Corrected seed founders to Moiz, Haad, Ali, Ibrahim.
+- Added Taste Learning dashboard module/page using the existing WOBBLE glass/lime UI patterns.
+
+Verification:
+- Focused tests passed: `npm run test -- tests/taste.test.ts tests/db-foundation.test.ts tests/approval-router.test.ts`
+  - 3 files / 24 tests passed.
+- Full `npm run verify` passed:
+  - typecheck passed
+  - tests passed: 31 files / 221 tests
+  - Next production build passed and included `/api/taste/feedback`, `/api/taste/profiles`, and `/api/taste/profiles/[profileKey]`.
+- `npm run db:migrate` applied migrations successfully.
+- `npm run db:seed` completed successfully.
+- DB query confirmed seeded profiles:
+  - `brand:wobble`
+  - `founder:moiz`
+  - `founder:ali`
+  - `founder:ibrahim`
+  - `founder:haad`
+- Clean dev server launched on `http://127.0.0.1:3002`.
+- Dashboard/API smoke:
+  - `GET /taste` returned 200.
+  - `GET /api/taste/profiles?limit=10` returned seeded profiles.
+- Live EFFECT test through the real approval route:
+  - Inserted a real content packet and content approval.
+  - POSTed `/api/approvals/[id]/resolve` with reject action, approver Haad, and reason.
+  - Confirmed in Postgres:
+    - content packet `approval_status = rejected`
+    - approval row `status = rejected`, `rejected_by = Haad`, notes preserved
+    - `feedback_events` row created with decision `reject`, actor `Haad`, reason preserved, profile keys `brand:wobble`, `founder:haad`, `agent:content_worker`
+    - `brand:wobble` learned `hook_style:generic_ai_hype = -0.35`
+    - `founder:haad` learned `hook_style:generic_ai_hype = -1`
+    - audit events included `approval.reject`, `content_packet.rejected`, and `feedback.recorded`
+
+Important rules for future builders:
+- Do not collapse founder taste into global WOBBLE taste. Brand is slower/protected; founder/client/project/agent profiles learn separately.
+- Do not allow rejections without a reason. The reason is part of the learning loop.
+- When a module creates approval metadata, include `tasteDimensions` so learning becomes specific instead of generic.
+- Future Chunks 15/21/22/47 should feed approvals/rejections/regenerations into Chunk 56 rather than inventing separate taste tables.
+
+Next:
+- Phase A foundations are now complete through Chunk 56.
+- Continue with the next tracker item: Chunk 35 - Connections Registry, unless the founder chooses a dashboard/front-end checkpoint first.
+
+Final verification nuance for Chunk 56:
+- After docs/next-env cleanup, a monolithic `npm run verify` exceeded the tool timeout on this Windows machine before returning output.
+- The exact same phases were rerun separately and all passed:
+  - `npm run typecheck` passed.
+  - `npm run test` passed: 31 files / 221 tests.
+  - `npm run build` passed and included all `/api/taste/*` routes.

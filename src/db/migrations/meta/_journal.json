@@ -43,6 +43,13 @@
       "when": 1783035572360,
       "tag": "0005_memory_banks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783100400000,
+      "tag": "0006_taste_feedback_learning",
+      "breakpoints": true
     }
   ]
 }

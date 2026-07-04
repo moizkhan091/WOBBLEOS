@@ -1505,10 +1505,250 @@ function IntelligencePage() {
   );
 }
 
+type TasteProfile = {
+  id: string;
+  profileKey: string;
+  scope: string;
+  subjectId?: string | null;
+  label: string;
+  hardConstraints?: string[];
+  preferenceWeights?: Record<string, number>;
+  positiveSignals?: number;
+  negativeSignals?: number;
+  confidence?: string;
+  lastFeedbackAt?: string | null;
+  provenanceEventIds?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+type FeedbackEntry = {
+  id: string;
+  targetType: string;
+  targetId: string;
+  decision: string;
+  reasonCategory?: string | null;
+  reason?: string | null;
+  actor: string;
+  module?: string | null;
+  agentSlug?: string | null;
+  profileKeys?: string[];
+  dimensions?: Array<{ key: string; value: string; weight?: number }>;
+  createdAt?: string;
+};
+
+function topWeights(weights: Record<string, number> | undefined) {
+  return Object.entries(weights ?? {})
+    .sort((a, b) => Math.abs(Number(b[1])) - Math.abs(Number(a[1])))
+    .slice(0, 10);
+}
+
+function TasteProfileDrawer({ profile, onClose }: { profile: TasteProfile; onClose: () => void }) {
+  const detail = useApi<{ profile: TasteProfile; feedback: FeedbackEntry[] }>("/api/taste/profiles/" + encodeURIComponent(profile.profileKey));
+  const full = detail.data?.profile ?? profile;
+  const feedback = detail.data?.feedback ?? [];
+  const weights = topWeights(full.preferenceWeights);
+  return (
+    <DetailDrawer
+      title={full.label}
+      subtitle={full.profileKey}
+      tags={[
+        { text: full.scope, color: full.scope === "brand" ? C.lime : full.scope === "founder" ? C.blue : C.gray },
+        { text: String((Number(full.positiveSignals ?? 0) + Number(full.negativeSignals ?? 0))) + " signals", color: C.gray },
+        { text: "confidence " + String(full.confidence ?? "0"), color: C.orange },
+      ]}
+      fields={[
+        { label: "Subject", value: full.subjectId },
+        { label: "Positive signals", value: full.positiveSignals },
+        { label: "Negative signals", value: full.negativeSignals },
+        { label: "Last feedback", value: fmtTime(full.lastFeedbackAt) },
+        { label: "Hard constraints", value: full.hardConstraints },
+        { label: "Provenance events", value: full.provenanceEventIds },
+      ]}
+      raw={full}
+      onClose={onClose}
+    >
+      <div>
+        <div style={labelStyle}>TOP LEARNED WEIGHTS</div>
+        {weights.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+            {weights.map(([key, value]) => (
+              <div key={key} style={{ ...card, padding: "10px 11px" }}>
+                <div style={{ fontSize: 12.2, fontWeight: 600 }}>{key}</div>
+                <div style={{ fontSize: 11, color: Number(value) >= 0 ? C.lime : C.orange, marginTop: 4 }}>{Number(value).toFixed(3)}</div>
+              </div>
+            ))}
+          </div>
+        ) : <StateBlock kind="empty" message="No preference weights yet. Approvals, edits, regenerations and rejections will train this profile." />}
+      </div>
+      <div>
+        <div style={labelStyle}>RECENT FEEDBACK</div>
+        {detail.loading ? <StateBlock kind="loading" /> : detail.error ? <StateBlock kind={detail.status === 503 ? "offline" : "error"} message={detail.error} /> : feedback.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {feedback.map((event) => (
+              <div key={event.id} style={{ ...card, padding: "11px 12px" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                  <Tag text={event.decision} color={event.decision === "reject" || event.decision === "archive" ? C.orange : C.lime} />
+                  <Tag text={event.actor} color={C.blue} />
+                  {event.agentSlug ? <Tag text={event.agentSlug} color={C.gray} /> : null}
+                </div>
+                <div style={{ fontSize: 12, color: C.white }}>{event.targetType} - {event.targetId}</div>
+                {event.reason ? <div style={{ fontSize: 11.5, color: muted, marginTop: 5, lineHeight: 1.45 }}>{event.reason}</div> : null}
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{fmtTime(event.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        ) : <StateBlock kind="empty" message="No feedback events connected to this profile yet." />}
+      </div>
+    </DetailDrawer>
+  );
+}
+
+function TastePage() {
+  const profilesState = useApi<{ profiles: TasteProfile[] }>("/api/taste/profiles?limit=200");
+  const eventsState = useApi<{ events: FeedbackEntry[] }>("/api/taste/feedback?limit=60");
+  const [selected, setSelected] = useState<TasteProfile | null>(null);
+  const [actor, setActor] = useState(FOUNDERS[0]);
+  const [decision, setDecision] = useState("approve");
+  const [targetType, setTargetType] = useState("content_packet");
+  const [targetId, setTargetId] = useState("");
+  const [reason, setReason] = useState("");
+  const [dimensionKey, setDimensionKey] = useState("tone");
+  const [dimensionValue, setDimensionValue] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const guard = offlineIf(profilesState) ?? offlineIf(eventsState);
+  if (guard) return guard;
+
+  const profiles = profilesState.data?.profiles ?? [];
+  const events = eventsState.data?.events ?? [];
+  const brandCount = profiles.filter((profile) => profile.scope === "brand").length;
+  const founderCount = profiles.filter((profile) => profile.scope === "founder").length;
+  const learnedSignals = profiles.reduce((sum, profile) => sum + Number(profile.positiveSignals ?? 0) + Number(profile.negativeSignals ?? 0), 0);
+  const rejections = events.filter((event) => event.decision === "reject").length;
+
+  async function submitFeedback() {
+    setMessage(null);
+    if (!targetId.trim()) {
+      setMessage("Error: target id is required.");
+      return;
+    }
+    if (decision === "reject" && !reason.trim()) {
+      setMessage("Error: rejection reason is required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const dimensions = dimensionValue.trim() ? [{ key: dimensionKey.trim() || "signal", value: dimensionValue.trim(), weight: 1 }] : [];
+      const response = await fetch("/api/taste/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: targetType.trim(),
+          targetId: targetId.trim(),
+          decision,
+          actor,
+          reason: reason.trim() || undefined,
+          reasonCategory: decision === "reject" ? "other" : undefined,
+          module: "manual_dashboard",
+          dimensions,
+        }),
+      });
+      const data = (await response.json()) as Record<string, unknown>;
+      if (!response.ok || data.ok === false) setMessage("Error: " + String(data.error ?? "HTTP " + response.status));
+      else {
+        setMessage("Feedback recorded and taste profiles updated.");
+        setTargetId("");
+        setReason("");
+        setDimensionValue("");
+        profilesState.reload();
+        eventsState.reload();
+      }
+    } catch (error) {
+      setMessage("Error: " + String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Taste profiles" value={String(profiles.length)} icon="HeartHandshake" color={C.lime} sub={brandCount + " brand - " + founderCount + " founders"} />
+        <Kpi label="Feedback events" value={String(events.length)} icon="MessageSquareText" color={C.blue} sub="approval/rejection learning" />
+        <Kpi label="Signals learned" value={String(learnedSignals)} icon="Activity" color={C.lime} sub="positive + negative" />
+        <Kpi label="Rejections" value={String(rejections)} icon="CircleSlash" color={C.orange} sub="reasons preserved" />
+      </div>
+
+      <Panel>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Record explicit feedback</div>
+            <div style={{ fontSize: 11.5, color: muted, marginTop: 4 }}>Use this for manual learning. Approval routes also record feedback automatically.</div>
+          </div>
+          <Tag text="BRAND TASTE STAYS PROTECTED" color={C.lime} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, alignItems: "end" }}>
+          <div><div style={labelStyle}>ACTOR</div><select value={actor} onChange={(e) => setActor(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
+          <div><div style={labelStyle}>DECISION</div><select value={decision} onChange={(e) => setDecision(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{["approve", "reject", "edit", "regenerate", "needs_review"].map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
+          <div><div style={labelStyle}>TARGET TYPE</div><input value={targetType} onChange={(e) => setTargetType(e.target.value)} style={inputStyle} /></div>
+          <div><div style={labelStyle}>TARGET ID</div><input value={targetId} onChange={(e) => setTargetId(e.target.value)} placeholder="packet_123" style={inputStyle} /></div>
+          <div><div style={labelStyle}>SIGNAL KEY</div><input value={dimensionKey} onChange={(e) => setDimensionKey(e.target.value)} placeholder="hook_style" style={inputStyle} /></div>
+          <div><div style={labelStyle}>SIGNAL VALUE</div><input value={dimensionValue} onChange={(e) => setDimensionValue(e.target.value)} placeholder="proof_led" style={inputStyle} /></div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "end", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 260 }}><div style={labelStyle}>REASON <span style={{ color: decision === "reject" ? C.orange : faint, fontWeight: 400 }}>{decision === "reject" ? "required for rejection" : "optional but useful"}</span></div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="What should the OS learn?" style={inputStyle} /></div>
+          <button onClick={submitFeedback} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving..." : "Record feedback"}</button>
+        </div>
+        {message ? <div style={{ fontSize: 12.5, color: message.startsWith("Error") ? C.orange : C.lime, marginTop: 10 }}>{message}</div> : null}
+      </Panel>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(320px,0.9fr)", gap: 16 }}>
+        <Panel style={{ padding: "8px 10px" }}>
+          {profiles.length ? profiles.map((profile, i) => {
+            const total = Number(profile.positiveSignals ?? 0) + Number(profile.negativeSignals ?? 0);
+            return (
+              <button key={profile.profileKey} onClick={() => setSelected(profile)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, alignItems: "center", cursor: "pointer", borderBottom: i < profiles.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: profile.scope === "brand" ? C.lime : C.blue, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name={profile.scope === "brand" ? "ShieldCheck" : "HeartHandshake"} size={15} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{profile.label}</span>
+                    <Tag text={profile.scope} color={profile.scope === "brand" ? C.lime : C.blue} />
+                    <Tag text={profile.profileKey} color={C.gray} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>{total} signals - confidence {String(profile.confidence ?? "0")} - last {fmtTime(profile.lastFeedbackAt)}</div>
+                </div>
+                <span style={{ color: faint, display: "inline-flex", alignItems: "center" }}><Icon name="ChevronRight" size={16} /></span>
+              </button>
+            );
+          }) : <StateBlock kind="empty" message="No taste profiles yet. Run the seed to create WOBBLE brand + founder taste profiles." />}
+        </Panel>
+        <Panel style={{ padding: "8px 10px" }}>
+          {events.length ? events.slice(0, 12).map((event, i) => (
+            <div key={event.id} style={{ display: "flex", gap: 12, padding: 12, borderBottom: i < Math.min(events.length, 12) - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+              <span style={{ width: 32, height: 32, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: event.decision === "reject" ? C.orange : C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name={event.decision === "reject" ? "CircleSlash" : "BadgeCheck"} size={14} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 12.8, fontWeight: 600 }}>{event.targetType}</span>
+                  <Tag text={event.decision} color={event.decision === "reject" ? C.orange : C.lime} />
+                  <Tag text={event.actor} color={C.blue} />
+                </div>
+                <div style={{ fontSize: 11, color: faint, marginTop: 5 }}>{event.targetId} - {(event.profileKeys ?? []).join(", ")}</div>
+                {event.reason ? <div style={{ fontSize: 11.2, color: muted, marginTop: 5, lineHeight: 1.45 }}>{event.reason}</div> : null}
+              </div>
+            </div>
+          )) : <StateBlock kind="empty" message="No feedback events yet. Approvals and manual feedback will appear here." />}
+        </Panel>
+      </div>
+      {selected ? <TasteProfileDrawer profile={selected} onClose={() => setSelected(null)} /> : null}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   agents: AgentsPage,
   intelligence: IntelligencePage,
+  taste: TastePage,
   approvals: ApprovalsPage,
   costs: CostsPage,
   audit: AuditPage,

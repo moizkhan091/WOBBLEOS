@@ -63,6 +63,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
   // SYSTEM
   memory: { id: "memory", label: "Memory", title: "Memory", icon: "Database", status: "wired", chunk: 10, api: "/api/memory", tagline: "Long-term recall across the workforce. What WOBBLE remembers, and why." },
+  taste: { id: "taste", label: "Taste Learning", title: "Taste + Feedback Learning", icon: "HeartHandshake", status: "wired", chunk: 56, api: "/api/taste/profiles,/api/taste/feedback", tagline: "How approvals, rejections, edits, founder preferences and client/project taste become usable learning without overwriting WOBBLE brand truth." },
   costs: { id: "costs", label: "Costs", title: "Costs", icon: "Receipt", status: "wired", chunk: 5, api: "/api/costs", tagline: "Spend across every model, render and service - against budget, in real time." },
   audit: { id: "audit", label: "Audit Log", title: "Audit Log", icon: "ScrollText", status: "wired", chunk: 3, api: "/api/audit", tagline: "Immutable record of every action, approval and system event with founder attribution." },
   backup: { id: "backup", label: "Backup & Restore", title: "Backup & Restore", icon: "HardDrive", status: "planned", chunk: 27, tagline: "Point-in-time snapshots. Company assets are never auto-deleted." },
@@ -75,7 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "STRATEGY", items: ["decision", "offers", "clients"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
   { label: "OPERATIONS", items: ["automations", "approvals", "skills", "workers", "handoff"] },
-  { label: "SYSTEM", items: ["memory", "costs", "audit", "backup", "settings"] },
+  { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
 
 export const DEFAULT_MODULE = "command";

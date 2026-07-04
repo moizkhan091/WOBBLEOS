@@ -9,6 +9,10 @@ const schema = z.object({
   approvedBy: z.string().trim().min(1, "approvedBy is required"),
   notes: z.string().trim().min(1).optional(),
   trustLevel: z.string().trim().min(1).optional(),
+}).superRefine((input, ctx) => {
+  if (input.action === "reject" && !input.notes?.trim()) {
+    ctx.addIssue({ code: "custom", path: ["notes"], message: "rejection reason is required" });
+  }
 });
 
 function dbUnavailable() {
@@ -44,6 +48,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const message = error instanceof Error ? error.message : "unknown error";
     const status = message.includes("not found")
       ? 404
+      : message.includes("rejection reason")
+        ? 422
       : message.includes("memory_update") || message.includes("not allowed") || message.includes("requires explicit confirmation")
         ? 409
         : 500;

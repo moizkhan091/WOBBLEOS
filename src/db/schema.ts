@@ -729,6 +729,59 @@ export const outputIntelligenceUsage = pgTable("output_intelligence_usage", {
   createdAt: createdAt(),
 });
 
+export const tasteProfiles = pgTable("taste_profiles", {
+  id: id(),
+  profileKey: varchar("profile_key", { length: 160 }).notNull(),
+  scope: varchar("scope", { length: 40 }).notNull(),
+  subjectId: text("subject_id"),
+  label: varchar("label", { length: 180 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  hardConstraints: jsonb("hard_constraints").$type<string[]>().notNull().default([]),
+  preferenceWeights: jsonb("preference_weights").$type<Record<string, number>>().notNull().default({}),
+  positiveSignals: integer("positive_signals").notNull().default(0),
+  negativeSignals: integer("negative_signals").notNull().default(0),
+  confidence: numeric("confidence", { precision: 5, scale: 4 }).notNull().default("0"),
+  lastFeedbackAt: timestamp("last_feedback_at", { withTimezone: true }),
+  provenanceEventIds: jsonb("provenance_event_ids").$type<string[]>().notNull().default([]),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("taste_profiles_profile_key_unique").on(table.profileKey),
+  index("taste_profiles_scope_idx").on(table.scope),
+  index("taste_profiles_subject_idx").on(table.subjectId),
+  index("taste_profiles_status_idx").on(table.status),
+]);
+
+export const feedbackEvents = pgTable("feedback_events", {
+  id: id(),
+  targetType: varchar("target_type", { length: 80 }).notNull(),
+  targetId: text("target_id").notNull(),
+  decision: varchar("decision", { length: 32 }).notNull(),
+  reasonCategory: varchar("reason_category", { length: 80 }),
+  reason: text("reason"),
+  actor: varchar("actor", { length: 120 }).notNull(),
+  founderId: varchar("founder_id", { length: 120 }),
+  clientId: text("client_id"),
+  projectId: text("project_id"),
+  outputType: varchar("output_type", { length: 120 }),
+  module: varchar("module", { length: 80 }),
+  agentSlug: varchar("agent_slug", { length: 120 }),
+  sourceIds: jsonb("source_ids").$type<string[]>().notNull().default([]),
+  memoryBankSlugs: jsonb("memory_bank_slugs").$type<string[]>().notNull().default([]),
+  dimensions: jsonb("dimensions").$type<Array<{ key: string; value: string; weight?: number }>>().notNull().default([]),
+  profileKeys: jsonb("profile_keys").$type<string[]>().notNull().default([]),
+  signalStrength: numeric("signal_strength", { precision: 6, scale: 4 }).notNull().default("1"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("feedback_events_target_idx").on(table.targetType, table.targetId),
+  index("feedback_events_actor_idx").on(table.actor),
+  index("feedback_events_module_idx").on(table.module),
+  index("feedback_events_agent_slug_idx").on(table.agentSlug),
+  index("feedback_events_created_at_idx").on(table.createdAt),
+]);
+
 
 // ---- Chunk 52: Agent Registry & Orchestration (the hive-mind backbone) ----
 // Every AI agent/sub-agent is registered here (visible, not hidden) and every
