@@ -2528,3 +2528,74 @@ Known limitation:
 Next:
 - Treat this as a dashboard hotfix checkpoint before continuing Chunk 55.
 - Preserve the Claude glass/lime visual system for future dashboard work and use real API data only.
+
+### 2026-07-04 - Codex - Chunk 55 Intelligence / Research Review Inbox
+
+Context:
+- Chunk 55 is the review gate for the hive-mind intelligence layer. Agent/source outputs must be visible, reviewable, editable, rejectable with a reason, mergeable, and routeable into memory proposals before they become trusted knowledge.
+- This follows the approved data rule: source/agent output -> structured intelligence row -> review status -> approved/trusted memory proposal/bank routing -> future retrieval.
+
+Changed:
+- Added Intelligence Inbox domain schemas and helpers in `src/lib/domain/intelligence.ts`.
+  - Inbox queries for pending/needs_review/approved/rejected/archived/superseded.
+  - Review actions: approve, reject, needs_review, archive.
+  - Reject requires a reason.
+  - Edit payloads preserve provenance and metadata.
+  - Route-to-memory builds a real memory update proposal.
+  - Merge marks duplicates as superseded with merge metadata.
+- Added service methods in `src/lib/intelligence/index.ts`:
+  - `listIntelligenceInbox`
+  - `reviewIntelligenceRecord`
+  - `editIntelligenceRecord`
+  - `routeIntelligenceRecordToMemory`
+  - `mergeIntelligenceRecords`
+- Added real API routes:
+  - `GET /api/intelligence/inbox`
+  - `PATCH /api/intelligence/inbox/[recordType]/[id]`
+  - `POST /api/intelligence/inbox/[recordType]/[id]/review`
+  - `POST /api/intelligence/inbox/[recordType]/[id]/route-memory`
+  - `POST /api/intelligence/inbox/merge`
+- Added dashboard module `Intelligence Inbox` using the existing glass/lime WOBBLE OS visual system.
+  - Lists real intelligence items/insights/suggestions.
+  - Opens detail drawer.
+  - Supports review, reject reason, edit, route to memory, and merge/supersede actions through real APIs.
+- Fixed a live-test backend bug in `src/db/schema.ts`:
+  - `intelligenceItems.metrics`, `extracted`, and `relations` were incorrectly mapped to SQL column `metadata` via the shared helper.
+  - They now map to distinct SQL columns: `metrics`, `extracted`, `relations`.
+  - Added regression coverage in `tests/db-foundation.test.ts`.
+- Added `tests/intelligence-inbox.test.ts` for success and failure paths.
+
+Verification:
+- Focused tests passed:
+  - `tests/intelligence-inbox.test.ts`: 5 tests passed
+  - `tests/db-foundation.test.ts`: 8 tests passed after the schema regression fix
+- Full `npm run verify` passed:
+  - typecheck passed
+  - tests passed: 30 files / 212 tests
+  - Next production build passed, including the new `/api/intelligence/inbox/*` routes
+- Local runtime:
+  - Docker/Postgres healthy after restart.
+  - `npm run db:migrate` passed.
+  - `npm run db:seed` passed.
+  - `/api/health/web` returned DB connected.
+- Live EFFECT test through local Next API + Postgres:
+  - `POST /api/intelligence/items` created a real pending intelligence item.
+  - `GET /api/intelligence/inbox?approvalStatus=pending` returned the item.
+  - `POST /api/intelligence/inbox/item/:id/review` approved the underlying `intelligence_items` row and wrote review metadata.
+  - `POST /api/intelligence/inbox/item/:id/route-memory` created a real pending `memory_update_proposals` row with banks `content` and `competitor`, and wrote proposal IDs to the intelligence item metadata.
+  - A duplicate item was created and `POST /api/intelligence/inbox/merge` marked it `superseded` with merge metadata.
+  - Postgres confirmed audit events:
+    - `intelligence.item_recorded`
+    - `intelligence.review.approved`
+    - `memory_update.proposed`
+    - `intelligence.review.routed_to_memory`
+    - `intelligence.review.merged`
+
+Important nuance:
+- Chunk 55 does not run scrapers or analyze reels by itself. It is the review/inbox layer for outputs created by Source Registry intake, Research Radar, Learning Engine, future n8n callbacks, and future agent workers.
+- Approved intelligence does not silently become Core Brain. Route-to-memory creates an approval-gated memory proposal. Founder approval still controls what becomes trusted memory.
+- The dashboard is a control surface over real `intelligence_*` rows and memory proposals, not a fake research UI.
+
+Next:
+- Chunk 56 - Taste + Feedback Learning.
+- Chunk 56 should connect approvals/rejections and rejection reasons to global WOBBLE taste, per-founder taste, client/project taste, and agent learning without overwriting brand truth too quickly.

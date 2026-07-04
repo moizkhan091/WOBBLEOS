@@ -36,6 +36,7 @@ export const MODULES: Record<string, ModuleDef> = {
   // PIPELINE
   radar: { id: "radar", label: "Research Radar", title: "Research Radar", icon: "Radar", status: "planned", chunk: 12, tagline: "Continuous signal scan across markets, competitors and culture. Surfaced, scored and ready to feed learning." },
   sources: { id: "sources", label: "Source Registry", title: "Source Registry", icon: "Library", status: "wired", chunk: 53, api: "/api/sources,/api/sources/types", tagline: "Every source type, intake run, connected agent, processing status, memory route and approval gate that feeds the hive mind." },
+  intelligence: { id: "intelligence", label: "Intelligence Inbox", title: "Intelligence Review Inbox", icon: "Inbox", status: "wired", chunk: 55, api: "/api/intelligence/inbox", tagline: "The review gate where raw agent/source findings become approved knowledge, get rejected with reasons, merge, or route into Memory." },
   learning: { id: "learning", label: "Learning Engine", title: "Learning Engine", icon: "GraduationCap", status: "planned", chunk: 13, tagline: "How raw research becomes structured knowledge the workforce can act on." },
   content: { id: "content", label: "Content Command", title: "Content Command", icon: "PenTool", status: "wired", chunk: 14, api: "/api/content", tagline: "Every piece of content from idea to handoff. Nothing publishes without a founder." },
   media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "planned", chunk: 21, tagline: "Video and visual production. Render jobs are isolated from web and API compute." },
@@ -70,7 +71,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
-  { label: "PIPELINE", items: ["radar", "sources", "learning", "content", "media", "presentations"] },
+  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers", "clients"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
   { label: "OPERATIONS", items: ["automations", "approvals", "skills", "workers", "handoff"] },

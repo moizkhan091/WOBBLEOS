@@ -1291,9 +1291,224 @@ function AgentsPage() {
   );
 }
 
+type IntelligenceEntry = {
+  recordType: string;
+  id: string;
+  title: string;
+  summary: string;
+  approvalStatus: string;
+  confidence?: string;
+  priority?: string | null;
+  sourceIds?: string[];
+  evidenceItemIds?: string[];
+  evidenceInsightIds?: string[];
+  appliesToModules?: string[];
+  agentSlug?: string | null;
+  freshnessStatus?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  record?: Record<string, unknown>;
+};
+
+function statusColor(status: unknown) {
+  const st = String(status ?? "");
+  if (st === "approved") return C.lime;
+  if (st === "rejected" || st === "archived" || st === "superseded") return C.orange;
+  if (st === "needs_review") return C.blue;
+  return C.gray;
+}
+
+function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEntry; onClose: () => void; onDone: () => void }) {
+  const [who, setWho] = useState(FOUNDERS[0]);
+  const [reason, setReason] = useState("");
+  const [editSummary, setEditSummary] = useState(entry.summary ?? "");
+  const [editRecommendation, setEditRecommendation] = useState(String((entry.record ?? {}).recommendation ?? ""));
+  const [affectedArea, setAffectedArea] = useState(String((entry.appliesToModules ?? []).includes("content_command") ? "content" : "research"));
+  const [banks, setBanks] = useState("");
+  const [mergeInto, setMergeInto] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const base = "/api/intelligence/inbox/" + encodeURIComponent(entry.recordType) + "/" + encodeURIComponent(entry.id);
+  const record = entry.record ?? {};
+
+  async function call(label: string, url: string, init: RequestInit) {
+    setBusy(label);
+    setMsg(null);
+    try {
+      const r = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init.headers ?? {}) } });
+      const j = (await r.json()) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else {
+        setMsg(label + " saved.");
+        onDone();
+      }
+    } catch (e) {
+      setMsg("Error: " + String(e));
+    }
+    setBusy(null);
+  }
+
+  async function review(action: "approve" | "reject" | "needs_review" | "archive") {
+    if (action === "reject" && !reason.trim()) {
+      setMsg("Error: rejection reason is required.");
+      return;
+    }
+    await call(action, base + "/review", { method: "POST", body: JSON.stringify({ action, reviewedBy: who, reason: reason.trim() || undefined }) });
+  }
+
+  async function saveEdit() {
+    const patch: Record<string, unknown> = { summary: editSummary };
+    if (entry.recordType === "insight") patch.recommendation = editRecommendation;
+    await call("edit", base, { method: "PATCH", body: JSON.stringify({ editedBy: who, patch }) });
+  }
+
+  async function routeMemory() {
+    await call("route", base + "/route-memory", {
+      method: "POST",
+      body: JSON.stringify({
+        proposedBy: who,
+        affectedArea,
+        suggestedBankSlugs: banks.split(",").map((b) => b.trim()).filter(Boolean),
+      }),
+    });
+  }
+
+  async function merge() {
+    if (!mergeInto.trim()) {
+      setMsg("Error: primary id is required to merge.");
+      return;
+    }
+    await call("merge", "/api/intelligence/inbox/merge", {
+      method: "POST",
+      body: JSON.stringify({
+        recordType: entry.recordType,
+        primaryId: mergeInto.trim(),
+        duplicateId: entry.id,
+        mergedBy: who,
+        reason: reason.trim() || "Duplicate intelligence",
+      }),
+    });
+  }
+
+  return (
+    <DetailDrawer
+      title={entry.title}
+      subtitle={entry.recordType + " / " + entry.id}
+      tags={[
+        { text: entry.recordType, color: C.blue },
+        { text: entry.approvalStatus, color: statusColor(entry.approvalStatus) },
+        { text: entry.agentSlug ? String(entry.agentSlug) : "agent unknown", color: C.gray },
+        { text: "confidence " + String(entry.confidence ?? "n/a"), color: C.lime },
+      ]}
+      fields={[
+        { label: "Summary", value: entry.summary },
+        { label: "Sources", value: entry.sourceIds },
+        { label: "Evidence items", value: entry.evidenceItemIds },
+        { label: "Evidence insights", value: entry.evidenceInsightIds },
+        { label: "Applies to modules", value: entry.appliesToModules },
+        { label: "Freshness", value: entry.freshnessStatus },
+        { label: "Created", value: fmtTime(entry.createdAt) },
+        { label: "Updated", value: fmtTime(entry.updatedAt) },
+      ]}
+      raw={record}
+      onClose={onClose}
+    >
+      <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 11 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div><div style={labelStyle}>ACTING AS</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
+          <div style={{ flex: 1, minWidth: 220 }}><div style={labelStyle}>REJECT / MERGE REASON</div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="required for rejection" style={inputStyle} /></div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => review("approve")} disabled={Boolean(busy)} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy === "approve" ? "Saving..." : "Approve"}</button>
+          <button onClick={() => review("needs_review")} disabled={Boolean(busy)} style={{ ...disabledBtn, opacity: 1, cursor: busy ? "wait" : "pointer" }}>Needs review</button>
+          <button onClick={() => review("archive")} disabled={Boolean(busy)} style={{ ...disabledBtn, opacity: 1, cursor: busy ? "wait" : "pointer" }}>Archive</button>
+          <button onClick={() => review("reject")} disabled={Boolean(busy)} style={{ ...rejectBtn, opacity: busy ? 0.6 : 1 }}>Reject</button>
+        </div>
+      </div>
+      <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={labelStyle}>EDIT BEFORE TRUSTING</div>
+        <textarea value={editSummary} onChange={(e) => setEditSummary(e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />
+        {entry.recordType === "insight" ? <textarea value={editRecommendation} onChange={(e) => setEditRecommendation(e.target.value)} rows={3} placeholder="Recommendation" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} /> : null}
+        <button onClick={saveEdit} disabled={Boolean(busy)} style={{ ...primaryBtn, alignSelf: "flex-start", opacity: busy ? 0.6 : 1 }}>{busy === "edit" ? "Saving..." : "Save edit"}</button>
+      </div>
+      <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={labelStyle}>ROUTE INTO MEMORY APPROVAL</div>
+        <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>This creates a memory proposal. It does not write trusted memory until the approval flow completes.</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 170 }}><div style={labelStyle}>AREA</div><input value={affectedArea} onChange={(e) => setAffectedArea(e.target.value)} style={inputStyle} /></div>
+          <div style={{ flex: 2, minWidth: 230 }}><div style={labelStyle}>BANKS <span style={{ color: faint, fontWeight: 400 }}>(comma separated, optional)</span></div><input value={banks} onChange={(e) => setBanks(e.target.value)} placeholder="content, hook_library, competitor" style={inputStyle} /></div>
+        </div>
+        <button onClick={routeMemory} disabled={Boolean(busy)} style={{ ...primaryBtn, alignSelf: "flex-start", opacity: busy ? 0.6 : 1 }}>{busy === "route" ? "Routing..." : "Create memory proposal"}</button>
+      </div>
+      <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={labelStyle}>MERGE / SUPERSEDE</div>
+        <input value={mergeInto} onChange={(e) => setMergeInto(e.target.value)} placeholder="primary intelligence id to keep" style={inputStyle} />
+        <button onClick={merge} disabled={Boolean(busy)} style={{ ...disabledBtn, opacity: 1, cursor: busy ? "wait" : "pointer", alignSelf: "flex-start" }}>{busy === "merge" ? "Merging..." : "Mark this as duplicate"}</button>
+      </div>
+      {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+    </DetailDrawer>
+  );
+}
+
+function IntelligencePage() {
+  const [status, setStatus] = useState("pending");
+  const [selected, setSelected] = useState<IntelligenceEntry | null>(null);
+  const statusParam = status === "active" ? "" : "&approvalStatus=" + encodeURIComponent(status);
+  const s = useApi<{ entries: IntelligenceEntry[]; counts: Record<string, number> }>("/api/intelligence/inbox?limit=100" + statusParam);
+  const guard = offlineIf(s);
+  if (guard) return guard;
+  const entries = s.data?.entries ?? [];
+  const counts = s.data?.counts ?? {};
+  const filters = ["pending", "needs_review", "approved", "rejected", "archived", "superseded", "active"];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Pending" value={String(counts.pending ?? 0)} icon="Inbox" color={C.blue} sub="awaiting review" />
+        <Kpi label="Needs review" value={String(counts.needs_review ?? 0)} icon="AlertCircle" color={C.orange} sub="requires founder judgment" />
+        <Kpi label="Approved" value={String(counts.approved ?? 0)} icon="BadgeCheck" color={C.lime} sub="usable by context" />
+        <Kpi label="Rejected" value={String(counts.rejected ?? 0)} icon="CircleSlash" color={C.orange} sub="reason stored" />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {filters.map((f) => <button key={f} onClick={() => setStatus(f)} style={toggleBtn(status === f)}>{f === "active" ? "Inbox default" : f}</button>)}
+      </div>
+      {entries.length === 0 ? (
+        <StateBlock kind="empty" message="No intelligence records in this view. Research agents and source intake runs will populate this inbox before knowledge becomes trusted." />
+      ) : (
+        <div style={{ ...glass, padding: "8px 10px" }}>
+          {entries.map((entry, i) => {
+            const col = statusColor(entry.approvalStatus);
+            return (
+              <button key={entry.recordType + entry.id} onClick={() => setSelected(entry)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, alignItems: "flex-start", cursor: "pointer", borderBottom: i < entries.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <span style={{ width: 36, height: 36, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: col, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name={entry.recordType === "suggestion" ? "Lightbulb" : entry.recordType === "insight" ? "Sparkles" : "FileSearch"} size={16} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{entry.title}</span>
+                    <Tag text={entry.recordType} color={C.blue} />
+                    <Tag text={entry.approvalStatus} color={col} />
+                    {entry.freshnessStatus ? <Tag text={entry.freshnessStatus} color={C.gray} /> : null}
+                    {entry.priority ? <Tag text={entry.priority} color={C.orange} /> : null}
+                  </div>
+                  <div style={{ fontSize: 12.2, color: muted, lineHeight: 1.55, maxWidth: 860 }}>{entry.summary}</div>
+                  <div style={{ fontSize: 10.8, color: faint, marginTop: 7 }}>
+                    {entry.agentSlug ? "agent " + entry.agentSlug + " - " : ""}{(entry.sourceIds ?? []).length} sources - {(entry.evidenceItemIds ?? []).length} evidence items - {(entry.appliesToModules ?? []).join(", ") || "module not set"}
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, color: faint, whiteSpace: "nowrap" }}>{fmtTime(entry.createdAt)}</span>
+                <span style={{ color: faint, display: "inline-flex", alignItems: "center", paddingTop: 8 }}><Icon name="ChevronRight" size={16} /></span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {selected ? <IntelligenceDrawer entry={selected} onClose={() => setSelected(null)} onDone={() => { s.reload(); }} /> : null}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   agents: AgentsPage,
+  intelligence: IntelligencePage,
   approvals: ApprovalsPage,
   costs: CostsPage,
   audit: AuditPage,

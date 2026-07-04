@@ -143,6 +143,13 @@ describe("database foundation", () => {
     }
   });
 
+  it("maps intelligence item JSON fields to distinct SQL columns", () => {
+    expect(schema.intelligenceItems.metrics.name).toBe("metrics");
+    expect(schema.intelligenceItems.extracted.name).toBe("extracted");
+    expect(schema.intelligenceItems.relations.name).toBe("relations");
+    expect(schema.intelligenceItems.metadata.name).toBe("metadata");
+  });
+
   it("creates every source registry table in SQL migrations", () => {
     const migrations = [
       readFileSync(join(process.cwd(), "src/db/migrations/0000_init_pgvector.sql"), "utf8"),

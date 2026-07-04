@@ -900,3 +900,275 @@ export function selectApprovedIntelligenceForTask(input: {
 
   return { plan: input.plan, items: sortedItems, insights: sortedInsights, excluded, gaps };
 }
+
+export const INTELLIGENCE_INBOX_RECORD_TYPES = ["item", "insight", "suggestion"] as const;
+export type IntelligenceInboxRecordType = (typeof INTELLIGENCE_INBOX_RECORD_TYPES)[number];
+
+export const INTELLIGENCE_REVIEW_ACTIONS = ["approve", "reject", "needs_review", "archive"] as const;
+export type IntelligenceReviewAction = (typeof INTELLIGENCE_REVIEW_ACTIONS)[number];
+
+export const INTELLIGENCE_REJECTION_REASONS = [
+  "off_brand",
+  "weak_idea",
+  "too_generic",
+  "wrong_audience",
+  "factually_wrong",
+  "poor_strategy",
+  "not_premium_enough",
+  "not_relevant",
+  "duplicate",
+  "other",
+] as const;
+
+export const intelligenceInboxQuerySchema = z.object({
+  scope: z.enum(INTELLIGENCE_SCOPES).optional(),
+  clientId: z.string().trim().min(1).optional(),
+  approvalStatus: z.enum(INTELLIGENCE_APPROVAL_STATUSES).optional(),
+  limit: z.coerce.number().int().positive().optional(),
+});
+export type IntelligenceInboxQuery = z.input<typeof intelligenceInboxQuerySchema>;
+
+export const intelligenceReviewInputSchema = z.object({
+  recordType: z.enum(INTELLIGENCE_INBOX_RECORD_TYPES),
+  id: z.string().trim().min(1),
+  action: z.enum(INTELLIGENCE_REVIEW_ACTIONS),
+  reviewedBy: z.string().trim().min(1),
+  reason: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.action === "reject" && !value.reason) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "reason is required when rejecting intelligence" });
+  }
+});
+export type IntelligenceReviewInput = z.input<typeof intelligenceReviewInputSchema>;
+
+export const intelligenceEditInputSchema = z.object({
+  recordType: z.enum(INTELLIGENCE_INBOX_RECORD_TYPES),
+  id: z.string().trim().min(1),
+  editedBy: z.string().trim().min(1),
+  patch: z.record(z.string(), z.unknown()).refine((value) => Object.keys(value).length > 0, "patch must include at least one field"),
+  notes: z.string().trim().min(1).optional(),
+});
+export type IntelligenceEditInput = z.input<typeof intelligenceEditInputSchema>;
+
+export const intelligenceRouteToMemoryInputSchema = z.object({
+  recordType: z.enum(INTELLIGENCE_INBOX_RECORD_TYPES),
+  id: z.string().trim().min(1),
+  proposedBy: z.string().trim().min(1),
+  affectedArea: z.string().trim().min(1).optional(),
+  knowledgeType: z.string().trim().min(1).optional(),
+  suggestedBankSlugs: z.array(z.string().trim().min(1)).default([]),
+  notes: z.string().trim().min(1).optional(),
+});
+export type IntelligenceRouteToMemoryInput = z.input<typeof intelligenceRouteToMemoryInputSchema>;
+
+export const intelligenceMergeInputSchema = z.object({
+  recordType: z.enum(INTELLIGENCE_INBOX_RECORD_TYPES),
+  primaryId: z.string().trim().min(1),
+  duplicateId: z.string().trim().min(1),
+  mergedBy: z.string().trim().min(1),
+  reason: z.string().trim().min(1),
+});
+export type IntelligenceMergeInput = z.input<typeof intelligenceMergeInputSchema>;
+
+export type IntelligenceInboxRecord = IntelligenceItemRow | IntelligenceInsightRow | IntelligenceSuggestionRow;
+
+export interface IntelligenceInboxEntry {
+  recordType: IntelligenceInboxRecordType;
+  id: string;
+  title: string;
+  summary: string;
+  approvalStatus: IntelligenceApprovalStatus;
+  confidence: string;
+  priority: SuggestionPriority | null;
+  sourceIds: string[];
+  evidenceItemIds: string[];
+  evidenceInsightIds: string[];
+  appliesToModules: string[];
+  agentSlug: string | null;
+  freshnessStatus: FreshnessStatus | null;
+  createdAt: Date;
+  updatedAt: Date;
+  record: IntelligenceInboxRecord;
+}
+
+export function mapReviewActionToApprovalStatus(action: IntelligenceReviewAction): IntelligenceApprovalStatus {
+  switch (action) {
+    case "approve":
+      return "approved";
+    case "reject":
+      return "rejected";
+    case "needs_review":
+      return "needs_review";
+    case "archive":
+      return "archived";
+  }
+}
+
+export function normalizeIntelligenceInboxEntry(
+  recordType: IntelligenceInboxRecordType,
+  record: IntelligenceInboxRecord,
+): IntelligenceInboxEntry {
+  if (recordType === "item") {
+    const item = record as IntelligenceItemRow;
+    return {
+      recordType,
+      id: item.id,
+      title: item.title,
+      summary: item.summary,
+      approvalStatus: item.approvalStatus,
+      confidence: item.confidence,
+      priority: null,
+      sourceIds: item.sourceId ? [item.sourceId] : [],
+      evidenceItemIds: [item.id],
+      evidenceInsightIds: [],
+      appliesToModules: [],
+      agentSlug: item.createdByAgent,
+      freshnessStatus: item.freshnessStatus,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      record: item,
+    };
+  }
+  if (recordType === "insight") {
+    const insight = record as IntelligenceInsightRow;
+    return {
+      recordType,
+      id: insight.id,
+      title: insight.title,
+      summary: insight.summary,
+      approvalStatus: insight.approvalStatus,
+      confidence: insight.confidence,
+      priority: null,
+      sourceIds: insight.sourceIds,
+      evidenceItemIds: insight.evidenceItemIds,
+      evidenceInsightIds: [insight.id],
+      appliesToModules: insight.appliesToModules,
+      agentSlug: insight.createdByAgent,
+      freshnessStatus: insight.freshnessStatus,
+      createdAt: insight.createdAt,
+      updatedAt: insight.updatedAt,
+      record: insight,
+    };
+  }
+
+  const suggestion = record as IntelligenceSuggestionRow;
+  return {
+    recordType,
+    id: suggestion.id,
+    title: suggestion.title,
+    summary: suggestion.rationale,
+    approvalStatus: suggestion.approvalStatus,
+    confidence: suggestion.confidence,
+    priority: suggestion.priority,
+    sourceIds: [],
+    evidenceItemIds: suggestion.evidenceItemIds,
+    evidenceInsightIds: suggestion.evidenceInsightIds,
+    appliesToModules: [],
+    agentSlug: suggestion.createdByAgent,
+    freshnessStatus: null,
+    createdAt: suggestion.createdAt,
+    updatedAt: suggestion.updatedAt,
+    record: suggestion,
+  };
+}
+
+export function buildReviewMetadata(
+  existing: Record<string, unknown>,
+  input: z.output<typeof intelligenceReviewInputSchema>,
+  now: Date,
+): Record<string, unknown> {
+  const history = Array.isArray(existing.reviewHistory) ? existing.reviewHistory : [];
+  const review = {
+    action: input.action,
+    reviewedBy: input.reviewedBy,
+    reason: input.reason ?? null,
+    notes: input.notes ?? null,
+    reviewedAt: now.toISOString(),
+  };
+  return { ...existing, review, reviewHistory: [...history, review] };
+}
+
+export function buildEditMetadata(
+  existing: Record<string, unknown>,
+  input: z.output<typeof intelligenceEditInputSchema>,
+  now: Date,
+): Record<string, unknown> {
+  const history = Array.isArray(existing.editHistory) ? existing.editHistory : [];
+  const edit = {
+    editedBy: input.editedBy,
+    notes: input.notes ?? null,
+    editedAt: now.toISOString(),
+    fields: Object.keys(input.patch),
+  };
+  return { ...existing, edit, editHistory: [...history, edit] };
+}
+
+export function buildMergeMetadata(
+  existing: Record<string, unknown>,
+  input: z.output<typeof intelligenceMergeInputSchema>,
+  now: Date,
+): Record<string, unknown> {
+  return {
+    ...existing,
+    merge: {
+      mergedIntoId: input.primaryId,
+      mergedBy: input.mergedBy,
+      reason: input.reason,
+      mergedAt: now.toISOString(),
+    },
+  };
+}
+
+export function buildMemoryProposalFromIntelligence(input: {
+  recordType: IntelligenceInboxRecordType;
+  record: IntelligenceInboxRecord;
+  affectedArea?: string;
+  knowledgeType?: string;
+  suggestedBankSlugs?: string[];
+  proposedBy: string;
+}) {
+  const entry = normalizeIntelligenceInboxEntry(input.recordType, input.record);
+  const sourceId = entry.sourceIds[0];
+  const sourceIntakeRunId =
+    input.recordType === "item" && typeof (input.record as IntelligenceItemRow).metadata.sourceIntakeRunId === "string"
+      ? String((input.record as IntelligenceItemRow).metadata.sourceIntakeRunId)
+      : undefined;
+  const affectedArea = input.affectedArea ?? inferAffectedAreaForIntelligence(entry);
+  const knowledgeType = input.knowledgeType ?? inferKnowledgeTypeForIntelligence(entry);
+
+  return {
+    proposedMemory: [
+      entry.title,
+      entry.summary,
+      input.recordType === "insight" && (input.record as IntelligenceInsightRow).recommendation
+        ? `Recommendation: ${(input.record as IntelligenceInsightRow).recommendation}`
+        : null,
+      input.recordType === "suggestion" ? `Proposed action: ${(input.record as IntelligenceSuggestionRow).proposedAction}` : null,
+    ].filter(Boolean).join("\n\n"),
+    reason: `Route ${input.recordType} ${entry.id} from the Intelligence Review Inbox into approved memory banks.`,
+    sourceId,
+    sourceIntakeRunId,
+    affectedArea,
+    knowledgeType,
+    confidence: Number(entry.confidence),
+    suggestedBankSlugs: input.suggestedBankSlugs ?? [],
+    proposedBy: input.proposedBy,
+  };
+}
+
+export function inferAffectedAreaForIntelligence(entry: IntelligenceInboxEntry): string {
+  const joined = [entry.title, entry.summary, entry.recordType, ...entry.appliesToModules].join(" ").toLowerCase();
+  if (joined.includes("seo") || joined.includes("blog") || joined.includes("keyword")) return "seo";
+  if (joined.includes("offer") || joined.includes("pricing")) return "offer";
+  if (joined.includes("design") || joined.includes("visual") || joined.includes("carousel")) return "design";
+  if (joined.includes("competitor")) return "competitor";
+  if (joined.includes("content") || joined.includes("hook") || joined.includes("caption")) return "content";
+  return "research";
+}
+
+export function inferKnowledgeTypeForIntelligence(entry: IntelligenceInboxEntry): string {
+  if (entry.recordType === "item") return (entry.record as IntelligenceItemRow).itemType;
+  if (entry.recordType === "insight") return (entry.record as IntelligenceInsightRow).insightType;
+  return (entry.record as IntelligenceSuggestionRow).suggestionType;
+}

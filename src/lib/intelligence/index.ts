@@ -11,22 +11,42 @@ import { getDb, type Db } from "@/db";
 import { createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
+import { proposeMemoryUpdate, type ProposeMemoryUpdateInput, type ProposeMemoryUpdateResult } from "@/lib/memory";
 import {
   buildExperimentRow,
+  buildEditMetadata,
   buildIntelligenceContextPlan,
   buildIntelligenceInsightRow,
   buildIntelligenceItemRow,
   buildIntelligenceSuggestionRow,
+  buildMemoryProposalFromIntelligence,
+  buildMergeMetadata,
   buildResearchTargetRow,
+  buildReviewMetadata,
+  intelligenceEditInputSchema,
+  intelligenceInboxQuerySchema,
+  intelligenceMergeInputSchema,
+  intelligenceReviewInputSchema,
+  intelligenceRouteToMemoryInputSchema,
+  mapReviewActionToApprovalStatus,
+  normalizeIntelligenceInboxEntry,
   selectApprovedIntelligenceForTask,
   type ApprovedIntelligenceContext,
   type ExperimentInput,
   type ExperimentRow,
   type IntelligenceApprovalStatus,
+  type IntelligenceEditInput,
+  type IntelligenceInboxEntry,
+  type IntelligenceInboxRecord,
+  type IntelligenceInboxRecordType,
+  type IntelligenceInboxQuery,
   type IntelligenceInsightInput,
   type IntelligenceInsightRow,
   type IntelligenceItemInput,
   type IntelligenceItemRow,
+  type IntelligenceMergeInput,
+  type IntelligenceReviewInput,
+  type IntelligenceRouteToMemoryInput,
   type IntelligenceScope,
   type IntelligenceSuggestionInput,
   type IntelligenceSuggestionRow,
@@ -59,15 +79,69 @@ export function clampIntelligenceLimit(limit?: number): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_INTELLIGENCE_LIMIT);
 }
 
+type LoadedIntelligenceRecord =
+  | { recordType: "item"; record: IntelligenceItemRow }
+  | { recordType: "insight"; record: IntelligenceInsightRow }
+  | { recordType: "suggestion"; record: IntelligenceSuggestionRow };
+
+function requireStoreMethod<T extends keyof IntelligenceStore>(store: IntelligenceStore, method: T): NonNullable<IntelligenceStore[T]> {
+  const fn = store[method];
+  if (!fn) throw new Error(`intelligence store does not support ${String(method)}`);
+  return fn as NonNullable<IntelligenceStore[T]>;
+}
+
+async function loadIntelligenceRecord(
+  store: IntelligenceStore,
+  recordType: IntelligenceInboxRecordType,
+  id: string,
+): Promise<LoadedIntelligenceRecord> {
+  if (recordType === "item") {
+    const record = await requireStoreMethod(store, "getIntelligenceItemById").call(store, id);
+    if (!record) throw new Error(`intelligence item '${id}' not found`);
+    return { recordType, record };
+  }
+  if (recordType === "insight") {
+    const record = await requireStoreMethod(store, "getIntelligenceInsightById").call(store, id);
+    if (!record) throw new Error(`intelligence insight '${id}' not found`);
+    return { recordType, record };
+  }
+  const record = await requireStoreMethod(store, "getIntelligenceSuggestionById").call(store, id);
+  if (!record) throw new Error(`intelligence suggestion '${id}' not found`);
+  return { recordType, record };
+}
+
+async function updateIntelligenceRecord(
+  store: IntelligenceStore,
+  loaded: LoadedIntelligenceRecord,
+  fields: Partial<IntelligenceItemRow> | Partial<IntelligenceInsightRow> | Partial<IntelligenceSuggestionRow>,
+): Promise<IntelligenceInboxRecord> {
+  if (loaded.recordType === "item") {
+    await requireStoreMethod(store, "updateIntelligenceItem").call(store, loaded.record.id, fields as Partial<IntelligenceItemRow>);
+    return { ...loaded.record, ...(fields as Partial<IntelligenceItemRow>) };
+  }
+  if (loaded.recordType === "insight") {
+    await requireStoreMethod(store, "updateIntelligenceInsight").call(store, loaded.record.id, fields as Partial<IntelligenceInsightRow>);
+    return { ...loaded.record, ...(fields as Partial<IntelligenceInsightRow>) };
+  }
+  await requireStoreMethod(store, "updateIntelligenceSuggestion").call(store, loaded.record.id, fields as Partial<IntelligenceSuggestionRow>);
+  return { ...loaded.record, ...(fields as Partial<IntelligenceSuggestionRow>) };
+}
+
 export interface IntelligenceStore {
   insertResearchTarget(row: ResearchTargetRow): Promise<void>;
   listResearchTargets(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<ResearchTargetRow[]>;
   insertIntelligenceItem(row: IntelligenceItemRow): Promise<void>;
   listIntelligenceItems(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<IntelligenceItemRow[]>;
+  getIntelligenceItemById?(id: string): Promise<IntelligenceItemRow | null>;
+  updateIntelligenceItem?(id: string, fields: Partial<IntelligenceItemRow>): Promise<void>;
   insertIntelligenceInsight?(row: IntelligenceInsightRow): Promise<void>;
   listIntelligenceInsights(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<IntelligenceInsightRow[]>;
+  getIntelligenceInsightById?(id: string): Promise<IntelligenceInsightRow | null>;
+  updateIntelligenceInsight?(id: string, fields: Partial<IntelligenceInsightRow>): Promise<void>;
   insertIntelligenceSuggestion(row: IntelligenceSuggestionRow): Promise<void>;
   listIntelligenceSuggestions?(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<IntelligenceSuggestionRow[]>;
+  getIntelligenceSuggestionById?(id: string): Promise<IntelligenceSuggestionRow | null>;
+  updateIntelligenceSuggestion?(id: string, fields: Partial<IntelligenceSuggestionRow>): Promise<void>;
   insertExperiment?(row: ExperimentRow): Promise<void>;
   recordOutputUsage?(row: OutputIntelligenceUsageRow): Promise<void>;
 }
@@ -76,6 +150,7 @@ export interface IntelligenceDeps {
   store?: IntelligenceStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  proposeMemoryUpdate?: (input: ProposeMemoryUpdateInput) => Promise<ProposeMemoryUpdateResult>;
   now?: Date;
 }
 
@@ -268,6 +343,199 @@ export async function buildApprovedIntelligenceContext(
   return selectApprovedIntelligenceForTask({ plan, items, insights, limit, now: deps.now });
 }
 
+export interface IntelligenceInboxResult {
+  entries: IntelligenceInboxEntry[];
+  counts: Record<IntelligenceApprovalStatus, number>;
+}
+
+function emptyApprovalCounts(): Record<IntelligenceApprovalStatus, number> {
+  return { pending: 0, approved: 0, rejected: 0, needs_review: 0, archived: 0, superseded: 0 };
+}
+
+export async function listIntelligenceInbox(
+  input: IntelligenceInboxQuery = {},
+  deps: IntelligenceDeps = {},
+): Promise<IntelligenceInboxResult> {
+  const parsed = intelligenceInboxQuerySchema.parse(input);
+  const store = deps.store ?? defaultStore();
+  const limit = clampIntelligenceLimit(parsed.limit);
+  const baseQuery = { scope: parsed.scope, clientId: parsed.clientId, limit: MAX_INTELLIGENCE_LIMIT };
+  const [items, insights, suggestions] = await Promise.all([
+    store.listIntelligenceItems(baseQuery),
+    store.listIntelligenceInsights(baseQuery),
+    store.listIntelligenceSuggestions ? store.listIntelligenceSuggestions(baseQuery) : Promise.resolve([]),
+  ]);
+
+  const all = [
+    ...items.map((item) => normalizeIntelligenceInboxEntry("item", item)),
+    ...insights.map((insight) => normalizeIntelligenceInboxEntry("insight", insight)),
+    ...suggestions.map((suggestion) => normalizeIntelligenceInboxEntry("suggestion", suggestion)),
+  ];
+
+  const counts = emptyApprovalCounts();
+  for (const entry of all) counts[entry.approvalStatus] += 1;
+
+  const defaultStatuses = new Set<IntelligenceApprovalStatus>(["pending", "needs_review"]);
+  const entries = all
+    .filter((entry) => (parsed.approvalStatus ? entry.approvalStatus === parsed.approvalStatus : defaultStatuses.has(entry.approvalStatus)))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit);
+
+  return { entries, counts };
+}
+
+export async function reviewIntelligenceRecord(input: IntelligenceReviewInput, deps: IntelligenceDeps = {}) {
+  const parsed = intelligenceReviewInputSchema.parse(input);
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const loaded = await loadIntelligenceRecord(store, parsed.recordType, parsed.id);
+  const approvalStatus = mapReviewActionToApprovalStatus(parsed.action);
+  const metadata = buildReviewMetadata(loaded.record.metadata, parsed, now);
+  const baseFields = { approvalStatus, metadata, updatedAt: now };
+
+  let fields: Partial<IntelligenceItemRow> | Partial<IntelligenceInsightRow> | Partial<IntelligenceSuggestionRow> = baseFields;
+  if (loaded.recordType === "insight" && parsed.action === "approve") {
+    fields = { ...baseFields, approvedBy: parsed.reviewedBy, approvedAt: now };
+  }
+  if (loaded.recordType === "suggestion") {
+    const status =
+      parsed.action === "approve" ? "approved" : parsed.action === "reject" ? "rejected" : parsed.action === "archive" ? "archived" : loaded.record.status;
+    fields = { ...baseFields, status };
+  }
+
+  const updated = await updateIntelligenceRecord(store, loaded, fields);
+  await recordAudit({
+    eventType: `intelligence.review.${approvalStatus === "approved" ? "approved" : approvalStatus === "rejected" ? "rejected" : approvalStatus}`,
+    module: "intelligence",
+    entityType: `intelligence_${parsed.recordType}`,
+    entityId: parsed.id,
+    actor: parsed.reviewedBy,
+    metadata: { action: parsed.action, approvalStatus, reason: parsed.reason, notes: parsed.notes },
+  });
+
+  return { recordType: parsed.recordType, record: updated };
+}
+
+function pickPatch(recordType: IntelligenceInboxRecordType, patch: Record<string, unknown>): Record<string, unknown> {
+  const allowed: Record<IntelligenceInboxRecordType, string[]> = {
+    item: ["title", "summary", "rawText", "tags", "metrics", "extracted", "relations", "confidence", "metadata"],
+    insight: ["title", "summary", "recommendation", "evidenceItemIds", "sourceIds", "appliesToModules", "confidence", "impactScore", "metadata"],
+    suggestion: ["title", "rationale", "proposedAction", "evidenceItemIds", "evidenceInsightIds", "priority", "confidence", "reviewAfter", "metadata"],
+  };
+  const out: Record<string, unknown> = {};
+  for (const key of allowed[recordType]) {
+    if (key in patch) out[key] = patch[key];
+  }
+  if (!Object.keys(out).length) throw new Error(`no editable fields supplied for ${recordType}`);
+  return out;
+}
+
+export async function editIntelligenceRecord(input: IntelligenceEditInput, deps: IntelligenceDeps = {}) {
+  const parsed = intelligenceEditInputSchema.parse(input);
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const loaded = await loadIntelligenceRecord(store, parsed.recordType, parsed.id);
+  const patch = pickPatch(parsed.recordType, parsed.patch);
+  const patchMetadata = typeof patch.metadata === "object" && patch.metadata !== null && !Array.isArray(patch.metadata) ? patch.metadata : {};
+  const metadata = buildEditMetadata({ ...loaded.record.metadata, ...(patchMetadata as Record<string, unknown>) }, parsed, now);
+  const updated = await updateIntelligenceRecord(store, loaded, { ...patch, metadata, updatedAt: now } as never);
+
+  await recordAudit({
+    eventType: "intelligence.review.edited",
+    module: "intelligence",
+    entityType: `intelligence_${parsed.recordType}`,
+    entityId: parsed.id,
+    actor: parsed.editedBy,
+    metadata: { fields: Object.keys(patch), notes: parsed.notes },
+  });
+
+  return { recordType: parsed.recordType, record: updated };
+}
+
+export async function routeIntelligenceRecordToMemory(input: IntelligenceRouteToMemoryInput, deps: IntelligenceDeps = {}) {
+  const parsed = intelligenceRouteToMemoryInputSchema.parse(input);
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const loaded = await loadIntelligenceRecord(store, parsed.recordType, parsed.id);
+  const memoryInput = buildMemoryProposalFromIntelligence({
+    recordType: parsed.recordType,
+    record: loaded.record,
+    affectedArea: parsed.affectedArea,
+    knowledgeType: parsed.knowledgeType,
+    suggestedBankSlugs: parsed.suggestedBankSlugs,
+    proposedBy: parsed.proposedBy,
+  });
+  const createProposal = deps.proposeMemoryUpdate ?? proposeMemoryUpdate;
+  const result = await createProposal(memoryInput);
+  const proposalId = result.proposal.id;
+  const currentProposalIds = Array.isArray(loaded.record.metadata.memoryProposalIds) ? loaded.record.metadata.memoryProposalIds.map((id) => String(id)) : [];
+  const routeHistory = Array.isArray(loaded.record.metadata.memoryRouteHistory) ? loaded.record.metadata.memoryRouteHistory : [];
+  const metadata = {
+    ...loaded.record.metadata,
+    memoryProposalIds: [...new Set([...currentProposalIds, proposalId])],
+    memoryRouteHistory: [
+      ...routeHistory,
+      {
+        proposalId,
+        approvalId: result.approval.id,
+        proposedBy: parsed.proposedBy,
+        affectedArea: memoryInput.affectedArea,
+        knowledgeType: memoryInput.knowledgeType,
+        suggestedBankSlugs: memoryInput.suggestedBankSlugs,
+        routedAt: now.toISOString(),
+      },
+    ],
+  };
+  const updated = await updateIntelligenceRecord(store, loaded, { metadata, updatedAt: now } as never);
+
+  await recordAudit({
+    eventType: "intelligence.review.routed_to_memory",
+    module: "intelligence",
+    entityType: `intelligence_${parsed.recordType}`,
+    entityId: parsed.id,
+    actor: parsed.proposedBy,
+    metadata: {
+      memoryProposalId: proposalId,
+      approvalId: result.approval.id,
+      affectedArea: memoryInput.affectedArea,
+      knowledgeType: memoryInput.knowledgeType,
+      suggestedBankSlugs: memoryInput.suggestedBankSlugs,
+    },
+  });
+
+  return { recordType: parsed.recordType, record: updated, memoryProposalId: proposalId, approvalId: result.approval.id };
+}
+
+export async function mergeIntelligenceRecords(input: IntelligenceMergeInput, deps: IntelligenceDeps = {}) {
+  const parsed = intelligenceMergeInputSchema.parse(input);
+  if (parsed.primaryId === parsed.duplicateId) throw new Error("primaryId and duplicateId must be different");
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const primary = await loadIntelligenceRecord(store, parsed.recordType, parsed.primaryId);
+  const duplicate = await loadIntelligenceRecord(store, parsed.recordType, parsed.duplicateId);
+  const metadata = buildMergeMetadata(duplicate.record.metadata, parsed, now);
+  const fields: Partial<IntelligenceItemRow> | Partial<IntelligenceInsightRow> | Partial<IntelligenceSuggestionRow> =
+    duplicate.recordType === "suggestion"
+      ? { approvalStatus: "superseded", status: "archived", metadata, updatedAt: now }
+      : { approvalStatus: "superseded", metadata, updatedAt: now };
+  const updatedDuplicate = await updateIntelligenceRecord(store, duplicate, fields);
+
+  await recordAudit({
+    eventType: "intelligence.review.merged",
+    module: "intelligence",
+    entityType: `intelligence_${parsed.recordType}`,
+    entityId: parsed.duplicateId,
+    actor: parsed.mergedBy,
+    metadata: { primaryId: parsed.primaryId, duplicateId: parsed.duplicateId, reason: parsed.reason },
+  });
+
+  return { recordType: parsed.recordType, primary: primary.record, duplicate: updatedDuplicate };
+}
+
 export interface OutputIntelligenceUsageRow {
   id: string;
   outputType: string;
@@ -297,6 +565,13 @@ export function defaultStore(db: Db = getDb()): IntelligenceStore {
     async insertIntelligenceItem(row) {
       await db.insert(intelligenceItems).values(row);
     },
+    async getIntelligenceItemById(id) {
+      const rows = await db.select().from(intelligenceItems).where(eq(intelligenceItems.id, id)).limit(1);
+      return (rows[0] as IntelligenceItemRow | undefined) ?? null;
+    },
+    async updateIntelligenceItem(id, fields) {
+      await db.update(intelligenceItems).set(fields).where(eq(intelligenceItems.id, id));
+    },
     async listIntelligenceItems(query) {
       const conditions = [];
       if (query.scope) conditions.push(eq(intelligenceItems.scope, query.scope));
@@ -307,6 +582,13 @@ export function defaultStore(db: Db = getDb()): IntelligenceStore {
     },
     async insertIntelligenceInsight(row) {
       await db.insert(intelligenceInsights).values(row);
+    },
+    async getIntelligenceInsightById(id) {
+      const rows = await db.select().from(intelligenceInsights).where(eq(intelligenceInsights.id, id)).limit(1);
+      return (rows[0] as IntelligenceInsightRow | undefined) ?? null;
+    },
+    async updateIntelligenceInsight(id, fields) {
+      await db.update(intelligenceInsights).set(fields).where(eq(intelligenceInsights.id, id));
     },
     async listIntelligenceInsights(query) {
       const conditions = [];
@@ -323,6 +605,13 @@ export function defaultStore(db: Db = getDb()): IntelligenceStore {
     },
     async insertIntelligenceSuggestion(row) {
       await db.insert(intelligenceSuggestions).values(row);
+    },
+    async getIntelligenceSuggestionById(id) {
+      const rows = await db.select().from(intelligenceSuggestions).where(eq(intelligenceSuggestions.id, id)).limit(1);
+      return (rows[0] as IntelligenceSuggestionRow | undefined) ?? null;
+    },
+    async updateIntelligenceSuggestion(id, fields) {
+      await db.update(intelligenceSuggestions).set(fields).where(eq(intelligenceSuggestions.id, id));
     },
     async listIntelligenceSuggestions(query) {
       const conditions = [];

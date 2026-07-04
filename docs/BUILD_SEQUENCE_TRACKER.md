@@ -125,7 +125,7 @@ FULL DETAILED per-chunk specs (what/why/inputs/agent-team/data-flow/memory-banks
 52. [x] Chunk 52 - Agent Registry & Orchestration (Codex-verified 2026-07-02: focused migration generated/reviewed/applied, 6 agents seeded, verify green, live agent_run effect tested)
 53. [x] Chunk 53 - Source Registry + per-type Intake (Codex-verified 2026-07-02: rich registry schema, 24 source type definitions seeded, per-type intake run foundation/API/dashboard, verify green, live source approval+intake DB effect tested)
 54. [x] Chunk 54 - Memory Banks + LLM Router (Codex-verified 2026-07-03: memory_banks + memory_bank_links schema, 25 banks seeded, route-placement API, proposal suggested/approved banks, bank-filter retrieval, verify green, live routed-memory approval effect tested)
-55. [ ] Chunk 55 - Intelligence / Research Review Inbox (surface intelligence_* + approve/reject-reason/edit/route/merge)
+55. [x] Chunk 55 - Intelligence / Research Review Inbox (Codex-verified 2026-07-04: inbox API/dashboard, approve/reject-reason/edit/route-to-memory/merge, verify green, live intelligence item -> approval -> memory proposal -> supersede DB effect tested)
 56. [ ] Chunk 56 - Taste + Feedback Learning (taste_profiles brand+per-founder+client + feedback_events with rejection reasons)
 
 Frontend checkpoint:

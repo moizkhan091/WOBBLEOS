@@ -90,3 +90,12 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Affects: Chunk 54, Chunk 55 Intelligence Inbox, Chunk 13 Knowledge Compiler, Chunk 43 Content Knowledge Base, Chunk 15 creative graph, Ask WOBBLE retrieval.
 - Do NOT change: routing suggestions are not trusted truth. The flow is source/intelligence -> suggested banks -> approval/edit/reject -> memory records/chunks + bank links -> retrieval.
 - Risks / open questions: current router is deterministic and data-driven with a seeded `memory_router` model role. Future provider-backed LLM routing should write into the same proposal/bank-link contract, not replace it.
+
+### 2026-07-04 - Codex - Intelligence findings are reviewed in-place, not copied into a parallel queue
+- Decision: Chunk 55 uses the existing `intelligence_items`, `intelligence_insights`, and `intelligence_suggestions` tables as the source of truth for the Research Review Inbox. The inbox is a review/orchestration layer over those rows, not a duplicate research-output table.
+- Context / why: the hive-mind needs every agent/source finding to stay connected to provenance, source ids, agent ids, freshness, confidence, metadata, and later memory proposals. Copying findings into a separate queue would split truth and break traceability.
+- Actions supported: approve, reject with reason, mark needs_review, archive, edit, route to memory proposal, and merge/supersede duplicate records.
+- Alternatives rejected: generic approval-only row flipping; dashboard-only inbox cards; silently writing research output to Brain; a separate `research_inbox` table that mirrors intelligence rows.
+- Affects: Chunk 55, Chunk 56 Taste + Feedback Learning, Chunk 13 Knowledge Compiler, Chunk 12 Research Radar, Chunk 15 creative graph, Ask WOBBLE retrieval.
+- Do NOT change: approved intelligence still does not auto-update Core Brain. The route-to-memory action creates an approval-gated memory proposal; trusted retrieval happens after approval and bank routing.
+- Implementation note: a live test found and fixed a Drizzle schema mapping bug where `metrics`, `extracted`, and `relations` mapped to `metadata`. Keep the regression test in `tests/db-foundation.test.ts`.
