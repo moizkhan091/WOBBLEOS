@@ -50,6 +50,7 @@ export const MODULES: Record<string, ModuleDef> = {
   // REVENUE (Wobble ERP Control Layer)
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone — companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
   free_audit: { id: "free_audit", label: "Free Audit", title: "Free AI Audit", icon: "ClipboardCheck", status: "wired", api: "/api/audit/free", tagline: "The top-of-funnel converter — map a prospect's gaps to the full Wobble service menu, surface quick wins, and turn the diagnosis into a pipeline deal. Deep multi-agent + paid McKinsey audit layer on top." },
+  paid_audit: { id: "paid_audit", label: "Paid Audit", title: "Paid AI Audit", icon: "ClipboardList", status: "wired", api: "/api/audit/paid", tagline: "The McKinsey-depth engagement — a team of AI consultants maps the business, finds AI opportunities across the full Wobble menu, prioritises by impact, and builds a 12-month roadmap + ROI. Runs on an LLM key." },
 
   // GROWTH & BUSINESS
   seo: { id: "seo", label: "SEO & Blog Engine", title: "SEO & Blog Engine", icon: "SearchCheck", status: "planned", chunk: 37, tagline: "Keyword targets, blog pipeline and AI-search visibility - drafted by the workforce, published on your say-so." },
@@ -79,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
-  { label: "REVENUE", items: ["free_audit", "crm", "invoices"] },
+  { label: "REVENUE", items: ["free_audit", "paid_audit", "crm", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "docs"] },
   { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },

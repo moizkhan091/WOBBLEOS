@@ -4,6 +4,7 @@ import { runContentGenerateJobHandler } from "@/lib/content-worker";
 import { runContentGraphJobHandler } from "@/lib/content-graph";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
+import { runPaidAuditJobHandler } from "@/lib/paid-audit-graph";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -26,6 +27,7 @@ export const generalRegistry: JobHandlerRegistry = {
   "knowledge.compile": runKnowledgeCompileJobHandler,
   "publishing.dispatch": runPublishingDispatchJobHandler,
   "library.import": runLibraryImportJobHandler,
+  "audit.paid": runPaidAuditJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {

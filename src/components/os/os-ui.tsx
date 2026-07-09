@@ -3151,6 +3151,122 @@ function FreeAuditPage() {
   );
 }
 
+interface PaidAuditReportUI {
+  businessName: string; executiveSummary: string;
+  currentState: { acquisition: string[]; delivery: string[]; support: string[]; bottlenecks: { area: string; pain: string; severity: string }[] };
+  opportunities: { title: string; area: string; service: string; description: string; impact: string; difficulty: string }[];
+  prioritization: { quickWins: string[]; bigSwings: string[]; rationale: string };
+  roadmap: { title: string; months: string; focus: string; items: string[] }[];
+  roi: { estimatedMonthlyUpsideCents?: number; estimatedImplementationCents?: number; paybackMonths?: number };
+}
+interface PaidAuditRowUI { id: string; businessName: string; report: PaidAuditReportUI; createdAt: string }
+
+function PaidAuditPage() {
+  const listState = useApi<{ audits: PaidAuditRowUI[] }>("/api/audit/paid");
+  const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false); const [report, setReport] = useState<PaidAuditReportUI | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(listState);
+  if (guard) return guard;
+  const audits = listState.data?.audits ?? [];
+  async function run() {
+    if (!name.trim() || !notes.trim()) { setMsg("Business name + stakeholder notes are required."); return; }
+    setBusy(true); setMsg(null); setReport(null);
+    try {
+      const r = await fetch("/api/audit/paid", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessName: name, industry: industry || undefined, intakeNotes: notes }) });
+      const j = (await r.json()) as { ok?: boolean; report?: PaidAuditReportUI; error?: string; needsModelKey?: boolean };
+      if (r.ok && j.ok !== false && j.report) { setReport(j.report); listState.reload(); }
+      else if (j.needsModelKey) setMsg("The audit team needs an LLM key — set OPENROUTER_API_KEY in .env to run it live.");
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  const lvl = (v: string) => (v === "high" ? C.lime : v === "medium" ? C.blue : C.gray);
+  const rep = report;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="ClipboardList" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Paid AI Audit</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 760 }}>A <b>team of five AI consultants</b> — discovery → opportunity → prioritisation → roadmap → ROI — runs a McKinsey-depth audit grounded in the full Wobble service menu + brand Brain. Paste the stakeholder-interview notes; it returns the current-state map, opportunity matrix, 12-month roadmap and ROI. Runs live on an <b>OPENROUTER_API_KEY</b>.</div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Run a paid audit</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 220 }} />
+          <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (optional)" style={{ ...inputStyle, width: 160 }} />
+        </div>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Stakeholder-interview notes: how they get customers, deliver, support; what's manual; where the bottlenecks are; team size; numbers…" style={{ ...inputStyle, width: "100%", minHeight: 110, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+          <button onClick={run} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Running audit team…" : "Run paid audit"}</button>
+          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+        </div>
+      </Panel>
+
+      {rep ? (
+        <>
+          <Panel>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{rep.businessName} — AI Audit</div>
+            <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{rep.executiveSummary}</div>
+            {rep.roi?.estimatedMonthlyUpsideCents ? (
+              <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                <Kpi label="Monthly upside" value={money(rep.roi.estimatedMonthlyUpsideCents)} icon="TrendingUp" color={C.lime} />
+                <Kpi label="Implementation" value={money(rep.roi.estimatedImplementationCents ?? 0)} icon="Wallet" color={C.blue} />
+                <Kpi label="Payback" value={`${rep.roi.paybackMonths ?? "—"} mo`} icon="Hourglass" color="#B87CFF" />
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Opportunities ({rep.opportunities.length})</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {rep.opportunities.map((o, i) => (
+                <div key={i} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Tag text={`impact ${o.impact}`} color={lvl(o.impact)} />
+                  <Tag text={`effort ${o.difficulty}`} color={lvl(o.difficulty)} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 160 }}>{o.title}</span>
+                  <span style={{ fontSize: 11, color: faint }}>{o.area}{o.service ? ` · ${o.service}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>12-month roadmap</div>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+              {rep.roadmap.map((ph, i) => (
+                <div key={i} style={{ ...card, padding: "11px 13px", minWidth: 220, flex: "0 0 220px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{ph.title}</div>
+                  <div style={{ fontSize: 10.5, color: faint, marginBottom: 6 }}>{ph.months} · {ph.focus}</div>
+                  {ph.items.map((it, j) => <div key={j} style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>• {it}</div>)}
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </>
+      ) : null}
+
+      {audits.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Recent paid audits ({audits.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {audits.map((a) => (
+              <div key={a.id} onClick={() => setReport(a.report)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <Tag text={`${a.report.opportunities?.length ?? 0} opps`} color={C.blue} />
+                <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -3158,6 +3274,7 @@ const WIRED: Record<string, React.ComponentType> = {
   crm: CrmPage,
   invoices: InvoicesPage,
   free_audit: FreeAuditPage,
+  paid_audit: PaidAuditPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,

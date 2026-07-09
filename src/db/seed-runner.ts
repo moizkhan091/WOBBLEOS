@@ -48,6 +48,12 @@ function modelRoles() {
     content_scoring: or(process.env.CONTENT_SCORING_MODEL?.trim() || "openai/gpt-4o-mini"),
     knowledge_compiler: or(process.env.KNOWLEDGE_COMPILER_MODEL?.trim() || "openai/gpt-4o-mini"),
     memory_router: or(process.env.MEMORY_ROUTER_MODEL?.trim() || "openai/gpt-4o-mini"),
+    // Paid Audit team (McKinsey-depth): strong models for reasoning-heavy nodes, cheap for extraction.
+    audit_discovery: or(process.env.AUDIT_DISCOVERY_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    audit_opportunity: or(process.env.AUDIT_OPPORTUNITY_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    audit_prioritization: or(process.env.AUDIT_PRIORITIZATION_MODEL?.trim() || "openai/gpt-4o-mini"),
+    audit_roadmap: or(process.env.AUDIT_ROADMAP_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    audit_report: or(process.env.AUDIT_REPORT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
   };
 }
 
