@@ -6,6 +6,15 @@ Status key: 🟡 OPEN (needs your call) · 🟢 RESOLVED · ⚪ FYI (no action n
 
 ---
 
+## 🟡 OPEN — Content Library: give me the folder + pick a publisher
+- **Built:** the Content Library & Scheduler module is live (browse assets, schedule to platforms, post queue). Approved Content Command packs auto-land in it. Posting is provider-agnostic.
+- **I need from you:** (1) **access to the content folder** (or a zip) + a note on how it's organized — where are the captions (spreadsheet? text files? in filenames?), how are reels/images grouped — so I build an importer that matches it exactly. (2) **Which publisher to start with** — my rec: **manual now** (zero setup: the OS preps the post, you fire + mark done), then **Zernio** (free for 2 accounts) when you want true auto-posting. No Meta app review needed with a unified API.
+- **Reality check (you asked "free way, no Meta API"):** there's no fully-free + fully-automated + ToS-safe way; a unified social API (Zernio/Ayrshare) is the low-hassle path and connects the accounts once on their side. Do NOT use browser-automation bots — Meta/LinkedIn ban accounts for it.
+
+## 🅿️ PARKED — Content Studio (image carousels via Higgsfield)
+- On hold per your call (you already have ~1yr of content). When you want it: it's designed + costed. Use **Image Gen 2 (GPT Image 2), 1k low = ~0.5 credit/image**, references passed directly (no Soul training). A full carousel ≈ **2.5 credits (~15-20¢)**. Uses the **Higgsfield API key** (not the MCP/OAuth) for the app's automatic pipeline; the MCP is for interactive "ask WOBBLE to make one" later.
+- When you're ready, send: the **Higgsfield API key**, your **carousel brief** from the other Claude project, and your **3 style reference sets + brand docs**.
+
 ## 🟢 RESOLVED — Shared team password set
 - The shared team login password is now **`WobbleOS2026`** (all founders use it; pick who you are on the login screen). Set at your request 2026-07-09.
 - **Still to do before the VPS deploy:** (1) change it — `npm run auth:hash -- "the real password"` → paste the `SHARED_LOGIN_PASSWORD_HASH_B64=` line into the server `.env`; (2) set a strong `SESSION_SECRET` (32+ random chars) in the server `.env`.
