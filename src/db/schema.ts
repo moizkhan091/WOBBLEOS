@@ -1230,3 +1230,36 @@ export const audits = pgTable("audits", {
   index("audits_kind_idx").on(table.kind),
   index("audits_company_idx").on(table.companyId),
 ]);
+
+// ---------------------------------------------------------------- Proposals
+// Built from an audit's findings (services + scope + timeline + pricing), linked to an opportunity.
+// Founder-approved before sending; an accepted proposal can trigger an invoice draft.
+
+export const proposals = pgTable("proposals", {
+  id: id(),
+  companyId: text("company_id"),
+  opportunityId: text("opportunity_id"),
+  auditId: text("audit_id"),
+  title: text("title").notNull(),
+  services: jsonb("services").$type<Array<{ name: string; description?: string; priceCents?: number }>>().notNull().default([]),
+  scope: text("scope"),
+  timeline: jsonb("timeline").$type<Array<{ phase: string; months?: string; focus?: string }>>().notNull().default([]),
+  pricingCents: integer("pricing_cents").notNull().default(0),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  terms: text("terms"),
+  status: varchar("status", { length: 24 }).notNull().default("draft"), // draft|needs_review|approved|sent|viewed|accepted|rejected|expired|archived
+  version: integer("version").notNull().default(1),
+  createdBy: varchar("created_by", { length: 120 }),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  rejectedReason: text("rejected_reason"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("proposals_status_idx").on(table.status),
+  index("proposals_company_idx").on(table.companyId),
+  index("proposals_opportunity_idx").on(table.opportunityId),
+]);
