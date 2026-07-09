@@ -1,7 +1,10 @@
 import { z } from "zod";
+import { newId } from "@/lib/ids";
 import { getSystemSnapshot, type SystemMapDeps } from "@/lib/system-map";
 import { getModelCatalog, proposeModelSwap, applyModelSwapApproval, type ModelRegistryDeps } from "@/lib/model-registry";
 import { MODEL_MODALITIES } from "@/lib/domain/model-registry";
+import { approveMemoryUpdate, proposeMemoryUpdate, type MemoryDeps } from "@/lib/memory";
+import { classifyCandidateRouting, founderBankSlug } from "@/lib/domain/conversations";
 
 /**
  * Ask WOBBLE Tool Registry — the safe "toolbox" the orchestrator is allowed to use.
@@ -18,6 +21,7 @@ export interface ToolContext {
   actor?: string;
   systemMapDeps?: SystemMapDeps;
   modelRegistryDeps?: ModelRegistryDeps;
+  memoryDeps?: MemoryDeps;
 }
 
 export interface ToolDefinition {
@@ -171,6 +175,59 @@ const applyModelUpgradeTool = defineTool<{ approvalId: string; role: string; toM
   },
 });
 
+const rememberTool = defineTool<{ fact: string; scope?: "founder" | "company" | "brand" | "client" | "project"; area?: string }>({
+  name: "remember",
+  description: "Save a durable fact or preference to memory. Personal preferences (scope 'founder') save to THIS founder's own memory bank automatically; anything about WOBBLE brand/company/client is proposed for founder approval. Use for stable facts, not one-off tasks.",
+  jsonSchema: objectSchema(
+    {
+      fact: { type: "string", description: "The durable fact or preference to remember." },
+      scope: { type: "string", enum: ["founder", "company", "brand", "client", "project"], description: "'founder' = this person's personal preference (default); 'brand'/'company' = WOBBLE truth (approval-gated)." },
+      area: { type: "string", description: "Topic area, e.g. 'content', 'brand', 'strategy'." },
+    },
+    ["fact"],
+  ),
+  argsSchema: z.object({
+    fact: z.string().trim().min(3),
+    scope: z.enum(["founder", "company", "brand", "client", "project"]).optional(),
+    area: z.string().trim().min(1).optional(),
+  }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const scope = args.scope ?? "founder";
+    const area = args.area ?? "general";
+    const routing = classifyCandidateRouting({ content: args.fact, scope, area, confidence: 0.9 }, { founderBankSlug: founderBankSlug(ctx.actor) });
+    const { proposal, approval } = await proposeMemoryUpdate(
+      {
+        proposedMemory: args.fact,
+        reason: `Remembered via Ask WOBBLE by ${ctx.actor ?? "founder"}`,
+        affectedArea: area,
+        suggestedBankSlugs: routing.bankSlugs,
+        confidence: 0.9,
+        proposedBy: ctx.actor ?? "ask_wobble",
+      },
+      ctx.memoryDeps,
+    );
+    if (routing.action === "auto_save") {
+      const cleaned = args.fact.replace(/\s+/g, " ").trim();
+      await approveMemoryUpdate(
+        {
+          proposalId: proposal.id,
+          approvalId: approval.id,
+          approvedBy: ctx.actor ?? "founder",
+          slug: `${area.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${newId("h").split("_").pop()!.slice(0, 8)}`,
+          title: cleaned.length > 80 ? `${cleaned.slice(0, 79)}…` : cleaned,
+          memoryTier: routing.memoryTier,
+          trustLevel: routing.trustLevel,
+          bankSlugs: routing.bankSlugs,
+        },
+        ctx.memoryDeps,
+      );
+      return { status: "saved", bank: routing.bankSlugs[0], scope };
+    }
+    return { status: "pending_approval", bank: routing.bankSlugs[0], scope, approvalId: approval.id };
+  },
+});
+
 export const ASK_TOOLS: ToolDefinition[] = [
   listAgentsTool,
   listPendingApprovalsTool,
@@ -178,6 +235,7 @@ export const ASK_TOOLS: ToolDefinition[] = [
   listModelsTool,
   proposeModelSwapTool,
   applyModelUpgradeTool,
+  rememberTool,
 ];
 
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));

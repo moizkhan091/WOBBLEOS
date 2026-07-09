@@ -2778,3 +2778,26 @@ Tests: tests/ask-agent.test.ts (5, adversarial): read-then-answer; destructive H
 Verified live (gpt-4o-mini, budget): "how many pending + list content agents" -> model chose list_pending_approvals + list_agents -> accurate answer (9 pending; 3 content agents). "upgrade the content model, options + recommendation" -> chose get_model_config + list_models -> presented GPT-4o vs Sonnet 4.5 with cost/use-case, recommended Sonnet for content, and ASKED to confirm before proposing. typecheck clean; 259 tests; build green (/api/ask/agent compiled).
 
 NEXT: wire the dashboard Ask WOBBLE page to /api/ask/agent (with a confirm button that re-calls with confirmActions=true) so founders use it in the UI; add more tools over time (create_source, trigger_research, approve/reject items, get_costs). Then Knowledge Compiler (Slice 2), then Auth (deploy blocker).
+
+## 2026-07-09 - Claude (Opus 4.8) - Conversational Memory: per-founder auto-learning from chats
+
+The OS now learns from talking to it - per founder, automatically, correctly routed.
+
+Schema (migration 0008, no drift): conversations (founderId/founderName, surface, scope, status, messageCount, harvestStatus, harvestedAt) + conversation_messages (role, content, toolName, modelRunId) + indexes.
+
+New:
+- src/lib/domain/conversations.ts - pure: row builders, founderBankSlug() (Moiz->founder_moiz etc), buildTranscript, harvest-candidate schema + safe parseHarvestCandidates (tolerates prose/code-fences), classifyCandidateRouting (THE safety rule: scope 'founder' -> auto_save to that founder's bank; company/brand/client -> PROPOSE for approval; brand = core tier so a chat can never silently overwrite brand), buildHarvestPrompt.
+- src/lib/conversations/index.ts - log service: startConversation/appendMessage/getConversationMessages/listConversationsPendingHarvest (idle sweep)/markHarvested. Injectable store.
+- src/lib/memory-harvester/index.ts - harvestConversation(): extract durable facts via LLM (role memory_router, cheap) -> route -> auto-save personal (reuses tested proposeMemoryUpdate+approveMemoryUpdate so embeddings ARE generated) / propose shared -> mark harvested + audit (memory.harvested). harvestPendingConversations() sweep (ready to schedule).
+- Ask WOBBLE agent now logs each chat to a conversation (founder-tagged), best-effort/non-fatal, returns conversationId.
+- New tool: remember(fact, scope?, area?) - personal auto-saves to the founder's bank, brand/company proposed. ToolContext gained memoryDeps.
+
+Ops fix: openrouter provider_connection allowedModules was a hardcoded list that excluded 'memory' (blocked the harvester). Changed to [] (LLM gateway allowed for ALL internal modules; per-module guardrails belong on external providers) + enabled:true by default. Updated seed.ts + the live row.
+
+Tests: tests/conversations.test.ts (routing/parse/transcript/founder-bank) + tests/memory-harvester.test.ts (founder pref auto-saved to founder_moiz; company fact proposed; empty-skip). 269 tests pass, typecheck + build green.
+
+Verified live: real chat -> harvest -> "Moiz prefers punchy aggressive hooks" auto-saved to founder_moiz (embedded); "WOBBLE targets Pakistani SaaS founders" left pending approval on the company bank. Exactly the per-founder + trust-gated routing intended.
+
+HONEST BOUNDARY (not a corner-cut): harvestPendingConversations is the sweep entrypoint and fully works when invoked; the periodic AUTO-trigger (runs every N min) lands with the Automations/scheduler module (Chunk 19). Also: true founder identity per chat comes from Auth (Chunk 02) - until then founder is passed explicitly. This raises Auth's priority (it powers per-founder memory/taste).
+
+NEXT: adversarial break-agent over this whole session's work (memory/embeddings, model registry, ask orchestrator+tools, conversational memory), then wire the harvest sweep into the scheduler, then Slice 2 / Knowledge Compiler.

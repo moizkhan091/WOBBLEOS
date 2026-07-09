@@ -4,6 +4,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage, type ProviderToolCall } from "@/lib/providers";
 import { formatSystemSnapshot, getSystemSnapshot } from "@/lib/system-map";
 import { ASK_TOOLS_BY_NAME, runTool, toolSpecs, type ToolContext } from "@/lib/ask-tools";
+import { appendMessage, startConversation } from "@/lib/conversations";
 
 /**
  * Ask WOBBLE Orchestrator (tool-calling loop) — the "it does stuff" brain.
@@ -28,7 +29,7 @@ export const askAgentSchema = z.object({
   maxTokens: z.number().int().min(100).max(1200).optional(),
 });
 
-export type AskAgentInput = z.infer<typeof askAgentSchema>;
+export type AskAgentInput = z.infer<typeof askAgentSchema> & { conversationId?: string };
 
 export interface AskAgentToolTrace {
   tool: string;
@@ -46,6 +47,7 @@ export interface AskAgentResult {
   modelRunIds: string[];
   iterations: number;
   stoppedReason: "final" | "needs_confirmation" | "max_iterations";
+  conversationId?: string;
 }
 
 export interface AskAgentDeps {
@@ -99,6 +101,27 @@ async function defaultSnapshot(): Promise<string | undefined> {
   }
 }
 
+// Conversation logging is best-effort: it must never break an answer (and no-ops
+// cleanly in unit tests where there is no DB).
+async function ensureConversation(input: AskAgentInput): Promise<string | undefined> {
+  if (input.conversationId) return input.conversationId;
+  try {
+    const conversation = await startConversation({ founderName: input.founder, surface: "ask_wobble", scope: "founder" });
+    return conversation.id;
+  } catch {
+    return undefined;
+  }
+}
+
+async function logMessage(conversationId: string | undefined, role: "user" | "assistant", content: string): Promise<void> {
+  if (!conversationId || !content) return;
+  try {
+    await appendMessage({ conversationId, role, content });
+  } catch {
+    /* logging is best-effort */
+  }
+}
+
 export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = {}): Promise<AskAgentResult> {
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
   const runProvider = deps.runProvider ?? defaultRunProvider;
@@ -114,6 +137,8 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
 
   const toolTrace: AskAgentToolTrace[] = [];
   const modelRunIds: string[] = [];
+  const conversationId = await ensureConversation(input);
+  await logMessage(conversationId, "user", input.question);
 
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     const { text, toolCalls, runId } = await runProvider({ messages, maxTokens: input.maxTokens ?? 500 });
@@ -129,7 +154,8 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
         actor: input.founder,
         metadata: { iterations: iteration, toolsUsed: toolTrace.map((t) => t.tool) },
       });
-      return { answer: text, toolTrace, modelRunIds, iterations: iteration, stoppedReason: "final" };
+      await logMessage(conversationId, "assistant", text);
+      return { answer: text, toolTrace, modelRunIds, iterations: iteration, stoppedReason: "final", conversationId };
     }
 
     // Assistant turn that issued the tool calls must be recorded before the tool results.
@@ -153,6 +179,7 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
           actor: input.founder,
           metadata: { tool: call.name, args: call.arguments },
         });
+        await logMessage(conversationId, "assistant", text || message);
         return {
           answer: text || message,
           toolTrace,
@@ -160,6 +187,7 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
           modelRunIds,
           iterations: iteration,
           stoppedReason: "needs_confirmation",
+          conversationId,
         };
       }
 
@@ -191,5 +219,6 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
     modelRunIds,
     iterations: maxIterations,
     stoppedReason: "max_iterations",
+    conversationId,
   };
 }

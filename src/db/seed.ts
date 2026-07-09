@@ -235,7 +235,10 @@ export const initialProviderConnections = [
     providerType: "llm_gateway",
     credentialKeyName: "OPENROUTER_API_KEY",
     costCategory: "openrouter",
-    allowedModules: ["ask_wobble", "research", "content", "decision_room", "offer_lab", "client_aios_lab"],
+    // Core LLM gateway: allowed for ALL internal modules (empty = no per-module restriction).
+    // Per-module guardrails are enforced on external/risky providers (media/video/n8n), not the text brain.
+    allowedModules: [],
+    enabled: true,
     referenceDocPath: "docs/provider-references/openrouter.md",
   },
   {

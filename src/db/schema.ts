@@ -842,3 +842,43 @@ export const agentRuns = pgTable("agent_runs", {
   index("agent_runs_status_idx").on(table.status),
   index("agent_runs_created_at_idx").on(table.createdAt),
 ]);
+
+// ---- Conversational memory: log every chat (per founder) so a background
+// Memory Harvester can learn durable facts/preferences and route them to the
+// right memory bank (this founder's taste vs WOBBLE brand, gated by trust). ----
+export const conversations = pgTable("conversations", {
+  id: id(),
+  founderId: varchar("founder_id", { length: 120 }),
+  founderName: varchar("founder_name", { length: 120 }),
+  surface: varchar("surface", { length: 80 }).notNull().default("ask_wobble"),
+  scope: varchar("scope", { length: 40 }).notNull().default("founder"),
+  clientId: text("client_id"),
+  projectId: text("project_id"),
+  title: text("title"),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  messageCount: integer("message_count").notNull().default(0),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+  harvestStatus: varchar("harvest_status", { length: 32 }).notNull().default("pending"),
+  harvestedAt: timestamp("harvested_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("conversations_founder_id_idx").on(table.founderId),
+  index("conversations_status_idx").on(table.status),
+  index("conversations_harvest_status_idx").on(table.harvestStatus),
+  index("conversations_surface_idx").on(table.surface),
+]);
+
+export const conversationMessages = pgTable("conversation_messages", {
+  id: id(),
+  conversationId: text("conversation_id").notNull(),
+  role: varchar("role", { length: 32 }).notNull(),
+  content: text("content"),
+  toolName: varchar("tool_name", { length: 120 }),
+  modelRunId: text("model_run_id"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("conversation_messages_conversation_id_idx").on(table.conversationId),
+]);
