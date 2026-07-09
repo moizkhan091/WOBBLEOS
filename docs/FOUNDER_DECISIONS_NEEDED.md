@@ -6,17 +6,15 @@ Status key: 🟡 OPEN (needs your call) · 🟢 RESOLVED · ⚪ FYI (no action n
 
 ---
 
-## 🟡 OPEN — Set the real team password + session secret before deploy
-- **What:** Local dev login currently uses a temp team password `wobbletest123` so I could test. This is fine for local only.
-- **Your action before the app goes on the VPS:** run `npm run auth:hash -- "the real team password"` and paste the printed `SHARED_LOGIN_PASSWORD_HASH_B64=...` line into `.env`. Also set a strong `SESSION_SECRET` (32+ random chars) in the VPS `.env`.
-- **Default if you do nothing:** the temp password keeps working locally; deploy would use whatever is in the server `.env`.
-- Logged: 2026-07-09.
+## 🟢 RESOLVED — Shared team password set
+- The shared team login password is now **`WobbleOS2026`** (all founders use it; pick who you are on the login screen). Set at your request 2026-07-09.
+- **Still to do before the VPS deploy:** (1) change it — `npm run auth:hash -- "the real password"` → paste the `SHARED_LOGIN_PASSWORD_HASH_B64=` line into the server `.env`; (2) set a strong `SESSION_SECRET` (32+ random chars) in the server `.env`.
 
-## 🟡 OPEN — Greenlight a live content-graph run (costs a few LLM calls)
-- **What:** The multi-agent content graph is built + fully tested, but I have **not** run it live yet because one pack = **5 model calls** (strategist, researcher, copywriter draft, copywriter revise, scorer). Your OpenRouter credits were low (<~$0.80), so I didn't want to spend them without your OK.
-- **Your call:** (a) top up credits and tell me to do a live run, and/or (b) tell me to set the content roles (`content_research`, `content_copywriting`, `content_scoring`) to a **cheap** model so a full pack costs ~1-2 cents instead of more. Right now `content_strategy` is mapped to Claude Sonnet 4.5; the others fall back to the default model.
-- **Default if you do nothing:** the graph stays built + tested; no spend happens. You can trigger a run anytime via the app once we wire the button, or I can run one when you say go.
-- Logged: 2026-07-09.
+## 🟢 RESOLVED — Live content-graph run done (cheap models)
+- Ran the full team live on **`openai/gpt-4o-mini`** for all content roles (per your 77-cent budget). Cost ~1-2 cents total.
+- End-to-end proof: compiled a real approved source → 1 knowledge note, then the 5 agents produced a **grounded** LinkedIn carousel pack (hook + caption + CTA + 5 slides + design direction), citing 1 insight / 1 source. Scores impact 7 / brand 7 / platform 8; the quality gate **correctly held it back** (weak gpt-4o-mini draft never reached your approval queue — exactly the safeguard working). The note shows in Learning Engine, the pack + 5 agent-runs in Content Command + Agent Registry.
+- As you predicted, gpt-4o-mini output quality is only okay. When credits load, set `content_strategy` + `content_copywriting` to a stronger model (e.g. Claude Sonnet 4.5) via the Model Registry for real quality; keep research/scoring cheap.
+- Fixed a real bug found during the run: an unmapped model role used to crash a run — now there's a `default` fallback role.
 
 ## ⚪ FYI — What I'm building next (autonomous), and why
 Order I chose while you're away, all backend-first + tested + committed:
