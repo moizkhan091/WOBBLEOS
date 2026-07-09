@@ -3000,3 +3000,9 @@ VERIFIED: typecheck clean; 340 tests pass (was 331, +9); build compiles (/api/co
 NOT live-run yet (COST): a full graph run = 5 LLM calls (strong models); founder credits are low (<~$0.80). Logged in FOUNDER_DECISIONS_NEEDED for Moiz to greenlight a live run + pick cheap models per role. Orchestration is fully integration-tested with stubbed providers; every underlying primitive (runTextProvider, retrieveKnowledge, createContentPacket, recordAgentRun) is already live-proven.
 
 FOLLOW-UPS: parallel fan-out (Competitor + Brand-voice + Founder-taste alongside Research); founder-taste weighting + novelty scorer (Chunk 45/47); visuals (Chunk 22) after pack approval; set model_roles for content_research/copywriting/scoring to cheap models; migrate old /api/content/generate to session identity.
+
+## 2026-07-09 - Claude (Opus 4.8) - Learning Engine UI (Knowledge Compiler made visible)
+
+Wired the existing "learning" module (was planned, Chunk 13) to a real page so the compiled brain is visible to founders. src/components/os/os-ui.tsx: new LearningPage (KPIs: notes/topics/reinforcements/types; "The Knowledge Compiler" explainer; "Ask the knowledge base" retrieval box hitting /api/knowledge/retrieve; filterable notes list with type/topic/reinforced/provenance + bank tags). src/lib/os/modules.ts: learning -> status "wired", api "/api/knowledge". Reuses the existing design system (glass/card/Kpi/Panel/Tag/StateBlock/useApi/offlineIf) - branding maintained.
+
+VERIFIED: typecheck clean; build compiles; live in a real browser (preview) logged in as Moiz -> /learning renders header + KPIs + compiler panel + retrieval box + HONEST empty state ("No compiled knowledge yet. Approve a source..."); /api/knowledge/notes 200 [], /api/knowledge/retrieve 200 (real embedding). No fake data.

@@ -2127,8 +2127,163 @@ function TastePage() {
   );
 }
 
+interface KnowledgeNote {
+  id: string;
+  noteType: string;
+  topic: string;
+  area: string;
+  title: string;
+  content: string;
+  confidence: string | null;
+  trustLevel: string;
+  timesReinforced: number;
+  bankSlugs: string[];
+  sourceIds: string[];
+  provenanceChunkIds: string[];
+  createdAt: string;
+  similarity?: number | null;
+}
+interface RetrievedChunk {
+  id: string;
+  sourceId: string | null;
+  content: string;
+  similarity: number;
+}
+
+const NOTE_TYPE_COLOR: Record<string, string> = {
+  claim: C.blue,
+  insight: C.lime,
+  framework: "#B87CFF",
+  hook_pattern: C.orange,
+  objection: "#FF7C9C",
+  data_point: "#2DD4BF",
+  definition: C.gray,
+  process: "#F5C542",
+};
+const noteColor = (t: string) => NOTE_TYPE_COLOR[t] ?? C.gray;
+
+function LearningPage() {
+  const notesState = useApi<{ notes: KnowledgeNote[] }>("/api/knowledge/notes?limit=120");
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [retrieval, setRetrieval] = useState<{ notes: KnowledgeNote[]; chunks: RetrievedChunk[]; embedded: boolean } | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  const guard = offlineIf(notesState);
+  if (guard) return guard;
+
+  const notes = notesState.data?.notes ?? [];
+  const types = [...new Set(notes.map((n) => n.noteType))].sort();
+  const topics = new Set(notes.map((n) => n.topic));
+  const reinforced = notes.reduce((s, n) => s + (n.timesReinforced ?? 0), 0);
+  const shown = typeFilter ? notes.filter((n) => n.noteType === typeFilter) : notes;
+
+  async function runSearch() {
+    if (!query.trim()) return;
+    setSearching(true);
+    setSearchErr(null);
+    try {
+      const r = await fetch("/api/knowledge/retrieve?query=" + encodeURIComponent(query.trim()) + "&limit=6&chunkLimit=4");
+      const j = (await r.json()) as { ok?: boolean; error?: string; notes?: KnowledgeNote[]; chunks?: RetrievedChunk[]; embedded?: boolean };
+      if (!r.ok || j.ok === false) {
+        setSearchErr(String(j.error ?? "HTTP " + r.status));
+        setRetrieval(null);
+      } else setRetrieval({ notes: j.notes ?? [], chunks: j.chunks ?? [], embedded: Boolean(j.embedded) });
+    } catch (e) {
+      setSearchErr(String(e));
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Knowledge notes" value={String(notes.length)} icon="BookOpen" color={C.lime} sub="compiled + interlinked" />
+        <Kpi label="Distinct topics" value={String(topics.size)} icon="Hash" color={C.blue} />
+        <Kpi label="Reinforcements" value={String(reinforced)} icon="TrendingUp" color={C.orange} sub="times knowledge compounded" />
+        <Kpi label="Note types" value={String(types.length)} icon="Shapes" color="#B87CFF" />
+      </div>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="GraduationCap" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>The Knowledge Compiler</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.8, color: muted, lineHeight: 1.55, maxWidth: 720 }}>
+          Every approved source is <b>compiled</b> — not summarized — into atomic, self-contained notes (a claim, insight, framework, hook, objection or data point), each grounded in exactly where it came from. Knowledge that repeats an existing note <b>reinforces</b> it instead of duplicating, so the brain compounds. Agents read this through one retrieval contract, so new knowledge is used on their next run with no code change.
+        </div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Ask the knowledge base</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder="e.g. how should I open a cold email?" style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={runSearch} disabled={searching || !query.trim()} style={searching || !query.trim() ? disabledBtn : primaryBtn}>{searching ? "Searching…" : "Retrieve"}</button>
+        </div>
+        {searchErr ? <div style={{ fontSize: 12, color: C.orange, marginTop: 10 }}>{searchErr}</div> : null}
+        {retrieval ? (
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {!retrieval.embedded ? <div style={{ fontSize: 11.5, color: faint }}>No embeddings key configured — showing recent notes instead of a semantic match.</div> : null}
+            {retrieval.notes.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: muted }}>No matching knowledge yet.</div>
+            ) : (
+              retrieval.notes.map((n) => (
+                <div key={n.id} style={{ ...card, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
+                    <Tag text={n.noteType.replace(/_/g, " ")} color={noteColor(n.noteType)} />
+                    <span style={{ fontSize: 11, color: faint }}>{n.topic}</span>
+                    {typeof n.similarity === "number" ? <span style={{ fontSize: 10.5, color: C.lime, marginLeft: "auto" }}>{(n.similarity * 100).toFixed(0)}% match</span> : null}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{n.title}</div>
+                  <div style={{ fontSize: 12.3, color: muted, marginTop: 4, lineHeight: 1.5 }}>{n.content}</div>
+                </div>
+              ))
+            )}
+            {retrieval.chunks.length ? <div style={{ fontSize: 10.5, letterSpacing: "0.1em", color: faint, marginTop: 4 }}>SUPPORTING RAW SOURCE CHUNKS</div> : null}
+            {retrieval.chunks.map((c) => (
+              <div key={c.id} style={{ fontSize: 12, color: muted, padding: "8px 12px", borderLeft: "2px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.02)", lineHeight: 1.5 }}>{c.content}</div>
+            ))}
+          </div>
+        ) : null}
+      </Panel>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Compiled knowledge ({shown.length})</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setTypeFilter(null)} style={toggleBtn(typeFilter === null)}>all</button>
+            {types.map((t) => <button key={t} onClick={() => setTypeFilter(t)} style={toggleBtn(typeFilter === t)}>{t.replace(/_/g, " ")}</button>)}
+          </div>
+        </div>
+        {shown.length === 0 ? (
+          <StateBlock kind="empty" message="No compiled knowledge yet. Approve a source in the Source Registry and the Knowledge Compiler turns it into notes here automatically." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {shown.map((n) => (
+              <div key={n.id} style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                  <Tag text={n.noteType.replace(/_/g, " ")} color={noteColor(n.noteType)} />
+                  <span style={{ fontSize: 11, color: faint }}>{n.topic}</span>
+                  {n.timesReinforced > 0 ? <span style={{ fontSize: 10.5, color: C.orange, display: "inline-flex", alignItems: "center", gap: 3 }}><Icon name="TrendingUp" size={11} />{n.timesReinforced}×</span> : null}
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: faint }}>{n.provenanceChunkIds?.length ?? 0} chunks cited</span>
+                </div>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{n.title}</div>
+                <div style={{ fontSize: 12.5, color: muted, marginTop: 4, lineHeight: 1.5 }}>{n.content}</div>
+                {n.bankSlugs?.length ? <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>{n.bankSlugs.map((b) => <Tag key={b} text={b} color={C.gray} />)}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
+  learning: LearningPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,
