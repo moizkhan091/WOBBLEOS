@@ -5,6 +5,7 @@ import { getModelCatalog, proposeModelSwap, applyModelSwapApproval, type ModelRe
 import { MODEL_MODALITIES } from "@/lib/domain/model-registry";
 import { approveMemoryUpdate, archiveMemoryRecord, pinMemory, proposeMemoryUpdate, retrieveMemoryContext, type MemoryDeps } from "@/lib/memory";
 import { classifyCandidateRouting, founderBankSlug } from "@/lib/domain/conversations";
+import { personalBankOwner } from "@/lib/domain/memory";
 
 /**
  * Ask WOBBLE Tool Registry — the safe "toolbox" the orchestrator is allowed to use.
@@ -238,6 +239,14 @@ const searchMemoryTool = defineTool<{ query: string; bank?: string; limit?: numb
   argsSchema: z.object({ query: z.string().trim().min(1), bank: z.string().trim().min(1).optional(), limit: z.number().int().min(1).max(10).optional() }),
   mutates: false,
   handler: async (args, ctx) => {
+    // Guard: never let a founder read another founder's PERSONAL bank via search.
+    if (args.bank) {
+      const bankOwner = personalBankOwner(args.bank);
+      const actorOwner = personalBankOwner(founderBankSlug(ctx.actor));
+      if (bankOwner && bankOwner !== actorOwner) {
+        throw new Error(`'${args.bank}' is another founder's personal memory bank and cannot be searched.`);
+      }
+    }
     const hits = await retrieveMemoryContext(
       { query: args.query, bankSlugs: args.bank ? [args.bank] : undefined, limit: args.limit ?? 5 },
       ctx.memoryDeps,
@@ -252,6 +261,7 @@ const forgetMemoryTool = defineTool<{ recordId: string; reason?: string }>({
   jsonSchema: objectSchema({ recordId: { type: "string" }, reason: { type: "string" } }, ["recordId"]),
   argsSchema: z.object({ recordId: z.string().trim().min(1), reason: z.string().trim().min(1).optional() }),
   mutates: true,
+  requiresConfirmation: true,
   handler: async (args, ctx) => {
     await archiveMemoryRecord({ id: args.recordId, archivedBy: ctx.actor ?? "founder", reason: args.reason }, ctx.memoryDeps);
     return { status: "archived", restorableFor: "48h" };

@@ -81,6 +81,11 @@ export async function harvestConversation(input: { conversationId: string }, dep
 
   const conversation = await getConversation(input.conversationId, deps.conversationDeps);
   if (!conversation) throw new Error(`conversation '${input.conversationId}' not found`);
+  // Idempotency: never re-harvest a conversation that is already harvested/skipped
+  // (prevents duplicate auto-saved memories on retries / repeated sweeps).
+  if (conversation.harvestStatus !== "pending") {
+    return { conversationId: input.conversationId, candidates: 0, saved: 0, proposed: 0, skipped: true };
+  }
 
   const messages = await getConversationMessages(input.conversationId, deps.conversationDeps);
   const transcript = buildTranscript(messages);
@@ -90,44 +95,57 @@ export async function harvestConversation(input: { conversationId: string }, dep
   }
 
   const { candidates, modelRunId } = await extract({ transcript, founderName: conversation.founderName });
-  const bank = founderBankSlug(conversation.founderName ?? conversation.founderId);
+  // Prefer the authoritative founder id; only fall back to the display name.
+  const bank = founderBankSlug(conversation.founderId ?? conversation.founderName);
+  const bankUnresolved = bank === "founder_taste"; // couldn't map to a specific founder's own bank
 
   let saved = 0;
   let proposed = 0;
 
   for (const candidate of candidates) {
     if (candidate.confidence < minConfidence) continue;
-    const routing = classifyCandidateRouting(candidate, { founderBankSlug: bank });
+    try {
+      let routing = classifyCandidateRouting(candidate, { founderBankSlug: bank });
+      // Never AUTO-SAVE a personal fact into the SHARED founder_taste bank when we couldn't
+      // resolve who the founder is — route it for approval instead (no silent cross-founder leak).
+      if (routing.action === "auto_save" && bankUnresolved) {
+        routing = { ...routing, action: "propose" };
+      }
 
-    const { proposal, approval } = await proposeMemoryUpdate(
-      {
-        proposedMemory: candidate.content,
-        reason: `Learned from ${conversation.surface} conversation ${input.conversationId}`,
-        affectedArea: candidate.area,
-        suggestedBankSlugs: routing.bankSlugs,
-        confidence: candidate.confidence,
-        proposedBy: "memory_harvester",
-      },
-      deps.memoryDeps,
-    );
-
-    if (routing.action === "auto_save") {
-      await approveMemoryUpdate(
+      const { proposal, approval } = await proposeMemoryUpdate(
         {
-          proposalId: proposal.id,
-          approvalId: approval.id,
-          approvedBy: "memory_harvester",
-          slug: memorySlug(candidate.area),
-          title: truncate(candidate.content, 80),
-          memoryTier: routing.memoryTier,
-          trustLevel: routing.trustLevel,
-          bankSlugs: routing.bankSlugs,
+          proposedMemory: candidate.content,
+          reason: `Learned from ${conversation.surface} conversation ${input.conversationId}`,
+          affectedArea: candidate.area,
+          suggestedBankSlugs: routing.bankSlugs,
+          confidence: candidate.confidence,
+          proposedBy: "memory_harvester",
         },
         deps.memoryDeps,
       );
-      saved += 1;
-    } else {
-      proposed += 1;
+
+      if (routing.action === "auto_save") {
+        await approveMemoryUpdate(
+          {
+            proposalId: proposal.id,
+            approvalId: approval.id,
+            approvedBy: "memory_harvester",
+            slug: memorySlug(candidate.area),
+            title: truncate(candidate.content, 80),
+            memoryTier: routing.memoryTier,
+            trustLevel: routing.trustLevel,
+            bankSlugs: routing.bankSlugs,
+          },
+          deps.memoryDeps,
+        );
+        saved += 1;
+      } else {
+        proposed += 1;
+      }
+    } catch (error) {
+      // One bad candidate must not abort the whole harvest (which would leave the
+      // conversation un-harvested and re-processed, duplicating the good ones).
+      console.error("harvest candidate failed:", error instanceof Error ? error.message : error);
     }
   }
 

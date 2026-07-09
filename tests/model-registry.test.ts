@@ -115,11 +115,33 @@ describe("model registry service", () => {
     expect(current().ask_wobble.model).toBe("openai/gpt-4o-mini");
   });
 
+  it("rejects applying an approval that is for a DIFFERENT role (no rubber-stamping)", async () => {
+    const { store } = makeStore({ ask_wobble: { provider: "openrouter", model: "openai/gpt-4o-mini" } });
+    await expect(
+      applyModelSwapApproval(
+        { approvalId: "a1", role: "ask_wobble", toModelId: "openai/gpt-4o", approvedBy: "Moiz" },
+        {
+          store,
+          approvalStore: fakeApprovalStore().store,
+          loadApproval: async () => ({ approvalType: "model_upgrade", entityId: "content_strategy", status: "pending", metadata: { toModel: "openai/gpt-4o" } }),
+          recordAudit: async () => {},
+          now,
+        },
+      ),
+    ).rejects.toThrow(/is for role/);
+  });
+
   it("applies the model swap only after approval", async () => {
     const { store, current } = makeStore({ ask_wobble: { provider: "openrouter", model: "openai/gpt-4o-mini" } });
     await applyModelSwapApproval(
       { approvalId: "approval_1", role: "ask_wobble", toModelId: "openai/gpt-4o", approvedBy: "Moiz" },
-      { store, approvalStore: fakeApprovalStore().store, recordAudit: async () => {}, now },
+      {
+        store,
+        approvalStore: fakeApprovalStore().store,
+        loadApproval: async () => ({ approvalType: "model_upgrade", entityId: "ask_wobble", status: "pending", metadata: { toModel: "openai/gpt-4o" } }),
+        recordAudit: async () => {},
+        now,
+      },
     );
     expect(current().ask_wobble.model).toBe("openai/gpt-4o");
   });

@@ -3,7 +3,7 @@ import { settings } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
-import { applyApprovalAction, createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
+import { applyApprovalAction, createApproval, getApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import {
   DEFAULT_MODEL_CATALOG,
   modelCatalogSchema,
@@ -30,6 +30,8 @@ export interface ModelRegistryDeps {
   store?: ModelRegistryStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Load the full approval row for validation (injectable for tests). */
+  loadApproval?: (id: string) => Promise<{ approvalType: string; entityId: string; status: string; metadata: Record<string, unknown> } | null>;
   now?: Date;
 }
 
@@ -156,10 +158,30 @@ export interface ApplyModelSwapApprovalInput {
   notes?: string;
 }
 
-/** Approve a proposed model upgrade and apply it (validated swap + audit). */
+/** Approve a proposed model upgrade and apply it. Validates that the approval actually
+ * corresponds to THIS role+model (so it can't rubber-stamp an unrelated approval) and that
+ * the swap is catalog-valid, BEFORE consuming the approval. */
 export async function applyModelSwapApproval(input: ApplyModelSwapApprovalInput, deps: ModelRegistryDeps = {}): Promise<SetModelForRoleResult> {
+  const store = deps.store ?? defaultStore();
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
   const now = deps.now ?? new Date();
+
+  // 1) The approval must be a model_upgrade for exactly this role + target model.
+  const loadApproval = deps.loadApproval ?? ((id: string) => getApproval(id).then((a) => a as { approvalType: string; entityId: string; status: string; metadata: Record<string, unknown> } | null));
+  const approval = await loadApproval(input.approvalId);
+  if (!approval) throw new Error(`approval '${input.approvalId}' not found`);
+  if (approval.approvalType !== "model_upgrade") throw new Error(`approval '${input.approvalId}' is not a model upgrade`);
+  if (approval.entityId !== input.role) throw new Error(`approval '${input.approvalId}' is for role '${approval.entityId}', not '${input.role}'`);
+  const proposedModel = (approval.metadata as { toModel?: unknown }).toModel;
+  if (typeof proposedModel === "string" && proposedModel !== input.toModelId) {
+    throw new Error(`approval '${input.approvalId}' proposed '${proposedModel}', not '${input.toModelId}'`);
+  }
+
+  // 2) Validate the swap against the catalog BEFORE consuming the approval (so a bad swap
+  //    never leaves an approval marked-approved with no corresponding change).
+  const catalog = await store.getModelCatalog();
+  const validation = validateModelSwap({ role: input.role, modelId: input.toModelId, catalog });
+  if (!validation.ok) throw new Error(validation.reason);
 
   await applyApprovalAction(
     { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
@@ -190,7 +212,11 @@ export function defaultStore(db: Db = getDb()): ModelRegistryStore {
     },
     async setModelRoleMap(map) {
       const value = modelRoleMapSchema.parse(map) as unknown as Record<string, unknown>;
-      await db.update(settings).set({ value, updatedAt: new Date() }).where(eq(settings.key, "model_roles"));
+      // Upsert so the very first swap on a fresh DB (no model_roles row yet) is not silently lost.
+      await db
+        .insert(settings)
+        .values({ id: "setting_model_roles", key: "model_roles", scope: "global", value, description: "Model-role routing for provider adapter calls." })
+        .onConflictDoUpdate({ target: settings.id, set: { value, updatedAt: new Date() } });
     },
   };
 }

@@ -164,7 +164,7 @@ export function createOpenRouterTextAdapter(input: {
       const message = json.choices?.[0]?.message;
       const text = message?.content ?? "";
       const toolCalls = (message?.tool_calls ?? [])
-        .filter((tc) => tc.function?.name)
+        .filter((tc) => tc.id && tc.function?.name)
         .map((tc) => ({ id: tc.id, name: tc.function!.name!, arguments: safeJsonParse(tc.function?.arguments) }));
 
       if (!text && toolCalls.length === 0) {

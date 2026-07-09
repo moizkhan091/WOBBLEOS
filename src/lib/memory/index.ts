@@ -655,9 +655,19 @@ export async function editMemoryRecord(input: EditMemoryRecordInput, deps: Memor
 
   if (contentChanged) {
     const chunks = await store.listChunkIdsForRecord(input.id);
-    const vectors = await embedTexts(chunks.map(() => input.content!), { embedder: deps.embedder });
+    // Re-embed defensively: on failure or when no embedder is configured, PRESERVE the
+    // existing embedding (do not null it out) so the memory never silently drops out of
+    // semantic search. Only overwrite the embedding when we have a fresh vector.
+    let vectors: number[][] | null = null;
+    try {
+      vectors = await embedTexts(chunks.map(() => input.content!), { embedder: deps.embedder });
+    } catch (error) {
+      console.error("memory edit re-embed failed (keeping old vector):", error instanceof Error ? error.message : error);
+    }
     for (let i = 0; i < chunks.length; i++) {
-      await store.updateChunk(chunks[i].id, { content: input.content!, embedding: vectors ? vectors[i] ?? null : null, updatedAt: now });
+      const fields: { content: string; embedding?: number[] | null; updatedAt: Date } = { content: input.content!, updatedAt: now };
+      if (vectors && vectors[i]) fields.embedding = vectors[i];
+      await store.updateChunk(chunks[i].id, fields);
     }
   }
 
@@ -1066,6 +1076,9 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
     },
     async retrieveMemoryCandidates(input) {
       const conditions = [];
+      // Exclude archived/soft-deleted chunks unless explicitly asked — this fixes dedup/conflict
+      // detection (findRelatedMemories) matching against deleted memories, and keeps retrieval clean.
+      if (input.queryMode !== "include_archived") conditions.push(eq(memoryChunksTable.status, "active"));
       if (input.tiers?.length) conditions.push(inArray(memoryChunksTable.memoryTier, input.tiers));
       if (input.trustLevels?.length) conditions.push(inArray(memoryChunksTable.trustLevel, input.trustLevels));
       if (input.bankSlugs?.length) {

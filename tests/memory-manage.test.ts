@@ -119,6 +119,19 @@ describe("memory management", () => {
     expect((edited?.metadata as Record<string, unknown>).reEmbedded).toBe(true);
   });
 
+  it("preserves the existing embedding when edited WITHOUT an embedder (never wipes search vector)", async () => {
+    const { store, chunks } = makeStore();
+    const rec = await createMemoryRecord(
+      { title: "t", content: "orig", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: async () => {}, now },
+    );
+    expect(chunks[0].embedding).toEqual([4]); // "orig".length via fake embedder
+    // Edit content with NO embedder configured — the old vector must be kept, not nulled.
+    await editMemoryRecord({ id: rec.id, content: "changed content", editedBy: "Moiz" }, { store, embedder: null, recordAudit: async () => {}, now });
+    expect(chunks[0].content).toBe("changed content");
+    expect(chunks[0].embedding).toEqual([4]);
+  });
+
   it("archives (soft-delete) and restores a memory", async () => {
     const { store, records, chunks } = makeStore();
     const rec = await createMemoryRecord(

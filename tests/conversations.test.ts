@@ -41,6 +41,11 @@ describe("parseHarvestCandidates", () => {
     expect(parseHarvestCandidates("no json here")).toEqual([]);
     expect(parseHarvestCandidates("[not json]")).toEqual([]);
   });
+  it("keeps valid candidates and drops invalid ones (one bad item must not nuke all)", () => {
+    const out = parseHarvestCandidates('[{"content":"a good durable fact","scope":"founder","area":"content","confidence":0.9},{"content":"x","scope":"founder","area":"content","confidence":0.9}]');
+    expect(out).toHaveLength(1);
+    expect(out[0].content).toBe("a good durable fact");
+  });
 });
 
 describe("classifyCandidateRouting", () => {

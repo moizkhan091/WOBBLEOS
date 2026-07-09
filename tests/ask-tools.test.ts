@@ -101,6 +101,18 @@ describe("dispatch safety", () => {
   });
 });
 
+describe("security fixes (break-agent regressions)", () => {
+  it("forget_memory requires confirmation (destructive)", () => {
+    expect(ASK_TOOLS.find((t) => t.name === "forget_memory")?.requiresConfirmation).toBe(true);
+  });
+
+  it("search_memory blocks reading another founder's personal bank", async () => {
+    const r = await runTool("search_memory", { query: "salary", bank: "founder_ali" }, { actor: "Moiz" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("another founder's personal memory bank");
+  });
+});
+
 describe("action tools", () => {
   it("propose_model_swap creates a pending approval (not applied)", async () => {
     const r = await runTool(

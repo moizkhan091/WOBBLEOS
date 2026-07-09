@@ -131,7 +131,8 @@ export const harvestCandidateSchema = z.object({
 export type HarvestCandidate = z.infer<typeof harvestCandidateSchema>;
 export const harvestCandidatesSchema = z.array(harvestCandidateSchema);
 
-/** Safely pull a JSON array of candidates out of the model's reply (tolerates prose / code fences). */
+/** Safely pull a JSON array of candidates out of the model's reply (tolerates prose / code fences).
+ * Parses element-by-element so ONE malformed item never discards the whole harvest. */
 export function parseHarvestCandidates(text: string): HarvestCandidate[] {
   if (!text) return [];
   const start = text.indexOf("[");
@@ -143,8 +144,13 @@ export function parseHarvestCandidates(text: string): HarvestCandidate[] {
   } catch {
     return [];
   }
-  const parsed = harvestCandidatesSchema.safeParse(raw);
-  return parsed.success ? parsed.data : [];
+  if (!Array.isArray(raw)) return [];
+  const out: HarvestCandidate[] = [];
+  for (const item of raw) {
+    const parsed = harvestCandidateSchema.safeParse(item);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
 }
 
 export interface CandidateRouting {

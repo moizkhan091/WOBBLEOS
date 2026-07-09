@@ -2904,3 +2904,25 @@ All wired to the real APIs shipped this session (/api/memory/records[/id][/versi
 Verified: typecheck clean; production build compiled + generated the page; live dev server -> GET /memory 200 (52KB), /api/memory/records 200, /api/memory/conflicts 200. (Pixel-level visual polish is best eyeballed via `npm run dev` -> /memory; structure/data/actions all wired + serving.)
 
 MILESTONE: memory upgrades #1-#10 ALL COMPLETE (+48h revert + audit labeling). NEXT: optional memory extras, then the ADVERSARIAL BREAK-AGENT over the whole session (founder wants it after the upgrades), then Auth / Knowledge Compiler / Content team / revenue engine.
+
+## 2026-07-09 - Claude (Opus 4.8) - ADVERSARIAL BREAK-AGENT pass over the session + fixes
+
+Ran 3 parallel adversarial QA sub-agents (memory core / ask-orchestrator+model-registry / conversational-memory+schema). They found REAL bugs. FIXED the critical + high + cheap-medium ones (each with a regression test), 297 tests green, build green.
+
+FIXED:
+- CRITICAL: applyModelSwapApproval rubber-stamped ANY pending approval. Now loads the approval, asserts approvalType=model_upgrade + entityId=role + metadata.toModel=toModelId, and validates the swap BEFORE consuming the approval (fixes approve-before-validate too). New injectable deps.loadApproval (default getApproval). Regression test added.
+- HIGH: forget_memory (archive) tool was NOT confirmation-gated -> set requiresConfirmation:true. Regression test.
+- HIGH: search_memory could read ANY founder's personal bank -> guard blocks another founder's personal bank (personalBankOwner check). Regression test.
+- HIGH: editMemoryRecord wiped the chunk embedding when the embedder was unconfigured/failed (memory silently dropped from vector search). Now re-embed is try/caught and only overwrites the embedding when a fresh vector exists; otherwise preserves the old one. Regression test.
+- HIGH: dedup/conflict (findRelatedMemories) matched ARCHIVED records (createMemoryRecord could return a soft-deleted record). retrieveMemoryCandidates now filters status='active' unless queryMode='include_archived' (fixes at source for all callers).
+- HIGH: harvester not idempotent + one bad candidate discarded ALL. Now: entry guard (skip if harvestStatus!=pending), per-candidate try/catch (one failure can't abort/duplicate), element-by-element parseHarvestCandidates (good candidates survive a bad one).
+- HIGH: harvester leaked personal facts to shared founder_taste when founder unresolved, and trusted founderName over id. Now prefers founderId; if the bank resolves to shared founder_taste, a 'founder'-scope auto_save is downgraded to PROPOSE (approval) instead of writing personal data to a shared bank.
+- MEDIUM: setModelRoleMap used UPDATE (first swap on a fresh DB silently lost) -> upsert.
+- MEDIUM: provider tool_calls with no id crashed the loop -> filter requires tc.id.
+
+NOTED / NOT YET FIXED (honest follow-ups, tracked - none are corner-cuts, they need Auth or a transaction refactor):
+- Atomicity: compound memory writes (create/approve/archive/deleteRecordCascade/merge/split) are multi-statement without a DB transaction -> partial-failure orphans. Needs a store-level transaction wrapper.
+- confirmActions is turn-global, not bound to the specific pending action -> once confirmed, another mutating tool in the same turn could run. Bind confirmation to pendingConfirmation's tool+args.
+- canEditMemoryBanks doesn't verify the actor IS a founder (shared banks writable by any actor string). This is fundamentally AUTH (Chunk 02) - actor identity must come from login. RAISED auth priority.
+- Version-number race (countVersions+1 under concurrency); harvest concurrent double-run (needs an atomic row-claim); transcript unbounded (cap last N turns); re-harvest of continued conversations (needs harvestedThroughMessageId watermark - currently harvested convos don't re-harvest); embeddings dimension not validated (fail-loud on !=1536); listPendingHarvest newest-first can starve old.
+- These are queued; the highest-value next is Auth (identity) + a memory transaction wrapper.

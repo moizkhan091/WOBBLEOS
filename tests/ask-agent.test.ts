@@ -30,7 +30,16 @@ function toolCtx() {
     },
   };
   const approvalStore: ApprovalStore = { insert: vi.fn(async () => {}), getById: vi.fn(async () => ({ status: "pending" as never, approvalType: "model_upgrade" })), update: vi.fn(async () => {}) };
-  return { systemMapDeps, modelRegistryDeps: { store: modelStore, approvalStore, recordAudit: async () => {} }, current: () => current };
+  return {
+    systemMapDeps,
+    modelRegistryDeps: {
+      store: modelStore,
+      approvalStore,
+      loadApproval: async () => ({ approvalType: "model_upgrade", entityId: "ask_wobble", status: "pending", metadata: { toModel: "openai/gpt-4o" } }),
+      recordAudit: async () => {},
+    },
+    current: () => current,
+  };
 }
 
 function scripted(responses: Array<{ text?: string; toolCalls?: ProviderToolCall[] }>) {

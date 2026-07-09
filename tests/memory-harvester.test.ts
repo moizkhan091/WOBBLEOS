@@ -115,6 +115,23 @@ describe("harvestConversation", () => {
     expect(cs.status()).toBe("harvested");
   });
 
+  it("does NOT re-harvest an already-harvested conversation (idempotent)", async () => {
+    const cs = convStore();
+    const ms = memStore();
+    const deps: HarvestDeps = {
+      extract: async () => ({ candidates: [{ content: "Moiz prefers punchy hooks.", scope: "founder", area: "content", confidence: 0.9 }] }),
+      conversationDeps: { store: cs.store },
+      memoryDeps: { store: ms.store, approvalStore: fakeApprovalStore(), recordAudit: async () => {}, embedder: null, now },
+      recordAudit: async () => {},
+      now,
+    };
+    const first = await harvestConversation({ conversationId: "conv_1" }, deps);
+    expect(first.saved).toBe(1);
+    const second = await harvestConversation({ conversationId: "conv_1" }, deps);
+    expect(second.skipped).toBe(true);
+    expect(second.saved).toBe(0);
+  });
+
   it("skips a conversation with no real content", async () => {
     const empty: ConversationStore = {
       insertConversation: async () => {},
