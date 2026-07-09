@@ -3,6 +3,7 @@ import type { JobRow } from "@/lib/domain/jobs";
 import { runContentGenerateJobHandler } from "@/lib/content-worker";
 import { runContentGraphJobHandler } from "@/lib/content-graph";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
+import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -23,6 +24,8 @@ export const generalRegistry: JobHandlerRegistry = {
   "content.generate": runContentGenerateJobHandler,
   "content.graph": runContentGraphJobHandler,
   "knowledge.compile": runKnowledgeCompileJobHandler,
+  "publishing.dispatch": runPublishingDispatchJobHandler,
+  "library.import": runLibraryImportJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {

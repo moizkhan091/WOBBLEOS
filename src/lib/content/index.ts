@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { contentPackets, contentTracks, contentVersions, qualityReviews } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { applyApprovalAction, createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
+import { enqueueJob } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
@@ -443,6 +444,25 @@ export async function approveContentPacket(input: ContentPacketActionInput, deps
     actor: input.approvedBy,
     metadata: { approvalId: input.approvalId },
   });
+  // Approved packs flow into the Content Library. Enqueue (not a direct import) to avoid a
+  // content<->library import cycle; the worker imports it. Best-effort: never block approval.
+  if (process.env.DATABASE_URL) {
+    try {
+      await enqueueJob({
+        queue: "general",
+        type: "library.import",
+        payload: { packetId: packet.id },
+        priority: 6,
+        maxAttempts: 1,
+        linkedModule: "library",
+        linkedEntityType: "content_packet",
+        linkedEntityId: packet.id,
+        idempotencyKey: `library.import:${packet.id}`,
+      });
+    } catch {
+      /* library import is best-effort */
+    }
+  }
   return { ...packet, ...fields };
 }
 

@@ -991,3 +991,53 @@ export const knowledgeNoteLinks = pgTable("knowledge_note_links", {
   index("knowledge_note_links_to_idx").on(table.toNoteId),
   index("knowledge_note_links_type_idx").on(table.linkType),
 ]);
+
+// ---- Content Library & Scheduler ----
+// The library holds every publishable asset: the founder's existing content (reels, images,
+// carousels, captions) AND packs approved out of Content Command. scheduled_posts is the
+// calendar/queue that dispatches an asset to a platform at a time via a pluggable publisher
+// (manual / n8n / a unified social API) — provider-agnostic so we're never locked in.
+export const contentAssets = pgTable("content_assets", {
+  id: id(),
+  title: text("title").notNull(),
+  kind: varchar("kind", { length: 40 }).notNull().default("image"), // reel | image | carousel | video | story | text
+  caption: text("caption"),
+  mediaRefs: jsonb("media_refs").$type<Array<{ url?: string; path?: string; kind?: string; order?: number }>>().notNull().default([]),
+  platforms: jsonb("platforms").$type<string[]>().notNull().default([]),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  ownerScope: varchar("owner_scope", { length: 40 }).notNull().default("company"),
+  ownerId: text("owner_id"),
+  sourceType: varchar("source_type", { length: 40 }).notNull().default("imported"), // imported | content_pack | manual
+  sourcePacketId: text("source_packet_id"), // links back to a content_packet when it came from Content Command
+  status: varchar("status", { length: 32 }).notNull().default("draft"), // draft | ready | scheduled | published | archived
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("content_assets_status_idx").on(table.status),
+  index("content_assets_kind_idx").on(table.kind),
+  index("content_assets_source_packet_idx").on(table.sourcePacketId),
+]);
+
+export const scheduledPosts = pgTable("scheduled_posts", {
+  id: id(),
+  assetId: text("asset_id").notNull(),
+  platform: varchar("platform", { length: 40 }).notNull(), // instagram | facebook | linkedin | x | youtube | tiktok
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("scheduled"), // scheduled | publishing | published | failed | canceled
+  publisher: varchar("publisher", { length: 40 }).notNull().default("manual"), // manual | ayrshare | zernio | n8n
+  publisherRef: text("publisher_ref"), // external post id from the publisher
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  result: jsonb("result").$type<Record<string, unknown>>().notNull().default({}),
+  error: text("error"),
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("scheduled_posts_status_idx").on(table.status),
+  index("scheduled_posts_scheduled_at_idx").on(table.scheduledAt),
+  index("scheduled_posts_asset_id_idx").on(table.assetId),
+  index("scheduled_posts_platform_idx").on(table.platform),
+]);

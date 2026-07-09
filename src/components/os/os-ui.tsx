@@ -2355,9 +2355,166 @@ function LearningPage() {
   );
 }
 
+interface LibAsset {
+  id: string;
+  title: string;
+  kind: string;
+  caption: string | null;
+  platforms: string[];
+  tags: string[];
+  status: string;
+  sourceType: string;
+  sourcePacketId: string | null;
+  createdAt: string;
+}
+interface SchedPost {
+  id: string;
+  assetId: string;
+  platform: string;
+  scheduledAt: string;
+  status: string;
+  publisher: string;
+  publisherRef: string | null;
+  publishedAt: string | null;
+}
+
+const POST_STATUS_COLOR: Record<string, string> = { scheduled: C.blue, publishing: "#F5C542", published: C.lime, failed: C.orange, canceled: C.gray };
+const LIB_PLATFORMS = ["instagram", "facebook", "linkedin", "x", "youtube", "tiktok"];
+
+function LibraryPage() {
+  const assetsState = useApi<{ assets: LibAsset[] }>("/api/library/assets?limit=200");
+  const postsState = useApi<{ posts: SchedPost[] }>("/api/library/scheduled?limit=200");
+  const [assetId, setAssetId] = useState("");
+  const [platform, setPlatform] = useState("instagram");
+  const [when, setWhen] = useState("");
+  const [publisher, setPublisher] = useState("manual");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const guard = offlineIf(assetsState) ?? offlineIf(postsState);
+  if (guard) return guard;
+
+  const assets = assetsState.data?.assets ?? [];
+  const posts = postsState.data?.posts ?? [];
+  const scheduled = posts.filter((p) => p.status === "scheduled").length;
+  const published = posts.filter((p) => p.status === "published").length;
+  const fromCommand = assets.filter((a) => a.sourceType === "content_pack").length;
+
+  async function reload() { assetsState.reload(); postsState.reload(); }
+  async function doSchedule() {
+    setMsg(null);
+    if (!assetId) { setMsg("Pick an asset to schedule."); return; }
+    if (!when) { setMsg("Pick a date + time."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/library/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId, platform, scheduledAt: new Date(when).toISOString(), publisher }) });
+      const j = (await r.json()) as { ok?: boolean; error?: string };
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setMsg("Scheduled."); setWhen(""); setAssetId(""); reload(); }
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  async function postAction(id: string, action: "cancel" | "publish") {
+    await fetch(`/api/library/scheduled/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+    reload();
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Library assets" value={String(assets.length)} icon="LibraryBig" color={C.lime} />
+        <Kpi label="Scheduled" value={String(scheduled)} icon="CalendarClock" color={C.blue} sub="in the queue" />
+        <Kpi label="Published" value={String(published)} icon="Send" color="#2DD4BF" />
+        <Kpi label="From Content Command" value={String(fromCommand)} icon="PenTool" color="#B87CFF" sub="approved packs" />
+      </div>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="CalendarClock" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Library &amp; Scheduler</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.6, color: muted, lineHeight: 1.55, maxWidth: 720 }}>
+          Your content lives here — imported assets and packs approved from Content Command. Queue any asset to a platform at a time. Posting is <b>provider-agnostic</b>: <b>manual</b> (prep the post, you fire it + mark done — zero setup) now, and a unified social API (connect accounts once, no Meta app review) as a flip-the-switch upgrade.
+        </div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Schedule a post</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
+            <option value="">Pick an asset…</option>
+            {assets.filter((a) => a.status !== "archived").map((a) => <option key={a.id} value={a.id}>{a.title.slice(0, 50)}</option>)}
+          </select>
+          <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={selectStyle}>
+            {LIB_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
+          <select value={publisher} onChange={(e) => setPublisher(e.target.value)} style={selectStyle}>
+            <option value="manual">manual</option>
+            <option value="zernio">zernio</option>
+            <option value="ayrshare">ayrshare</option>
+            <option value="n8n">n8n</option>
+          </select>
+          <button onClick={doSchedule} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Schedule"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Post queue ({posts.length})</div>
+        {posts.length === 0 ? (
+          <StateBlock kind="empty" message="No scheduled posts yet. Schedule an asset above." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {posts.map((p) => {
+              const asset = assets.find((a) => a.id === p.assetId);
+              return (
+                <div key={p.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <Tag text={p.platform} color={C.blue} />
+                  <Tag text={p.status} color={POST_STATUS_COLOR[p.status] ?? C.gray} />
+                  <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 140 }}>{asset?.title ?? p.assetId}</span>
+                  <span style={{ fontSize: 11, color: faint }}>{fmtTime(p.scheduledAt)} · {p.publisher}</span>
+                  {p.status === "scheduled" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {p.publisher === "manual" ? <button onClick={() => postAction(p.id, "publish")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Mark posted</button> : null}
+                      <button onClick={() => postAction(p.id, "cancel")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Cancel</button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Library ({assets.length})</div>
+        {assets.length === 0 ? (
+          <StateBlock kind="empty" message="No assets yet. Approve a pack in Content Command (it lands here automatically) or import your existing content." />
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
+            {assets.map((a) => (
+              <div key={a.id} style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 7, flexWrap: "wrap", alignItems: "center" }}>
+                  <Tag text={a.kind} color="#B87CFF" />
+                  <Tag text={a.status} color={a.status === "published" ? C.lime : a.status === "scheduled" ? C.blue : C.gray} />
+                  {a.sourceType === "content_pack" ? <Tag text="from command" color="#2DD4BF" /> : null}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{a.title}</div>
+                {a.caption ? <div style={{ fontSize: 11.8, color: muted, marginTop: 5, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.caption}</div> : null}
+                {a.platforms.length ? <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>{a.platforms.map((pl) => <Tag key={pl} text={pl} color={C.blue} />)}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
+  library: LibraryPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,

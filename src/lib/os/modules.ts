@@ -39,6 +39,7 @@ export const MODULES: Record<string, ModuleDef> = {
   intelligence: { id: "intelligence", label: "Intelligence Inbox", title: "Intelligence Review Inbox", icon: "Inbox", status: "wired", chunk: 55, api: "/api/intelligence/inbox", tagline: "The review gate where raw agent/source findings become approved knowledge, get rejected with reasons, merge, or route into Memory." },
   learning: { id: "learning", label: "Learning Engine", title: "Learning Engine", icon: "GraduationCap", status: "wired", chunk: 13, api: "/api/knowledge", tagline: "The Knowledge Compiler: approved sources become atomic, interlinked knowledge notes that compound — the compiled brain every agent reads." },
   content: { id: "content", label: "Content Command", title: "Content Command", icon: "PenTool", status: "wired", chunk: 14, api: "/api/content", tagline: "Every piece of content from idea to handoff. Nothing publishes without a founder." },
+  library: { id: "library", label: "Library & Scheduler", title: "Content Library & Scheduler", icon: "CalendarClock", status: "wired", api: "/api/library", tagline: "Every publishable asset in one place - your existing content plus approved packs - queued and scheduled to each platform through a pluggable publisher." },
   media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "planned", chunk: 21, tagline: "Video and visual production. Render jobs are isolated from web and API compute." },
   presentations: { id: "presentations", label: "Presentation Maker", title: "Presentation Maker", icon: "Presentation", status: "planned", chunk: 23, tagline: "Turn research, decisions and content into investor updates, client pitches and brand decks - approved by a founder." },
 
@@ -72,7 +73,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
-  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "media", "presentations"] },
+  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
   { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },

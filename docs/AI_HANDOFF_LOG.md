@@ -3010,3 +3010,21 @@ VERIFIED: typecheck clean; build compiles; live in a real browser (preview) logg
 ## 2026-07-09 - Claude (Opus 4.8) - Content Command UI: multi-agent team panel + trigger
 
 src/components/os/os-ui.tsx ContentPage: added a "Content Team — multi-agent" panel (LIVE) that shows the pipeline (Strategist › Researcher › Copywriter › Scorer › Content Pack), explains the grounded self-critiqued flow, and gives a founder-facing trigger (objective input + "Run the team" -> POST /api/content/graph on the selected track). Also wired /api/content/generate to session identity (requestedBy from session). Verified: typecheck, build, live browser render logged in (panel + pipeline + trigger present, real tracks listed). Note: a live team run needs a worker running + credits (see FOUNDER_DECISIONS_NEEDED).
+
+## 2026-07-09 - Claude (Opus 4.8) - Content Library & Scheduler module (new)
+
+Founder pivoted: they already have ~1yr of content; build the OS to HOLD + SCHEDULE it (and pull in approved packs) rather than generate more now. Also researched "post to IG/FB/LinkedIn without Meta app review" -> honest answer: no fully-free+automated+ToS-safe path; the low-hassle route is a unified social API (Zernio free 2 accounts / Ayrshare free 20 posts) that connects accounts once (no Meta review on our side); avoid browser-automation bots (bans). So the module is PROVIDER-AGNOSTIC with a manual publisher that needs zero setup.
+
+SCHEMA (migration 0013, applied + no drift): content_assets (title/kind/caption/mediaRefs/platforms/tags/sourceType/sourcePacketId/status) + scheduled_posts (assetId/platform/scheduledAt/status/publisher/publisherRef/publishedAt/result).
+
+FILES:
+- src/lib/domain/library.ts - enums, builders, post status machine (canTransitionPost), assetInputFromPacket (approved pack -> asset).
+- src/lib/library/index.ts - addContentAsset/list/get/archive, importFromContentPacket (idempotent per packet), schedulePost/list/cancel/markPostPublished, dispatchDuePosts + PublisherAdapter abstraction (manual publisher ships; ayrshare/zernio/n8n plug in later), job handlers (publishing.dispatch, library.import).
+- Approved packs auto-flow to the library: approveContentPacket enqueues library.import (job, to avoid a content<->library import cycle).
+- API: /api/library/assets (GET/POST), /assets/[id] (GET/DELETE), /schedule (POST), /scheduled (GET), /scheduled/[id]/action (POST cancel|publish). Mutations use requireFounder (session identity).
+- UI: modules.ts learning-style "library" module (wired) + LibraryPage in os-ui.tsx (KPIs, explainer, schedule form, post queue with mark-posted/cancel, library grid). Reuses the glass/lime design system.
+- tests/library.test.ts - 10 tests (builders, status machine, pack->asset, add/list, idempotent import, schedule, cancel, mark-published, dispatch defers manual + fires automated).
+
+VERIFIED: typecheck clean; 351 tests pass (was 341, +10); build compiles (5 library routes); migration applied + no drift.
+
+PENDING FOUNDER INPUTS (logged in FOUNDER_DECISIONS_NEEDED): (1) the content FOLDER + its structure (where captions live) so I build the importer; (2) publisher choice (manual-first -> Zernio free tier for auto-posting). NEXT: the importer (once folder structure known), a real publisher adapter (Zernio/Ayrshare), platform analytics pull -> learning loop, competitor/social tracking (Chunk 38).
