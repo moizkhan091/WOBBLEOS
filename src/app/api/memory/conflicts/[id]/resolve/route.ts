@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveMemoryConflict } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
   resolution: z.enum(["keep_new", "keep_existing", "keep_both", "merged"]),
-  resolvedBy: z.string().trim().min(1),
+  resolvedBy: z.string().trim().min(1).optional(),
 });
 
 /** POST /api/memory/conflicts/[id]/resolve — resolve a flagged conflict. */
@@ -21,8 +22,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    await resolveMemoryConflict({ conflictId: id, resolution: parsed.data.resolution, resolvedBy: parsed.data.resolvedBy });
+    await resolveMemoryConflict({ conflictId: id, resolution: parsed.data.resolution, resolvedBy: auth });
     return NextResponse.json({ ok: true, status: "resolved", resolution: parsed.data.resolution });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

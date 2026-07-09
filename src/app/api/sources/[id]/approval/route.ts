@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { approveSource, rejectSource } from "@/lib/sources";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const result =
       parsed.data.action === "approve"
-        ? await approveSource({ sourceId: id, ...parsed.data })
-        : await rejectSource({ sourceId: id, ...parsed.data });
+        ? await approveSource({ sourceId: id, ...parsed.data, approvedBy: auth })
+        : await rejectSource({ sourceId: id, ...parsed.data, rejectedBy: auth });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

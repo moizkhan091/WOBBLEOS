@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { splitMemoryRecord } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
   recordId: z.string().trim().min(1),
   parts: z.array(z.object({ title: z.string().trim().min(1), content: z.string().trim().min(1) })).min(2),
-  actor: z.string().trim().min(1),
+  actor: z.string().trim().min(1).optional(),
 });
 
 /** POST /api/memory/split — split one memory into several; the original is archived. */
@@ -21,8 +22,10 @@ export async function POST(request: Request) {
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const records = await splitMemoryRecord(parsed.data);
+    const records = await splitMemoryRecord({ ...parsed.data, actor: auth });
     return NextResponse.json({ ok: true, records }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

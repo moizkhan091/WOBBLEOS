@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { addContentPacketVersion } from "@/lib/content";
 import { contentPacketPatchSchema } from "@/lib/domain/content-command";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +31,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   const { id } = await context.params;
   try {
-    const result = await addContentPacketVersion({ contentPacketId: id, ...parsed.data });
+    const result = await addContentPacketVersion({ contentPacketId: id, ...parsed.data, createdBy: auth });
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

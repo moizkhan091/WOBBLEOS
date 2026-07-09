@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createMemoryRecord, listMemoryRecords } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ const createSchema = z.object({
   memoryTier: z.enum(MEMORY_TIERS).default("working"),
   trustLevel: z.enum(TRUST_LEVELS).default("approved_expert"),
   bankSlugs: z.array(z.string().trim().min(1)).min(1),
-  createdBy: z.string().trim().min(1),
+  createdBy: z.string().trim().min(1).optional(), // ignored — the acting founder comes from the session
   confidence: z.number().min(0).max(1).optional(),
 });
 
@@ -52,8 +53,10 @@ export async function POST(request: Request) {
   }
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const record = await createMemoryRecord(parsed.data);
+    const record = await createMemoryRecord({ ...parsed.data, createdBy: auth });
     return NextResponse.json({ ok: true, record }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

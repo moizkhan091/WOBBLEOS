@@ -126,6 +126,17 @@ export async function getSessionFromRequest(request: Request, deps: AuthDeps = {
   return verifySession(token, deps);
 }
 
+/**
+ * The acting founder for a mutating route. This is the ONLY trustworthy source of "who" — never
+ * a client-supplied `actor`/`createdBy` field, which a caller could spoof to another founder.
+ * Uses full DB-backed verifySession, so it also rejects revoked/expired sessions that the edge
+ * proxy (JWT-only) would still let through.
+ */
+export async function getActingFounder(request: Request, deps: AuthDeps = {}): Promise<string | null> {
+  const claims = await getSessionFromRequest(request, deps);
+  return claims?.founder ?? null;
+}
+
 export function sessionCookie(token: string, opts: { secure?: boolean } = {}): string {
   const secure = opts.secure ?? process.env.NODE_ENV === "production";
   return [

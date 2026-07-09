@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyApprovalAction, applyActionSchema } from "@/lib/approvals";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   try {
-    const result = await applyApprovalAction({ approvalId: id, ...parsed.data });
+    const result = await applyApprovalAction({ approvalId: id, ...parsed.data, approvedBy: auth });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

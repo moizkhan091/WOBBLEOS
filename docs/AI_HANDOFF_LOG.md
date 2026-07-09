@@ -2947,3 +2947,18 @@ VERIFIED: typecheck clean; `npm run test` 311 passed (was 305, +6 auth regressio
 LOCAL DEV NOTE: .env (gitignored) has a temp team password `wobbletest123` so login works locally. Founders MUST set the real password before deploy: `npm run auth:hash -- "<real password>"` then paste the SHARED_LOGIN_PASSWORD_HASH_B64 line into .env. Also set a strong SESSION_SECRET (>=32 chars) on the VPS.
 
 NEXT: wire route handlers to derive actor identity from getSessionFromRequest (replace client-supplied founder strings - closes the break-agent auth gaps: canEditMemoryBanks actor trust, cross-founder writes). Then Knowledge Compiler (Chunk 13) -> Content multi-agent team -> revenue engine.
+
+## 2026-07-09 - Claude (Opus 4.8) - Wire session identity into ALL mutation routes (closes break-agent actor-trust gap)
+
+Auth existed but routes still trusted a CLIENT-SUPPLIED actor/createdBy/approvedBy string - so any logged-in founder could set it to another founder and write/approve on their behalf (the break-agent's "actor trust" finding). Now the acting founder for every mutation comes ONLY from the verified session.
+
+- NEW src/lib/auth/index.ts::getActingFounder(request) - full DB-backed verifySession (so REVOKED/expired sessions are rejected here even though the edge proxy is JWT-only - closes a second gap: the proxy alone doesn't catch revocation).
+- NEW src/lib/auth/route.ts::requireFounder(request)/isAuthError - route guard returning the trusted founder or a 401.
+- Wired 17 mutation routes to derive the actor from the session and IGNORE the client field (fields made optional/overridden, backward-compatible with the current UI):
+  memory: records POST, records/[id] PATCH+DELETE, pin, review, restore, versions/restore, bulk, merge, split, conflicts/[id]/resolve
+  approvals: approvals/[id]/resolve, approvals/[id]/action, memory/proposals/[id]/approval, skills/[id]/approval, sources/[id]/approval
+  other: content/packets/[id]/versions (createdBy), taste/feedback (actor)
+
+VERIFIED: typecheck clean; 311 tests pass; LIVE proof on dev server - (1) unauth POST -> 401 (proxy); (2) logged in as Moiz, POST memory to founder_ali claiming createdBy=Ali -> 403 "founder_ali is ali's personal memory bank and can only be edited by ali" (ESCALATION BLOCKED - server used the session actor Moiz, not the client's Ali claim); (3) POST to founder_moiz claiming createdBy=Ali -> 201, persisted with the session founder as creator (approvedBy), not Ali.
+
+FOLLOW-UP (noted, not corners): the memory UI still sends a createdBy/actor from a dropdown that the server now ignores - harmless (server override wins) but the UI should show "acting as <session founder>" and drop the redundant input. GET routes (viewing another founder's "what WOBBLE knows about me") are left team-transparent + proxy-gated by design; only EDITING is owner-restricted.

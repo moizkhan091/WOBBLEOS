@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listFeedbackEvents, recordFeedbackEvent } from "@/lib/taste";
 import { feedbackEventInputSchema } from "@/lib/domain/taste";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   try {
-    const result = await recordFeedbackEvent(parsed.data);
+    const result = await recordFeedbackEvent({ ...parsed.data, actor: auth });
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

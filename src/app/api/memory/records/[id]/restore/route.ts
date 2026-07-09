@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { restoreMemoryRecord } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
-const restoreSchema = z.object({ restoredBy: z.string().trim().min(1) });
+const restoreSchema = z.object({ restoredBy: z.string().trim().min(1).optional() });
 
 /** POST /api/memory/records/[id]/restore — un-archive a soft-deleted memory. Audited. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,8 +19,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const parsed = restoreSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    await restoreMemoryRecord({ id, ...parsed.data });
+    await restoreMemoryRecord({ id, restoredBy: auth });
     return NextResponse.json({ ok: true, status: "active" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

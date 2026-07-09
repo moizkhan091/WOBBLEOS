@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mergeMemoryRecords } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ const schema = z.object({
   memoryTier: z.enum(["core", "working", "episodic"]).optional(),
   trustLevel: z.enum(["founder_core", "approved_expert", "monitored", "experimental", "blocked"]).optional(),
   bankSlugs: z.array(z.string().trim().min(1)).optional(),
-  actor: z.string().trim().min(1),
+  actor: z.string().trim().min(1).optional(),
 });
 
 /** POST /api/memory/merge — merge several memories into one; sources are archived. */
@@ -26,8 +27,10 @@ export async function POST(request: Request) {
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const record = await mergeMemoryRecords(parsed.data);
+    const record = await mergeMemoryRecords({ ...parsed.data, actor: auth });
     return NextResponse.json({ ok: true, record }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

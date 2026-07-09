@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { bulkMemoryOperation } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
   recordIds: z.array(z.string().trim().min(1)).min(1).max(200),
   operation: z.enum(["archive", "restore", "pin", "unpin"]),
-  actor: z.string().trim().min(1),
+  actor: z.string().trim().min(1).optional(),
   reason: z.string().trim().min(1).optional(),
 });
 
@@ -22,8 +23,10 @@ export async function POST(request: Request) {
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const result = await bulkMemoryOperation(parsed.data);
+    const result = await bulkMemoryOperation({ ...parsed.data, actor: auth });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { restoreMemoryVersion } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ restoredBy: z.string().trim().min(1) });
+const schema = z.object({ restoredBy: z.string().trim().min(1).optional() });
 
 /** POST /api/memory/records/[id]/versions/[versionId]/restore — roll a memory back to a prior version. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; versionId: string }> }) {
@@ -18,8 +19,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const record = await restoreMemoryVersion({ recordId: id, versionId, restoredBy: parsed.data.restoredBy });
+    const record = await restoreMemoryVersion({ recordId: id, versionId, restoredBy: auth });
     return NextResponse.json({ ok: true, record });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { approveMemoryUpdate, rejectMemoryUpdate } from "@/lib/memory";
 import { MEMORY_TIERS, MEMORY_TRUST_LEVELS } from "@/lib/domain/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +53,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const result =
       parsed.data.action === "approve"
-        ? await approveMemoryUpdate({ proposalId: id, ...parsed.data })
-        : await rejectMemoryUpdate({ proposalId: id, ...parsed.data });
+        ? await approveMemoryUpdate({ proposalId: id, ...parsed.data, approvedBy: auth })
+        : await rejectMemoryUpdate({ proposalId: id, ...parsed.data, rejectedBy: auth });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

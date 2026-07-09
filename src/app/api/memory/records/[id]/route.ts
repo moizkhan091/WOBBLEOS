@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { archiveMemoryRecord, editMemoryRecord, getMemoryRecordDetail } from "@/lib/memory";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ const editSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
     content: z.string().trim().min(1).optional(),
-    editedBy: z.string().trim().min(1),
+    editedBy: z.string().trim().min(1).optional(), // ignored — the acting founder comes from the session
     reason: z.string().trim().min(1).optional(),
   })
   .refine((v) => v.title !== undefined || v.content !== undefined, { message: "provide title and/or content to edit" });
@@ -44,8 +45,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   const parsed = editSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    const record = await editMemoryRecord({ id, ...parsed.data });
+    const record = await editMemoryRecord({ id, ...parsed.data, editedBy: auth });
     return NextResponse.json({ ok: true, record });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
@@ -53,7 +56,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 }
 
-const archiveSchema = z.object({ archivedBy: z.string().trim().min(1), reason: z.string().trim().min(1).optional() });
+const archiveSchema = z.object({ archivedBy: z.string().trim().min(1).optional(), reason: z.string().trim().min(1).optional() });
 
 /** DELETE /api/memory/records/[id] — soft-delete (archive) a memory. Reversible via restore. Audited. */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -67,8 +70,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
   const parsed = archiveSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
-    await archiveMemoryRecord({ id, ...parsed.data });
+    await archiveMemoryRecord({ id, ...parsed.data, archivedBy: auth });
     return NextResponse.json({ ok: true, status: "archived" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { approveSkillVersion, rejectSkillVersion } from "@/lib/prompt-skills";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
-  const { action, approvalId, approvedBy, notes } = parsed.data;
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
+  const { action, approvalId, notes } = parsed.data;
   try {
     const skill =
       action === "approve"
-        ? await approveSkillVersion({ skillId: id, approvalId, approvedBy, notes })
-        : await rejectSkillVersion({ skillId: id, approvalId, approvedBy, notes });
+        ? await approveSkillVersion({ skillId: id, approvalId, approvedBy: auth, notes })
+        : await rejectSkillVersion({ skillId: id, approvalId, approvedBy: auth, notes });
     return NextResponse.json({ ok: true, skill });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
