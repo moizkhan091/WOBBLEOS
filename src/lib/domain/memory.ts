@@ -766,3 +766,36 @@ export function rankMemoryChunks<T extends MemoryChunkCandidate>(input: {
     }))
     .sort((a, b) => b.score - a.score);
 }
+
+// ---- Founder-scoped edit permissions for direct memory management ----
+
+function normalizeFounderKey(actor?: string | null): string {
+  return (actor ?? "").trim().toLowerCase().replace(/^founder[_-]?/, "");
+}
+
+/** If a bank is a specific founder's OWNED personal bank, return that founder key (founder_taste is shared → null). */
+export function personalBankOwner(bankSlug: string): string | null {
+  const match = bankSlug.match(/^founder_(.+)$/);
+  if (!match || match[1] === "taste") return null;
+  return match[1];
+}
+
+export interface MemoryEditPermission {
+  allowed: boolean;
+  reason: string;
+}
+
+/**
+ * A founder may edit shared banks (audited) and their OWN personal bank, but never
+ * another founder's personal bank. Applied across every bank a record belongs to.
+ */
+export function canEditMemoryBanks(actor: string | undefined, bankSlugs: string[]): MemoryEditPermission {
+  const actorKey = normalizeFounderKey(actor);
+  for (const bank of bankSlugs) {
+    const owner = personalBankOwner(bank);
+    if (owner && owner !== actorKey) {
+      return { allowed: false, reason: `'${bank}' is ${owner}'s personal memory bank and can only be edited by ${owner}.` };
+    }
+  }
+  return { allowed: true, reason: "ok" };
+}

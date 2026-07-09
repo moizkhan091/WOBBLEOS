@@ -2801,3 +2801,19 @@ Verified live: real chat -> harvest -> "Moiz prefers punchy aggressive hooks" au
 HONEST BOUNDARY (not a corner-cut): harvestPendingConversations is the sweep entrypoint and fully works when invoked; the periodic AUTO-trigger (runs every N min) lands with the Automations/scheduler module (Chunk 19). Also: true founder identity per chat comes from Auth (Chunk 02) - until then founder is passed explicitly. This raises Auth's priority (it powers per-founder memory/taste).
 
 NEXT: adversarial break-agent over this whole session's work (memory/embeddings, model registry, ask orchestrator+tools, conversational memory), then wire the harvest sweep into the scheduler, then Slice 2 / Knowledge Compiler.
+
+## 2026-07-09 - Claude (Opus 4.8) - Founder-editable memory banks (read/add/edit/remove, permissioned + audited)
+
+Founders can now directly manage memory - read full detail, add, edit, remove (soft-delete), restore. Every op audited; each founder can edit their OWN personal bank but not another founder's.
+
+Domain (src/lib/domain/memory.ts): personalBankOwner() + canEditMemoryBanks(actor, bankSlugs) - shared banks editable (audited), own founder bank editable, another founder's personal bank BLOCKED (checked across all banks a record belongs to).
+
+Service (src/lib/memory/index.ts): getMemoryRecordDetail; createMemoryRecord (direct add; permission + embed + bank links + audit memory_record.created); editMemoryRecord (permission; re-embeds the chunk when content changes so semantic search never goes stale; audits before/after + reEmbedded flag); archiveMemoryRecord (soft-delete + chunk archive; audit); restoreMemoryRecord. New MemoryStore methods: getMemoryRecordById, updateMemoryRecordFields, listChunkIdsForRecord, updateChunk, setChunksStatusForRecord (added to defaultStore + all in-memory test stores). Robustness fix: contentChanged is computed BEFORE the update (store-agnostic; a live-reference store would otherwise skip re-embed).
+
+API: GET/POST /api/memory/records (browse a bank / add); GET/PATCH/DELETE /api/memory/records/[id] (detail / edit / archive); POST /api/memory/records/[id]/restore. Permission errors -> 403, not-found -> 404.
+
+Tests: tests/memory-manage.test.ts (permission matrix, create+embed+audit, cross-founder block, re-embed-on-edit, archive/restore). 274 tests pass, typecheck + build green.
+
+Verified live: create -> read detail -> edit -> semantic search returns the EDITED content (re-embed works) -> archive (search drops it) -> restore -> Moiz blocked from writing to founder_ali. All audited.
+
+NEXT: adversarial break-agent over the session; then per-founder identity via Auth (Chunk 02) so edits attribute to the logged-in founder automatically; Knowledge Compiler (Slice 2). Upgrade backlog proposed to founder (versioned memory history, conflict detection, staleness, importance/pinning, bulk ops, "what WOBBLE knows about me" view, Ask WOBBLE memory tools).

@@ -1,4 +1,5 @@
 import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { newId } from "@/lib/ids";
 import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
@@ -10,6 +11,7 @@ import {
   buildMemoryBankLinkRow,
   buildMemoryRecordRow,
   buildMemoryUpdateProposalRow,
+  canEditMemoryBanks,
   suggestMemoryBanks,
   type MemoryBankLinkRow,
   type MemoryBankRow,
@@ -71,6 +73,11 @@ export interface MemoryStore {
   retrieveMemoryCandidates(input: RetrieveMemoryQuery & { limit: number }): Promise<RetrievalMemoryChunk[]>;
   listMemoryRecords(query?: ListMemoryRecordsQuery & { limit: number }): Promise<MemoryRecordRow[]>;
   listMemoryProposals(query?: ListMemoryProposalsQuery & { limit: number }): Promise<MemoryUpdateProposalRow[]>;
+  getMemoryRecordById(id: string): Promise<MemoryRecordRow | null>;
+  updateMemoryRecordFields(id: string, fields: Partial<MemoryRecordRow>): Promise<void>;
+  listChunkIdsForRecord(recordId: string): Promise<Array<{ id: string; content: string }>>;
+  updateChunk(id: string, fields: { content?: string; embedding?: number[] | null; status?: string; archived?: boolean; updatedAt: Date }): Promise<void>;
+  setChunksStatusForRecord(recordId: string, status: string, archived: boolean, updatedAt: Date): Promise<void>;
 }
 
 export interface MemoryDeps {
@@ -442,6 +449,197 @@ export async function listMemoryProposals(query: ListMemoryProposalsQuery = {}, 
   return store.listMemoryProposals({ ...query, limit: clampMemoryLimit(query.limit) });
 }
 
+// ---- Direct memory management: founders read + edit + add + remove their banks (audited) ----
+
+export interface MemoryRecordDetail extends MemoryRecordRow {
+  chunkCount: number;
+}
+
+export async function getMemoryRecordDetail(id: string, deps: MemoryDeps = {}): Promise<MemoryRecordDetail | null> {
+  const store = deps.store ?? defaultStore();
+  const record = await store.getMemoryRecordById(id);
+  if (!record) return null;
+  const chunks = await store.listChunkIdsForRecord(id);
+  return { ...record, chunkCount: chunks.length };
+}
+
+export interface CreateMemoryRecordInput {
+  title: string;
+  content: string;
+  area: string;
+  memoryTier: MemoryTier;
+  trustLevel: TrustLevel;
+  bankSlugs: string[];
+  createdBy: string;
+  sourceId?: string;
+  confidence?: number;
+}
+
+/** Founder adds a memory directly (not via a proposal). Permission-checked + embedded + audited. */
+export async function createMemoryRecord(input: CreateMemoryRecordInput, deps: MemoryDeps = {}): Promise<MemoryRecordRow> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  const bankSlugs = await resolveApprovedBankSlugs(input.bankSlugs, store);
+  const permission = canEditMemoryBanks(input.createdBy, bankSlugs);
+  if (!permission.allowed) throw new Error(permission.reason);
+
+  const record = buildMemoryRecordRow(
+    {
+      slug: memoryManageSlug(input.area),
+      title: input.title,
+      memoryTier: input.memoryTier,
+      area: input.area,
+      content: input.content,
+      sourceId: input.sourceId,
+      confidence: input.confidence,
+      approvedBy: input.createdBy,
+      bankSlugs,
+    },
+    { now },
+  );
+  const chunks = await attachEmbeddings(
+    buildMemoryChunkRows(
+      {
+        memoryRecordId: record.id,
+        content: input.content,
+        memoryTier: input.memoryTier,
+        trustLevel: input.trustLevel,
+        sourceId: input.sourceId,
+        parentEntityId: record.id,
+        entityType: "memory_record",
+        tags: [input.area, ...bankSlugs],
+        bankSlugs,
+      },
+      { now },
+    ),
+    deps,
+  );
+
+  await store.insertMemoryRecord(record);
+  await store.insertMemoryChunks(chunks);
+  if (store.insertMemoryBankLinks) {
+    await store.insertMemoryBankLinks(
+      bankSlugs.flatMap((bankSlug) => [
+        buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, createdBy: input.createdBy }, { now }),
+        ...chunks.map((chunk) => buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, memoryChunkId: chunk.id, createdBy: input.createdBy }, { now })),
+      ]),
+    );
+  }
+
+  await recordAudit({
+    eventType: "memory_record.created",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: record.id,
+    actor: input.createdBy,
+    metadata: { title: record.title, area: record.area, bankSlugs, memoryTier: input.memoryTier, trustLevel: input.trustLevel, direct: true },
+  });
+  return record;
+}
+
+export interface EditMemoryRecordInput {
+  id: string;
+  title?: string;
+  content?: string;
+  editedBy: string;
+  reason?: string;
+}
+
+/** Founder edits a memory. If content changes, the embedding is regenerated so search stays correct. Audited with before/after. */
+export async function editMemoryRecord(input: EditMemoryRecordInput, deps: MemoryDeps = {}): Promise<MemoryRecordRow> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  const record = await store.getMemoryRecordById(input.id);
+  if (!record) throw new Error(`memory record '${input.id}' not found`);
+  const permission = canEditMemoryBanks(input.editedBy, record.bankSlugs);
+  if (!permission.allowed) throw new Error(permission.reason);
+
+  const before = { title: record.title, content: record.content };
+  // Compute this BEFORE the update so it never depends on whether the store returns
+  // a detached copy or a live reference.
+  const contentChanged = input.content !== undefined && input.content !== before.content;
+
+  const fields: Partial<MemoryRecordRow> = { updatedAt: now };
+  if (input.title !== undefined) fields.title = input.title;
+  if (input.content !== undefined) fields.content = input.content;
+  await store.updateMemoryRecordFields(input.id, fields);
+
+  if (contentChanged) {
+    const chunks = await store.listChunkIdsForRecord(input.id);
+    const vectors = await embedTexts(chunks.map(() => input.content!), { embedder: deps.embedder });
+    for (let i = 0; i < chunks.length; i++) {
+      await store.updateChunk(chunks[i].id, { content: input.content!, embedding: vectors ? vectors[i] ?? null : null, updatedAt: now });
+    }
+  }
+
+  await recordAudit({
+    eventType: "memory_record.edited",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.id,
+    actor: input.editedBy,
+    metadata: {
+      before,
+      after: { title: fields.title ?? record.title, content: fields.content ?? record.content },
+      reEmbedded: contentChanged,
+      reason: input.reason ?? null,
+    },
+  });
+  return { ...record, ...fields };
+}
+
+/** Founder removes (soft-deletes) a memory. Reversible via restoreMemoryRecord. Audited. */
+export async function archiveMemoryRecord(input: { id: string; archivedBy: string; reason?: string }, deps: MemoryDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const record = await store.getMemoryRecordById(input.id);
+  if (!record) throw new Error(`memory record '${input.id}' not found`);
+  const permission = canEditMemoryBanks(input.archivedBy, record.bankSlugs);
+  if (!permission.allowed) throw new Error(permission.reason);
+
+  await store.updateMemoryRecordFields(input.id, { status: "archived", updatedAt: now });
+  await store.setChunksStatusForRecord(input.id, "archived", true, now);
+  await recordAudit({
+    eventType: "memory_record.archived",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.id,
+    actor: input.archivedBy,
+    metadata: { title: record.title, bankSlugs: record.bankSlugs, reason: input.reason ?? null },
+  });
+}
+
+export async function restoreMemoryRecord(input: { id: string; restoredBy: string }, deps: MemoryDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const record = await store.getMemoryRecordById(input.id);
+  if (!record) throw new Error(`memory record '${input.id}' not found`);
+  const permission = canEditMemoryBanks(input.restoredBy, record.bankSlugs);
+  if (!permission.allowed) throw new Error(permission.reason);
+
+  await store.updateMemoryRecordFields(input.id, { status: "active", updatedAt: now });
+  await store.setChunksStatusForRecord(input.id, "active", false, now);
+  await recordAudit({
+    eventType: "memory_record.restored",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.id,
+    actor: input.restoredBy,
+    metadata: { title: record.title },
+  });
+}
+
+function memoryManageSlug(area: string): string {
+  const base = area.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "memory";
+  return `${base}-${newId("m").split("_").pop()!.slice(0, 8)}`;
+}
+
 async function getPendingProposal(store: MemoryStore, proposalId: string): Promise<MemoryUpdateProposalRow> {
   if (!proposalId.trim()) throw new Error("proposalId is required");
   const proposal = await store.getProposalById(proposalId);
@@ -594,6 +792,25 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         .where(where)
         .orderBy(desc(memoryUpdateProposals.createdAt))
         .limit(query.limit) as Promise<MemoryUpdateProposalRow[]>;
+    },
+    async getMemoryRecordById(id) {
+      const rows = await db.select().from(memoryRecords).where(eq(memoryRecords.id, id)).limit(1);
+      return (rows[0] as MemoryRecordRow | undefined) ?? null;
+    },
+    async updateMemoryRecordFields(id, fields) {
+      await db.update(memoryRecords).set(fields).where(eq(memoryRecords.id, id));
+    },
+    async listChunkIdsForRecord(recordId) {
+      return db
+        .select({ id: memoryChunksTable.id, content: memoryChunksTable.content })
+        .from(memoryChunksTable)
+        .where(eq(memoryChunksTable.memoryRecordId, recordId));
+    },
+    async updateChunk(id, fields) {
+      await db.update(memoryChunksTable).set(fields).where(eq(memoryChunksTable.id, id));
+    },
+    async setChunksStatusForRecord(recordId, status, archived, updatedAt) {
+      await db.update(memoryChunksTable).set({ status, archived, updatedAt }).where(eq(memoryChunksTable.memoryRecordId, recordId));
     },
   };
 }

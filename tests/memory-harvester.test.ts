@@ -61,6 +61,19 @@ function memStore() {
     retrieveMemoryCandidates: async () => [],
     listMemoryRecords: async () => records,
     listMemoryProposals: async () => [...proposals.values()],
+    getMemoryRecordById: async (id) => records.find((r) => r.id === id) ?? null,
+    updateMemoryRecordFields: async (id, fields) => {
+      const r = records.find((x) => x.id === id);
+      if (r) Object.assign(r, fields);
+    },
+    listChunkIdsForRecord: async (recordId) => chunks.filter((c) => c.memoryRecordId === recordId).map((c) => ({ id: c.id, content: c.content })),
+    updateChunk: async (id, fields) => {
+      const c = chunks.find((x) => x.id === id);
+      if (c) Object.assign(c, fields);
+    },
+    setChunksStatusForRecord: async (recordId, status, archived) => {
+      for (const c of chunks) if (c.memoryRecordId === recordId) Object.assign(c, { status, archived });
+    },
   };
   return { store, records, chunks, proposals };
 }
