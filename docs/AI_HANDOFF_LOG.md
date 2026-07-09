@@ -2926,3 +2926,24 @@ NOTED / NOT YET FIXED (honest follow-ups, tracked - none are corner-cuts, they n
 - canEditMemoryBanks doesn't verify the actor IS a founder (shared banks writable by any actor string). This is fundamentally AUTH (Chunk 02) - actor identity must come from login. RAISED auth priority.
 - Version-number race (countVersions+1 under concurrency); harvest concurrent double-run (needs an atomic row-claim); transcript unbounded (cap last N turns); re-harvest of continued conversations (needs harvestedThroughMessageId watermark - currently harvested convos don't re-harvest); embeddings dimension not validated (fail-loud on !=1536); listPendingHarvest newest-first can starve old.
 - These are queued; the highest-value next is Auth (identity) + a memory transaction wrapper.
+
+## 2026-07-09 - Claude (Opus 4.8) - Chunk 02: Shared team AUTH + founder attribution (verified end-to-end)
+
+Built the auth foundation that the break-agent flagged as the top gap (actor identity must come from login, not a client string). Model: ONE shared team password; on login you pick WHICH founder you act as; that founder is baked into a signed JWT (jose, HS256, SESSION_SECRET) and recorded in auth_sessions (revocable, 30d expiry). Server routes derive the acting founder from the verified session.
+
+FILES:
+- src/lib/auth/edge.ts - jose-only edge primitives (verifyJwtOnly, readCookie, SESSION_COOKIE, getSecretKey). Safe to import from the edge proxy.
+- src/lib/auth/index.ts - node auth: login (bcrypt.compare + SignJWT + record session w/ sha256(token) hash), verifySession (JWT + DB active/unexpired/hash-match), logout (revoke), getSessionFromRequest, sessionCookie/clearedSessionCookie, isAuthConfigured, resolvePasswordHash.
+- src/app/api/auth/{login,logout,session}/route.ts - runtime=nodejs. login 401s on bad pw/unknown founder, 503 if unconfigured.
+- src/proxy.ts - edge auth gate (Next 16 "proxy" convention; renamed from middleware.ts to kill the deprecation warning). Public prefixes bypass; else valid session or app->/login redirect, /api/*->401. Deep revocation/expiry enforced in node routes.
+- src/app/login/page.tsx - glass/lime login (founder select + team password), maintains the existing front-end branding.
+- src/scripts/hash-password.ts + `npm run auth:hash` - prints the bcrypt hash AND a base64 line to paste into .env.
+- tests/auth.test.ts - 14 tests (login/verify/logout/revoke/expire/tamper/isAuthConfigured + base64 resolution regression).
+
+GOTCHA FIXED (would have broken every VPS setup): a bcrypt hash has `$` signs; Next's .env loader (dotenv-expand) MANGLES them as variable interpolation - even single-quoting fails (quotes stripped before expansion). Confirmed live: the hash loaded as a 32-char garbage string, login 401'd. FIX: canonical form is base64 (SHARED_LOGIN_PASSWORD_HASH_B64, no `$`); resolvePasswordHash decodes it, falls back to the raw var (quotes stripped). hash-password.ts + .env.example now guide founders to the base64 line. Regression tests lock it in.
+
+VERIFIED: typecheck clean; `npm run test` 311 passed (was 305, +6 auth regression); `npm run build` compiles (proxy active, no deprecation). LIVE dev-server flow: unauth /api -> 401; unauth page -> redirect to /login; login (Moiz & Ali) -> 200 + Set-Cookie; /api/auth/session -> 200 founder; protected /api/memory -> 200 with cookie; wrong password -> 401; logout -> 200; post-logout session -> 401 (DB revocation enforced).
+
+LOCAL DEV NOTE: .env (gitignored) has a temp team password `wobbletest123` so login works locally. Founders MUST set the real password before deploy: `npm run auth:hash -- "<real password>"` then paste the SHARED_LOGIN_PASSWORD_HASH_B64 line into .env. Also set a strong SESSION_SECRET (>=32 chars) on the VPS.
+
+NEXT: wire route handlers to derive actor identity from getSessionFromRequest (replace client-supplied founder strings - closes the break-agent auth gaps: canEditMemoryBanks actor trust, cross-founder writes). Then Knowledge Compiler (Chunk 13) -> Content multi-agent team -> revenue engine.

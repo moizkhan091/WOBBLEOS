@@ -22,7 +22,8 @@
     "ask:live-check": "tsx src/scripts/live-ask-check.ts",
     "content:live-check": "tsx src/scripts/live-content-check.ts",
     "skill:live-check": "tsx src/scripts/live-skill-check.ts",
-    "memory:backfill-embeddings": "tsx src/scripts/backfill-memory-embeddings.ts"
+    "memory:backfill-embeddings": "tsx src/scripts/backfill-memory-embeddings.ts",
+    "auth:hash": "tsx src/scripts/hash-password.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
