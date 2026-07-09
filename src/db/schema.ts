@@ -936,3 +936,58 @@ export const conversationMessages = pgTable("conversation_messages", {
 }, (table) => [
   index("conversation_messages_conversation_id_idx").on(table.conversationId),
 ]);
+
+// ---- Chunk 13: Knowledge Compiler (Karpathy "compile, don't just retrieve"). ----
+// For each APPROVED source, the compiler extracts atomic, self-contained knowledge
+// notes (claim/insight/framework/hook_pattern/objection/data_point), each grounded in
+// provenance (sourceId + chunkIds), typed + topical + confidence-scored + embedded, and
+// SYNTHESIZED into the existing base (dedupe → reinforce, interlink related, flag
+// contradictions). This is the compiled "wiki" layer that compounds; raw source_chunks
+// remain the fidelity/citation layer. Downstream agents retrieve notes + chunks via one
+// hybrid contract, auto-picking-up new knowledge with no code change.
+export const knowledgeNotes = pgTable("knowledge_notes", {
+  id: id(),
+  // Provenance — the primary source + the exact chunk ids the note was compiled from.
+  sourceId: text("source_id"),
+  sourceIds: jsonb("source_ids").$type<string[]>().notNull().default([]), // all sources that reinforced this note
+  provenanceChunkIds: jsonb("provenance_chunk_ids").$type<string[]>().notNull().default([]),
+  noteType: varchar("note_type", { length: 40 }).notNull(),
+  topic: varchar("topic", { length: 160 }).notNull(),
+  area: varchar("area", { length: 80 }).notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(), // the atomic, self-contained note
+  confidence: numeric("confidence"),
+  trustLevel: varchar("trust_level", { length: 48 }).notNull().default("experimental"),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  status: varchar("status", { length: 32 }).notNull().default("active"), // active | archived | superseded
+  supersededByNoteId: text("superseded_by_note_id"),
+  timesReinforced: integer("times_reinforced").notNull().default(0),
+  bankSlugs: jsonb("bank_slugs").$type<string[]>().notNull().default([]), // routed memory banks
+  createdBy: varchar("created_by", { length: 120 }),
+  lastCompiledAt: timestamp("last_compiled_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("knowledge_notes_source_id_idx").on(table.sourceId),
+  index("knowledge_notes_note_type_idx").on(table.noteType),
+  index("knowledge_notes_topic_idx").on(table.topic),
+  index("knowledge_notes_status_idx").on(table.status),
+]);
+
+// The interlinked "wiki" graph: a note supports / refines / contradicts / duplicates another.
+export const knowledgeNoteLinks = pgTable("knowledge_note_links", {
+  id: id(),
+  fromNoteId: text("from_note_id").notNull(),
+  toNoteId: text("to_note_id").notNull(),
+  linkType: varchar("link_type", { length: 40 }).notNull().default("relates_to"),
+  confidence: numeric("confidence"),
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("knowledge_note_links_from_idx").on(table.fromNoteId),
+  index("knowledge_note_links_to_idx").on(table.toNoteId),
+  index("knowledge_note_links_type_idx").on(table.linkType),
+]);

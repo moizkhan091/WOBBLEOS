@@ -2,6 +2,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { files as filesTable, sourceChunks, sourceIntakeRuns, sources, sourceTrustLevels, sourceTypeDefinitions } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
+import { enqueueKnowledgeCompileJob } from "@/lib/knowledge";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
@@ -207,6 +208,17 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     actor: input.approvedBy,
     metadata: { trustLevel: trust.slug, canUpdateBrain: trust.canUpdateBrain, approvalId: input.approvalId },
   });
+
+  // Chunk 13: once a source is approved, compile its knowledge into the interlinked note base.
+  // Best-effort + env-gated so it never blocks approval; the job skips gracefully if intake
+  // hasn't produced chunks yet (see runKnowledgeCompileJobHandler).
+  if (process.env.DATABASE_URL) {
+    try {
+      await enqueueKnowledgeCompileJob({ sourceId: source.id, triggeredBy: input.approvedBy });
+    } catch {
+      /* never block a founder approval on a queue hiccup */
+    }
+  }
 
   return { source: approvedSource };
 }

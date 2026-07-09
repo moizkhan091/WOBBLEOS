@@ -1,6 +1,7 @@
 import type { JobHandler, JobHandlerRegistry } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
 import { runContentGenerateJobHandler } from "@/lib/content-worker";
+import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -19,6 +20,7 @@ export const generalRegistry: JobHandlerRegistry = {
   noop,
   "test.echo": echo,
   "content.generate": runContentGenerateJobHandler,
+  "knowledge.compile": runKnowledgeCompileJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {
