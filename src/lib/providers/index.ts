@@ -16,15 +16,40 @@ export interface ProviderMessage {
   content: string;
 }
 
+/** OpenAI-compatible tool spec offered to the model. */
+export interface ProviderToolSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+/** A tool call the model asked us to run (arguments already JSON-parsed). */
+export interface ProviderToolCall {
+  id: string;
+  name: string;
+  arguments: unknown;
+}
+
+/** Rich chat message supporting tool-calling roundtrips (assistant tool_calls + tool results). */
+export interface ProviderChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+  name?: string;
+}
+
 export interface TextProviderInput {
   model: string;
-  messages: ProviderMessage[];
+  messages: ProviderChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  tools?: ProviderToolSpec[];
+  toolChoice?: "auto" | "none" | "required";
 }
 
 export interface TextProviderOutput extends ModelCallResult {
   text: string;
+  toolCalls?: ProviderToolCall[];
 }
 
 export interface TextProviderAdapter {
@@ -57,9 +82,11 @@ export interface ProviderRegistryStore {
 export interface RunTextProviderInput {
   role: string;
   module: string;
-  messages: ProviderMessage[];
+  messages: ProviderChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  tools?: ProviderToolSpec[];
+  toolChoice?: "auto" | "none" | "required";
   linkedEntityType?: string;
   linkedEntityId?: string;
 }
@@ -72,6 +99,16 @@ export interface ProviderDeps {
   store?: ProviderRegistryStore;
   adapters?: TextAdapterRegistry;
   modelRunDeps?: ModelRunDeps;
+}
+
+/** Parse model-supplied tool arguments defensively — never throw on malformed JSON. */
+function safeJsonParse(value: string | undefined): unknown {
+  if (!value || !value.trim()) return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { __unparsed: value };
+  }
 }
 
 export function createOpenRouterTextAdapter(input: {
@@ -97,6 +134,7 @@ export function createOpenRouterTextAdapter(input: {
           messages: request.messages,
           temperature: request.temperature,
           max_tokens: request.maxTokens,
+          ...(request.tools?.length ? { tools: request.tools, tool_choice: request.toolChoice ?? "auto" } : {}),
         }),
       });
 
@@ -114,17 +152,28 @@ export function createOpenRouterTextAdapter(input: {
 
       const json = (await response.json()) as {
         id?: string;
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{
+          message?: {
+            content?: string | null;
+            tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: string } }>;
+          };
+        }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
 
-      const text = json.choices?.[0]?.message?.content;
-      if (!text) {
-        throw new Error("OpenRouter response did not include text content");
+      const message = json.choices?.[0]?.message;
+      const text = message?.content ?? "";
+      const toolCalls = (message?.tool_calls ?? [])
+        .filter((tc) => tc.function?.name)
+        .map((tc) => ({ id: tc.id, name: tc.function!.name!, arguments: safeJsonParse(tc.function?.arguments) }));
+
+      if (!text && toolCalls.length === 0) {
+        throw new Error("OpenRouter response did not include text content or tool calls");
       }
 
       return {
         text,
+        toolCalls: toolCalls.length ? toolCalls : undefined,
         inputTokens: json.usage?.prompt_tokens,
         outputTokens: json.usage?.completion_tokens,
         providerRunId: json.id,
@@ -172,6 +221,8 @@ export async function runTextProvider(
         messages: input.messages,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
+        tools: input.tools,
+        toolChoice: input.toolChoice,
       }),
     deps.modelRunDeps,
   );

@@ -2762,3 +2762,19 @@ New: src/lib/ask-tools/index.ts
 Verified: typecheck clean; 254 tests; build green.
 
 NEXT (step 2c - completes the "it does stuff" experience): extend createOpenRouterTextAdapter for OpenAI-style tools/tool_calls; add an askWobble orchestration loop that offers toolSpecs() to the model, executes returned tool_calls via runTool, feeds results back, and loops until a final answer - with a confirmation gate before any mutating tool actually applies. Then Ask WOBBLE can: "upgrade the content model" -> ask which -> propose -> on founder yes -> apply, all audited.
+
+## 2026-07-09 - Claude (Opus 4.8) - Ask WOBBLE Orchestrator / tool-calling loop (step 2c) - the "it does stuff" surface
+
+Ask WOBBLE can now inspect AND operate the OS conversationally, safely.
+
+Provider: extended createOpenRouterTextAdapter + runTextProvider for OpenAI-style function calling - ProviderToolSpec/ProviderToolCall/ProviderChatMessage (tool role, assistant tool_calls, tool results); tools/tool_choice passed through; tool_calls parsed; safeJsonParse for malformed model args; relaxed the "no text" throw when tool_calls are present.
+
+Orchestrator: src/lib/ask/agent.ts - askWobbleAgent(): offers toolSpecs() to the model, executes chosen tools via runTool, feeds results back, loops to a final answer. Hardening (per founder's "make it stronger / try to break it"): hard iteration cap (default 6, max 10) to kill runaway loops/cost; destructive tools (requiresConfirmation, e.g. apply_model_upgrade) NEVER run without explicit confirmActions - returns pendingConfirmation instead; unknown/invalid/failed tool calls come back as structured errors the model recovers from; every mutating action audited (ask.agent.tool_action / confirmation_required / answered / max_iterations). Fully injectable (provider/snapshot/toolContext/audit).
+
+Tools: added requiresConfirmation to ToolDefinition (apply_model_upgrade=true). API: POST /api/ask/agent (confirmActions gates destructive tools).
+
+Tests: tests/ask-agent.test.ts (5, adversarial): read-then-answer; destructive HELD for confirmation (role unchanged); applied only when confirmActions=true; unknown-tool recovery; iteration-cap stop. tests/ask-tools.test.ts (8). Provider tests still green.
+
+Verified live (gpt-4o-mini, budget): "how many pending + list content agents" -> model chose list_pending_approvals + list_agents -> accurate answer (9 pending; 3 content agents). "upgrade the content model, options + recommendation" -> chose get_model_config + list_models -> presented GPT-4o vs Sonnet 4.5 with cost/use-case, recommended Sonnet for content, and ASKED to confirm before proposing. typecheck clean; 259 tests; build green (/api/ask/agent compiled).
+
+NEXT: wire the dashboard Ask WOBBLE page to /api/ask/agent (with a confirm button that re-calls with confirmActions=true) so founders use it in the UI; add more tools over time (create_source, trigger_research, approve/reject items, get_costs). Then Knowledge Compiler (Slice 2), then Auth (deploy blocker).

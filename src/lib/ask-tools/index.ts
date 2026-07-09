@@ -27,8 +27,10 @@ export interface ToolDefinition {
   jsonSchema: Record<string, unknown>;
   /** Runtime validation of the model-supplied args. */
   argsSchema: z.ZodType<unknown>;
-  /** True if the tool changes state (so the orchestrator can require confirmation). */
+  /** True if the tool changes state at all (proposals count — they queue an approval). */
   mutates: boolean;
+  /** True if the tool applies an irreversible/production change and needs explicit founder confirmation. */
+  requiresConfirmation: boolean;
   handler: (args: unknown, ctx: ToolContext) => Promise<unknown>;
 }
 
@@ -39,6 +41,7 @@ function defineTool<A>(spec: {
   jsonSchema: Record<string, unknown>;
   argsSchema: z.ZodType<A>;
   mutates: boolean;
+  requiresConfirmation?: boolean;
   handler: (args: A, ctx: ToolContext) => Promise<unknown>;
 }): ToolDefinition {
   return {
@@ -47,6 +50,7 @@ function defineTool<A>(spec: {
     jsonSchema: spec.jsonSchema,
     argsSchema: spec.argsSchema as z.ZodType<unknown>,
     mutates: spec.mutates,
+    requiresConfirmation: spec.requiresConfirmation ?? false,
     handler: (args, ctx) => spec.handler(args as A, ctx),
   };
 }
@@ -157,6 +161,7 @@ const applyModelUpgradeTool = defineTool<{ approvalId: string; role: string; toM
   ),
   argsSchema: z.object({ approvalId: z.string().trim().min(1), role: z.string().trim().min(1), toModelId: z.string().trim().min(1) }),
   mutates: true,
+  requiresConfirmation: true,
   handler: async (args, ctx) => {
     const result = await applyModelSwapApproval(
       { approvalId: args.approvalId, role: args.role, toModelId: args.toModelId, approvedBy: ctx.actor ?? "founder" },
