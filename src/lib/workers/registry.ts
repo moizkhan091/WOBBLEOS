@@ -1,6 +1,7 @@
 import type { JobHandler, JobHandlerRegistry } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
 import { runContentGenerateJobHandler } from "@/lib/content-worker";
+import { runContentGraphJobHandler } from "@/lib/content-graph";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 
 /**
@@ -20,6 +21,7 @@ export const generalRegistry: JobHandlerRegistry = {
   noop,
   "test.echo": echo,
   "content.generate": runContentGenerateJobHandler,
+  "content.graph": runContentGraphJobHandler,
   "knowledge.compile": runKnowledgeCompileJobHandler,
 };
 

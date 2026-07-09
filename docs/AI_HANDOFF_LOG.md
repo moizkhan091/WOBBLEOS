@@ -2981,3 +2981,22 @@ VERIFIED: typecheck clean; 331 tests pass (was 311, +20); build compiles (4 know
 FOLLOW-UPS (noted, not corners): (1) approval-gated PROMOTION of high-trust notes into Core Brain memory_records via memory_update_proposals (today notes live in the knowledge wiki + are retrievable; Core-Brain promotion is a separate gate). (2) LLM-tagged contradiction links (today related notes link as relates_to; contradiction flagging deferred). (3) knowledge_compiler model role - add to settings model_roles so live compiles route to a chosen cheap model (falls back to default today). (4) auto-trigger currently fires on approval; wire a second trigger on intake-completion so sources whose chunks arrive AFTER approval also compile.
 
 NEXT: the multi-agent CONTENT graph (Chunk 15 evolution) reading this knowledge via retrieveKnowledge - Strategy -> Research/Competitor/Brand/Taste -> Ideation -> Copywriting(critique) -> Assemble pack (>=4 agent_runs) -> founder review -> Learning.
+
+## 2026-07-09 - Claude (Opus 4.8) - Chunk 15 (evolution): Multi-Agent CONTENT GRAPH - BUILT + tested
+
+Replaced the single-LLM content call with a real creative-agency GRAPH per FOUNDER_VISION_BRIEF §Chunk 15 + KNOWLEDGE_AND_CREATIVE_ENGINE Part B/E. Five distinct agent_runs per pack, each its own model role, grounded in the Knowledge Compiler (Chunk 13). The old single-call worker (content.generate) is left intact as a fallback; the graph is additive (content.graph).
+
+GRAPH: Strategy (creative brief) -> Research (grounded evidence via retrieveKnowledge = notes + source chunks, cites provenance) -> Copywriter DRAFT -> Copywriter SELF-CRITIQUE->REVISE -> Scoring/QA (selfReview + impact/brand-fit/platform-fit) -> Assemble PACK (createContentPacket). Every claim carries provenance (insightIdsUsed = knowledge note ids, memoryChunksUsed = chunk ids, sourceIdsUsed = sources). Quality gate (passesQualityGate) drives whether an approval is created. Visuals are NOT generated here (Chunk 22, gated behind pack approval).
+
+FILES:
+- src/lib/domain/content-graph.ts - pure: node zod schemas (creativeBrief/evidencePack/copyDraft/copyRevision/contentScore), per-node prompts (strategy/evidence/copy-draft/copy-revise/score), robust parseJsonObject, collectProvenance (index->id mapping + sources), assembleContentPacketInput (downgrades claim risk when ungrounded so the packet guard is satisfied), coercePlatform/coerceFormat.
+- src/lib/content-graph/index.ts - runContentGraph orchestrator (5 nodes, each recordAgentRun + modelRunId collected; resilient: unparseable self-critique falls back to the draft, required-node parse failure throws), enqueueContentGraphJob + runContentGraphJobHandler. Extends runTextProvider/retrieveKnowledge/createContentPacket/recordAgentRun/listMemoryRecords - nothing duplicated.
+- 4 new registry agents seeded + verified in DB (team content): content_strategist, content_researcher, content_copywriter, content_scorer (roles content_strategy/research/copywriting/scoring).
+- Job "content.graph" registered. API POST /api/content/graph (requireFounder -> requestedBy from session, NOT client body; unlike the old /generate which still trusts client requestedBy - noted follow-up).
+- tests/content-graph.test.ts - 9 tests (parse, collectProvenance, assemble grounded/ungrounded/coerce + full 5-agent orchestration: agent_run visibility, revised-copy used, provenance carried, gate->approval, self-critique fallback, required-node failure).
+
+VERIFIED: typecheck clean; 340 tests pass (was 331, +9); build compiles (/api/content/graph); 4 agents confirmed in agents table.
+
+NOT live-run yet (COST): a full graph run = 5 LLM calls (strong models); founder credits are low (<~$0.80). Logged in FOUNDER_DECISIONS_NEEDED for Moiz to greenlight a live run + pick cheap models per role. Orchestration is fully integration-tested with stubbed providers; every underlying primitive (runTextProvider, retrieveKnowledge, createContentPacket, recordAgentRun) is already live-proven.
+
+FOLLOW-UPS: parallel fan-out (Competitor + Brand-voice + Founder-taste alongside Research); founder-taste weighting + novelty scorer (Chunk 45/47); visuals (Chunk 22) after pack approval; set model_roles for content_research/copywriting/scoring to cheap models; migrate old /api/content/generate to session identity.
