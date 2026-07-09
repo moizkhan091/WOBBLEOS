@@ -154,8 +154,11 @@ export function buildRoadmapPrompt(opps: OpportunitySet, priority: Prioritizatio
 }
 
 export function buildReportPrompt(ctx: AuditContext, discovery: Discovery, opps: OpportunitySet, roadmap: Roadmap): ProviderMessage[] {
-  const system = `You are the ENGAGEMENT LEAD writing the executive summary of the audit for the client's leadership. Tie the current-state pain to the opportunity and the roadmap, and estimate ROI in CENTS (monthly upside, implementation cost, payback in months) — grounded, not inflated. Respond with STRICT JSON only:
-{"executiveSummary":"...","roi":{"estimatedMonthlyUpsideCents":0,"estimatedImplementationCents":0,"paybackMonths":0}}`;
+  const system = `You are the ENGAGEMENT LEAD writing the executive summary of the audit for the client's leadership. Tie the current-state pain to the opportunities and the roadmap.
+Estimate ROI grounded in the business's own economics (deal value, lead volume, hours saved, leaked revenue) — realistic, not inflated, not trivial.
+CRITICAL: all money amounts are INTEGER CENTS (multiply dollars by 100). Example: $18,000/month upside = 1800000; a $45,000 build = 4500000. Do NOT output dollars.
+Respond with STRICT JSON only:
+{"executiveSummary":"...","roi":{"estimatedMonthlyUpsideCents":1800000,"estimatedImplementationCents":4500000,"paybackMonths":6}}`;
   const user = `BUSINESS: ${ctx.businessName}\nBOTTLENECKS: ${discovery.bottlenecks.map((b) => b.pain).join("; ")}\nOPPORTUNITIES: ${opps.opportunities.length}\nROADMAP PHASES: ${roadmap.phases.length}`;
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
