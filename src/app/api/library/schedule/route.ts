@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { schedulePost } from "@/lib/library";
 import { schedulePostSchema } from "@/lib/domain/library";
+import { zernioConfigured, zernioSchedule } from "@/lib/library/zernio";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
@@ -20,7 +21,10 @@ export async function POST(request: Request) {
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
-    const post = await schedulePost({ ...parsed.data, createdBy: auth });
+    // When Zernio is configured, push scheduled Zernio posts to its native scheduler so it holds
+    // the schedule (and cancel can reach it). Otherwise the post stays local/manual.
+    const scheduleRemote = zernioConfigured() ? (args: Parameters<typeof zernioSchedule>[0]) => zernioSchedule(args) : undefined;
+    const post = await schedulePost({ ...parsed.data, createdBy: auth }, { scheduleRemote });
     return NextResponse.json({ ok: true, post }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

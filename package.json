@@ -19,6 +19,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/db/seed-runner.ts",
+    "library:import": "tsx src/scripts/import-social-library.ts",
     "ask:live-check": "tsx src/scripts/live-ask-check.ts",
     "content:live-check": "tsx src/scripts/live-content-check.ts",
     "skill:live-check": "tsx src/scripts/live-skill-check.ts",

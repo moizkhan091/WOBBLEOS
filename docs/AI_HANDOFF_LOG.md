@@ -3028,3 +3028,60 @@ FILES:
 VERIFIED: typecheck clean; 351 tests pass (was 341, +10); build compiles (5 library routes); migration applied + no drift.
 
 PENDING FOUNDER INPUTS (logged in FOUNDER_DECISIONS_NEEDED): (1) the content FOLDER + its structure (where captions live) so I build the importer; (2) publisher choice (manual-first -> Zernio free tier for auto-posting). NEXT: the importer (once folder structure known), a real publisher adapter (Zernio/Ayrshare), platform analytics pull -> learning loop, competitor/social tracking (Chunk 38).
+
+## 2026-07-09 - Claude (Opus 4.8) - Social Library importer (Phase 1 of Content Director)
+
+Founder delivered the real content library on disk (OneDrive). Structure: images = <campaign>/ad_NNN__<product>__<angle>/{NNN.png, caption.txt} (196 single static images, no carousels); reels = SOCIAL-MEDIA/<topic>/<reel>/{reel.mp4, CAPTION.txt} (30). Built the importer that parses the folder-name metadata (id · product · angle) instead of discarding it — the Content Director (Phase 2) will use product/angle to sequence the grid.
+
+FILES:
+- src/lib/domain/library.ts - added metadata passthrough to createAssetSchema/buildContentAssetRow; parseAdFolderName, localImportKey, assetInputFromLocalImage (kind image, platforms [instagram,linkedin], tags [wobble-library, product, angle:X], title = first caption line), assetInputFromLocalReel (kind reel, video mediaRef). All pure/tested.
+- src/lib/library/index.ts - LibraryStore.findAssetByImportKey (optional; Drizzle metadata->>'importKey' lookup) for idempotent dedupe.
+- src/lib/library/import-local.ts (new) - importLocalSocialLibrary: walks campaign/ad and topic/reel folders, COPIES media into STORAGE_ROOT/media/library/<assetId>/ (OS owns the bytes; mediaRefs.path is STORAGE_ROOT-relative + portable), idempotent per importKey.
+- src/scripts/import-social-library.ts (new) + npm run library:import - CLI, defaults to the two OneDrive paths, re-runnable.
+- src/components/os/os-ui.tsx - LibraryPage assets fetch limit 200 -> 500 (226 assets were being capped at 200).
+- tests/library.test.ts - +5 tests (metadata passthrough, parseAdFolderName, localImportKey, image/reel input builders).
+
+VERIFIED LIVE: ran the import -> 226 imported / 0 failed; DB has 196 image + 30 reel with parsed metadata (seq/adId/product/angle) + captions as titles; 226 media files copied into storage/media/library/; re-run = 0 imported / 226 skipped (idempotent). Typecheck clean; 356 tests pass (was 351, +5); build compiles. Browser (logged in as Moiz) -> Library & Scheduler KPI shows 226, live data from /api/library/assets (200 OK, 226 assets).
+
+NEXT (Phase 1 cont.): Zernio publisher adapter (env ZERNIO_API_KEY; POST /api/v1/posts publishNow/scheduledFor; IG + LinkedIn) wired into dispatchDuePosts; card actions Post now / Schedule / Download-original+caption; a public media-serving route (Zernio needs a public URL to fetch media - local paths won't reach it); status sync + bulk mark-posted. Then Phase 2 (Content Director agent team: Eye/vision+color, Grid Designer, Timing, Scheduler, Caption, Sync) and Phase 3 (analytics learning loop). NOTE: do NOT fire a real post to the live Wobble IG/LinkedIn without explicit founder go (outward-facing/irreversible).
+
+## 2026-07-09 - Claude (Opus 4.8) - Library UX overhaul: media serving, adaptive grid, search/filter, per-platform posting
+
+Founder feedback: cards showed text only (couldn't see media), preview modal was translucent, no search/sort, no per-platform posting. Fixed all of it.
+
+FILES:
+- src/app/api/library/assets/[id]/media/route.ts (new) - streams asset bytes so the UI can SHOW media + founder can download originals. Path confined to STORAGE_ROOT/media (traversal guard). HTTP Range support (206) for video streaming. ?download=1 sets Content-Disposition. Auth via edge proxy (same-origin <img>/<video> carries the session cookie). This same route is Zernio's future public fetch URL.
+- src/app/api/library/assets/[id]/mark-posted/route.ts (new) - POST {platform} records a manual post on a SPECIFIC platform (per-platform). requireFounder.
+- src/lib/library/index.ts - markAssetPostedOnPlatform(assetId, platform, ...): creates/promotes a published manual scheduled_post for that platform, idempotent, per-platform independent (IG != LinkedIn). New optional store method findPostByAssetAndPlatform + defaultStore impl.
+- src/lib/domain/library.ts - (from prior entry) metadata passthrough; no new domain here.
+- src/components/os/os-ui.tsx - Library page overhaul: AssetThumb now ADAPTIVE (keeps true media aspect ratio; images lazy <img>, reels auto-play muted+loop only while in viewport via IntersectionObserver = ReelMedia); masonry grid (CSS columns) so 3:4 statics + 9:16 reels sit naturally; toolbar with SEARCH (title/caption/tags) + kind filter + posted filter + sort; per-platform badges (IG ✓ / in ✓) on cards; AssetPreviewModal rebuilt SOLID (was translucent - it used the glass card; now solid #141417 panel + 0.82 backdrop) with per-platform PlatformRow (Mark posted w/ confirm naming the platform, Schedule, "Post now · soon" placeholder for Zernio). Fetch limit already 500.
+- tests/library.test.ts - +2 tests (mark posted per-platform independent+idempotent; marking promotes an existing scheduled post). In-memory store gained findPostByAssetAndPlatform.
+
+VERIFIED LIVE (browser, logged in): images render at true aspect ratio in a masonry grid (confirmed naturalWidth e.g. 880x1168); search bar + filters + sort present; preview modal overlay is full-viewport, on top, SOLID (panel rgb(20,20,23), backdrop rgba(0,0,0,0.82)) with both Instagram+LinkedIn rows, Mark posted, Schedule, Download original; mark-posted flow end-to-end = 201, creates published manual instagram post, LinkedIn stays unmarked (per-platform), "IG ✓" badge renders. Test mark cleaned from DB after (scheduled_posts back to 0). Typecheck clean; 358 tests pass (was 356, +2); build compiles (media + mark-posted routes registered).
+
+ROOT CAUSE fixed for the recurring Turbopack dev corruption: `npm run typecheck` runs `clean:next-dev-types` which deletes .next files WHILE the dev server is using them -> corruption. Use `npx tsc --noEmit` while the dev server runs; only `npm run typecheck`/`build` with the server stopped.
+
+NOTE: founder has manually posted 3 on Instagram; will name them so they get marked (search caption -> open -> Mark posted -> Instagram). Post-now AUTO (Zernio) still pending wiring + explicit founder go before any real post fires.
+
+## 2026-07-09 - Claude (Opus 4.8) - Lock the content section: queue split, Zernio engine, Plan-my-feed
+
+Founder went hands-off ("do it all, don't stop"). Built three phases; everything verified; NO real posts fired and NO paid APIs called (all Zernio calls env-gated + a public URL that localhost doesn't have).
+
+PHASE 1 — Library logical fixes:
+- Post queue split into 3 sections: Scheduled / Posted / Failed-cancelled (was one dumped list). os-ui LibraryPage PostRow + Section.
+- Remove action: deleteScheduledPost(id) service + store.deleteScheduledPost + "delete" action in /api/library/scheduled/[id]/action, with inline "Remove this record? Yes/No" confirm. recomputeAssetStatus keeps asset status honest (published>scheduled>ready) after cancel/remove.
+
+PHASE 3 — Zernio engine (code, gated, unit-tested with mocked fetch; activates on deploy):
+- src/lib/library/zernio.ts (new): createZernioPost (publishNow | scheduledFor), deleteZernioPost, listZernioPosts, resolveAccountId (env ZERNIO_ACCOUNT_<PLATFORM> or /accounts), zernioMediaItems (builds PUBLIC_BASE_URL media URLs), zernioPublish (post now), zernioSchedule (native scheduling). Injectable fetchImpl for tests. zernioConfigured() gates everything on ZERNIO_API_KEY.
+- src/lib/library/index.ts: zernioPublisher adapter + defaultPublisherRegistry() (Zernio joins dispatch only when keyed); dispatchDuePosts uses it. schedulePost gained a scheduleRemote hook (pushes to Zernio's scheduler, stores publisher_ref). cancelScheduledPost/deleteScheduledPost gained cancelRemote/deleteRemote hooks (DELETE on Zernio so a cancelled post can't fire later). applyZernioPostEvent(event) reconciles webhooks -> auto-moves local post to published/failed/canceled by publisher_ref, stores platformPostId+publishedUrl, idempotent. store.findPostByPublisherRef added.
+- src/app/api/webhooks/zernio/route.ts (new): HMAC-SHA256 verify (X-Zernio-Signature / ZERNIO_WEBHOOK_SECRET), calls applyZernioPostEvent. src/proxy.ts: /api/webhooks made public (Zernio has no session).
+- action route + schedule route wired to the remote hooks (env-gated). .env.example: ZERNIO_API_KEY, ZERNIO_WEBHOOK_SECRET, PUBLIC_BASE_URL, ZERNIO_ACCOUNT_INSTAGRAM/LINKEDIN.
+
+PHASE 2 — Content Director "Plan my feed" (local, works now):
+- domain planFeed(assets, {startAt, perDay, hoursOfDay, platform, reelEvery}): pure. Spreads angle+product so the grid never repeats (spreadByVariety greedy), interleaves reels ~1 every N images, assigns time slots. Uses the parsed metadata (kind/angle/product); color/vision is the next layer.
+- service planFeedForLibrary (reads un-actioned assets) + applyFeedPlan (schedules all, manual publisher). API: /api/library/plan (propose, read-only) + /api/library/plan/apply (schedule all). requireFounder.
+- UI: "✨ Plan my feed" button in the Library toolbar -> PlanFeedModal shows the proposed ordered sequence + times + "Approve & schedule all"; nothing schedules until approved.
+
+VERIFIED LIVE: queue renders 3 sections; /api/library/plan returned 225 sequenced items (30 reels interleaved) + summary; Plan modal opens and lists all 226 rows with order/kind/angle·product/time; did NOT click Approve (that would create 225 scheduled rows - founder's call). Typecheck clean; 364 tests pass (was 356, +8: delete/recompute, cancel-remote, zernio webhook, zernio media items, createZernioPost, planFeed); build compiles (plan, plan/apply, webhooks/zernio, media, mark-posted routes registered).
+
+PENDING (for the founder / next): rename Content Command (skipped - low value/high churn, do deliberately); Phase 4 = real image/carousel generation into media_refs (biggest agency gap; needs an image engine choice), the feedback->regenerate loop in Content Command, outward awareness + performance learning. Zernio goes live only after DEPLOY to a public URL + founder go for the first real post. Founder still to name the 3 posts already on Instagram to mark them.

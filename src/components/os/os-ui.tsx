@@ -5,7 +5,7 @@
 // (black / electric-lime Liquid Glass). Live pages read real APIs and show
 // honest loading / empty / error / 503 states. No fake data, no fake buttons.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Lucide from "lucide-react";
@@ -2355,17 +2355,241 @@ function LearningPage() {
   );
 }
 
+interface LibMediaRef {
+  url?: string;
+  path?: string;
+  kind?: string;
+  order?: number;
+}
 interface LibAsset {
   id: string;
   title: string;
   kind: string;
   caption: string | null;
+  mediaRefs: LibMediaRef[];
   platforms: string[];
   tags: string[];
   status: string;
   sourceType: string;
   sourcePacketId: string | null;
   createdAt: string;
+}
+
+function assetMediaUrl(id: string, opts: { download?: boolean; i?: number } = {}): string {
+  const params = new URLSearchParams();
+  if (opts.i) params.set("i", String(opts.i));
+  if (opts.download) params.set("download", "1");
+  const qs = params.toString();
+  return `/api/library/assets/${id}/media${qs ? "?" + qs : ""}`;
+}
+
+function isVideoAsset(asset: LibAsset): boolean {
+  return asset.kind === "reel" || asset.kind === "video" || asset.mediaRefs?.[0]?.kind === "video";
+}
+
+/** Reel media that auto-plays (muted, looping) only while visible, and pauses off-screen. */
+function ReelMedia({ id, rounded = true }: { id: string; rounded?: boolean }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) el.play().catch(() => {});
+          else el.pause();
+        }
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <video
+      ref={ref}
+      src={assetMediaUrl(id)}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      style={{ width: "100%", height: "auto", display: "block", borderRadius: rounded ? 8 : 0, background: "#0a0a0c" }}
+    />
+  );
+}
+
+/**
+ * Adaptive media thumbnail — keeps the media's true aspect ratio (3:4 statics, 9:16 reels,
+ * landscape, whatever). Images lazy-load; reels auto-play when scrolled into view.
+ */
+function AssetThumb({ asset }: { asset: LibAsset }) {
+  const hasMedia = Array.isArray(asset.mediaRefs) && asset.mediaRefs.length > 0;
+  if (!hasMedia) {
+    return <div style={{ width: "100%", height: 120, borderRadius: 8, background: "#0c0c0e", display: "flex", alignItems: "center", justifyContent: "center", color: faint, fontSize: 11, border: "1px solid rgba(255,255,255,0.06)" }}>No media</div>;
+  }
+  if (isVideoAsset(asset)) return <ReelMedia id={asset.id} />;
+  return <img src={assetMediaUrl(asset.id)} loading="lazy" alt={asset.title} style={{ width: "100%", height: "auto", display: "block", borderRadius: 8, background: "#0c0c0e" }} />;
+}
+
+const MARK_PLATFORMS: { key: string; label: string }[] = [
+  { key: "instagram", label: "Instagram" },
+  { key: "linkedin", label: "LinkedIn" },
+];
+
+interface FeedPlanItemUI {
+  assetId: string;
+  title: string;
+  kind: string;
+  angle: string;
+  product: string;
+  order: number;
+  scheduledAt: string;
+  platform: string;
+}
+
+/** Review the Content Director's proposed feed sequence, then approve to schedule it all. */
+function PlanFeedModal({ plan, onClose, onApplied }: { plan: { items: FeedPlanItemUI[]; summary: string }; onClose: () => void; onApplied: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function apply() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/library/plan/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: plan.items.map((i) => ({ assetId: i.assetId, scheduledAt: i.scheduledAt, platform: i.platform })) }) });
+      const j = (await r.json()) as { ok?: boolean; scheduled?: number; error?: string };
+      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else onApplied();
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, boxShadow: "0 24px 80px rgba(0,0,0,0.6)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>✨ Proposed feed plan</div>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+          </div>
+          <div style={{ fontSize: 12, color: muted, marginTop: 6, lineHeight: 1.5 }}>{plan.summary}</div>
+          <div style={{ fontSize: 11, color: faint, marginTop: 6 }}>Nothing is scheduled until you approve. Order spreads angle + product; reels are interleaved. (Color/vision sequencing comes next.)</div>
+        </div>
+        <div style={{ overflow: "auto", padding: "10px 14px", flex: 1 }}>
+          {plan.items.map((it) => (
+            <div key={it.assetId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <span style={{ fontSize: 11, color: faint, width: 26, textAlign: "right" }}>{it.order + 1}</span>
+              <Tag text={it.kind} color={it.kind === "reel" ? "#2DD4BF" : "#B87CFF"} />
+              <span style={{ fontSize: 12, flex: 1, minWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+              <span style={{ fontSize: 10.5, color: faint }}>{it.angle} · {it.product}</span>
+              <span style={{ fontSize: 11, color: muted, minWidth: 118, textAlign: "right" }}>{fmtTime(it.scheduledAt)}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "12px 18px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={apply} disabled={busy} style={{ ...primaryBtn, padding: "8px 14px" }}>{busy ? "Scheduling…" : `Approve & schedule all (${plan.items.length})`}</button>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px" }}>Cancel</button>
+          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Per-platform posting control: shows this asset's state on one platform + Mark posted / Schedule. */
+function PlatformRow({ asset, platform, label, posts, onChanged }: { asset: LibAsset; platform: string; label: string; posts: SchedPost[]; onChanged: () => void }) {
+  const mine = posts.filter((p) => p.assetId === asset.id && p.platform === platform);
+  const published = mine.find((p) => p.status === "published");
+  const scheduled = mine.find((p) => p.status === "scheduled");
+  const [mode, setMode] = useState<null | "confirm" | "schedule">(null);
+  const [when, setWhen] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function markPosted() {
+    setBusy(true);
+    try {
+      await fetch(`/api/library/assets/${asset.id}/mark-posted`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform }) });
+      setMode(null); onChanged();
+    } finally { setBusy(false); }
+  }
+  async function doSchedule() {
+    if (!when) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/library/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId: asset.id, platform, scheduledAt: new Date(when).toISOString(), publisher: "manual" }) });
+      setMode(null); setWhen(""); onChanged();
+    } finally { setBusy(false); }
+  }
+  const sm = { padding: "5px 10px", fontSize: 11.5 } as const;
+
+  return (
+    <div style={{ ...card, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 74 }}>{label}</span>
+        {published ? <Tag text={`Posted ✓ ${fmtTime(published.publishedAt ?? published.scheduledAt)}`} color={C.lime} />
+          : scheduled ? <Tag text={`Scheduled ${fmtTime(scheduled.scheduledAt)}`} color={C.blue} />
+          : <span style={{ fontSize: 11.5, color: faint }}>Not posted</span>}
+      </div>
+      {!published ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {mode === null ? (
+            <>
+              <button onClick={() => setMode("confirm")} disabled={busy} style={{ ...primaryBtn, ...sm }}>Mark posted</button>
+              <button onClick={() => setMode("schedule")} disabled={busy} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", ...sm }}>Schedule</button>
+              <span title="Auto-posting arrives when Zernio is wired" style={{ ...disabledBtn, ...sm, cursor: "not-allowed" }}>Post now · soon</span>
+            </>
+          ) : mode === "confirm" ? (
+            <>
+              <span style={{ fontSize: 11.5, color: muted }}>Confirm you posted this to {label}?</span>
+              <button onClick={markPosted} disabled={busy} style={{ ...primaryBtn, ...sm }}>{busy ? "…" : "Yes, mark posted"}</button>
+              <button onClick={() => setMode(null)} disabled={busy} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", ...sm }}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 8px" }} />
+              <button onClick={doSchedule} disabled={busy || !when} style={{ ...primaryBtn, ...sm }}>{busy ? "…" : "Set"}</button>
+              <button onClick={() => setMode(null)} disabled={busy} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", ...sm }}>Cancel</button>
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Full preview overlay: large media, full caption (copyable), per-platform posting, Download. */
+function AssetPreviewModal({ asset, posts, onClose, onChanged }: { asset: LibAsset; posts: SchedPost[]; onClose: () => void; onChanged: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const isVideo = isVideoAsset(asset);
+  async function copyCaption() {
+    try { await navigator.clipboard.writeText(asset.caption ?? ""); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(940px,96vw)", maxHeight: "92vh", overflow: "auto", padding: 0, display: "grid", gridTemplateColumns: "minmax(0,1.05fr) minmax(0,1fr)", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+        <div style={{ background: "#08080a", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 320 }}>
+          {asset.mediaRefs?.length ? (
+            isVideo
+              ? <video src={assetMediaUrl(asset.id)} controls autoPlay muted loop playsInline style={{ width: "100%", maxHeight: "92vh", objectFit: "contain", display: "block" }} />
+              : <img src={assetMediaUrl(asset.id)} alt={asset.title} style={{ width: "100%", maxHeight: "92vh", objectFit: "contain", display: "block" }} />
+          ) : <div style={{ color: faint, fontSize: 12, padding: 40 }}>No media on this asset</div>}
+        </div>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, background: "#141417" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <Tag text={asset.kind} color="#B87CFF" />
+              <Tag text={asset.status} color={asset.status === "published" ? C.lime : asset.status === "scheduled" ? C.blue : C.gray} />
+            </div>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+          </div>
+          <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35 }}>{asset.title}</div>
+          {asset.caption ? <div style={{ fontSize: 12.5, color: muted, whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: "30vh", overflow: "auto", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 11 }}>{asset.caption}</div> : <div style={{ fontSize: 12, color: faint }}>No caption.</div>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a href={assetMediaUrl(asset.id, { download: true })} download style={{ ...primaryBtn, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", fontSize: 12 }}><Icon name="Download" size={14} /> Download original</a>
+            {asset.caption ? <button onClick={copyCaption} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 12 }}>{copied ? "Caption copied ✓" : "Copy caption"}</button> : null}
+          </div>
+          <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>Posting</div>
+          {MARK_PLATFORMS.map((p) => <PlatformRow key={p.key} asset={asset} platform={p.key} label={p.label} posts={posts} onChanged={onChanged} />)}
+        </div>
+      </div>
+    </div>
+  );
 }
 interface SchedPost {
   id: string;
@@ -2382,7 +2606,7 @@ const POST_STATUS_COLOR: Record<string, string> = { scheduled: C.blue, publishin
 const LIB_PLATFORMS = ["instagram", "facebook", "linkedin", "x", "youtube", "tiktok"];
 
 function LibraryPage() {
-  const assetsState = useApi<{ assets: LibAsset[] }>("/api/library/assets?limit=200");
+  const assetsState = useApi<{ assets: LibAsset[] }>("/api/library/assets?limit=500");
   const postsState = useApi<{ posts: SchedPost[] }>("/api/library/scheduled?limit=200");
   const [assetId, setAssetId] = useState("");
   const [platform, setPlatform] = useState("instagram");
@@ -2390,6 +2614,15 @@ function LibraryPage() {
   const [publisher, setPublisher] = useState("manual");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<LibAsset | null>(null);
+  const [shown, setShown] = useState(36);
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState("all"); // all | image | reel
+  const [postedFilter, setPostedFilter] = useState("all"); // all | posted | unposted
+  const [sortBy, setSortBy] = useState("type"); // type | title | recent
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [plan, setPlan] = useState<{ items: FeedPlanItemUI[]; summary: string } | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
   const guard = offlineIf(assetsState) ?? offlineIf(postsState);
   if (guard) return guard;
 
@@ -2399,7 +2632,36 @@ function LibraryPage() {
   const published = posts.filter((p) => p.status === "published").length;
   const fromCommand = assets.filter((a) => a.sourceType === "content_pack").length;
 
+  // Per-asset per-platform posted state (from published posts).
+  const postedPlatforms = (assetId: string): string[] => posts.filter((p) => p.assetId === assetId && p.status === "published").map((p) => p.platform);
+  const isPosted = (assetId: string): boolean => postedPlatforms(assetId).length > 0;
+
+  // Search (title + caption + tags), filter (kind + posted), sort.
+  const q = search.trim().toLowerCase();
+  const filtered = assets.filter((a) => {
+    if (kindFilter === "image" && isVideoAsset(a)) return false;
+    if (kindFilter === "reel" && !isVideoAsset(a)) return false;
+    if (postedFilter === "posted" && !isPosted(a.id)) return false;
+    if (postedFilter === "unposted" && isPosted(a.id)) return false;
+    if (!q) return true;
+    return (a.title + " " + (a.caption ?? "") + " " + (a.tags ?? []).join(" ")).toLowerCase().includes(q);
+  });
+  const gridAssets = [...filtered].sort((a, b) => {
+    if (sortBy === "title") return a.title.localeCompare(b.title);
+    if (sortBy === "recent") return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+    // "type": images first (real thumbnails), reels after; stable within kind.
+    return (a.kind === "reel" ? 1 : 0) - (b.kind === "reel" ? 1 : 0);
+  });
+
   async function reload() { assetsState.reload(); postsState.reload(); }
+  async function runPlan() {
+    setPlanBusy(true);
+    try {
+      const r = await fetch("/api/library/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ perDay: 1, hoursOfDay: [18], reelEvery: 6 }) });
+      const j = (await r.json()) as { ok?: boolean; items?: FeedPlanItemUI[]; summary?: string; error?: string };
+      if (r.ok && j.ok !== false && j.items) setPlan({ items: j.items, summary: j.summary ?? "" });
+    } finally { setPlanBusy(false); }
+  }
   async function doSchedule() {
     setMsg(null);
     if (!assetId) { setMsg("Pick an asset to schedule."); return; }
@@ -2412,9 +2674,39 @@ function LibraryPage() {
       else { setMsg("Scheduled."); setWhen(""); setAssetId(""); reload(); }
     } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
   }
-  async function postAction(id: string, action: "cancel" | "publish") {
+  async function postAction(id: string, action: "cancel" | "publish" | "delete") {
     await fetch(`/api/library/scheduled/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
     reload();
+  }
+  function PostRow({ p }: { p: SchedPost }) {
+    const asset = assets.find((a) => a.id === p.assetId);
+    const removing = confirmRemoveId === p.id;
+    return (
+      <div style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Tag text={p.platform} color={C.blue} />
+        <Tag text={p.status} color={POST_STATUS_COLOR[p.status] ?? C.gray} />
+        <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 140 }}>{asset?.title ?? p.assetId}</span>
+        <span style={{ fontSize: 11, color: faint }}>{fmtTime(p.publishedAt ?? p.scheduledAt)} · {p.publisher}</span>
+        {removing ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: muted }}>Remove this record?</span>
+            <button onClick={() => { postAction(p.id, "delete"); setConfirmRemoveId(null); }} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Yes</button>
+            <button onClick={() => setConfirmRemoveId(null)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>No</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            {p.status === "scheduled" ? (
+              <>
+                {p.publisher === "manual" ? <button onClick={() => postAction(p.id, "publish")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Mark posted</button> : null}
+                <button onClick={() => postAction(p.id, "cancel")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Cancel</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmRemoveId(p.id)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Remove</button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -2459,54 +2751,93 @@ function LibraryPage() {
         {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{msg}</div> : null}
       </Panel>
 
+      {(() => {
+        const queuePosts = posts.filter((p) => p.status === "scheduled" || p.status === "publishing");
+        const postedPosts = posts.filter((p) => p.status === "published");
+        const otherPosts = posts.filter((p) => p.status === "failed" || p.status === "canceled");
+        const Section = ({ title, color, list, empty }: { title: string; color: string; list: SchedPost[]; empty: string }) => (
+          <Panel>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
+              <Tag text={String(list.length)} color={color} />
+            </div>
+            {list.length === 0 ? <StateBlock kind="empty" message={empty} /> : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{list.map((p) => <PostRow key={p.id} p={p} />)}</div>
+            )}
+          </Panel>
+        );
+        return (
+          <>
+            <Section title="Scheduled — in the queue" color={C.blue} list={queuePosts} empty="Nothing scheduled. Schedule an asset above, or use Plan my feed." />
+            {postedPosts.length ? <Section title="Posted — already live" color={C.lime} list={postedPosts} empty="Nothing posted yet." /> : null}
+            {otherPosts.length ? <Section title="Failed / cancelled" color={C.orange} list={otherPosts} empty="None." /> : null}
+          </>
+        );
+      })()}
+
       <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Post queue ({posts.length})</div>
-        {posts.length === 0 ? (
-          <StateBlock kind="empty" message="No scheduled posts yet. Schedule an asset above." />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Library <span style={{ color: faint, fontWeight: 400 }}>({gridAssets.length}{gridAssets.length !== assets.length ? ` of ${assets.length}` : ""})</span></div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={search} onChange={(e) => { setSearch(e.target.value); setShown(36); }} placeholder="Search caption, title, tag…" style={{ ...inputStyle, width: 220 }} />
+            <select value={kindFilter} onChange={(e) => { setKindFilter(e.target.value); setShown(36); }} style={selectStyle}>
+              <option value="all">All types</option>
+              <option value="image">Images</option>
+              <option value="reel">Reels</option>
+            </select>
+            <select value={postedFilter} onChange={(e) => { setPostedFilter(e.target.value); setShown(36); }} style={selectStyle}>
+              <option value="all">All</option>
+              <option value="unposted">Not posted</option>
+              <option value="posted">Posted</option>
+            </select>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+              <option value="type">Sort: Type</option>
+              <option value="title">Sort: A–Z</option>
+              <option value="recent">Sort: Newest</option>
+            </select>
+            <button onClick={runPlan} disabled={planBusy} title="Let the Content Director sequence your whole feed" style={{ ...primaryBtn, padding: "7px 12px", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>{planBusy ? "Planning…" : "✨ Plan my feed"}</button>
+          </div>
+        </div>
+        {assets.length === 0 ? (
+          <StateBlock kind="empty" message="No assets yet. Approve a pack in Content Command (it lands here automatically) or import your existing content." />
+        ) : gridAssets.length === 0 ? (
+          <StateBlock kind="empty" message="No assets match your search / filters." />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {posts.map((p) => {
-              const asset = assets.find((a) => a.id === p.assetId);
+          <>
+          <div style={{ columnWidth: 224, columnGap: 12 }}>
+            {gridAssets.slice(0, shown).map((a) => {
+              const igPosted = postedPlatforms(a.id).includes("instagram");
+              const liPosted = postedPlatforms(a.id).includes("linkedin");
               return (
-                <div key={p.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <Tag text={p.platform} color={C.blue} />
-                  <Tag text={p.status} color={POST_STATUS_COLOR[p.status] ?? C.gray} />
-                  <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 140 }}>{asset?.title ?? p.assetId}</span>
-                  <span style={{ fontSize: 11, color: faint }}>{fmtTime(p.scheduledAt)} · {p.publisher}</span>
-                  {p.status === "scheduled" ? (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {p.publisher === "manual" ? <button onClick={() => postAction(p.id, "publish")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Mark posted</button> : null}
-                      <button onClick={() => postAction(p.id, "cancel")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Cancel</button>
-                    </div>
-                  ) : null}
+              <div key={a.id} onClick={() => setPreview(a)} title="Click to preview" style={{ ...card, padding: 0, overflow: "hidden", cursor: "pointer", breakInside: "avoid", marginBottom: 12, display: "inline-block", width: "100%" }}>
+                <div style={{ padding: 6 }}><AssetThumb asset={a} /></div>
+                <div style={{ padding: "2px 12px 12px" }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <Tag text={a.kind} color="#B87CFF" />
+                    {igPosted ? <Tag text="IG ✓" color={C.lime} /> : null}
+                    {liPosted ? <Tag text="in ✓" color={C.lime} /> : null}
+                    {a.sourceType === "content_pack" ? <Tag text="from command" color="#2DD4BF" /> : null}
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35 }}>{a.title}</div>
+                  {a.caption ? <div style={{ fontSize: 11.5, color: muted, marginTop: 5, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.caption}</div> : null}
+                  <div style={{ display: "flex", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
+                    <a href={assetMediaUrl(a.id, { download: true })} download onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="Download" size={13} /> Download</a>
+                  </div>
                 </div>
+              </div>
               );
             })}
           </div>
+          {gridAssets.length > shown ? (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+              <button onClick={() => setShown((n) => n + 36)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Show more ({gridAssets.length - shown} left)</button>
+            </div>
+          ) : null}
+          </>
         )}
       </Panel>
-
-      <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Library ({assets.length})</div>
-        {assets.length === 0 ? (
-          <StateBlock kind="empty" message="No assets yet. Approve a pack in Content Command (it lands here automatically) or import your existing content." />
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
-            {assets.map((a) => (
-              <div key={a.id} style={{ ...card, padding: "13px 15px" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 7, flexWrap: "wrap", alignItems: "center" }}>
-                  <Tag text={a.kind} color="#B87CFF" />
-                  <Tag text={a.status} color={a.status === "published" ? C.lime : a.status === "scheduled" ? C.blue : C.gray} />
-                  {a.sourceType === "content_pack" ? <Tag text="from command" color="#2DD4BF" /> : null}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{a.title}</div>
-                {a.caption ? <div style={{ fontSize: 11.8, color: muted, marginTop: 5, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.caption}</div> : null}
-                {a.platforms.length ? <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>{a.platforms.map((pl) => <Tag key={pl} text={pl} color={C.blue} />)}</div> : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
+      {preview ? <AssetPreviewModal asset={preview} posts={posts} onClose={() => setPreview(null)} onChanged={reload} /> : null}
+      {plan ? <PlanFeedModal plan={plan} onClose={() => setPlan(null)} onApplied={() => { setPlan(null); reload(); }} /> : null}
     </div>
   );
 }

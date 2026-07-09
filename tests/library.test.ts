@@ -1,24 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  assetInputFromLocalImage,
+  assetInputFromLocalReel,
   assetInputFromPacket,
+  planFeed,
   buildContentAssetRow,
   buildScheduledPostRow,
   canTransitionPost,
+  localImportKey,
+  parseAdFolderName,
   type ContentAssetRow,
   type ScheduledPostRow,
 } from "@/lib/domain/library";
 import {
   addContentAsset,
   cancelScheduledPost,
+  deleteScheduledPost,
   dispatchDuePosts,
   importFromContentPacket,
   listContentAssets,
   listScheduledPosts,
+  markAssetPostedOnPlatform,
   markPostPublished,
+  applyZernioPostEvent,
   schedulePost,
   type LibraryStore,
   type PublisherAdapter,
 } from "@/lib/library";
+import { createZernioPost, zernioMediaItems } from "@/lib/library/zernio";
 
 const now = new Date("2026-07-09T12:00:00Z");
 
@@ -52,6 +61,74 @@ describe("library domain", () => {
     expect(row).toMatchObject({ id: "post_1", assetId: "asset_1", platform: "instagram", status: "scheduled", publisher: "manual" });
     expect(row.scheduledAt.toISOString()).toBe("2026-07-10T09:00:00.000Z");
   });
+
+  it("passes metadata through to the asset row", () => {
+    const row = buildContentAssetRow({ title: "A", metadata: { importKey: "k1", seq: 97 } }, { now, id: "asset_1" });
+    expect(row.metadata).toMatchObject({ importKey: "k1", seq: 97 });
+  });
+});
+
+// ---------------------------------------------------------------- local library import
+
+describe("local library import (domain)", () => {
+  it("parses an ad folder name into id · product · angle", () => {
+    expect(parseAdFolderName("ad_097__ai-creative-engine__mistake")).toEqual({ adId: "ad_097", seq: 97, product: "ai-creative-engine", angle: "mistake" });
+    expect(parseAdFolderName("ad_286__ecommerce-cart__catch-the-cart")).toEqual({ adId: "ad_286", seq: 286, product: "ecommerce-cart", angle: "catch-the-cart" });
+    expect(parseAdFolderName("not-an-ad-folder")).toBeNull();
+  });
+
+  it("builds a stable, unique import key", () => {
+    expect(localImportKey("image", "ai-creative-engine/ad_097__x__y")).toBe("local:image:ai-creative-engine/ad_097__x__y");
+    expect(localImportKey("reel", "ai-receptionist/human-vs-ai")).toBe("local:reel:ai-receptionist/human-vs-ai");
+  });
+
+  it("maps a local static image into a library asset with parsed metadata", () => {
+    const input = assetInputFromLocalImage({
+      folderName: "ad_097__ai-creative-engine__mistake",
+      caption: "Your ads aren't tired. Your angles are.\n\nHere is the problem…",
+      mediaPath: "media/library/asset_x/097.png",
+      importKey: "local:image:ai-creative-engine/ad_097__ai-creative-engine__mistake",
+    });
+    expect(input.kind).toBe("image");
+    expect(input.title).toBe("Your ads aren't tired. Your angles are."); // first caption line
+    expect(input.mediaRefs).toEqual([{ path: "media/library/asset_x/097.png", kind: "image", order: 0 }]);
+    expect(input.platforms).toEqual(["instagram", "linkedin"]);
+    expect(input.tags).toEqual(["wobble-library", "ai-creative-engine", "angle:mistake"]);
+    expect(input.metadata).toMatchObject({ adId: "ad_097", seq: 97, product: "ai-creative-engine", angle: "mistake" });
+  });
+
+  it("plans a feed: spreads variety, interleaves reels, assigns time slots", () => {
+    const assets = [
+      { id: "i1", title: "Img1", kind: "image", metadata: { angle: "mistake", product: "ai-ads" } },
+      { id: "i2", title: "Img2", kind: "image", metadata: { angle: "mistake", product: "ai-ads" } },
+      { id: "i3", title: "Img3", kind: "image", metadata: { angle: "outcome", product: "ai-crm" } },
+      { id: "r1", title: "Reel1", kind: "reel", metadata: { topic: "reception" } },
+    ];
+    const { items, summary } = planFeed(assets, { startAt: new Date("2026-07-10T00:00:00Z"), perDay: 1, hoursOfDay: [18], reelEvery: 2 });
+    expect(items).toHaveLength(4);
+    expect(items.map((i) => i.order)).toEqual([0, 1, 2, 3]);
+    // exactly one reel, dropped in after the first 2 images (reelEvery 2)
+    expect(items.filter((i) => i.kind === "reel")).toHaveLength(1);
+    expect(items[2].kind).toBe("reel");
+    // first two images differ in angle or product (variety spread)
+    expect(items[0].angle !== items[1].angle || items[0].product !== items[1].product).toBe(true);
+    // one post per day -> different calendar days for order 0 vs 3
+    expect(items[0].scheduledAt.slice(0, 10)).not.toBe(items[3].scheduledAt.slice(0, 10));
+    expect(summary).toContain("posts sequenced");
+  });
+
+  it("maps a local reel into a reel asset, falling back to a humanized title", () => {
+    const input = assetInputFromLocalReel({
+      topic: "ai-receptionist",
+      reelName: "human-vs-ai",
+      mediaPath: "media/library/asset_y/reel.mp4",
+      importKey: "local:reel:ai-receptionist/human-vs-ai",
+    });
+    expect(input.kind).toBe("reel");
+    expect(input.title).toBe("Ai Receptionist Human Vs Ai"); // no caption → humanized
+    expect(input.mediaRefs).toEqual([{ path: "media/library/asset_y/reel.mp4", kind: "video", order: 0 }]);
+    expect(input.tags).toContain("reel");
+  });
 });
 
 // ---------------------------------------------------------------- service
@@ -69,7 +146,11 @@ function makeStore() {
     listScheduledPosts: async (q) => [...posts.values()].filter((p) => (!q.status || p.status === q.status) && (!q.platform || p.platform === q.platform)).slice(0, q.limit),
     getScheduledPostById: async (id) => posts.get(id) ?? null,
     updateScheduledPost: async (id, f) => { const p = posts.get(id); if (p) posts.set(id, { ...p, ...f }); },
+    deleteScheduledPost: async (id) => void posts.delete(id),
+    listPostsByAsset: async (assetId) => [...posts.values()].filter((p) => p.assetId === assetId),
     listDuePosts: async (n, limit) => [...posts.values()].filter((p) => p.status === "scheduled" && p.scheduledAt.getTime() <= n.getTime()).slice(0, limit),
+    findPostByAssetAndPlatform: async (assetId, platform) => [...posts.values()].filter((p) => p.assetId === assetId && p.platform === platform).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
+    findPostByPublisherRef: async (ref) => [...posts.values()].find((p) => p.publisherRef === ref) ?? null,
   };
   return { store, assets, posts };
 }
@@ -110,12 +191,112 @@ describe("library service", () => {
     expect((await listScheduledPosts({ status: "canceled" }, { store }))).toHaveLength(1);
   });
 
+  it("removes a post record and recomputes the asset status", async () => {
+    const { store, assets, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const post = await markAssetPostedOnPlatform(asset.id, "instagram", {}, { store, now, recordAudit: async () => {} });
+    expect(assets.get(asset.id)!.status).toBe("published");
+    expect(await deleteScheduledPost(post.id, { store, now, recordAudit: async () => {} })).toBe(true);
+    expect(posts.has(post.id)).toBe(false);
+    expect(assets.get(asset.id)!.status).toBe("ready"); // no posts left -> back to ready
+  });
+
+  it("cancel can also cancel on the remote provider", async () => {
+    const { store } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-12T09:00:00Z", publisher: "zernio" }, { store, now, recordAudit: async () => {} });
+    await store.updateScheduledPost(post.id, { publisherRef: "zernio_post_1" });
+    let remoteCancelled: string | null = null;
+    const ok = await cancelScheduledPost(post.id, { store, now, cancelRemote: async (p) => { remoteCancelled = p.publisherRef; } });
+    expect(ok).toBe(true);
+    expect(remoteCancelled).toBe("zernio_post_1"); // hit the provider so it won't fire later
+  });
+
   it("marks a manual post published", async () => {
     const { store, assets } = makeStore();
     const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
     const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-10T09:00:00Z", publisher: "manual" }, { store, now, recordAudit: async () => {} });
     expect(await markPostPublished(post.id, { actor: "Moiz" }, { store, now, recordAudit: async () => {} })).toBe(true);
     expect(assets.get(asset.id)!.status).toBe("published");
+  });
+
+  it("marks an asset posted per-platform (independent, idempotent)", async () => {
+    const { store, assets, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+
+    const ig = await markAssetPostedOnPlatform(asset.id, "instagram", { actor: "Moiz" }, { store, now, recordAudit: async () => {} });
+    expect(ig.status).toBe("published");
+    expect(ig.platform).toBe("instagram");
+    expect(ig.publisher).toBe("manual");
+    expect(assets.get(asset.id)!.status).toBe("published");
+
+    // Instagram is posted; LinkedIn is NOT — per-platform independence.
+    const igPosts = await listScheduledPosts({ platform: "instagram", status: "published" }, { store });
+    const liPosts = await listScheduledPosts({ platform: "linkedin", status: "published" }, { store });
+    expect(igPosts).toHaveLength(1);
+    expect(liPosts).toHaveLength(0);
+
+    // Idempotent: re-marking Instagram returns the same row, no duplicate.
+    const again = await markAssetPostedOnPlatform(asset.id, "instagram", {}, { store, now, recordAudit: async () => {} });
+    expect(again.id).toBe(ig.id);
+    expect([...posts.values()].filter((p) => p.platform === "instagram")).toHaveLength(1);
+
+    // Now mark LinkedIn — separate record.
+    const li = await markAssetPostedOnPlatform(asset.id, "linkedin", {}, { store, now, recordAudit: async () => {} });
+    expect(li.id).not.toBe(ig.id);
+    expect(await listScheduledPosts({ platform: "linkedin", status: "published" }, { store })).toHaveLength(1);
+  });
+
+  it("marking posted promotes an existing scheduled post instead of duplicating", async () => {
+    const { store, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const scheduled = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-11T09:00:00Z", publisher: "manual" }, { store, now, recordAudit: async () => {} });
+    const marked = await markAssetPostedOnPlatform(asset.id, "instagram", {}, { store, now, recordAudit: async () => {} });
+    expect(marked.id).toBe(scheduled.id); // same row, promoted
+    expect(posts.get(scheduled.id)!.status).toBe("published");
+    expect([...posts.values()].filter((p) => p.platform === "instagram")).toHaveLength(1);
+  });
+
+  it("applies a Zernio post.published webhook -> local post published + asset published", async () => {
+    const { store, assets, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-12T09:00:00Z", publisher: "zernio" }, { store, now, recordAudit: async () => {} });
+    await store.updateScheduledPost(post.id, { publisherRef: "zpost_1" });
+
+    const res = await applyZernioPostEvent(
+      { event: "post.published", post: { id: "zpost_1", publishedAt: "2026-07-12T09:00:05Z", platforms: [{ platform: "instagram", status: "published", platformPostId: "IG_123", publishedUrl: "https://instagram.com/p/abc" }] } },
+      { store, now },
+    );
+    expect(res.updated).toBe(true);
+    expect(posts.get(post.id)!.status).toBe("published");
+    expect((posts.get(post.id)!.result as { publishedUrl?: string }).publishedUrl).toBe("https://instagram.com/p/abc");
+    expect(assets.get(asset.id)!.status).toBe("published");
+
+    // Idempotent: re-delivering the same event doesn't error or change anything.
+    const again = await applyZernioPostEvent({ event: "post.published", post: { id: "zpost_1", platforms: [] } }, { store, now });
+    expect(again.updated).toBe(true);
+    expect(posts.get(post.id)!.status).toBe("published");
+  });
+
+  it("builds Zernio media items from an asset's public URLs", () => {
+    const asset = { id: "asset_1", kind: "image", mediaRefs: [{ path: "media/library/asset_1/x.png", kind: "image", order: 0 }] } as never;
+    const items = zernioMediaItems(asset, "https://os.wobble.com");
+    expect(items).toEqual([{ type: "image", url: "https://os.wobble.com/api/library/assets/asset_1/media?i=0" }]);
+  });
+
+  it("createZernioPost posts to the API with an injected fetch", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const fakeFetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ post: { _id: "zpost_9" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const out = await createZernioPost(
+      { content: "hi", platforms: [{ platform: "instagram", accountId: "acc_1" }], publishNow: true },
+      { apiKey: "sk_test", fetchImpl: fakeFetch },
+    );
+    expect(out.id).toBe("zpost_9");
+    expect(calls[0].url).toBe("https://zernio.com/api/v1/posts");
+    expect(calls[0].body).toMatchObject({ content: "hi", publishNow: true, platforms: [{ platform: "instagram", accountId: "acc_1" }] });
   });
 
   it("dispatch defers manual posts but fires automated ones", async () => {

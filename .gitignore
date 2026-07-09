@@ -11,3 +11,6 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 /logs
 /output
+
+# Runtime media/content store (imported assets, generated media) — not source
+storage/

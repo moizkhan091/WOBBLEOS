@@ -8,7 +8,7 @@ import { readCookie, SESSION_COOKIE, verifyJwtOnly } from "@/lib/auth/edge";
  * Node route handlers via verifySession.
  */
 
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/_next", "/favicon", "/robots", "/manifest", "/icon"];
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/webhooks", "/_next", "/favicon", "/robots", "/manifest", "/icon"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p));

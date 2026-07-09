@@ -1,4 +1,4 @@
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { contentAssets, scheduledPosts } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
@@ -12,14 +12,19 @@ import {
   buildContentAssetRow,
   buildScheduledPostRow,
   canTransitionPost,
+  planFeed,
   type ContentAssetRow,
   type CreateAssetInput,
+  type FeedPlanItem,
+  type FeedPlanOptions,
   type PackForImport,
+  type PostPlatform,
   type ScheduledPostRow,
   type SchedulePostInput,
 } from "@/lib/domain/library";
 import { enqueueJob } from "@/lib/jobs";
 import type { EnqueueJobInput, JobRow } from "@/lib/domain/jobs";
+import { zernioConfigured, zernioPublish } from "@/lib/library/zernio";
 
 /**
  * Content Library & Scheduler service (IO). Provider-agnostic: the actual delivery to a
@@ -49,8 +54,21 @@ export const manualPublisher: PublisherAdapter = {
   },
 };
 
+/** Zernio adapter — posts through the unified Zernio API. Only active when ZERNIO_API_KEY is set. */
+export const zernioPublisher: PublisherAdapter = {
+  slug: "zernio",
+  async publish({ post, asset }) {
+    return zernioPublish({ post, asset });
+  },
+};
+
 export function resolvePublisher(name: string, registry: Record<string, PublisherAdapter>): PublisherAdapter {
   return registry[name] ?? manualPublisher;
+}
+
+/** The live publisher registry, env-gated: Zernio joins only when its API key is configured. */
+export function defaultPublisherRegistry(): Record<string, PublisherAdapter> {
+  return zernioConfigured() ? { manual: manualPublisher, zernio: zernioPublisher } : { manual: manualPublisher };
 }
 
 // ---------------------------------------------------------------- store + deps
@@ -61,11 +79,19 @@ export interface LibraryStore {
   getAssetById(id: string): Promise<ContentAssetRow | null>;
   updateAsset(id: string, fields: Partial<ContentAssetRow>): Promise<void>;
   findAssetByPacketId(packetId: string): Promise<ContentAssetRow | null>;
+  /** Optional: dedupe local-folder imports by their stable importKey (stored in metadata). */
+  findAssetByImportKey?(key: string): Promise<ContentAssetRow | null>;
   insertScheduledPost(row: ScheduledPostRow): Promise<void>;
   listScheduledPosts(query: { status?: string; platform?: string; limit: number }): Promise<ScheduledPostRow[]>;
   getScheduledPostById(id: string): Promise<ScheduledPostRow | null>;
   updateScheduledPost(id: string, fields: Partial<ScheduledPostRow>): Promise<void>;
+  deleteScheduledPost(id: string): Promise<void>;
   listDuePosts(now: Date, limit: number): Promise<ScheduledPostRow[]>;
+  listPostsByAsset(assetId: string): Promise<ScheduledPostRow[]>;
+  /** Optional: latest post for an asset on a specific platform (per-platform posting state). */
+  findPostByAssetAndPlatform?(assetId: string, platform: string): Promise<ScheduledPostRow | null>;
+  /** Optional: find a post by its external provider id (for webhook reconciliation). */
+  findPostByPublisherRef?(publisherRef: string): Promise<ScheduledPostRow | null>;
 }
 
 export interface LibraryDeps {
@@ -143,12 +169,18 @@ export async function importFromContentPacket(packetId: string, deps: LibraryDep
 
 // ---------------------------------------------------------------- scheduling
 
-export async function schedulePost(input: SchedulePostInput, deps: LibraryDeps = {}): Promise<ScheduledPostRow> {
+export async function schedulePost(input: SchedulePostInput, deps: LibraryDeps & { scheduleRemote?: (args: { post: ScheduledPostRow; asset: ContentAssetRow }) => Promise<{ publisherRef?: string } | void> } = {}): Promise<ScheduledPostRow> {
   const store = deps.store ?? defaultStore();
   const asset = await store.getAssetById(input.assetId);
   if (!asset) throw new Error(`content asset '${input.assetId}' not found`);
   if (asset.status === "archived") throw new Error("cannot schedule an archived asset");
   const row = buildScheduledPostRow(input, { now: deps.now });
+  // Non-manual publishers (Zernio) hold the schedule on their side — push it and store the ref, so
+  // the provider posts even if our server is down and cancel can reach it later.
+  if (row.publisher !== "manual" && deps.scheduleRemote) {
+    const r = await deps.scheduleRemote({ post: row, asset });
+    if (r?.publisherRef) row.publisherRef = r.publisherRef;
+  }
   await store.insertScheduledPost(row);
   await store.updateAsset(asset.id, { status: "scheduled", updatedAt: deps.now ?? new Date() });
   await (deps.recordAudit ?? defaultRecordAudit)({
@@ -167,12 +199,52 @@ export async function listScheduledPosts(query: { status?: string; platform?: st
   return store.listScheduledPosts({ status: query.status, platform: query.platform, limit: Math.min(Math.max(query.limit ?? 100, 1), 500) });
 }
 
-export async function cancelScheduledPost(id: string, deps: LibraryDeps = {}): Promise<boolean> {
+/**
+ * Cancel a scheduled post. If it was pushed to an external provider (Zernio), the caller-supplied
+ * cancelRemote hook also kills it on that provider's side, so it can't post later after we cancel here.
+ */
+export async function cancelScheduledPost(id: string, deps: LibraryDeps & { cancelRemote?: (post: ScheduledPostRow) => Promise<void> } = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
   const post = await store.getScheduledPostById(id);
   if (!post || !canTransitionPost(post.status, "canceled")) return false;
-  await store.updateScheduledPost(id, { status: "canceled", updatedAt: deps.now ?? new Date() });
+  if (post.publisher !== "manual" && post.publisherRef && deps.cancelRemote) {
+    await deps.cancelRemote(post); // e.g. DELETE the scheduled post on Zernio so it never fires
+  }
+  await store.updateScheduledPost(id, { status: "canceled", updatedAt: now });
+  await recomputeAssetStatus(post.assetId, store, now);
   return true;
+}
+
+/** Remove a post record entirely (a mistaken mark, a stale entry). Keeps asset status honest. */
+export async function deleteScheduledPost(id: string, deps: LibraryDeps & { deleteRemote?: (post: ScheduledPostRow) => Promise<void> } = {}): Promise<boolean> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const post = await store.getScheduledPostById(id);
+  if (!post) return false;
+  if (post.publisher !== "manual" && post.publisherRef && post.status === "scheduled" && deps.deleteRemote) {
+    await deps.deleteRemote(post); // a still-scheduled provider post must be removed there too
+  }
+  await store.deleteScheduledPost(id);
+  await recomputeAssetStatus(post.assetId, store, now);
+  await (deps.recordAudit ?? defaultRecordAudit)({
+    eventType: "library.post_removed",
+    module: LIBRARY_MODULE,
+    entityType: "scheduled_post",
+    entityId: id,
+    actor: "system",
+    metadata: { assetId: post.assetId, platform: post.platform, wasStatus: post.status },
+  });
+  return true;
+}
+
+/** Derive an asset's status from its posts: published > scheduled > ready. */
+async function recomputeAssetStatus(assetId: string, store: LibraryStore, now: Date): Promise<void> {
+  const asset = await store.getAssetById(assetId);
+  if (!asset || asset.status === "archived") return;
+  const mine = await store.listPostsByAsset(assetId);
+  const status = mine.some((p) => p.status === "published") ? "published" : mine.some((p) => p.status === "scheduled" || p.status === "publishing") ? "scheduled" : "ready";
+  if (status !== asset.status) await store.updateAsset(assetId, { status, updatedAt: now });
 }
 
 /** Mark a MANUAL post as published (the founder posted it themselves and confirmed). */
@@ -194,11 +266,56 @@ export async function markPostPublished(id: string, input: { publisherRef?: stri
   return true;
 }
 
+/**
+ * Mark an asset as POSTED on a specific platform (the founder posted it manually and confirms).
+ * Per-platform: marking Instagram does not touch LinkedIn. Idempotent — re-confirming a platform
+ * already marked published returns the existing record. Creates a published manual post row if the
+ * asset was never scheduled to that platform.
+ */
+export async function markAssetPostedOnPlatform(
+  assetId: string,
+  platform: PostPlatform,
+  input: { actor?: string; publisherRef?: string } = {},
+  deps: LibraryDeps = {},
+): Promise<ScheduledPostRow> {
+  const store = deps.store ?? defaultStore();
+  const asset = await store.getAssetById(assetId);
+  if (!asset) throw new Error(`content asset '${assetId}' not found`);
+  const now = deps.now ?? new Date();
+  const existing = store.findPostByAssetAndPlatform ? await store.findPostByAssetAndPlatform(assetId, platform) : null;
+
+  let post: ScheduledPostRow;
+  if (existing && existing.status === "published") {
+    post = existing; // already marked for this platform — idempotent
+  } else if (existing && canTransitionPost(existing.status, "published")) {
+    await store.updateScheduledPost(existing.id, { status: "published", publishedAt: now, publisherRef: input.publisherRef ?? existing.publisherRef, updatedAt: now });
+    post = { ...existing, status: "published", publishedAt: now, publisherRef: input.publisherRef ?? existing.publisherRef, updatedAt: now };
+  } else {
+    const row = buildScheduledPostRow({ assetId, platform, scheduledAt: now, publisher: "manual" }, { now });
+    row.status = "published";
+    row.publishedAt = now;
+    row.publisherRef = input.publisherRef ?? null;
+    await store.insertScheduledPost(row);
+    post = row;
+  }
+
+  await store.updateAsset(assetId, { status: "published", updatedAt: now });
+  await (deps.recordAudit ?? defaultRecordAudit)({
+    eventType: "library.post_marked_manually",
+    module: LIBRARY_MODULE,
+    entityType: "scheduled_post",
+    entityId: post.id,
+    actor: input.actor ?? "system",
+    metadata: { assetId, platform, manual: true },
+  });
+  return post;
+}
+
 /** Fire all due posts through their publisher. Manual posts are left for the human to confirm. */
 export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispatched: number; deferred: number; failed: number }> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
-  const registry = deps.publishers ?? { manual: manualPublisher };
+  const registry = deps.publishers ?? defaultPublisherRegistry();
   const due = await store.listDuePosts(now, 100);
   let dispatched = 0;
   let deferred = 0;
@@ -227,6 +344,91 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
     }
   }
   return { dispatched, deferred, failed };
+}
+
+/**
+ * Reconcile a Zernio webhook event against our local post (found by publisher_ref = Zernio post id).
+ * This is how a scheduled post AUTO-MOVES to Posted (or Failed/Cancelled) — no polling. Idempotent:
+ * safe to apply the same event twice (at-least-once delivery).
+ */
+export interface ZernioPostEvent {
+  event: string; // post.published | post.failed | post.partial | post.cancelled | ...
+  post: {
+    id: string;
+    status?: string;
+    publishedAt?: string;
+    platforms?: Array<{ platform: string; status: string; platformPostId?: string; publishedUrl?: string; error?: string }>;
+  };
+}
+
+export async function applyZernioPostEvent(event: ZernioPostEvent, deps: LibraryDeps = {}): Promise<{ updated: boolean; postId?: string }> {
+  const store = deps.store ?? defaultStore();
+  const ref = event.post?.id;
+  if (!ref || !store.findPostByPublisherRef) return { updated: false };
+  const local = await store.findPostByPublisherRef(ref);
+  if (!local) return { updated: false };
+  const now = deps.now ?? new Date();
+  const plat = event.post.platforms?.find((p) => p.platform === local.platform) ?? event.post.platforms?.[0];
+
+  if (event.event === "post.published" || event.event === "post.partial") {
+    if (local.status !== "published") {
+      await store.updateScheduledPost(local.id, {
+        status: "published",
+        publishedAt: event.post.publishedAt ? new Date(event.post.publishedAt) : now,
+        result: { ...local.result, zernio: event.post, publishedUrl: plat?.publishedUrl, platformPostId: plat?.platformPostId },
+        updatedAt: now,
+      });
+      await recomputeAssetStatus(local.assetId, store, now);
+    }
+    return { updated: true, postId: local.id };
+  }
+  if (event.event === "post.failed") {
+    if (local.status !== "failed" && local.status !== "published") {
+      await store.updateScheduledPost(local.id, { status: "failed", error: (event.post.platforms ?? []).map((p) => p.error).filter(Boolean).join("; ") || "publish failed", updatedAt: now });
+      await recomputeAssetStatus(local.assetId, store, now);
+    }
+    return { updated: true, postId: local.id };
+  }
+  if (event.event === "post.cancelled") {
+    if (local.status !== "canceled" && local.status !== "published") {
+      await store.updateScheduledPost(local.id, { status: "canceled", updatedAt: now });
+      await recomputeAssetStatus(local.assetId, store, now);
+    }
+    return { updated: true, postId: local.id };
+  }
+  return { updated: false, postId: local.id };
+}
+
+// ---------------------------------------------------------------- feed planning (Content Director)
+
+/** Plan a posting sequence over the un-actioned library (status ready/draft). Read-only. */
+export async function planFeedForLibrary(opts: Omit<FeedPlanOptions, "startAt"> & { startAt: Date; limit?: number }, deps: LibraryDeps = {}): Promise<{ items: FeedPlanItem[]; summary: string }> {
+  const store = deps.store ?? defaultStore();
+  const all = await store.listAssets({ limit: opts.limit ?? 500 });
+  const plannable = all.filter((a) => a.status === "ready" || a.status === "draft");
+  return planFeed(
+    plannable.map((a) => ({ id: a.id, title: a.title, kind: a.kind, tags: a.tags, metadata: a.metadata })),
+    opts,
+  );
+}
+
+/** Schedule every item in an approved plan (manual publisher — the founder approved the plan). */
+export async function applyFeedPlan(
+  items: Array<{ assetId: string; scheduledAt: string; platform: string }>,
+  input: { createdBy?: string } = {},
+  deps: LibraryDeps = {},
+): Promise<{ scheduled: number; errors: string[] }> {
+  let scheduled = 0;
+  const errors: string[] = [];
+  for (const it of items) {
+    try {
+      await schedulePost({ assetId: it.assetId, platform: it.platform as PostPlatform, scheduledAt: new Date(it.scheduledAt), publisher: "manual", createdBy: input.createdBy }, deps);
+      scheduled += 1;
+    } catch (error) {
+      errors.push(`${it.assetId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return { scheduled, errors };
 }
 
 export async function enqueuePublishingDispatchJob(deps: LibraryDeps = {}): Promise<unknown> {
@@ -272,6 +474,10 @@ export function defaultStore(db: Db = getDb()): LibraryStore {
       const rows = await db.select().from(contentAssets).where(eq(contentAssets.sourcePacketId, packetId)).limit(1);
       return (rows[0] as ContentAssetRow) ?? null;
     },
+    async findAssetByImportKey(key) {
+      const rows = await db.select().from(contentAssets).where(sql`${contentAssets.metadata} ->> 'importKey' = ${key}`).limit(1);
+      return (rows[0] as ContentAssetRow) ?? null;
+    },
     async insertScheduledPost(row) {
       await db.insert(scheduledPosts).values(row);
     },
@@ -290,6 +496,13 @@ export function defaultStore(db: Db = getDb()): LibraryStore {
     async updateScheduledPost(id, fields) {
       await db.update(scheduledPosts).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() }).where(eq(scheduledPosts.id, id));
     },
+    async deleteScheduledPost(id) {
+      await db.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
+    },
+    async listPostsByAsset(assetId) {
+      const rows = await db.select().from(scheduledPosts).where(eq(scheduledPosts.assetId, assetId)).orderBy(desc(scheduledPosts.createdAt));
+      return rows as ScheduledPostRow[];
+    },
     async listDuePosts(now, limit) {
       const rows = await db
         .select()
@@ -298,6 +511,19 @@ export function defaultStore(db: Db = getDb()): LibraryStore {
         .orderBy(scheduledPosts.scheduledAt)
         .limit(limit);
       return rows as ScheduledPostRow[];
+    },
+    async findPostByAssetAndPlatform(assetId, platform) {
+      const rows = await db
+        .select()
+        .from(scheduledPosts)
+        .where(and(eq(scheduledPosts.assetId, assetId), eq(scheduledPosts.platform, platform)))
+        .orderBy(desc(scheduledPosts.createdAt))
+        .limit(1);
+      return (rows[0] as ScheduledPostRow) ?? null;
+    },
+    async findPostByPublisherRef(publisherRef) {
+      const rows = await db.select().from(scheduledPosts).where(eq(scheduledPosts.publisherRef, publisherRef)).orderBy(desc(scheduledPosts.createdAt)).limit(1);
+      return (rows[0] as ScheduledPostRow) ?? null;
     },
   };
 }
