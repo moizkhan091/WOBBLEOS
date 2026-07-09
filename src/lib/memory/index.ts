@@ -1,6 +1,6 @@
 import { and, cosineDistance, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { newId } from "@/lib/ids";
-import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryRecordVersions, memoryUpdateProposals } from "@/db/schema";
+import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryConflicts, memoryRecords, memoryRecordVersions, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
@@ -9,13 +9,19 @@ import { embedText, embedTexts, type Embedder } from "@/lib/embeddings";
 import {
   buildMemoryChunkRows,
   buildMemoryBankLinkRow,
+  buildMemoryConflictRow,
   buildMemoryRecordRow,
   buildMemoryRecordVersionRow,
   buildMemoryUpdateProposalRow,
   canEditMemoryBanks,
+  classifyMemoryWrite,
+  computeReviewAfter,
   MEMORY_PURGE_GRACE_MS,
   suggestMemoryBanks,
+  type ConflictResolution,
+  type MemoryConflictRow,
   type MemoryRecordVersionRow,
+  type RelatedMemory,
   type MemoryBankLinkRow,
   type MemoryBankRow,
   type MemoryBankRoutingInput,
@@ -87,6 +93,36 @@ export interface MemoryStore {
   countRecordVersions(recordId: string): Promise<number>;
   listExpiredArchivedRecords(before: Date, limit: number): Promise<MemoryRecordRow[]>;
   deleteRecordCascade(recordId: string): Promise<void>;
+  // Optional (capability-based): conflict detection + staleness review. defaultStore implements all.
+  insertConflict?(row: MemoryConflictRow): Promise<void>;
+  getConflict?(id: string): Promise<MemoryConflictRow | null>;
+  updateConflict?(id: string, fields: Partial<MemoryConflictRow>): Promise<void>;
+  listOpenConflicts?(limit: number): Promise<MemoryConflictRow[]>;
+  listRecordsDueForReview?(before: Date, limit: number): Promise<MemoryRecordRow[]>;
+}
+
+/** Semantic nearest-neighbours of a candidate memory within the given banks (for dedup/conflict). */
+async function findRelatedMemories(
+  input: { content: string; embedding: number[] | null; bankSlugs: string[]; excludeRecordId?: string; limit?: number },
+  store: MemoryStore,
+): Promise<RelatedMemory[]> {
+  if (!input.embedding || !input.bankSlugs.length) return [];
+  const candidates = await store.retrieveMemoryCandidates({
+    query: input.content,
+    queryEmbedding: input.embedding,
+    bankSlugs: input.bankSlugs,
+    queryMode: "current",
+    limit: input.limit ?? 5,
+  });
+  const byRecord = new Map<string, RelatedMemory>();
+  for (const c of candidates) {
+    if (!c.memoryRecordId || c.memoryRecordId === input.excludeRecordId) continue;
+    const current = byRecord.get(c.memoryRecordId);
+    if (!current || c.similarity > current.similarity) {
+      byRecord.set(c.memoryRecordId, { recordId: c.memoryRecordId, content: c.content, similarity: c.similarity });
+    }
+  }
+  return [...byRecord.values()];
 }
 
 export interface MemoryDeps {
@@ -482,9 +518,13 @@ export interface CreateMemoryRecordInput {
   createdBy: string;
   sourceId?: string;
   confidence?: number;
+  /** Skip creating if a near-identical memory already exists in the same bank (default true). */
+  dedupe?: boolean;
+  /** Flag a conflict for founder review when a similar-but-different memory exists (default true). */
+  detectConflicts?: boolean;
 }
 
-/** Founder adds a memory directly (not via a proposal). Permission-checked + embedded + audited. */
+/** Founder adds a memory directly. Permission-checked, embedded, dedup + conflict aware, audited. */
 export async function createMemoryRecord(input: CreateMemoryRecordInput, deps: MemoryDeps = {}): Promise<MemoryRecordRow> {
   const store = deps.store ?? defaultStore();
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
@@ -494,37 +534,44 @@ export async function createMemoryRecord(input: CreateMemoryRecordInput, deps: M
   const permission = canEditMemoryBanks(input.createdBy, bankSlugs);
   if (!permission.allowed) throw new Error(permission.reason);
 
+  // Embed the content ONCE and reuse it for dedup/conflict search AND the stored chunk.
+  let embedding: number[] | null = null;
+  try {
+    const vectors = await embedTexts([input.content], { embedder: deps.embedder });
+    embedding = vectors ? vectors[0] ?? null : null;
+  } catch (error) {
+    console.error("memory create embedding failed:", error instanceof Error ? error.message : error);
+  }
+
+  const dedupe = input.dedupe ?? true;
+  const detectConflicts = input.detectConflicts ?? true;
+  const related = dedupe || detectConflicts ? await findRelatedMemories({ content: input.content, embedding, bankSlugs, limit: 5 }, store) : [];
+  const classification = classifyMemoryWrite(related);
+
+  // Duplicate -> don't pile up; return the existing memory.
+  if (dedupe && classification.verdict === "duplicate" && classification.relatedRecordId) {
+    const existing = await store.getMemoryRecordById(classification.relatedRecordId);
+    if (existing) {
+      await recordAudit({
+        eventType: "memory_record.deduplicated",
+        module: "memory",
+        entityType: "memory_record",
+        entityId: existing.id,
+        actor: input.createdBy,
+        metadata: { duplicateOf: existing.id, similarity: classification.topSimilarity, skipped: input.title },
+      });
+      return existing;
+    }
+  }
+
   const record = buildMemoryRecordRow(
-    {
-      slug: memoryManageSlug(input.area),
-      title: input.title,
-      memoryTier: input.memoryTier,
-      area: input.area,
-      content: input.content,
-      sourceId: input.sourceId,
-      confidence: input.confidence,
-      approvedBy: input.createdBy,
-      bankSlugs,
-    },
+    { slug: memoryManageSlug(input.area), title: input.title, memoryTier: input.memoryTier, area: input.area, content: input.content, sourceId: input.sourceId, confidence: input.confidence, approvedBy: input.createdBy, bankSlugs },
     { now },
   );
-  const chunks = await attachEmbeddings(
-    buildMemoryChunkRows(
-      {
-        memoryRecordId: record.id,
-        content: input.content,
-        memoryTier: input.memoryTier,
-        trustLevel: input.trustLevel,
-        sourceId: input.sourceId,
-        parentEntityId: record.id,
-        entityType: "memory_record",
-        tags: [input.area, ...bankSlugs],
-        bankSlugs,
-      },
-      { now },
-    ),
-    deps,
-  );
+  const chunks = buildMemoryChunkRows(
+    { memoryRecordId: record.id, content: input.content, memoryTier: input.memoryTier, trustLevel: input.trustLevel, sourceId: input.sourceId, parentEntityId: record.id, entityType: "memory_record", tags: [input.area, ...bankSlugs], bankSlugs },
+    { now },
+  ).map((chunk) => ({ ...chunk, embedding }));
 
   await store.insertMemoryRecord(record);
   await store.insertMemoryChunks(chunks);
@@ -545,6 +592,24 @@ export async function createMemoryRecord(input: CreateMemoryRecordInput, deps: M
     actor: input.createdBy,
     metadata: { title: record.title, area: record.area, bankSlugs, memoryTier: input.memoryTier, trustLevel: input.trustLevel, direct: true },
   });
+
+  // Similar-but-different -> flag a conflict for the founder to resolve.
+  if (detectConflicts && classification.verdict === "conflict" && classification.relatedRecordId && store.insertConflict) {
+    const conflict = buildMemoryConflictRow(
+      { newRecordId: record.id, existingRecordId: classification.relatedRecordId, bankSlug: bankSlugs[0] ?? null, similarity: classification.topSimilarity, detectedBy: input.createdBy },
+      { now },
+    );
+    await store.insertConflict(conflict);
+    await recordAudit({
+      eventType: "memory.conflict_detected",
+      module: "memory",
+      entityType: "memory_conflict",
+      entityId: conflict.id,
+      actor: input.createdBy,
+      metadata: { newRecordId: record.id, existingRecordId: classification.relatedRecordId, similarity: classification.topSimilarity },
+    });
+  }
+
   return record;
 }
 
@@ -704,6 +769,71 @@ export async function purgeExpiredArchivedMemory(input: { limit?: number } = {},
     });
   }
   return { purged: ids.length, ids };
+}
+
+// ---- Conflict resolution + staleness review ----
+
+export async function listMemoryConflicts(input: { limit?: number } = {}, deps: MemoryDeps = {}): Promise<MemoryConflictRow[]> {
+  const store = deps.store ?? defaultStore();
+  if (!store.listOpenConflicts) return [];
+  return store.listOpenConflicts(input.limit ?? 50);
+}
+
+/** Resolve a flagged conflict: keep_new archives the old, keep_existing archives the new, keep_both/merged keep both. Audited. */
+export async function resolveMemoryConflict(
+  input: { conflictId: string; resolution: ConflictResolution; resolvedBy: string },
+  deps: MemoryDeps = {},
+): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  if (!store.getConflict || !store.updateConflict) throw new Error("conflict store is not available");
+
+  const conflict = await store.getConflict(input.conflictId);
+  if (!conflict) throw new Error(`memory conflict '${input.conflictId}' not found`);
+  if (conflict.status !== "open") throw new Error(`memory conflict '${input.conflictId}' is already ${conflict.status}`);
+
+  if (input.resolution === "keep_new") {
+    await archiveMemoryRecord({ id: conflict.existingRecordId, archivedBy: input.resolvedBy, reason: "superseded by conflict resolution (keep_new)" }, deps);
+  } else if (input.resolution === "keep_existing") {
+    await archiveMemoryRecord({ id: conflict.newRecordId, archivedBy: input.resolvedBy, reason: "conflict resolution (keep_existing)" }, deps);
+  }
+
+  await store.updateConflict(input.conflictId, { status: "resolved", resolution: input.resolution, resolvedBy: input.resolvedBy, resolvedAt: now, updatedAt: now });
+  await recordAudit({
+    eventType: "memory.conflict_resolved",
+    module: "memory",
+    entityType: "memory_conflict",
+    entityId: input.conflictId,
+    actor: input.resolvedBy,
+    metadata: { resolution: input.resolution, newRecordId: conflict.newRecordId, existingRecordId: conflict.existingRecordId },
+  });
+}
+
+/** Memories whose freshness window has elapsed — prompt the founder to re-confirm. */
+export async function listMemoriesDueForReview(input: { limit?: number } = {}, deps: MemoryDeps = {}): Promise<MemoryRecordRow[]> {
+  const store = deps.store ?? defaultStore();
+  if (!store.listRecordsDueForReview) return [];
+  const now = deps.now ?? new Date();
+  return store.listRecordsDueForReview(now, input.limit ?? 50);
+}
+
+/** Mark a memory as re-confirmed (resets its freshness window). Audited. */
+export async function reviewMemory(input: { id: string; reviewedBy: string }, deps: MemoryDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const record = await store.getMemoryRecordById(input.id);
+  if (!record) throw new Error(`memory record '${input.id}' not found`);
+  await store.updateMemoryRecordFields(input.id, { lastReviewedAt: now, reviewAfter: computeReviewAfter(record.memoryTier, now), updatedAt: now });
+  await recordAudit({
+    eventType: "memory_record.reviewed",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.id,
+    actor: input.reviewedBy,
+    metadata: { title: record.title, tier: record.memoryTier },
+  });
 }
 
 function memoryManageSlug(area: string): string {
@@ -913,6 +1043,32 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
       await db.delete(memoryBankLinks).where(eq(memoryBankLinks.memoryRecordId, recordId));
       await db.delete(memoryChunksTable).where(eq(memoryChunksTable.memoryRecordId, recordId));
       await db.delete(memoryRecords).where(eq(memoryRecords.id, recordId));
+    },
+    async insertConflict(row) {
+      await db.insert(memoryConflicts).values(row);
+    },
+    async getConflict(id) {
+      const rows = await db.select().from(memoryConflicts).where(eq(memoryConflicts.id, id)).limit(1);
+      return (rows[0] as MemoryConflictRow | undefined) ?? null;
+    },
+    async updateConflict(id, fields) {
+      await db.update(memoryConflicts).set(fields).where(eq(memoryConflicts.id, id));
+    },
+    async listOpenConflicts(limit) {
+      return db
+        .select()
+        .from(memoryConflicts)
+        .where(eq(memoryConflicts.status, "open"))
+        .orderBy(desc(memoryConflicts.createdAt))
+        .limit(limit) as Promise<MemoryConflictRow[]>;
+    },
+    async listRecordsDueForReview(before, limit) {
+      return db
+        .select()
+        .from(memoryRecords)
+        .where(and(eq(memoryRecords.status, "active"), isNotNull(memoryRecords.reviewAfter), lt(memoryRecords.reviewAfter, before)))
+        .orderBy(memoryRecords.reviewAfter)
+        .limit(limit) as Promise<MemoryRecordRow[]>;
     },
   };
 }

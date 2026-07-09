@@ -71,6 +71,13 @@
       "when": 1783577763835,
       "tag": "0009_long_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783578553280,
+      "tag": "0010_aspiring_dakota_north",
+      "breakpoints": true
     }
   ]
 }

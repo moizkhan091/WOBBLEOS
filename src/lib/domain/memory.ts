@@ -446,8 +446,21 @@ export interface MemoryRecordRow {
   approvedAt: Date | null;
   archivedAt: Date | null;
   purgeAfter: Date | null;
+  reviewAfter: Date | null;
+  lastReviewedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** How long a memory stays "fresh" before a founder is prompted to re-confirm it. */
+export const REVIEW_INTERVAL_MS_BY_TIER: Record<MemoryTier, number> = {
+  core: 180 * DAY_MS,
+  working: 60 * DAY_MS,
+  episodic: 30 * DAY_MS,
+};
+export function computeReviewAfter(tier: MemoryTier, now: Date): Date {
+  return new Date(now.getTime() + REVIEW_INTERVAL_MS_BY_TIER[tier]);
 }
 
 export function buildMemoryRecordRow(
@@ -472,6 +485,8 @@ export function buildMemoryRecordRow(
     approvedAt: parsed.approvedBy ? now : null,
     archivedAt: null,
     purgeAfter: null,
+    reviewAfter: computeReviewAfter(parsed.memoryTier, now),
+    lastReviewedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -507,6 +522,76 @@ export function buildMemoryRecordVersionRow(
 
 /** Soft-delete grace window (48h) during which an archived memory can be restored before purge. */
 export const MEMORY_PURGE_GRACE_MS = 48 * 60 * 60 * 1000;
+
+// ---- Dedup + conflict detection on write ----
+
+/** At/above this cosine similarity a new memory is treated as a duplicate (skip, don't pile up). */
+export const MEMORY_DUPLICATE_THRESHOLD = 0.93;
+/** Between conflict and duplicate: similar-but-different → flag for the founder to resolve. */
+export const MEMORY_CONFLICT_THRESHOLD = 0.82;
+
+export type MemoryWriteVerdict = "new" | "duplicate" | "conflict";
+
+export interface RelatedMemory {
+  recordId: string;
+  content: string;
+  similarity: number;
+}
+
+export interface MemoryWriteClassification {
+  verdict: MemoryWriteVerdict;
+  topSimilarity: number;
+  relatedRecordId: string | null;
+}
+
+/** Decide whether a new memory is genuinely new, a duplicate, or a conflict, from its nearest neighbours. */
+export function classifyMemoryWrite(related: RelatedMemory[]): MemoryWriteClassification {
+  const top = related.reduce<RelatedMemory | null>((best, r) => (!best || r.similarity > best.similarity ? r : best), null);
+  if (!top) return { verdict: "new", topSimilarity: 0, relatedRecordId: null };
+  if (top.similarity >= MEMORY_DUPLICATE_THRESHOLD) return { verdict: "duplicate", topSimilarity: top.similarity, relatedRecordId: top.recordId };
+  if (top.similarity >= MEMORY_CONFLICT_THRESHOLD) return { verdict: "conflict", topSimilarity: top.similarity, relatedRecordId: top.recordId };
+  return { verdict: "new", topSimilarity: top.similarity, relatedRecordId: null };
+}
+
+export type ConflictResolution = "keep_new" | "keep_existing" | "keep_both" | "merged";
+
+export interface MemoryConflictRow {
+  id: string;
+  newRecordId: string;
+  existingRecordId: string;
+  bankSlug: string | null;
+  similarity: string | null;
+  status: string;
+  resolution: string | null;
+  detectedBy: string | null;
+  resolvedBy: string | null;
+  resolvedAt: Date | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function buildMemoryConflictRow(
+  input: { newRecordId: string; existingRecordId: string; bankSlug?: string | null; similarity?: number; detectedBy?: string; metadata?: Record<string, unknown> },
+  opts: { id?: string; now?: Date } = {},
+): MemoryConflictRow {
+  const now = opts.now ?? new Date();
+  return {
+    id: opts.id ?? newId("memconflict"),
+    newRecordId: input.newRecordId,
+    existingRecordId: input.existingRecordId,
+    bankSlug: input.bankSlug ?? null,
+    similarity: input.similarity !== undefined ? String(input.similarity) : null,
+    status: "open",
+    resolution: null,
+    detectedBy: input.detectedBy ?? null,
+    resolvedBy: null,
+    resolvedAt: null,
+    metadata: input.metadata ?? {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 export const memoryChunkInputSchema = z.object({
   memoryRecordId: z.string().trim().min(1).optional(),

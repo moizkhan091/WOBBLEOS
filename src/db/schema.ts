@@ -246,9 +246,34 @@ export const memoryRecords = pgTable("memory_records", {
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   // Soft-delete grace window: archived records can be restored until purgeAfter, then hard-deleted.
   purgeAfter: timestamp("purge_after", { withTimezone: true }),
+  // Staleness: prompt a founder to re-confirm a memory after this time (interval depends on tier).
+  reviewAfter: timestamp("review_after", { withTimezone: true }),
+  lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+// When a new memory looks like it duplicates or contradicts an existing one, we flag it
+// here for the founder to resolve (keep new / keep existing / keep both) instead of
+// silently piling up duplicates or conflicting truths.
+export const memoryConflicts = pgTable("memory_conflicts", {
+  id: id(),
+  newRecordId: text("new_record_id").notNull(),
+  existingRecordId: text("existing_record_id").notNull(),
+  bankSlug: varchar("bank_slug", { length: 120 }),
+  similarity: numeric("similarity"),
+  status: varchar("status", { length: 32 }).notNull().default("open"),
+  resolution: varchar("resolution", { length: 32 }),
+  detectedBy: varchar("detected_by", { length: 120 }),
+  resolvedBy: varchar("resolved_by", { length: 120 }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("memory_conflicts_status_idx").on(table.status),
+  index("memory_conflicts_new_record_idx").on(table.newRecordId),
+]);
 
 // Full edit history for memory records (undo / see-what-changed / restore-to-version).
 export const memoryRecordVersions = pgTable("memory_record_versions", {

@@ -2838,3 +2838,19 @@ Tests: tests/memory-manage.test.ts extended (history+restore, 48h grace then pur
 Verified live: edit -> 1 prior version; restore-to-version -> content rolls back; archive -> purgeAfter set; purge within 48h = 0 (protected); purge after 48h = hard-deleted; audit filter category='deletion' returns purged+archived.
 
 REMAINING memory upgrades (batches to come, before break-agent per founder): conflict detection (#2), "what WOBBLE knows about me" view+export (#3), Ask WOBBLE memory tools search/edit/forget (#4), staleness/review (#5), importance/pinning (#6), bulk ops (#7), dedup-on-write (#8), merge/split (#9), Memory browser UI page (#10); plus proposed extras (access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback). Also: schedule purgeExpiredArchivedMemory + harvest sweep via Automations (Chunk 19).
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory upgrades Batch 2: dedup-on-write (#8) + conflict detection (#2) + staleness (#5)
+
+Schema (migration 0010, no drift): NEW memory_conflicts (new/existing record ids, similarity, status, resolution, detected/resolved-by); memory_records += review_after, last_reviewed_at (staleness).
+
+Domain (src/lib/domain/memory.ts): MEMORY_DUPLICATE_THRESHOLD=0.93, MEMORY_CONFLICT_THRESHOLD=0.82; classifyMemoryWrite(neighbours) -> new|duplicate|conflict; buildMemoryConflictRow; REVIEW_INTERVAL_MS_BY_TIER (core 180d/working 60d/episodic 30d) + computeReviewAfter; buildMemoryRecordRow now sets review_after by tier.
+
+Service (src/lib/memory): findRelatedMemories (bank-scoped vector NN). createMemoryRecord now embeds content ONCE (reused for NN search + the chunk), then: duplicate -> skip + return existing (audit memory_record.deduplicated); conflict -> create + write memory_conflicts + audit memory.conflict_detected; new -> create. Opt-out via input.dedupe/detectConflicts (default true). resolveMemoryConflict (keep_new archives old / keep_existing archives new / keep_both / merged; audited). listMemoryConflicts. Staleness: listMemoriesDueForReview + reviewMemory (resets window). New MemoryStore methods are OPTIONAL (capability-based) so the 3 unrelated in-memory test stores didn't need churn; defaultStore implements all.
+
+API: GET /api/memory/conflicts; POST /api/memory/conflicts/[id]/resolve; GET /api/memory/review; POST /api/memory/records/[id]/review.
+
+Tests: tests/memory-conflicts.test.ts (classifier, dedupe, conflict-flag, clean-create, resolve keep_new, staleness list+review). 283 tests pass, typecheck + build green.
+
+Verified live (real embeddings): identical memory DEDUPED (returned same id, no pile-up). Conflict band proven in unit tests (real-embedding thresholds are tunable constants; calibrate on real data). Staleness unit-tested.
+
+PROGRESS: upgrades done = #1 version history, #8 dedup, #2 conflict detection, #5 staleness (+ 48h revert + audit labeling). REMAINING before break-agent: #3 "what WOBBLE knows about me" export, #4 Ask WOBBLE memory tools (search/edit/forget), #6 pinning, #7 bulk ops, #9 merge/split, #10 Memory UI page; plus extras. Follow-up: wire dedup into approveMemoryUpdate/harvester (auto-learning path); schedule purge + review + harvest sweeps via Automations.
