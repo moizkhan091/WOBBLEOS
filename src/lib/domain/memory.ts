@@ -444,6 +444,8 @@ export interface MemoryRecordRow {
   bankSlugs: string[];
   approvedBy: string | null;
   approvedAt: Date | null;
+  archivedAt: Date | null;
+  purgeAfter: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -468,10 +470,43 @@ export function buildMemoryRecordRow(
     bankSlugs: parsed.bankSlugs?.length ? parsed.bankSlugs : [parsed.area],
     approvedBy: parsed.approvedBy ?? null,
     approvedAt: parsed.approvedBy ? now : null,
+    archivedAt: null,
+    purgeAfter: null,
     createdAt: now,
     updatedAt: now,
   };
 }
+
+export interface MemoryRecordVersionRow {
+  id: string;
+  memoryRecordId: string;
+  versionNumber: number;
+  title: string;
+  content: string;
+  editedBy: string | null;
+  changeReason: string | null;
+  createdAt: Date;
+}
+
+export function buildMemoryRecordVersionRow(
+  input: { memoryRecordId: string; versionNumber: number; title: string; content: string; editedBy?: string; changeReason?: string },
+  opts: { id?: string; now?: Date } = {},
+): MemoryRecordVersionRow {
+  const now = opts.now ?? new Date();
+  return {
+    id: opts.id ?? newId("memver"),
+    memoryRecordId: input.memoryRecordId,
+    versionNumber: input.versionNumber,
+    title: input.title,
+    content: input.content,
+    editedBy: input.editedBy ?? null,
+    changeReason: input.changeReason ?? null,
+    createdAt: now,
+  };
+}
+
+/** Soft-delete grace window (48h) during which an archived memory can be restored before purge. */
+export const MEMORY_PURGE_GRACE_MS = 48 * 60 * 60 * 1000;
 
 export const memoryChunkInputSchema = z.object({
   memoryRecordId: z.string().trim().min(1).optional(),

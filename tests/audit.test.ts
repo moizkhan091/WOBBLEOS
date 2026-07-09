@@ -28,10 +28,12 @@ describe("buildAuditEvent", () => {
     expect(row).toEqual({
       id: "audit_fixed",
       eventType: "approval.approved",
+      category: "approval",
       module: "approvals",
       entityType: "content_packet",
       entityId: "packet_1",
       actor: "Moiz",
+      surface: null,
       modelRunId: null,
       costEstimate: "0.42",
       metadata: {},

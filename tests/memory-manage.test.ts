@@ -4,15 +4,20 @@ import {
   archiveMemoryRecord,
   createMemoryRecord,
   editMemoryRecord,
+  listMemoryVersions,
+  purgeExpiredArchivedMemory,
   restoreMemoryRecord,
+  restoreMemoryVersion,
   type MemoryStore,
 } from "@/lib/memory";
+import { deriveAuditCategory } from "@/lib/domain/audit";
 import {
   buildMemoryBankRow,
   DEFAULT_MEMORY_BANKS,
   type MemoryBankRow,
   type MemoryChunkRow,
   type MemoryRecordRow,
+  type MemoryRecordVersionRow,
   type MemoryUpdateProposalRow,
 } from "@/lib/domain/memory";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -25,6 +30,7 @@ function makeStore() {
   const banks: MemoryBankRow[] = DEFAULT_MEMORY_BANKS.map((b) => buildMemoryBankRow(b, { id: `memorybank_${b.slug}`, now }));
   const records: MemoryRecordRow[] = [];
   const chunks: MemoryChunkRow[] = [];
+  const versions: MemoryRecordVersionRow[] = [];
   const store: MemoryStore = {
     insertProposal: async () => {},
     getProposalById: async () => null,
@@ -49,8 +55,18 @@ function makeStore() {
     setChunksStatusForRecord: async (recordId, status, archived) => {
       for (const c of chunks) if (c.memoryRecordId === recordId) Object.assign(c, { status, archived });
     },
+    insertRecordVersion: async (row) => void versions.push(row),
+    listRecordVersions: async (recordId) => versions.filter((v) => v.memoryRecordId === recordId).sort((a, b) => b.versionNumber - a.versionNumber),
+    getRecordVersion: async (id) => versions.find((v) => v.id === id) ?? null,
+    countRecordVersions: async (recordId) => versions.filter((v) => v.memoryRecordId === recordId).length,
+    listExpiredArchivedRecords: async (before) => records.filter((r) => r.status === "archived" && r.purgeAfter !== null && r.purgeAfter < before),
+    deleteRecordCascade: async (recordId) => {
+      for (let i = records.length - 1; i >= 0; i--) if (records[i].id === recordId) records.splice(i, 1);
+      for (let i = chunks.length - 1; i >= 0; i--) if (chunks[i].memoryRecordId === recordId) chunks.splice(i, 1);
+      for (let i = versions.length - 1; i >= 0; i--) if (versions[i].memoryRecordId === recordId) versions.splice(i, 1);
+    },
   };
-  return { store, records, chunks };
+  return { store, records, chunks, versions };
 }
 
 describe("canEditMemoryBanks", () => {
@@ -110,5 +126,56 @@ describe("memory management", () => {
     await restoreMemoryRecord({ id: rec.id, restoredBy: "Moiz" }, { store, recordAudit: async () => {}, now });
     expect(records[0].status).toBe("active");
     expect(chunks[0].archived).toBe(false);
+  });
+});
+
+describe("version history + 48h purge", () => {
+  it("keeps edit history and can restore a prior version", async () => {
+    const { store } = makeStore();
+    const audit = async () => {};
+    const rec = await createMemoryRecord(
+      { title: "t", content: "v1 content", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    await editMemoryRecord({ id: rec.id, content: "v2 content", editedBy: "Moiz" }, { store, embedder, recordAudit: audit, now });
+    const history = await listMemoryVersions(rec.id, { store });
+    expect(history).toHaveLength(1);
+    expect(history[0].content).toBe("v1 content"); // the prior state was snapshotted
+
+    await restoreMemoryVersion({ recordId: rec.id, versionId: history[0].id, restoredBy: "Moiz" }, { store, embedder, recordAudit: audit, now });
+    const restored = await store.getMemoryRecordById(rec.id);
+    expect(restored?.content).toBe("v1 content");
+    // restoring is non-destructive: current (v2) was snapshotted, so 2 versions now
+    expect((await listMemoryVersions(rec.id, { store })).length).toBe(2);
+  });
+
+  it("keeps an archived memory restorable for 48h, then purges it", async () => {
+    const { store, records } = makeStore();
+    const audit = async () => {};
+    const rec = await createMemoryRecord(
+      { title: "t", content: "c", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    await archiveMemoryRecord({ id: rec.id, archivedBy: "Moiz" }, { store, recordAudit: audit, now });
+    expect(records[0].purgeAfter).not.toBeNull();
+
+    const early = await purgeExpiredArchivedMemory({}, { store, recordAudit: audit, now: new Date(now.getTime() + 60 * 60 * 1000) });
+    expect(early.purged).toBe(0); // still within the 48h window
+    expect(records).toHaveLength(1);
+
+    const late = await purgeExpiredArchivedMemory({}, { store, recordAudit: audit, now: new Date(now.getTime() + 49 * 60 * 60 * 1000) });
+    expect(late.purged).toBe(1);
+    expect(records).toHaveLength(0);
+  });
+});
+
+describe("audit categorization", () => {
+  it("labels events so the audit log is readable/filterable", () => {
+    expect(deriveAuditCategory("memory_record.archived")).toBe("deletion");
+    expect(deriveAuditCategory("memory_record.purged")).toBe("deletion");
+    expect(deriveAuditCategory("memory_record.edited")).toBe("edit");
+    expect(deriveAuditCategory("memory_record.created")).toBe("creation");
+    expect(deriveAuditCategory("memory_record.restored")).toBe("restore");
+    expect(deriveAuditCategory("approval.reject")).toBe("approval");
   });
 });

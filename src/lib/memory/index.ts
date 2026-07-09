@@ -1,6 +1,6 @@
-import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { newId } from "@/lib/ids";
-import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryUpdateProposals } from "@/db/schema";
+import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryRecordVersions, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
@@ -10,9 +10,12 @@ import {
   buildMemoryChunkRows,
   buildMemoryBankLinkRow,
   buildMemoryRecordRow,
+  buildMemoryRecordVersionRow,
   buildMemoryUpdateProposalRow,
   canEditMemoryBanks,
+  MEMORY_PURGE_GRACE_MS,
   suggestMemoryBanks,
+  type MemoryRecordVersionRow,
   type MemoryBankLinkRow,
   type MemoryBankRow,
   type MemoryBankRoutingInput,
@@ -78,6 +81,12 @@ export interface MemoryStore {
   listChunkIdsForRecord(recordId: string): Promise<Array<{ id: string; content: string }>>;
   updateChunk(id: string, fields: { content?: string; embedding?: number[] | null; status?: string; archived?: boolean; updatedAt: Date }): Promise<void>;
   setChunksStatusForRecord(recordId: string, status: string, archived: boolean, updatedAt: Date): Promise<void>;
+  insertRecordVersion(row: MemoryRecordVersionRow): Promise<void>;
+  listRecordVersions(recordId: string): Promise<MemoryRecordVersionRow[]>;
+  getRecordVersion(id: string): Promise<MemoryRecordVersionRow | null>;
+  countRecordVersions(recordId: string): Promise<number>;
+  listExpiredArchivedRecords(before: Date, limit: number): Promise<MemoryRecordRow[]>;
+  deleteRecordCascade(recordId: string): Promise<void>;
 }
 
 export interface MemoryDeps {
@@ -563,6 +572,15 @@ export async function editMemoryRecord(input: EditMemoryRecordInput, deps: Memor
   // a detached copy or a live reference.
   const contentChanged = input.content !== undefined && input.content !== before.content;
 
+  // Snapshot the PRIOR state to version history (undo / see-what-changed / restore).
+  const versionNumber = (await store.countRecordVersions(input.id)) + 1;
+  await store.insertRecordVersion(
+    buildMemoryRecordVersionRow(
+      { memoryRecordId: input.id, versionNumber, title: before.title, content: before.content, editedBy: input.editedBy, changeReason: input.reason },
+      { now },
+    ),
+  );
+
   const fields: Partial<MemoryRecordRow> = { updatedAt: now };
   if (input.title !== undefined) fields.title = input.title;
   if (input.content !== undefined) fields.content = input.content;
@@ -602,7 +620,8 @@ export async function archiveMemoryRecord(input: { id: string; archivedBy: strin
   const permission = canEditMemoryBanks(input.archivedBy, record.bankSlugs);
   if (!permission.allowed) throw new Error(permission.reason);
 
-  await store.updateMemoryRecordFields(input.id, { status: "archived", updatedAt: now });
+  const purgeAfter = new Date(now.getTime() + MEMORY_PURGE_GRACE_MS);
+  await store.updateMemoryRecordFields(input.id, { status: "archived", archivedAt: now, purgeAfter, updatedAt: now });
   await store.setChunksStatusForRecord(input.id, "archived", true, now);
   await recordAudit({
     eventType: "memory_record.archived",
@@ -610,7 +629,7 @@ export async function archiveMemoryRecord(input: { id: string; archivedBy: strin
     entityType: "memory_record",
     entityId: input.id,
     actor: input.archivedBy,
-    metadata: { title: record.title, bankSlugs: record.bankSlugs, reason: input.reason ?? null },
+    metadata: { title: record.title, bankSlugs: record.bankSlugs, reason: input.reason ?? null, restorableUntil: purgeAfter.toISOString() },
   });
 }
 
@@ -623,7 +642,7 @@ export async function restoreMemoryRecord(input: { id: string; restoredBy: strin
   const permission = canEditMemoryBanks(input.restoredBy, record.bankSlugs);
   if (!permission.allowed) throw new Error(permission.reason);
 
-  await store.updateMemoryRecordFields(input.id, { status: "active", updatedAt: now });
+  await store.updateMemoryRecordFields(input.id, { status: "active", archivedAt: null, purgeAfter: null, updatedAt: now });
   await store.setChunksStatusForRecord(input.id, "active", false, now);
   await recordAudit({
     eventType: "memory_record.restored",
@@ -633,6 +652,58 @@ export async function restoreMemoryRecord(input: { id: string; restoredBy: strin
     actor: input.restoredBy,
     metadata: { title: record.title },
   });
+}
+
+/** List a memory's edit history (newest version first). */
+export async function listMemoryVersions(recordId: string, deps: MemoryDeps = {}): Promise<MemoryRecordVersionRow[]> {
+  const store = deps.store ?? defaultStore();
+  return store.listRecordVersions(recordId);
+}
+
+/** Roll a memory back to a prior version (non-destructive: the current state is snapshotted first, then re-embedded). */
+export async function restoreMemoryVersion(
+  input: { recordId: string; versionId: string; restoredBy: string },
+  deps: MemoryDeps = {},
+): Promise<MemoryRecordRow> {
+  const store = deps.store ?? defaultStore();
+  const version = await store.getRecordVersion(input.versionId);
+  if (!version || version.memoryRecordId !== input.recordId) {
+    throw new Error(`memory version '${input.versionId}' not found for record '${input.recordId}'`);
+  }
+  return editMemoryRecord(
+    { id: input.recordId, title: version.title, content: version.content, editedBy: input.restoredBy, reason: `restore to version ${version.versionNumber}` },
+    deps,
+  );
+}
+
+export interface PurgeResult {
+  purged: number;
+  ids: string[];
+}
+
+/**
+ * Hard-delete archived memories whose 48h grace window has elapsed (record + chunks +
+ * links + versions). Safe to run on a schedule. Everything before the window is restorable.
+ */
+export async function purgeExpiredArchivedMemory(input: { limit?: number } = {}, deps: MemoryDeps = {}): Promise<PurgeResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const expired = await store.listExpiredArchivedRecords(now, input.limit ?? 100);
+  const ids: string[] = [];
+  for (const record of expired) {
+    await store.deleteRecordCascade(record.id);
+    ids.push(record.id);
+    await recordAudit({
+      eventType: "memory_record.purged",
+      module: "memory",
+      entityType: "memory_record",
+      entityId: record.id,
+      actor: "system",
+      metadata: { title: record.title, archivedAt: record.archivedAt, purgeAfter: record.purgeAfter },
+    });
+  }
+  return { purged: ids.length, ids };
 }
 
 function memoryManageSlug(area: string): string {
@@ -811,6 +882,37 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
     },
     async setChunksStatusForRecord(recordId, status, archived, updatedAt) {
       await db.update(memoryChunksTable).set({ status, archived, updatedAt }).where(eq(memoryChunksTable.memoryRecordId, recordId));
+    },
+    async insertRecordVersion(row) {
+      await db.insert(memoryRecordVersions).values(row);
+    },
+    async listRecordVersions(recordId) {
+      return db
+        .select()
+        .from(memoryRecordVersions)
+        .where(eq(memoryRecordVersions.memoryRecordId, recordId))
+        .orderBy(desc(memoryRecordVersions.versionNumber)) as Promise<MemoryRecordVersionRow[]>;
+    },
+    async getRecordVersion(id) {
+      const rows = await db.select().from(memoryRecordVersions).where(eq(memoryRecordVersions.id, id)).limit(1);
+      return (rows[0] as MemoryRecordVersionRow | undefined) ?? null;
+    },
+    async countRecordVersions(recordId) {
+      const rows = await db.select({ n: sql<number>`count(*)::int` }).from(memoryRecordVersions).where(eq(memoryRecordVersions.memoryRecordId, recordId));
+      return Number(rows[0]?.n ?? 0);
+    },
+    async listExpiredArchivedRecords(before, limit) {
+      return db
+        .select()
+        .from(memoryRecords)
+        .where(and(eq(memoryRecords.status, "archived"), isNotNull(memoryRecords.purgeAfter), lt(memoryRecords.purgeAfter, before)))
+        .limit(limit) as Promise<MemoryRecordRow[]>;
+    },
+    async deleteRecordCascade(recordId) {
+      await db.delete(memoryRecordVersions).where(eq(memoryRecordVersions.memoryRecordId, recordId));
+      await db.delete(memoryBankLinks).where(eq(memoryBankLinks.memoryRecordId, recordId));
+      await db.delete(memoryChunksTable).where(eq(memoryChunksTable.memoryRecordId, recordId));
+      await db.delete(memoryRecords).where(eq(memoryRecords.id, recordId));
     },
   };
 }

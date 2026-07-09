@@ -2817,3 +2817,24 @@ Tests: tests/memory-manage.test.ts (permission matrix, create+embed+audit, cross
 Verified live: create -> read detail -> edit -> semantic search returns the EDITED content (re-embed works) -> archive (search drops it) -> restore -> Moiz blocked from writing to founder_ali. All audited.
 
 NEXT: adversarial break-agent over the session; then per-founder identity via Auth (Chunk 02) so edits attribute to the logged-in founder automatically; Knowledge Compiler (Slice 2). Upgrade backlog proposed to founder (versioned memory history, conflict detection, staleness, importance/pinning, bulk ops, "what WOBBLE knows about me" view, Ask WOBBLE memory tools).
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory upgrades Batch 1: version history + 48h deletion-revert + audit labeling
+
+Founder direction: do all 10 memory upgrades (then break-agent), plus a 48h revert window on deletions and fully-labeled audit logging ("track everything"). This is Batch 1 of the upgrades.
+
+Schema (migration 0009, no drift): memory_records += archived_at, purge_after; NEW memory_record_versions (undo/history); audit_logs += category (creation/edit/deletion/restore/approval/access/learning/model/system) + surface (where it happened) + indexes.
+
+Audit (src/lib/domain/audit.ts + lib/audit): every event auto-categorized (deriveAuditCategory) so the log is filterable ("show all deletions"); optional explicit category + surface. Writer persists them; listAuditEvents filters by category/actor.
+
+Memory (src/lib/memory):
+- Version history: editMemoryRecord snapshots the PRIOR state to memory_record_versions before overwriting; listMemoryVersions; restoreMemoryVersion (non-destructive - snapshots current, re-embeds).
+- 48h deletion revert: archiveMemoryRecord sets archived_at + purge_after (now+48h) and audits restorableUntil; restore clears them; purgeExpiredArchivedMemory hard-deletes (record+chunks+links+versions) only AFTER the window, schedulable, audited (memory_record.purged). MEMORY_PURGE_GRACE_MS in domain.
+- New MemoryStore methods (defaultStore + all in-memory test stores updated): insertRecordVersion, listRecordVersions, getRecordVersion, countRecordVersions, listExpiredArchivedRecords, deleteRecordCascade.
+
+API: GET /api/memory/records/[id]/versions; POST /api/memory/records/[id]/versions/[versionId]/restore.
+
+Tests: tests/memory-manage.test.ts extended (history+restore, 48h grace then purge, audit categorization) + audit.test.ts row shape updated. 277 tests pass, typecheck + build green.
+
+Verified live: edit -> 1 prior version; restore-to-version -> content rolls back; archive -> purgeAfter set; purge within 48h = 0 (protected); purge after 48h = hard-deleted; audit filter category='deletion' returns purged+archived.
+
+REMAINING memory upgrades (batches to come, before break-agent per founder): conflict detection (#2), "what WOBBLE knows about me" view+export (#3), Ask WOBBLE memory tools search/edit/forget (#4), staleness/review (#5), importance/pinning (#6), bulk ops (#7), dedup-on-write (#8), merge/split (#9), Memory browser UI page (#10); plus proposed extras (access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback). Also: schedule purgeExpiredArchivedMemory + harvest sweep via Automations (Chunk 19).

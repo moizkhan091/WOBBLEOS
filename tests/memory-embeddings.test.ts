@@ -123,6 +123,12 @@ function makeMemoryStore(seedProposals: MemoryUpdateProposalRow[] = []) {
     setChunksStatusForRecord: async (recordId, status, archived) => {
       for (const c of chunks) if (c.memoryRecordId === recordId) Object.assign(c, { status, archived });
     },
+    insertRecordVersion: async () => {},
+    listRecordVersions: async () => [],
+    getRecordVersion: async () => null,
+    countRecordVersions: async () => 0,
+    listExpiredArchivedRecords: async () => [],
+    deleteRecordCascade: async () => {},
   };
 
   return { store, records, chunks };

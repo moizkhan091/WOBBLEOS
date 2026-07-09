@@ -31,10 +31,12 @@ function defaultWriter(db: Db = getDb()): AuditWriter {
       await db.insert(auditLogs).values({
         id: row.id,
         eventType: row.eventType,
+        category: row.category,
         module: row.module,
         entityType: row.entityType,
         entityId: row.entityId,
         actor: row.actor,
+        surface: row.surface,
         modelRunId: row.modelRunId,
         costEstimate: row.costEstimate,
         metadata: row.metadata,
@@ -56,8 +58,10 @@ export async function writeAuditEvent(
 
 export interface ListAuditQuery {
   module?: string;
+  category?: string;
   entityType?: string;
   entityId?: string;
+  actor?: string;
   limit?: number;
 }
 
@@ -73,8 +77,10 @@ export function clampLimit(limit?: number): number {
 export async function listAuditEvents(query: ListAuditQuery = {}, db: Db = getDb()) {
   const conditions = [];
   if (query.module) conditions.push(eq(auditLogs.module, query.module));
+  if (query.category) conditions.push(eq(auditLogs.category, query.category));
   if (query.entityType) conditions.push(eq(auditLogs.entityType, query.entityType));
   if (query.entityId) conditions.push(eq(auditLogs.entityId, query.entityId));
+  if (query.actor) conditions.push(eq(auditLogs.actor, query.actor));
 
   const where = conditions.length ? and(...conditions) : undefined;
 

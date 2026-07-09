@@ -64,6 +64,13 @@
       "when": 1783575818923,
       "tag": "0008_melted_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783577763835,
+      "tag": "0009_long_living_mummy",
+      "breakpoints": true
     }
   ]
 }

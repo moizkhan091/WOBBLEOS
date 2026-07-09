@@ -243,9 +243,26 @@ export const memoryRecords = pgTable("memory_records", {
   bankSlugs: jsonb("bank_slugs").$type<string[]>().notNull().default([]),
   approvedBy: varchar("approved_by", { length: 120 }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  // Soft-delete grace window: archived records can be restored until purgeAfter, then hard-deleted.
+  purgeAfter: timestamp("purge_after", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+// Full edit history for memory records (undo / see-what-changed / restore-to-version).
+export const memoryRecordVersions = pgTable("memory_record_versions", {
+  id: id(),
+  memoryRecordId: text("memory_record_id").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  editedBy: varchar("edited_by", { length: 120 }),
+  changeReason: text("change_reason"),
+  createdAt: createdAt(),
+}, (table) => [
+  index("memory_record_versions_record_id_idx").on(table.memoryRecordId),
+]);
 
 export const memoryChunks = pgTable("memory_chunks", {
   id: id(),
@@ -450,15 +467,23 @@ export const providerRuns = pgTable("provider_runs", {
 export const auditLogs = pgTable("audit_logs", {
   id: id(),
   eventType: varchar("event_type", { length: 80 }).notNull(),
+  // Human-facing bucket so the log is easy to read/filter (creation/edit/deletion/restore/approval/access/...).
+  category: varchar("category", { length: 40 }).notNull().default("system"),
   module: varchar("module", { length: 64 }).notNull(),
   entityType: varchar("entity_type", { length: 80 }),
   entityId: text("entity_id"),
   actor: varchar("actor", { length: 80 }),
+  // Where the action happened (page/route/agent) so we can see what was done and from where.
+  surface: varchar("surface", { length: 120 }),
   modelRunId: text("model_run_id"),
   costEstimate: numeric("cost_estimate"),
   metadata: metadata(),
   createdAt: createdAt(),
-});
+}, (table) => [
+  index("audit_logs_category_idx").on(table.category),
+  index("audit_logs_event_type_idx").on(table.eventType),
+  index("audit_logs_created_at_idx").on(table.createdAt),
+]);
 
 export const webhookEndpoints = pgTable("webhook_endpoints", {
   id: id(),
