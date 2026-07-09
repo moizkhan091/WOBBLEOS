@@ -141,6 +141,13 @@
       "when": 1783624211114,
       "tag": "0019_glamorous_ogun",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783626855147,
+      "tag": "0020_abnormal_moon_knight",
+      "breakpoints": true
     }
   ]
 }

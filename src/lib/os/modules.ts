@@ -43,8 +43,8 @@ export const MODULES: Record<string, ModuleDef> = {
   media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "planned", chunk: 21, tagline: "Video and visual production. Render jobs are isolated from web and API compute." },
 
   // STRATEGY
-  decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "planned", chunk: 24, tagline: "Where strategy is debated, scored and committed. Each decision keeps its reasoning trail." },
-  offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "planned", chunk: 25, tagline: "Design, test and iterate offers. Low-confidence experiments never reach a founder cold." },
+  decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "wired", api: "/api/decisions", tagline: "Where strategy is debated, scored and committed. Add options, let WOBBLE score them 0-100, then commit — every decision keeps its reasoning trail." },
+  offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "wired", api: "/api/offers", tagline: "Design, test and iterate offers. Run experiments, score what works, promote the winner — low-confidence bets never reach a founder cold." },
 
   // REVENUE (Wobble ERP Control Layer)
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone — companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },

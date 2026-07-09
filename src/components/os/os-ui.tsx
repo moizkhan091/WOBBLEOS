@@ -3943,6 +3943,160 @@ function ProjectsPage() {
   );
 }
 
+interface DecisionRowUI { id: string; title: string; status: string; category: string; confidence: number; options: Array<{ id: string; label: string; score?: number; rationale?: string }>; decidedOptionId: string | null; decisionRationale: string | null; reasoningTrail: Array<{ at: string; note: string; by?: string }> }
+const DECISION_STATUS_COLORS: Record<string, string> = { open: C.blue, scoring: "#F5C542", decided: C.lime, revisit: C.orange, archived: C.gray };
+
+function DecisionRoomPage() {
+  const state = useApi<{ decisions: DecisionRowUI[] }>("/api/decisions?limit=200");
+  const [f, setF] = useState({ title: "", context: "", options: "" });
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const decisions = state.data?.decisions ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.title.trim()) { setMsg("A decision needs a title."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const options = f.options.split("\n").map((s) => s.trim()).filter(Boolean).map((label) => ({ label }));
+      const r = await fetch("/api/decisions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: f.title, context: f.context || undefined, options }) });
+      if (r.ok) { setF({ title: "", context: "", options: "" }); reload(); } else setMsg("Error creating decision.");
+    } finally { setBusy(null); }
+  }
+  async function act(id: string, body: Record<string, unknown>, key: string) {
+    setBusy(key);
+    try { await fetch(`/api/decisions/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); reload(); }
+    finally { setBusy(null); }
+  }
+  async function commit(d: DecisionRowUI) {
+    const best = d.options.filter((o) => typeof o.score === "number").sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0] ?? d.options[0];
+    if (!best) { setMsg("Add options first."); return; }
+    const rationale = window.prompt(`Commit to "${best.label}"? Add a one-line rationale:`, best.rationale ?? "");
+    if (rationale === null) return;
+    await act(d.id, { action: "commit", optionId: best.id, rationale: rationale || "Committed.", confidence: best.score }, "commit_" + d.id);
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Open" value={String(decisions.filter((d) => d.status === "open" || d.status === "scoring").length)} icon="Scale" color={C.blue} />
+        <Kpi label="Decided" value={String(decisions.filter((d) => d.status === "decided").length)} icon="CheckCircle2" color={C.lime} />
+        <Kpi label="Total" value={String(decisions.length)} icon="GitBranch" color={C.gray} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Open a decision</div>
+        <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="What are we deciding?" style={{ ...inputStyle, marginBottom: 8 }} />
+        <textarea value={f.context} onChange={(e) => setF((s) => ({ ...s, context: e.target.value }))} placeholder="Context / the goal this serves…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+        <textarea value={f.options} onChange={(e) => setF((s) => ({ ...s, options: e.target.value }))} placeholder="Options — one per line" rows={3} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+        <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Open decision"}</button>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {decisions.length === 0 ? <StateBlock kind="empty" message="No decisions yet. Open one above, add options, then let WOBBLE score them." /> : decisions.map((d) => {
+        const decided = d.options.find((o) => o.id === d.decidedOptionId);
+        return (
+          <Panel key={d.id}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+              <Tag text={d.status} color={DECISION_STATUS_COLORS[d.status] ?? C.gray} />
+              <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{d.title}</span>
+              {d.confidence ? <span style={{ fontSize: 11.5, color: faint }}>confidence {d.confidence}</span> : null}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+              {d.options.map((o) => (
+                <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderRadius: 9, border: "1px solid " + (o.id === d.decidedOptionId ? "rgba(184,255,44,0.4)" : "rgba(255,255,255,0.08)"), background: o.id === d.decidedOptionId ? "rgba(184,255,44,0.08)" : "rgba(255,255,255,0.03)" }}>
+                  {typeof o.score === "number" ? <span style={{ fontSize: 12, fontWeight: 700, color: o.score >= 70 ? C.lime : o.score >= 40 ? "#F5C542" : C.orange, width: 30 }}>{o.score}</span> : <span style={{ width: 30, color: faint, fontSize: 11 }}>—</span>}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12.5 }}>{o.label}</div>
+                    {o.rationale ? <div style={{ fontSize: 11, color: faint, marginTop: 2 }}>{o.rationale}</div> : null}
+                  </div>
+                  {o.id === d.decidedOptionId ? <Tag text="chosen" color={C.lime} /> : null}
+                </div>
+              ))}
+            </div>
+            {decided ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 8 }}>Decided: <span style={{ color: C.white }}>{decided.label}</span>{d.decisionRationale ? ` — ${d.decisionRationale}` : ""}</div> : null}
+            {d.status !== "decided" && d.status !== "archived" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => act(d.id, { action: "score" }, "score_" + d.id)} disabled={busy === "score_" + d.id || d.options.length === 0} style={busy === "score_" + d.id ? disabledBtn : { ...primaryBtn, padding: "7px 12px", fontSize: 12 }}>{busy === "score_" + d.id ? "Scoring…" : "⚡ Let WOBBLE score"}</button>
+                <button onClick={() => commit(d)} disabled={!!busy} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>Commit decision</button>
+                <button onClick={() => { const label = window.prompt("New option label:"); if (label) act(d.id, { action: "add_option", label }, "opt_" + d.id); }} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>+ Option</button>
+              </div>
+            ) : null}
+          </Panel>
+        );
+      })}
+    </div>
+  );
+}
+
+interface OfferRowUI { id: string; name: string; status: string; hypothesis: string | null; audience: string | null; promise: string | null; priceCents: number; currency: string; score: number; deliverables: string[]; experiments: Array<{ id: string; name: string; status?: string }> }
+const OFFER_STATUS_COLORS: Record<string, string> = { draft: C.gray, testing: C.blue, winning: C.lime, paused: "#F5C542", retired: C.gray };
+const OFFER_STATUSES_UI = ["draft", "testing", "winning", "paused", "retired"];
+
+function OfferLabPage() {
+  const state = useApi<{ offers: OfferRowUI[] }>("/api/offers?limit=200");
+  const [f, setF] = useState({ name: "", hypothesis: "", audience: "", promise: "", price: "", deliverables: "" });
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const offers = state.data?.offers ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.name.trim()) { setMsg("An offer needs a name."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const priceCents = Math.round((parseFloat(f.price) || 0) * 100);
+      const deliverables = f.deliverables.split("\n").map((s) => s.trim()).filter(Boolean);
+      const r = await fetch("/api/offers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: f.name, hypothesis: f.hypothesis || undefined, audience: f.audience || undefined, promise: f.promise || undefined, priceCents, deliverables }) });
+      if (r.ok) { setF({ name: "", hypothesis: "", audience: "", promise: "", price: "", deliverables: "" }); reload(); } else setMsg("Error creating offer.");
+    } finally { setBusy(null); }
+  }
+  async function setStatus(id: string, status: string) { setBusy(id); try { await fetch(`/api/offers/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); } finally { setBusy(null); } }
+  async function addExp(id: string) { const name = window.prompt("Experiment name (e.g. 'LinkedIn DM test'):"); if (!name) return; setBusy(id); try { await fetch(`/api/offers/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add_experiment", name }) }); reload(); } finally { setBusy(null); } }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Testing" value={String(offers.filter((o) => o.status === "testing").length)} icon="FlaskConical" color={C.blue} />
+        <Kpi label="Winning" value={String(offers.filter((o) => o.status === "winning").length)} icon="Trophy" color={C.lime} />
+        <Kpi label="Total offers" value={String(offers.length)} icon="Tag" color={C.gray} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Design an offer</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+          <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="Offer name" style={inputStyle} />
+          <input value={f.audience} onChange={(e) => setF((s) => ({ ...s, audience: e.target.value }))} placeholder="Audience / ICP" style={inputStyle} />
+        </div>
+        <input value={f.promise} onChange={(e) => setF((s) => ({ ...s, promise: e.target.value }))} placeholder="The promise (the outcome you sell)" style={{ ...inputStyle, marginBottom: 8 }} />
+        <textarea value={f.hypothesis} onChange={(e) => setF((s) => ({ ...s, hypothesis: e.target.value }))} placeholder="Hypothesis — why this wins…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 8, marginBottom: 8 }}>
+          <input value={f.price} onChange={(e) => setF((s) => ({ ...s, price: e.target.value }))} placeholder="Price (USD)" type="number" style={inputStyle} />
+          <textarea value={f.deliverables} onChange={(e) => setF((s) => ({ ...s, deliverables: e.target.value }))} placeholder="Deliverables — one per line" rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+        </div>
+        <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Create offer"}</button>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {offers.length === 0 ? <StateBlock kind="empty" message="No offers yet. Design one, run experiments, promote the winner." /> : offers.map((o) => (
+        <Panel key={o.id}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+            <Tag text={o.status} color={OFFER_STATUS_COLORS[o.status] ?? C.gray} />
+            <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 140 }}>{o.name}</span>
+            {o.priceCents ? <span style={{ fontSize: 12, color: C.lime }}>{o.currency} {(o.priceCents / 100).toLocaleString()}</span> : null}
+            {o.score ? <span style={{ fontSize: 11.5, color: faint }}>score {o.score}</span> : null}
+          </div>
+          {o.promise ? <div style={{ fontSize: 12.5, marginBottom: 4 }}>{o.promise}</div> : null}
+          {o.hypothesis ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 6 }}>{o.hypothesis}</div> : null}
+          {o.audience ? <div style={{ fontSize: 11, color: faint, marginBottom: 6 }}>ICP: {o.audience}</div> : null}
+          {o.deliverables?.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>{o.deliverables.map((d, i) => <Tag key={i} text={d} color={C.gray} />)}</div> : null}
+          {o.experiments?.length ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 8 }}>{o.experiments.length} experiment{o.experiments.length === 1 ? "" : "s"}: {o.experiments.map((e) => e.name).join(", ")}</div> : null}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={() => addExp(o.id)} disabled={busy === o.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px", fontSize: 12 }}>+ Experiment</button>
+            <select value={o.status} onChange={(e) => setStatus(o.id, e.target.value)} style={{ ...selectStyle, padding: "6px 10px", fontSize: 12 }}>
+              {OFFER_STATUSES_UI.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -3965,6 +4119,8 @@ const WIRED: Record<string, React.ComponentType> = {
   audit: AuditPage,
   content: ContentPage,
   ask: AskPage,
+  decision: DecisionRoomPage,
+  offers: OfferLabPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,

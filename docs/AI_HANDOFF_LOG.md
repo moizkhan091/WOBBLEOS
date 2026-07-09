@@ -3301,3 +3301,15 @@ VERIFIED LIVE IN BROWSER: greeting rendered "Late night grind, Moiz?"; sent "wha
 NOTE for reuse: chatWithWobble + /api/ai/chat are generic — any module can mount the same composer. Model-picker dropdown intentionally omitted (would need a real per-call model override in runTextProvider; not faking a dead control). PDF path uses OpenRouter file-parser plugin — validate with a real client PDF when convenient.
 
 NEXT: build the "planned" modules (Decision Room, Offer Lab, Research Radar, SEO, Social, Web Analytics, Automations, Workers, Backup, Settings) + entity 360 detail pages + role dashboards; then a full audit/break pass. Media Studio: keep (flagged, founder unsure). Deploy still deferred (VPS + SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - Strategy modules: Decision Room + Offer Lab (planned→wired)
+
+Migration 0020: decisions + offers tables.
+- Decision Room: domain/decision.ts (5 statuses + machine, options, reasoning trail, topOption) + lib/decisions (add/list/addOption/transition/commit + scoreDecisionOptions = REAL AI: LLM scores each option 0-100 with rationale, role decision_scorer). Routes /api/decisions + /[id]/action (status|add_option|score|commit). DecisionRoomPage: open decision, add options, "⚡ Let WOBBLE score", commit with rationale, per-option score bars + chosen highlight + reasoning trail.
+- Offer Lab: domain/offer.ts (5 statuses + machine) + lib/offers (add/list/transition/addExperiment). Routes /api/offers + /[id]/action. OfferLabPage: design offer (promise/ICP/price/deliverables), run experiments (auto draft→testing), promote via status dropdown, score.
+- Tiles flipped planned→wired.
+- tests/decision-offer.test.ts (4).
+
+VERIFIED: typecheck clean; tests green. LIVE AI: decision "which lead channel" → LLM scored 3 options 72/85/80, leader = free-audit lead magnet (85), confidence 85, status→scoring. Test data cleaned.
+
+NEXT: Workers + Settings + Automations (mostly surface existing infra), then growth modules (Research Radar / SEO / Social / Web Analytics — AI-planning versions, no stubs), entity 360 pages, dashboards, audit pass. Media Studio kept (flagged). Deploy deferred.

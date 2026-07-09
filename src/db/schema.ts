@@ -1364,3 +1364,57 @@ export const projects = pgTable("projects", {
   index("projects_company_idx").on(table.companyId),
   index("projects_opportunity_idx").on(table.opportunityId),
 ]);
+
+// ---------------------------------------------------------------- Decision Room (strategy)
+// Where strategy is debated, scored and committed — each decision keeps its reasoning trail.
+
+export const decisions = pgTable("decisions", {
+  id: id(),
+  title: text("title").notNull(),
+  context: text("context"),
+  category: varchar("category", { length: 40 }).notNull().default("strategy"),
+  status: varchar("status", { length: 20 }).notNull().default("open"), // open|scoring|decided|revisit|archived
+  options: jsonb("options").$type<Array<{ id: string; label: string; rationale?: string; pros?: string[]; cons?: string[]; score?: number }>>().notNull().default([]),
+  decidedOptionId: text("decided_option_id"),
+  decisionRationale: text("decision_rationale"),
+  reasoningTrail: jsonb("reasoning_trail").$type<Array<{ at: string; note: string; by?: string }>>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(0),
+  owner: varchar("owner", { length: 120 }),
+  companyId: text("company_id"),
+  opportunityId: text("opportunity_id"),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("decisions_status_idx").on(table.status),
+  index("decisions_category_idx").on(table.category),
+]);
+
+// ---------------------------------------------------------------- Offer Lab (strategy)
+// Design, test and iterate offers. Low-confidence experiments never reach a founder cold.
+
+export const offers = pgTable("offers", {
+  id: id(),
+  name: text("name").notNull(),
+  hypothesis: text("hypothesis"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft|testing|winning|paused|retired
+  audience: text("audience"),
+  promise: text("promise"),
+  priceModel: varchar("price_model", { length: 40 }),
+  priceCents: integer("price_cents").notNull().default(0),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  deliverables: jsonb("deliverables").$type<string[]>().notNull().default([]),
+  experiments: jsonb("experiments").$type<Array<{ id: string; name: string; metric?: string; result?: string; status?: string }>>().notNull().default([]),
+  score: integer("score").notNull().default(0),
+  resultNotes: text("result_notes"),
+  owner: varchar("owner", { length: 120 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("offers_status_idx").on(table.status),
+]);
