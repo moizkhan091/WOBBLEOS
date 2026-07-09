@@ -3156,3 +3156,19 @@ VERIFIED LIVE: free audit → build proposal (6 services, title "…— Wobble A
 REVENUE ENGINE NOW COMPLETE (loop): Free Audit → Lead/Convert (CRM) → Paid Audit (5-agent team) → Proposal (from audit) → Invoice (on accept) → Finance dashboard. All wired in the REVENUE nav group: Free Audit, Paid Audit, Pipeline/CRM, Proposals, Invoices & Finance.
 
 NEXT: free-audit proposals need pricing (paid audit gives it, or add manual line-item pricing/LLM pricing suggestion in the proposal UI); LLM narrative-polish on proposals; premium HTML/PDF deck export of proposal + paid-audit report (still no pdf deps — build HTML first, puppeteer later); free-audit LLM enrichment + Apify social scrape (gated); feedback→diff-edit loop on generated docs; paid-audit ROI-prompt tuning (cents vs dollars). Partner's rest-of-ERP (tasks/meetings/projects/RBAC/versioning/integrations) still staged.
+
+## 2026-07-09 (session 2) - Claude (Opus 4.8) - Premium client-facing documents (audit report + proposal, print-to-PDF)
+
+The "looks like a million-dollar deliverable" layer the founder emphasized. Dependency-free (no pdf libs): a pure HTML renderer producing on-brand, print-optimised documents the founder opens in a tab and prints to PDF (Ctrl+P).
+
+FILES:
+- src/lib/documents/render.ts - renderAuditReportHtml (dark branded cover; Executive Summary + ROI stat cards; Current State acquisition/delivery/support cards + bottlenecks; Opportunities with impact/effort pills; 12-month roadmap timeline; confidential footer) + renderProposalHtml (cover; scope; services table with per-line pricing + total; timeline; terms). Inline CSS, @media print, HTML-escaped. Wobble lime #B6FF3B on ink.
+- src/app/api/audit/[id]/document/route.ts - serves the audit report HTML (works for free + paid; free maps summary→executiveSummary). src/app/api/proposals/[id]/document/route.ts - serves the proposal HTML. text/html, no-store; auth via proxy (founder session).
+- os-ui: "Report ↗" link on Free + Paid audit recent-list rows; "Document ↗" on proposal rows (open in new tab, stopPropagation).
+- tests/documents.test.ts - 2 tests (audit report contains sections + escapes HTML + formats money; proposal contains services/total/Included).
+
+VERIFIED LIVE: created a free audit, opened /api/audit/{id}/document -> 200 text/html; browser renders a premium dark cover ("WOBBLE · AI TRANSFORMATION AUDIT" + big title) then Current State cards + "7 AI opportunities" with green HIGH / blue MEDIUM pills + roadmap + confidential footer (screenshots). Test audit cleaned. Typecheck clean; 394 tests pass (was 392, +2); build compiles (both document routes).
+
+NOTE: free-audit docs leave Current State + Roadmap empty (free audits don't produce those — only paid). Free-audit opportunities have impact but no difficulty (2nd pill shows "—") — cosmetic; paid audits have both.
+
+NEXT: premium DECK/slide variant (this is a report doc; a slide-per-section deck is the founder's other ask — build an HTML slide deck renderer reusing this data); binary PDF export (puppeteer) if they want server-side PDF vs print; LLM narrative-polish + feedback→diff-edit loop on the documents; free-audit LLM enrichment + Apify scrape; paid-audit ROI-prompt tuning; free-audit proposal pricing (manual/LLM). Revenue engine loop is complete + now has premium deliverables.

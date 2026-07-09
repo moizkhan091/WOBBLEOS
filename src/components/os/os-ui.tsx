@@ -3141,6 +3141,7 @@ function FreeAuditPage() {
               <div key={a.id} onClick={() => setResult(a)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                 <Tag text={`${a.report.serviceCount} opps`} color={C.blue} />
                 <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}
@@ -3257,6 +3258,7 @@ function PaidAuditPage() {
               <div key={a.id} onClick={() => setReport(a.report)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                 <Tag text={`${a.report.opportunities?.length ?? 0} opps`} color={C.blue} />
                 <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}
@@ -3336,6 +3338,7 @@ function ProposalsPage() {
                 <span style={{ fontSize: 11, color: faint }}>{p.services.length} services · {p.timeline.length} phases</span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: C.lime }}>{money(p.pricingCents, p.currency)}</span>
                 <div style={{ display: "flex", gap: 6 }}>
+                  <a href={`/api/proposals/${p.id}/document`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 11.5 }}>Document ↗</a>
                   {actionsFor(p.status).map((x) => <button key={x.a} onClick={() => act(p.id, x.a)} style={{ ...(x.a === "reject" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5 }}>{x.label}</button>)}
                 </div>
               </div>
