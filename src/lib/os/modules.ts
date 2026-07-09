@@ -67,7 +67,7 @@ export const MODULES: Record<string, ModuleDef> = {
   connections: { id: "connections", label: "Connections", title: "Connections Registry", icon: "Cable", status: "wired", chunk: 35, api: "/api/connections", tagline: "The permission map for every API, scraper, model gateway, webhook, media tool, storage rail and external service WOBBLE OS is allowed to call." },
   skills: { id: "skills", label: "Skill Registry", title: "Prompt / Skill Registry", icon: "Wand2", status: "wired", chunk: 34, api: "/api/skills", tagline: "Versioned, approval-gated SOPs the workers run. Edit a skill, approve it, and behavior changes with no code." },
   approvals: { id: "approvals", label: "Approvals", title: "Approvals", icon: "BadgeCheck", status: "wired", chunk: 4, api: "/api/approvals", tagline: "The single gate. Every output here cleared self-review - your decision is logged with explicit attribution." },
-  workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "planned", chunk: 20, tagline: "Persistent worker processes running outside the web lifecycle. Live load, queue and health." },
+  workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "wired", api: "/api/workers", tagline: "Persistent worker processes running outside the web lifecycle — live heartbeats (online/stale) and a job-queue summary." },
   handoff: { id: "handoff", label: "n8n Handoff", title: "n8n Handoff", icon: "Webhook", status: "backend-ready", chunk: 18, api: "/api/n8n", tagline: "The bridge to execution - HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery." },
 
   // SYSTEM
@@ -76,7 +76,7 @@ export const MODULES: Record<string, ModuleDef> = {
   costs: { id: "costs", label: "Costs", title: "Costs", icon: "Receipt", status: "wired", chunk: 5, api: "/api/costs", tagline: "Spend across every model, render and service - against budget, in real time." },
   audit: { id: "audit", label: "Audit Log", title: "Audit Log", icon: "ScrollText", status: "wired", chunk: 3, api: "/api/audit", tagline: "Immutable record of every action, approval and system event with founder attribution." },
   backup: { id: "backup", label: "Backup & Restore", title: "Backup & Restore", icon: "HardDrive", status: "planned", chunk: 27, tagline: "Point-in-time snapshots. Company assets are never auto-deleted." },
-  settings: { id: "settings", label: "Settings", title: "Settings", icon: "Settings", status: "planned", chunk: 28, tagline: "Models, security, secrets and operational controls for the whole OS." },
+  settings: { id: "settings", label: "Settings", title: "Settings", icon: "Settings", status: "wired", api: "/api/settings", tagline: "Operational config for the whole OS — which integration keys are connected, the model-role map, and every provider's status." },
 };
 
 export const NAV_GROUPS: NavGroup[] = [

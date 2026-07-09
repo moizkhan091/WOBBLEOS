@@ -4097,6 +4097,109 @@ function OfferLabPage() {
   );
 }
 
+interface WorkerViewUI { id: string; workerName: string; workerType: string; status: string; live: boolean; currentJobId: string | null; lastSeenSecondsAgo: number }
+function WorkersPage() {
+  const state = useApi<{ workers: WorkerViewUI[]; online: number; stale: number; queue: { total: number; byStatus: Record<string, number>; byQueue: Record<string, number> } }>("/api/workers");
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  const workers = d?.workers ?? [];
+  const byStatus = d?.queue.byStatus ?? {};
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Online" value={String(d?.online ?? 0)} icon="Cpu" color={C.lime} />
+        <Kpi label="Stale" value={String(d?.stale ?? 0)} icon="AlertTriangle" color={C.orange} />
+        <Kpi label="Jobs (recent)" value={String(d?.queue.total ?? 0)} icon="ListChecks" color={C.blue} />
+        <Kpi label="Running" value={String(byStatus.processing ?? byStatus.active ?? 0)} icon="Loader2" color="#F5C542" />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Worker processes</div>
+        {workers.length === 0 ? <StateBlock kind="empty" message="No worker heartbeats yet. Workers register here when the runtime is running." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {workers.map((w) => (
+              <div key={w.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: w.live ? C.lime : C.orange }} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 140 }}>{w.workerName}</span>
+                <Tag text={w.workerType} color={C.gray} />
+                <Tag text={w.status} color={w.live ? C.lime : C.orange} />
+                {w.currentJobId ? <span style={{ fontSize: 11, color: faint }}>job {w.currentJobId.slice(0, 12)}</span> : null}
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 11, color: faint }}>{w.lastSeenSecondsAgo}s ago</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Job queue (last 200)</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {Object.entries(byStatus).length === 0 ? <span style={{ fontSize: 12, color: faint }}>No jobs yet.</span> : Object.entries(byStatus).map(([s, n]) => <Tag key={s} text={`${s}: ${n}`} color={s === "completed" ? C.lime : s === "failed" ? C.orange : C.blue} />)}
+        </div>
+        {Object.entries(d?.queue.byQueue ?? {}).length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>{Object.entries(d!.queue.byQueue).map(([q, n]) => <Tag key={q} text={`${q} · ${n}`} color={C.gray} />)}</div> : null}
+      </Panel>
+    </div>
+  );
+}
+
+interface SettingsOverviewUI { modelRoles: Array<{ role: string; provider: string; model: string }>; providers: Array<{ slug: string; label: string; enabled: boolean; permissionMode: string; healthStatus: string; allowedModules: string[] }>; integrations: Array<{ key: string; label: string; configured: boolean; envVar: string }> }
+function SettingsPage() {
+  const state = useApi<SettingsOverviewUI>("/api/settings");
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Integrations</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Which external keys the OS can see right now. Values are never shown — set them in <code>.env</code>.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 8 }}>
+          {(d?.integrations ?? []).map((i) => (
+            <div key={i.key} style={{ ...card, padding: "10px 12px", display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: i.configured ? C.lime : "rgba(255,255,255,0.2)" }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{i.label}</div>
+                <div style={{ fontSize: 10.5, color: faint }}>{i.envVar}</div>
+              </div>
+              <Tag text={i.configured ? "connected" : "not set"} color={i.configured ? C.lime : C.gray} />
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Model roles</div>
+        {(d?.modelRoles ?? []).length === 0 ? <StateBlock kind="empty" message="No model roles configured. Seed the OS to map roles → models." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {(d?.modelRoles ?? []).map((r) => (
+              <div key={r.role} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, minWidth: 190 }}>{r.role}</span>
+                <span style={{ fontSize: 11.5, color: faint }}>{r.provider}</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 11.5, color: C.lime }}>{r.model}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Providers</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(d?.providers ?? []).map((p) => (
+            <div key={p.slug} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Tag text={p.enabled ? "enabled" : "off"} color={p.enabled ? C.lime : C.gray} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 120 }}>{p.label}</span>
+              <span style={{ fontSize: 11, color: faint }}>{p.permissionMode}</span>
+              <Tag text={p.healthStatus} color={p.healthStatus === "healthy" ? C.lime : C.gray} />
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 10.5, color: faint }}>{p.allowedModules.length ? p.allowedModules.join(", ") : "all modules"}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4121,6 +4224,8 @@ const WIRED: Record<string, React.ComponentType> = {
   ask: AskPage,
   decision: DecisionRoomPage,
   offers: OfferLabPage,
+  workers: WorkersPage,
+  settings: SettingsPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
