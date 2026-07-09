@@ -656,6 +656,9 @@ function ContentPage() {
   const url = "/api/content/packets?limit=100" + (track ? "&contentTrackId=" + encodeURIComponent(track) : "");
   const s = useApi<{ packets: Record<string, unknown>[] }>(url);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [objective, setObjective] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamMsg, setTeamMsg] = useState<string | null>(null);
   const tracks = tracksApi.data?.tracks ?? [];
   const guard = offlineIf(s);
   if (guard) return guard;
@@ -663,6 +666,21 @@ function ContentPage() {
   const groups: Record<string, Record<string, unknown>[]> = {};
   for (const p of packets) { const k = String(p.approvalStatus ?? "draft"); (groups[k] ||= []).push(p); }
   const order = Object.keys(groups);
+
+  async function runTeam() {
+    setTeamMsg(null);
+    if (!track) { setTeamMsg("Pick a track first (the team writes in that track's voice)."); return; }
+    if (!objective.trim()) { setTeamMsg("Add an objective for the team, e.g. 'book more discovery calls'."); return; }
+    setTeamBusy(true);
+    try {
+      const r = await fetch("/api/content/graph", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contentTrackId: track, objective: objective.trim() }) });
+      const j = (await r.json()) as { ok?: boolean; error?: string };
+      if (!r.ok || j.ok === false) setTeamMsg("Error: " + String(j.error ?? "HTTP " + r.status));
+      else { setTeamMsg("Content team queued. A worker runs the 5 agents; the pack appears here when they finish."); setObjective(""); setTimeout(() => s.reload(), 1500); }
+    } catch (e) { setTeamMsg("Error: " + String(e)); } finally { setTeamBusy(false); }
+  }
+
+  const teamAgents = ["Strategist", "Researcher", "Copywriter", "Scorer"];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -673,6 +691,34 @@ function ContentPage() {
         </select>
         <button onClick={() => setGenOpen(true)} style={primaryBtn}>Generate WOBBLE content</button>
       </div>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="Users" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Content Team — multi-agent</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.6, color: muted, lineHeight: 1.55, maxWidth: 720, marginBottom: 12 }}>
+          Every pack is produced by a TEAM, not one model: a strategist sets the angle, a researcher grounds it in the compiled knowledge (with provenance), a copywriter drafts then self-critiques, and a scorer gates quality before it reaches your approval queue.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+          {teamAgents.map((a, i) => (
+            <React.Fragment key={a}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: C.white, padding: "5px 10px", borderRadius: 8, background: "rgba(184,255,44,0.10)", border: "1px solid rgba(184,255,44,0.28)" }}>{a}</span>
+              {i < teamAgents.length - 1 ? <span style={{ color: faint, fontSize: 12 }}>›</span> : null}
+            </React.Fragment>
+          ))}
+          <span style={{ color: faint, fontSize: 12 }}>›</span>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "#0A0A0A", padding: "5px 10px", borderRadius: 8, background: C.lime }}>Content Pack</span>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={objective} onChange={(e) => setObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runTeam()} placeholder="Objective for the team, e.g. book more discovery calls" style={{ ...inputStyle, flex: 1, minWidth: 240 }} />
+          <button onClick={runTeam} disabled={teamBusy} style={teamBusy ? disabledBtn : primaryBtn}>{teamBusy ? "Queuing…" : "Run the team"}</button>
+        </div>
+        <div style={{ fontSize: 10.8, color: faint, marginTop: 8 }}>Runs 5 model calls on the selected track. Grounded in approved sources + the Knowledge Compiler.</div>
+        {teamMsg ? <div style={{ fontSize: 12, color: teamMsg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{teamMsg}</div> : null}
+      </Panel>
+
       {packets.length === 0 ? (
         <StateBlock kind="empty" message="No content packets yet. They appear here once generated (Chunk 15 worker) or created via /api/content/packets." />
       ) : (
