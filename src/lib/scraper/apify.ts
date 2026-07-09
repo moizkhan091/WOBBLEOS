@@ -56,13 +56,14 @@ export interface WebsiteSignals {
 
 /** Scrape a prospect's website into a compact text signal. */
 export async function scrapeWebsite(url: string, c: ApifyConfig = {}): Promise<WebsiteSignals> {
-  const items = await runApifyActor<{ url?: string; title?: string; text?: string; markdown?: string }>(
+  const items = await runApifyActor<{ url?: string; title?: string; text?: string; markdown?: string; metadata?: { title?: string } }>(
     WEBSITE_ACTOR(),
     { startUrls: [{ url }], maxCrawlPages: 8, crawlerType: "cheerio" },
     c,
   );
   const text = items.map((i) => i.text || i.markdown || "").join("\n\n").slice(0, 12000);
-  return { url, title: items[0]?.title ?? url, text, pages: items.length };
+  const title = items.find((i) => i.title || i.metadata?.title)?.title ?? items.find((i) => i.metadata?.title)?.metadata?.title ?? url;
+  return { url, title, text, pages: items.length };
 }
 
 export interface SocialPost {
