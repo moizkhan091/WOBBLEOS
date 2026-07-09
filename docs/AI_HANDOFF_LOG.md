@@ -3214,3 +3214,17 @@ LOCKED (founder answers) for NEXT — the 3-doc AUDIT WORKSPACE (one workspace p
 - Doc 2 = INTERNAL audit roadmap: asks for the client's stakeholders/team + free-call info, then (using the paid-audit interview methodology from the YouTube transcript) outputs who to interview + what to ask + sequence. Reads ONLY this client's Doc 1.
 - Doc 3 = final client-facing McKinsey deck: per-interview notes/transcript slots (off the Doc 2 roadmap) → synthesized detailed findings + recommendations. Reads ONLY this client's Doc 1 + Doc 2 + findings.
 - Also pending from the partner's full ERP brief (pasted in chat): contacts/tasks/meetings/projects modules, entity detail pages + activity timelines, RBAC/permissions, versioning/rollback, automation rules engine, the 5 dashboards, system health, integrations registry. Build in the brief's phase order.
+
+## 2026-07-09 - Claude (Opus 4.8) - Doc 1: the merged niche-customized pitch (audit workspace stage 1)
+
+Building the 3-stage audit workspace. This lands Doc 1 (the founder's "what Wobble can do" pitch) — the Free Audit MERGED with a niche-customized capability showcase.
+
+- src/lib/scraper/apify.ts (prior commit): gated Apify client for website/social signals.
+- domain/pitch-graph.ts: pitchSchema, buildPitchPrompt (LLM writes headline + situation + whatWeNoticed + services with niche-rewritten whatItDoes/outcomeForYou + whyWobble + cta, picking 6-12 relevant services from the full menu, grounded in scraped signals), deterministicPitch fallback, pitchToReportShape (maps to the shared audit report/deck renderer). parsePitch.
+- lib/pitch/index.ts: runPitch = diagnose() (deterministic gaps) + scrapeBusinessSignals (Apify, gated) + LLM pitch (defaultRunNode=runTextProvider role pitch_writer; any error incl. no key -> deterministic fallback). Persists kind="pitch" scoped to companyId (data-isolated — uses only this prospect's inputs/signals). +pitch_writer model role (seed-runner).
+- /api/audit/pitch (POST run, GET list). UI: Free Audit page gains website + Instagram inputs, a "✨ Generate AI pitch" button (+ kept "Quick diagnosis"), and a pitch result panel with "Open pitch doc ↗" / "Open deck ↗" (renders via the existing /api/audit/[id]/document + /deck through pitchToReportShape).
+- tests/apify-scraper.test.ts (5) + tests/pitch.test.ts (5): mocked fetch/LLM, no spend.
+
+VERIFIED LIVE (one real LLM pitch, cents, then cleaned up): dental prospect -> usedLlm=true, scraped=false (no Apify key -> correct fallback), headline "Transform Your Dental Practice…", 5 observations + 7 services each DENTAL-customized (patients/appointments/practice), tailored CTA. Renders via the doc/deck routes. Typecheck clean; 405 tests pass (was 395: +scraper 5, +pitch 5, minus reshuffles); build compiles (/api/audit/pitch).
+
+NEXT (audit workspace remaining): Doc 2 = INTERNAL interview roadmap (asks for stakeholders/team + free-call info -> who to interview + what to ask + sequence, reading ONLY this client's Doc 1; uses the paid-audit YouTube methodology). Doc 3 = final client deck from Doc 1 + Doc 2 + per-interview notes/transcript slots (can reuse/feed the deep paid-audit-graph). Then a per-company Audit WORKSPACE UI that ties the 3 stages together with strict per-client data isolation. Plus the partner's fuller ERP (contacts/tasks/meetings/projects/detail-pages/RBAC/versioning/automation-rules/dashboards/system-health) in the brief's phase order. APIFY_API_KEY needed to actually scrape (gated).

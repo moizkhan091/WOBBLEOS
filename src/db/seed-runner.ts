@@ -54,6 +54,7 @@ function modelRoles() {
     audit_prioritization: or(process.env.AUDIT_PRIORITIZATION_MODEL?.trim() || "openai/gpt-4o-mini"),
     audit_roadmap: or(process.env.AUDIT_ROADMAP_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     audit_report: or(process.env.AUDIT_REPORT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    pitch_writer: or(process.env.PITCH_WRITER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
   };
 }
 

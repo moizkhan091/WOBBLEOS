@@ -3150,20 +3150,33 @@ interface FreeAuditRow { id: string; businessName: string; report: { summary: st
 function FreeAuditPage() {
   const listState = useApi<{ audits: FreeAuditRow[] }>("/api/audit/free");
   const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [problems, setProblems] = useState("");
+  const [website, setWebsite] = useState(""); const [instagram, setInstagram] = useState("");
   const [signals, setSignals] = useState<string[]>([]); const [leads, setLeads] = useState(""); const [deal, setDeal] = useState("");
   const [busy, setBusy] = useState(false); const [result, setResult] = useState<FreeAuditRow | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [pitch, setPitch] = useState<{ auditId: string; usedLlm: boolean; scraped: boolean; pitch: { headline: string; whatWeNoticed: string[]; services: { name: string; whatItDoes: string; outcomeForYou: string }[]; cta: string } } | null>(null);
   const guard = offlineIf(listState);
   if (guard) return guard;
   const audits = listState.data?.audits ?? [];
   function toggle(k: string) { setSignals((s) => s.includes(k) ? s.filter((x) => x !== k) : [...s, k]); }
+  function auditBody() {
+    return { businessName: name, industry: industry || undefined, website: website || undefined, instagram: instagram || undefined, signals, problems: problems.split("\n").map((s) => s.trim()).filter(Boolean), monthlyLeads: leads ? Number(leads) : undefined, avgDealValueCents: deal ? Math.round(Number(deal) * 100) : undefined };
+  }
   async function run() {
     if (!name.trim()) { setMsg("Enter the business name."); return; }
     setBusy(true); setMsg(null); setResult(null);
     try {
-      const body = { businessName: name, industry: industry || undefined, signals, problems: problems.split("\n").map((s) => s.trim()).filter(Boolean), monthlyLeads: leads ? Number(leads) : undefined, avgDealValueCents: deal ? Math.round(Number(deal) * 100) : undefined };
-      const r = await fetch("/api/audit/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch("/api/audit/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(auditBody()) });
       const j = (await r.json()) as { ok?: boolean; audit?: FreeAuditRow; error?: string };
       if (r.ok && j.ok !== false && j.audit) { setResult(j.audit); listState.reload(); } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  async function runPitch() {
+    if (!name.trim()) { setMsg("Enter the business name."); return; }
+    setBusy(true); setMsg(null); setPitch(null);
+    try {
+      const r = await fetch("/api/audit/pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(auditBody()) });
+      const j = await r.json();
+      if (r.ok && j.ok !== false) setPitch(j); else setMsg("Error: " + String(j.error ?? r.status));
     } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
   }
   const impactColor = (i: string) => (i === "high" ? C.lime : i === "medium" ? C.blue : C.gray);
@@ -3183,8 +3196,10 @@ function FreeAuditPage() {
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Run an audit</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 220 }} />
-          <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (optional)" style={{ ...inputStyle, width: 160 }} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 200 }} />
+          <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry / niche" style={{ ...inputStyle, width: 150 }} />
+          <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website (for AI pitch)" style={{ ...inputStyle, width: 180 }} />
+          <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram @" style={{ ...inputStyle, width: 130 }} />
           <input value={leads} onChange={(e) => setLeads(e.target.value)} placeholder="Monthly leads" inputMode="numeric" style={{ ...inputStyle, width: 120 }} />
           <input value={deal} onChange={(e) => setDeal(e.target.value)} placeholder="Avg deal ($)" inputMode="decimal" style={{ ...inputStyle, width: 110 }} />
         </div>
@@ -3195,11 +3210,36 @@ function FreeAuditPage() {
           ))}
         </div>
         <textarea value={problems} onChange={(e) => setProblems(e.target.value)} placeholder="Anything else they said (one problem per line)…" style={{ ...inputStyle, width: "100%", minHeight: 58, resize: "vertical" }} />
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-          <button onClick={run} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Diagnosing…" : "Run free audit"}</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+          <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer" }}>{busy ? "…" : "Quick diagnosis"}</button>
+          <button onClick={runPitch} disabled={busy} title="Doc 1 — the niche-customized 'what Wobble can do' pitch" style={busy ? disabledBtn : primaryBtn}>{busy ? "Writing pitch…" : "✨ Generate AI pitch"}</button>
           {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
         </div>
       </Panel>
+
+      {pitch ? (
+        <Panel>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700 }}>{pitch.pitch.headline}</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <a href={`/api/audit/${pitch.auditId}/document`} target="_blank" rel="noreferrer" style={{ ...primaryBtn, textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open pitch doc ↗</a>
+              <a href={`/api/audit/${pitch.auditId}/deck`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open deck ↗</a>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: faint, marginBottom: 8 }}>{pitch.usedLlm ? "AI-written, niche-customized" : "deterministic fallback"}{pitch.scraped ? " · site/social scraped" : ""}</div>
+          {pitch.pitch.whatWeNoticed.length ? <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>What we noticed</div> : null}
+          <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 12.5, color: muted }}>{pitch.pitch.whatWeNoticed.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {pitch.pitch.services.map((s, i) => (
+              <div key={i} style={{ ...card, padding: "9px 12px" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{s.name}</div>
+                <div style={{ fontSize: 11.8, color: muted, marginTop: 2 }}>{s.whatItDoes}</div>
+                <div style={{ fontSize: 11.5, color: "#2a6a00", marginTop: 3 }}>→ {s.outcomeForYou}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       {rep ? (
         <Panel>
