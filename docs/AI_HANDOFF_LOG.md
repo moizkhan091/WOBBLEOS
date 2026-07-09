@@ -2728,3 +2728,21 @@ Verified: typecheck clean; 243 tests pass; production build green (pre-push). Li
 Budget mode remains: content_strategy = gpt-4o-mini (cheap testing). Restore to anthropic/claude-sonnet-4.5 for production content when credits are loaded (it is in the catalog).
 
 Next: Slice 2 = Knowledge Compiler (Chunk 13). Also queued: wire Ask WOBBLE to call proposeModelSwap conversationally; give model_scout a real source for new-model signals (provider model-list API / release notes); Settings UI for the catalog + role map.
+
+## 2026-07-09 - Claude (Opus 4.8) - Ask WOBBLE System Awareness (orchestrator step 1)
+
+Goal (founder): make Ask WOBBLE the ultimate command surface that knows the whole OS and can take actions. Established the architecture: give it (1) a live SYSTEM MAP and (2) a growing set of guardrailed TOOLS - never raw code. This chunk delivers step 1 (knowledge).
+
+New:
+- src/lib/system-map/index.ts - getSystemSnapshot(): live, structured OS state (agents count/list/by-team, modules + wired/planned/backend-ready counts, pending approvals grouped by type, model roles + catalog). Injectable stores (testable without DB). formatSystemSnapshot() renders a compact, authoritative prompt block.
+- Ask WOBBLE now injects the system snapshot into its grounded-answer context (src/lib/domain/ask.ts buildAskContext gains systemSnapshot; src/lib/ask/index.ts fetches it via getSystemSnapshot, non-fatal if unavailable). Prompt marks it AUTHORITATIVE for operational questions (agents/approvals/models/modules) - no [n] citation needed for those.
+- tests/system-map.test.ts (3): aggregation, formatting, and that the snapshot reaches the model prompt.
+
+Ops fixes found while testing:
+- OpenRouter provider_connection was disabled (enabled=false by seed default) - would block ALL live LLM agents. Enabled it. (Consider seeding enabled=true for openrouter, or a Settings toggle.)
+
+Verified live (cheap model): asked "how many agents + what's pending approval" -> "19 active agents; 9 pending: 4 memory, 3 content, 1 model upgrade, 1 source" (all real). Asked "which model does content use + name two intelligence agents" -> "openai/gpt-4o-mini; competitor_scout, market_researcher". Also proved the model_scout -> proposeModelSwap -> pending approval -> Ask WOBBLE reports it loop end to end. typecheck clean; 246 tests; build green.
+
+Left a real pending approval (approval_006cad1f...) from the model_scout demo (ask_wobble gpt-4o-mini -> gpt-4o) as live test data; founder can approve/reject in Approvals.
+
+NEXT (Ask WOBBLE orchestrator step 2 - the "it does stuff" layer): add LLM tool-calling. Extend the OpenRouter adapter for OpenAI-style tools/tool_calls; define a TOOL REGISTRY of safe capabilities (read: list_agents, list_pending_approvals, get_model_config, list_models; action: propose_model_swap, apply_approval) each going through existing guardrails (validation/approvals/audit); an orchestration loop that lets Ask WOBBLE choose tools, ask clarifying questions ("which agent/role?"), and execute approved actions. This is how "tell Ask WOBBLE to upgrade a model -> it asks which -> proposes -> on yes, applies" works without exposing code.

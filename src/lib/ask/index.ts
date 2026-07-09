@@ -5,6 +5,7 @@ import { listMemoryRecords, retrieveMemoryContext } from "@/lib/memory";
 import { listApprovedSourcesForJobs, listSourceChunks } from "@/lib/sources";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { enqueueJob } from "@/lib/jobs";
+import { formatSystemSnapshot, getSystemSnapshot } from "@/lib/system-map";
 import {
   buildAskAnswer,
   buildAskContext,
@@ -58,6 +59,7 @@ export interface AskWobbleDeps {
   retrieveBrain?: () => Promise<AskBrainRecord[]>;
   retrieveMemory?: (question: string) => Promise<AskMemoryChunk[]>;
   retrieveSources?: () => Promise<AskSourceRef[]>;
+  retrieveSystemSnapshot?: () => Promise<string | undefined>;
   runProvider?: (input: { role: string; module: string; messages: ProviderMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
   enqueueJob?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -119,11 +121,17 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
   const retrieveBrain = deps.retrieveBrain ?? defaultRetrieveBrain;
   const retrieveMemory = deps.retrieveMemory ?? ((q: string) => defaultRetrieveMemory(q, parsed.memoryLimit));
   const retrieveSources = deps.retrieveSources ?? (() => defaultRetrieveSources(parsed.sourceLimit, parsed.sourceChunkLimit));
+  const retrieveSystemSnapshot = deps.retrieveSystemSnapshot ?? defaultRetrieveSystemSnapshot;
   const runProvider = deps.runProvider ?? defaultRunProvider;
 
-  const [brain, memory, sources] = await Promise.all([retrieveBrain(), retrieveMemory(parsed.question), retrieveSources()]);
+  const [brain, memory, sources, systemSnapshot] = await Promise.all([
+    retrieveBrain(),
+    retrieveMemory(parsed.question),
+    retrieveSources(),
+    retrieveSystemSnapshot(),
+  ]);
   const doNotSay = deps.doNotSay ?? extractDoNotSay(brain);
-  const context = buildAskContext({ question: parsed.question, brain, memory, sources, doNotSay });
+  const context = buildAskContext({ question: parsed.question, brain, memory, sources, doNotSay, systemSnapshot });
 
   // Always call the model (cost-logged). When evidence is thin the prompt makes
   // it explain the gap / ask a clarifying question instead of inventing.
@@ -177,6 +185,17 @@ async function defaultRetrieveSources(limit?: number, chunkLimit?: number): Prom
     trustLevel: s.trustLevel,
     chunks: chunksBySource[index].map((chunk) => ({ id: chunk.id, content: chunk.content })),
   }));
+}
+
+async function defaultRetrieveSystemSnapshot(): Promise<string | undefined> {
+  try {
+    const snapshot = await getSystemSnapshot();
+    return formatSystemSnapshot(snapshot);
+  } catch (error) {
+    // Non-fatal: Ask WOBBLE still answers from Brain/evidence if the live map is unavailable.
+    console.error("system snapshot failed:", error instanceof Error ? error.message : error);
+    return undefined;
+  }
 }
 
 async function defaultRunProvider(input: { role: string; module: string; messages: ProviderMessage[]; maxTokens?: number }) {

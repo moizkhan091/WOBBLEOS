@@ -171,6 +171,8 @@ export interface BuildAskContextInput {
   memory: AskMemoryChunk[];
   sources: AskSourceRef[];
   doNotSay?: string;
+  /** Live OS state (agents, modules, pending approvals, models) — authoritative for operational questions. */
+  systemSnapshot?: string;
 }
 
 export interface AskContext {
@@ -197,10 +199,14 @@ export function buildAskContext(input: BuildAskContextInput): AskContext {
   const systemPrompt = [
     "You are WOBBLE OS answering for the founders. Use ONLY the WOBBLE Brain and the approved evidence below. Do not invent sources or facts.",
     input.doNotSay ? `Do-not-say rules (must follow): ${input.doNotSay}` : "",
+    input.systemSnapshot
+      ? `Live OS system state (AUTHORITATIVE for operational questions about the OS itself — number of agents, what each agent is, modules and their status, what is waiting on approval, which model each role uses. Answer such questions directly from this; no [n] citation needed):\n${input.systemSnapshot}`
+      : "",
     `WOBBLE Brain:\n${brainBlock}`,
     `Approved evidence (cite by [n]):\n${evidenceBlock}`,
     "Answer rules: cite serious claims by their [n]; include a short opposing view or key risk; flag what needs founder judgment.",
-    "If the approved evidence is empty or insufficient for a serious/strategic answer, do NOT invent one: say clearly what is missing, ask one clarifying question if useful, and suggest what sources or research to add.",
+    "For operational questions about the OS (e.g. how many agents exist and what they do, what is pending approval, which model a role uses, which modules are built), answer directly and specifically from the live system state.",
+    "If the approved evidence is empty or insufficient for a serious/strategic answer AND it is not an operational question answerable from live system state, do NOT invent one: say clearly what is missing, ask one clarifying question if useful, and suggest what sources or research to add.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -214,7 +220,7 @@ export function buildAskContext(input: BuildAskContextInput): AskContext {
     citations,
     evidenceCount,
     hasHighTrust,
-    hasSufficientEvidence: evidenceCount > 0 || input.brain.length > 0,
+    hasSufficientEvidence: evidenceCount > 0 || input.brain.length > 0 || Boolean(input.systemSnapshot),
   };
 }
 
