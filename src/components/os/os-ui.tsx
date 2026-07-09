@@ -3786,6 +3786,90 @@ function MeetingsPage() {
   );
 }
 
+interface ProjectRowUI { id: string; name: string; status: string; healthScore: number; owner: string | null; companyId: string | null; opportunityId: string | null; endDate: string | null; milestones: Array<{ title: string; done?: boolean }>; deliverables: Array<{ title: string; done?: boolean }> }
+const PROJECT_STATUSES_UI = ["not_started", "onboarding", "in_progress", "waiting_on_client", "at_risk", "completed", "paused", "cancelled"];
+const PROJECT_STATUS_COLORS: Record<string, string> = { not_started: C.gray, onboarding: C.blue, in_progress: C.blue, waiting_on_client: "#F5C542", at_risk: C.orange, completed: C.lime, paused: C.gray, cancelled: C.gray };
+function healthColor(n: number): string { return n >= 70 ? C.lime : n >= 40 ? "#F5C542" : C.orange; }
+
+function ProjectsPage() {
+  const state = useApi<{ projects: ProjectRowUI[] }>("/api/projects?limit=300");
+  const [f, setF] = useState({ name: "", owner: "", companyId: "", opportunityId: "", endDate: "" });
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const projects = state.data?.projects ?? [];
+  const active = projects.filter((p) => !["completed", "cancelled"].includes(p.status));
+  const atRisk = projects.filter((p) => p.status === "at_risk" || p.healthScore < 40);
+  const avgHealth = active.length ? Math.round(active.reduce((s, p) => s + p.healthScore, 0) / active.length) : 0;
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.name.trim()) { setMsg("Project needs a name."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: f.name, owner: f.owner || undefined, companyId: f.companyId || undefined, opportunityId: f.opportunityId || undefined, endDate: f.endDate || undefined }) });
+      if (r.ok) { setF({ name: "", owner: "", companyId: "", opportunityId: "", endDate: "" }); reload(); } else setMsg("Error saving project.");
+    } finally { setBusy(false); }
+  }
+  async function setStatus(id: string, status: string) { await fetch(`/api/projects/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Active projects" value={String(active.length)} icon="FolderKanban" color={C.blue} />
+        <Kpi label="At risk" value={String(atRisk.length)} icon="AlertTriangle" color={C.orange} />
+        <Kpi label="Avg health" value={`${avgHealth}`} icon="Activity" color={healthColor(avgHealth)} />
+        <Kpi label="Delivered" value={String(projects.filter((p) => p.status === "completed").length)} icon="CheckCircle2" color={C.lime} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Start a client project</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="Project name" style={{ ...inputStyle, width: 200 }} />
+          <input value={f.owner} onChange={(e) => setF((s) => ({ ...s, owner: e.target.value }))} placeholder="Owner" style={{ ...inputStyle, width: 120 }} />
+          <input value={f.companyId} onChange={(e) => setF((s) => ({ ...s, companyId: e.target.value }))} placeholder="Company id" style={{ ...inputStyle, width: 130 }} />
+          <input value={f.opportunityId} onChange={(e) => setF((s) => ({ ...s, opportunityId: e.target.value }))} placeholder="From deal (opp id)" style={{ ...inputStyle, width: 150 }} />
+          <input type="date" value={f.endDate} onChange={(e) => setF((s) => ({ ...s, endDate: e.target.value }))} style={{ ...inputStyle, width: "auto" }} />
+          <button onClick={create} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Create"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Projects ({projects.length})</div>
+        {projects.length === 0 ? <StateBlock kind="empty" message="No projects yet. A won deal becomes a project here." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {projects.map((p) => {
+              const items = [...(p.milestones ?? []), ...(p.deliverables ?? [])];
+              const done = items.filter((i) => i.done).length;
+              return (
+                <div key={p.id} style={{ ...card, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 7 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Tag text={p.status.replace(/_/g, " ")} color={PROJECT_STATUS_COLORS[p.status] ?? C.gray} />
+                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 140 }}>{p.name}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: healthColor(p.healthScore) }} />
+                      health {p.healthScore}
+                    </span>
+                    {p.owner ? <span style={{ fontSize: 11, color: faint }}>{p.owner}</span> : null}
+                    {p.endDate ? <span style={{ fontSize: 11, color: faint }}>due {new Date(p.endDate).toLocaleDateString()}</span> : null}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {items.length ? <span style={{ fontSize: 11, color: faint }}>{done}/{items.length} deliverables</span> : <span style={{ fontSize: 11, color: faint }}>no deliverables yet</span>}
+                    <div style={{ flex: 1 }} />
+                    {!["completed", "cancelled"].includes(p.status) ? (
+                      <select value={p.status} onChange={(e) => setStatus(p.id, e.target.value)} style={{ ...selectStyle, fontSize: 11.5, padding: "4px 8px" }}>
+                        {PROJECT_STATUSES_UI.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+                      </select>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -3794,6 +3878,7 @@ const WIRED: Record<string, React.ComponentType> = {
   invoices: InvoicesPage,
   tasks: TasksPage,
   meetings: MeetingsPage,
+  projects: ProjectsPage,
   audit_workspace: AuditWorkspacePage,
   free_audit: FreeAuditPage,
   paid_audit: PaidAuditPage,

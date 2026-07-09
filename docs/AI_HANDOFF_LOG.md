@@ -3272,3 +3272,18 @@ Partner ERP brief sections E + F. Migration 0018: tasks + meetings tables.
 VERIFIED: typecheck clean; full suite green; build compiles (/api/tasks, /api/tasks/[id]/action, /api/meetings, /api/meetings/[id]/action). Tasks/Meetings unit-tested.
 
 NEXT (partner ERP remaining): Projects (won deal → workspace), entity DETAIL PAGES + activity timelines (the "click a company/deal and see everything" screens — high value), RBAC/permissions, versioning/rollback, automation-rules engine, the role dashboards (sales/finance/delivery), system health, integrations registry. Then Content Command upgrades (image gen + feedback loop). Deploy still deferred (VPS + SSH pending from founder).
+
+## 2026-07-10 - Claude (Opus 4.8) - ERP: Projects / Client Delivery + Won→Project wiring
+
+Partner ERP brief section I ("won deal creates project — no orphan records"). Migration 0019: projects table.
+- domain/project.ts: 8 statuses + transition machine, milestones/deliverables (jsonb), computeHealthScore (deterministic 0-100 from status + progress + overdue), createProjectSchema, buildProjectRow.
+- lib/projects: addProject/listProjects/transitionProject/updateProgress (health recomputed on every change), soft-delete + audited, injectable store.
+- /api/projects (GET/POST) + /api/projects/[id]/action (status | progress). ProjectsPage UI (KPIs active/at-risk/avg-health/delivered, start-project form, per-project health dot + deliverable count + status dropdown). "Projects / Delivery" tile in OPERATIONS.
+- CONNECTED: /api/crm/opportunities/[id]/stage now auto-creates a project (status=onboarding, carries name/company/proposal/services/owner) the first time a deal hits "won" — idempotent (one project per opportunity).
+- tests/projects.test.ts (5).
+
+VERIFIED: typecheck clean; full suite 426 passing; production build compiles (all 4 routes). LIVE DB round-trip via tsx: create→transition→progress→list, jsonb arrays persist, health 70→77 recompute correct; test rows cleaned up.
+
+Business flow now complete end to end: Lead → (Quick Pitch / Audit Workspace 3-doc) → Proposal → Invoice → Deal Won → **Project / Delivery**.
+
+NEXT (partner ERP remaining): entity DETAIL PAGES + activity timelines (click a company/deal → everything: contacts, deals, tasks, meetings, projects, invoices, audit trail — highest-value connective UI), RBAC/permissions, versioning/rollback, automation-rules engine, role dashboards (sales/finance/delivery), system health, integrations registry. Then Content Command upgrades. Deploy deferred (VPS + SSH pending).

@@ -1333,3 +1333,34 @@ export const meetings = pgTable("meetings", {
   index("meetings_start_idx").on(table.startAt),
   index("meetings_company_idx").on(table.companyId),
 ]);
+
+// ---------------------------------------------------------------- Projects / Client Delivery (ERP brief I)
+// A won deal becomes a client project workspace. Milestones/deliverables + health.
+
+export const projects = pgTable("projects", {
+  id: id(),
+  name: text("name").notNull(),
+  companyId: text("company_id"),
+  opportunityId: text("opportunity_id"),
+  proposalId: text("proposal_id"),
+  startDate: timestamp("start_date", { withTimezone: true }),
+  endDate: timestamp("end_date", { withTimezone: true }),
+  owner: varchar("owner", { length: 120 }),
+  teamMembers: jsonb("team_members").$type<string[]>().notNull().default([]),
+  status: varchar("status", { length: 24 }).notNull().default("not_started"), // not_started|onboarding|in_progress|waiting_on_client|at_risk|completed|paused|cancelled
+  servicesIncluded: jsonb("services_included").$type<string[]>().notNull().default([]),
+  milestones: jsonb("milestones").$type<Array<{ title: string; due?: string; done?: boolean }>>().notNull().default([]),
+  deliverables: jsonb("deliverables").$type<Array<{ title: string; done?: boolean }>>().notNull().default([]),
+  healthScore: integer("health_score").notNull().default(80),
+  clientNotes: text("client_notes"),
+  internalNotes: text("internal_notes"),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("projects_status_idx").on(table.status),
+  index("projects_company_idx").on(table.companyId),
+  index("projects_opportunity_idx").on(table.opportunityId),
+]);

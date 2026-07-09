@@ -134,6 +134,13 @@
       "when": 1783623053387,
       "tag": "0018_bumpy_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783624211114,
+      "tag": "0019_glamorous_ogun",
+      "breakpoints": true
     }
   ]
 }
