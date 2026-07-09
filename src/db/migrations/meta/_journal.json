@@ -127,6 +127,13 @@
       "when": 1783618536562,
       "tag": "0017_lowly_lester",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783623053387,
+      "tag": "0018_bumpy_genesis",
+      "breakpoints": true
     }
   ]
 }

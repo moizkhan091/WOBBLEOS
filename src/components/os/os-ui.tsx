@@ -3637,12 +3637,163 @@ function AuditWorkspacePage() {
   );
 }
 
+interface TaskRowUI { id: string; title: string; taskType: string; priority: string; status: string; assignedTo: string | null; dueDate: string | null; opportunityId: string | null }
+const TASK_TYPES_UI = ["call", "whatsapp_followup", "email_followup", "meeting_prep", "proposal_work", "audit_work", "invoice_followup", "client_delivery", "internal_admin", "content_task", "research_task", "finance_task"];
+const TASK_STATUS_COLORS: Record<string, string> = { not_started: C.gray, in_progress: C.blue, waiting: "#F5C542", blocked: C.orange, needs_review: "#B87CFF", completed: C.lime, cancelled: C.gray };
+
+function TasksPage() {
+  const state = useApi<{ tasks: TaskRowUI[] }>("/api/tasks?limit=300");
+  const [f, setF] = useState({ title: "", taskType: "call", priority: "medium", assignedTo: "", dueDate: "", opportunityId: "" });
+  const [filter, setFilter] = useState("open");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const all = state.data?.tasks ?? [];
+  const now = Date.now();
+  const overdue = (t: TaskRowUI) => t.dueDate && new Date(t.dueDate).getTime() < now && t.status !== "completed" && t.status !== "cancelled";
+  const open = all.filter((t) => t.status !== "completed" && t.status !== "cancelled");
+  const shown = filter === "all" ? all : filter === "overdue" ? all.filter(overdue) : filter === "done" ? all.filter((t) => t.status === "completed") : open;
+  async function reload() { state.reload(); }
+  async function create() {
+    if (!f.title.trim()) { setMsg("Task needs a title."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: f.title, taskType: f.taskType, priority: f.priority, assignedTo: f.assignedTo || undefined, dueDate: f.dueDate || undefined, opportunityId: f.opportunityId || undefined }) });
+      if (r.ok) { setF({ title: "", taskType: "call", priority: "medium", assignedTo: "", dueDate: "", opportunityId: "" }); reload(); } else setMsg("Error saving task.");
+    } finally { setBusy(false); }
+  }
+  async function setStatus(id: string, status: string) { await fetch(`/api/tasks/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Open tasks" value={String(open.length)} icon="ListTodo" color={C.blue} />
+        <Kpi label="Overdue" value={String(all.filter(overdue).length)} icon="AlertTriangle" color={C.orange} />
+        <Kpi label="Completed" value={String(all.filter((t) => t.status === "completed").length)} icon="CheckCircle2" color={C.lime} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New task</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="Task title" style={{ ...inputStyle, width: 220 }} />
+          <select value={f.taskType} onChange={(e) => setF((s) => ({ ...s, taskType: e.target.value }))} style={selectStyle}>{TASK_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
+          <select value={f.priority} onChange={(e) => setF((s) => ({ ...s, priority: e.target.value }))} style={selectStyle}>{["low", "medium", "high", "urgent"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
+          <input value={f.assignedTo} onChange={(e) => setF((s) => ({ ...s, assignedTo: e.target.value }))} placeholder="Assign to" style={{ ...inputStyle, width: 120 }} />
+          <input type="date" value={f.dueDate} onChange={(e) => setF((s) => ({ ...s, dueDate: e.target.value }))} style={{ ...inputStyle, width: "auto" }} />
+          <input value={f.opportunityId} onChange={(e) => setF((s) => ({ ...s, opportunityId: e.target.value }))} placeholder="Link deal (opp id)" style={{ ...inputStyle, width: 150 }} />
+          <button onClick={create} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Add task"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      <Panel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Tasks ({shown.length})</div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={selectStyle}>{[["open", "Open"], ["overdue", "Overdue"], ["done", "Completed"], ["all", "All"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        </div>
+        {shown.length === 0 ? <StateBlock kind="empty" message="No tasks here." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {shown.map((t) => (
+              <div key={t.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderLeft: overdue(t) ? `3px solid ${C.orange}` : card.border }}>
+                <Tag text={t.priority} color={t.priority === "urgent" ? C.orange : t.priority === "high" ? "#F5C542" : C.gray} />
+                <Tag text={t.status.replace(/_/g, " ")} color={TASK_STATUS_COLORS[t.status] ?? C.gray} />
+                <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{t.title}</span>
+                <span style={{ fontSize: 11, color: overdue(t) ? C.orange : faint }}>{t.assignedTo ? `${t.assignedTo} · ` : ""}{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : ""}</span>
+                {t.status !== "completed" && t.status !== "cancelled" ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {t.status === "not_started" ? <button onClick={() => setStatus(t.id, "in_progress")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 10px", fontSize: 11.5 }}>Start</button> : null}
+                    <button onClick={() => setStatus(t.id, "completed")} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5 }}>Done</button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+interface MeetingRowUI { id: string; title: string; meetingType: string; status: string; startAt: string | null; organizer: string | null; outcome: string | null; opportunityId: string | null }
+const MEETING_TYPES_UI = ["ai_readiness_call", "paid_audit", "proposal_review", "internal_founder", "client_onboarding", "delivery_review", "strategy_session", "finance_discussion", "support_call"];
+const MEETING_STATUS_COLORS: Record<string, string> = { scheduled: C.blue, completed: C.lime, rescheduled: "#F5C542", cancelled: C.gray, no_show: C.orange, needs_follow_up: "#B87CFF" };
+
+function MeetingsPage() {
+  const state = useApi<{ meetings: MeetingRowUI[] }>("/api/meetings?limit=300");
+  const [f, setF] = useState({ title: "", meetingType: "ai_readiness_call", startAt: "", organizer: "", opportunityId: "" });
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const meetings = state.data?.meetings ?? [];
+  const now = Date.now();
+  const upcoming = meetings.filter((m) => m.status === "scheduled" && (!m.startAt || new Date(m.startAt).getTime() >= now));
+  async function reload() { state.reload(); }
+  async function create() {
+    if (!f.title.trim()) { setMsg("Meeting needs a title."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/meetings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: f.title, meetingType: f.meetingType, startAt: f.startAt || undefined, organizer: f.organizer || undefined, opportunityId: f.opportunityId || undefined }) });
+      if (r.ok) { setF({ title: "", meetingType: "ai_readiness_call", startAt: "", organizer: "", opportunityId: "" }); reload(); } else setMsg("Error saving meeting.");
+    } finally { setBusy(false); }
+  }
+  async function complete(id: string) {
+    const outcome = window.prompt("Meeting outcome? (what happened / next step)");
+    if (outcome === null) return;
+    await fetch(`/api/meetings/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "completed", outcome: outcome || undefined }) });
+    reload();
+  }
+  async function setStatus(id: string, status: string) { await fetch(`/api/meetings/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); reload(); }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Upcoming" value={String(upcoming.length)} icon="CalendarClock" color={C.blue} />
+        <Kpi label="Completed" value={String(meetings.filter((m) => m.status === "completed").length)} icon="CheckCircle2" color={C.lime} />
+        <Kpi label="Need follow-up" value={String(meetings.filter((m) => m.status === "needs_follow_up").length)} icon="Bell" color="#B87CFF" />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Book a meeting</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="Meeting title" style={{ ...inputStyle, width: 200 }} />
+          <select value={f.meetingType} onChange={(e) => setF((s) => ({ ...s, meetingType: e.target.value }))} style={selectStyle}>{MEETING_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
+          <input type="datetime-local" value={f.startAt} onChange={(e) => setF((s) => ({ ...s, startAt: e.target.value }))} style={{ ...inputStyle, width: "auto" }} />
+          <input value={f.organizer} onChange={(e) => setF((s) => ({ ...s, organizer: e.target.value }))} placeholder="Organizer" style={{ ...inputStyle, width: 120 }} />
+          <input value={f.opportunityId} onChange={(e) => setF((s) => ({ ...s, opportunityId: e.target.value }))} placeholder="Link deal (opp id)" style={{ ...inputStyle, width: 150 }} />
+          <button onClick={create} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Book"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Meetings ({meetings.length})</div>
+        {meetings.length === 0 ? <StateBlock kind="empty" message="No meetings yet. Book one above." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {meetings.map((m) => (
+              <div key={m.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Tag text={m.meetingType.replace(/_/g, " ")} color={C.gray} />
+                <Tag text={m.status.replace(/_/g, " ")} color={MEETING_STATUS_COLORS[m.status] ?? C.gray} />
+                <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{m.title}{m.outcome ? <span style={{ color: faint, fontSize: 11 }}> — {m.outcome.slice(0, 60)}</span> : null}</span>
+                <span style={{ fontSize: 11, color: faint }}>{m.startAt ? new Date(m.startAt).toLocaleString() : ""}</span>
+                {m.status === "scheduled" || m.status === "rescheduled" || m.status === "needs_follow_up" ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => complete(m.id)} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5 }}>Complete</button>
+                    <button onClick={() => setStatus(m.id, "no_show")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 10px", fontSize: 11.5 }}>No-show</button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
   library: LibraryPage,
   crm: CrmPage,
   invoices: InvoicesPage,
+  tasks: TasksPage,
+  meetings: MeetingsPage,
   audit_workspace: AuditWorkspacePage,
   free_audit: FreeAuditPage,
   paid_audit: PaidAuditPage,

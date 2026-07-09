@@ -1271,3 +1271,65 @@ export const proposals = pgTable("proposals", {
   index("proposals_company_idx").on(table.companyId),
   index("proposals_opportunity_idx").on(table.opportunityId),
 ]);
+
+// ---------------------------------------------------------------- Tasks + Meetings (ERP brief E + F)
+// Work allocation + calendar. Connected to company/contact/opportunity/proposal/invoice. Soft-delete.
+
+export const tasks = pgTable("tasks", {
+  id: id(),
+  title: text("title").notNull(),
+  description: text("description"),
+  taskType: varchar("task_type", { length: 40 }).notNull().default("internal_admin"),
+  priority: varchar("priority", { length: 20 }).notNull().default("medium"),
+  status: varchar("status", { length: 24 }).notNull().default("not_started"), // not_started|in_progress|waiting|blocked|needs_review|completed|cancelled
+  assignedTo: varchar("assigned_to", { length: 120 }),
+  assignedBy: varchar("assigned_by", { length: 120 }),
+  companyId: text("company_id"),
+  contactId: text("contact_id"),
+  opportunityId: text("opportunity_id"),
+  proposalId: text("proposal_id"),
+  invoiceId: text("invoice_id"),
+  dueDate: timestamp("due_date", { withTimezone: true }),
+  reminderDate: timestamp("reminder_date", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("tasks_status_idx").on(table.status),
+  index("tasks_assigned_idx").on(table.assignedTo),
+  index("tasks_company_idx").on(table.companyId),
+  index("tasks_due_idx").on(table.dueDate),
+]);
+
+export const meetings = pgTable("meetings", {
+  id: id(),
+  title: text("title").notNull(),
+  description: text("description"),
+  meetingType: varchar("meeting_type", { length: 40 }).notNull().default("ai_readiness_call"),
+  startAt: timestamp("start_at", { withTimezone: true }),
+  endAt: timestamp("end_at", { withTimezone: true }),
+  timezone: varchar("timezone", { length: 60 }),
+  organizer: varchar("organizer", { length: 120 }),
+  attendees: jsonb("attendees").$type<string[]>().notNull().default([]),
+  companyId: text("company_id"),
+  contactId: text("contact_id"),
+  opportunityId: text("opportunity_id"),
+  location: text("location"),
+  status: varchar("status", { length: 24 }).notNull().default("scheduled"), // scheduled|completed|rescheduled|cancelled|no_show|needs_follow_up
+  outcome: text("outcome"),
+  notes: text("notes"),
+  followUpRequired: boolean("follow_up_required").notNull().default(false),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("meetings_status_idx").on(table.status),
+  index("meetings_start_idx").on(table.startAt),
+  index("meetings_company_idx").on(table.companyId),
+]);

@@ -60,6 +60,8 @@ export const MODULES: Record<string, ModuleDef> = {
   docs: { id: "docs", label: "Proposals", title: "Proposals", icon: "FileStack", status: "wired", api: "/api/proposals", tagline: "Build a client proposal from an audit's findings — services, scope, timeline, pricing. A founder approves before it's sent, and an accepted proposal auto-drafts the invoice." },
 
   // OPERATIONS
+  tasks: { id: "tasks", label: "Tasks", title: "Tasks & Work", icon: "ListTodo", status: "wired", api: "/api/tasks", tagline: "Every task in the business — assigned, prioritised, due-dated, and linked to the deal/company it belongs to. Overdue work surfaces up top." },
+  meetings: { id: "meetings", label: "Meetings", title: "Meetings & Calendar", icon: "CalendarDays", status: "wired", api: "/api/meetings", tagline: "Book and track every call — AI readiness calls, audits, reviews — linked to the deal, with outcomes captured on completion." },
   automations: { id: "automations", label: "Automations", title: "Automations", icon: "Workflow", status: "planned", chunk: 19, tagline: "Recurring jobs and triggers that keep the OS moving while you sleep." },
   connections: { id: "connections", label: "Connections", title: "Connections Registry", icon: "Cable", status: "wired", chunk: 35, api: "/api/connections", tagline: "The permission map for every API, scraper, model gateway, webhook, media tool, storage rail and external service WOBBLE OS is allowed to call." },
   skills: { id: "skills", label: "Skill Registry", title: "Prompt / Skill Registry", icon: "Wand2", status: "wired", chunk: 34, api: "/api/skills", tagline: "Versioned, approval-gated SOPs the workers run. Edit a skill, approve it, and behavior changes with no code." },
@@ -82,7 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
-  { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },
+  { label: "OPERATIONS", items: ["tasks", "meetings", "automations", "connections", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
 

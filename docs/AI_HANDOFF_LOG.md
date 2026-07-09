@@ -3262,3 +3262,13 @@ The founder's "one screen per client" flow. Ties Doc 1/2/3 together on a company
 VERIFIED LIVE (server-side chain, then cleaned up): pitch (usedLlm, 6 dental services) → roadmap (usedLlm, 5 dental-specific interview roles, data-isolated from the pitch) → workspace UI groups them, shows the stepper with a findings slot per interview (screenshot). Typecheck clean; full suite green; build compiles (/api/audit/workspace).
 
 NEXT (founder: build everything except deploy — VPS later via SSH): the partner's fuller ERP (contacts, tasks, meetings/calendar, projects, entity detail pages + activity timelines, RBAC/permissions, versioning/rollback, automation-rules engine, the 5 dashboards, system health, integrations registry — brief phases 1-5); Content Command upgrades (real image/carousel generation into media_refs + feedback→regenerate loop). Deploy deferred (VPS + SSH pending).
+
+## 2026-07-10 - Claude (Opus 4.8) - ERP operational modules: Tasks + Meetings
+
+Partner ERP brief sections E + F. Migration 0018: tasks + meetings tables.
+- Tasks: domain/task.ts (14 types, 7 statuses + machine, isOverdue) + lib/tasks (add/list/transition/assign/listOverdue, audited) + /api/tasks + /[id]/action (status|assign) + TasksPage (KPIs open/overdue/completed, create form, filter open/overdue/done/all, Start/Done actions, overdue red border) + "Tasks" tile (OPERATIONS). tests/tasks.test.ts (6).
+- Meetings: domain/meeting.ts (9 types, 6 statuses + machine) + lib/meetings (add/list/transitionMeeting w/ outcome+followUp) + /api/meetings + /[id]/action + MeetingsPage (KPIs upcoming/completed/follow-up, book form, Complete[outcome prompt]/No-show) + "Meetings" tile. tests/meetings.test.ts (3). Both linked to company/contact/opportunity/proposal/invoice; soft-delete; every action audited.
+
+VERIFIED: typecheck clean; full suite green; build compiles (/api/tasks, /api/tasks/[id]/action, /api/meetings, /api/meetings/[id]/action). Tasks/Meetings unit-tested.
+
+NEXT (partner ERP remaining): Projects (won deal → workspace), entity DETAIL PAGES + activity timelines (the "click a company/deal and see everything" screens — high value), RBAC/permissions, versioning/rollback, automation-rules engine, the role dashboards (sales/finance/delivery), system health, integrations registry. Then Content Command upgrades (image gen + feedback loop). Deploy still deferred (VPS + SSH pending from founder).
