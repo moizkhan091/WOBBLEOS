@@ -2857,12 +2857,65 @@ interface CrmOpp { id: string; name: string; companyId: string; stage: string; v
 interface CrmLead { id: string; name: string; source: string | null; score: number; status: string; intentLevel: string; problemStated: string | null; serviceInterest: string[]; convertedOpportunityId: string | null }
 interface CrmCompany { id: string; name: string; status: string }
 
+const LEVELS_UI = ["unknown", "low", "medium", "high"];
+const LEAD_SOURCES = ["manual", "referral", "inbound", "cold_email", "cold_call", "instagram", "linkedin", "website_form", "whatsapp", "import"];
+const fieldLabel: React.CSSProperties = { fontSize: 10.5, color: "#8a8a95", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3, display: "block" };
+
+/** Full lead-capture form — contact + company + qualification, per the ERP brief's Leads spec. */
+function AddLeadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState<Record<string, string>>({ name: "", contactName: "", email: "", phone: "", whatsapp: "", companyName: "", website: "", industry: "", source: "manual", campaign: "", intentLevel: "medium", budgetLevel: "unknown", urgencyLevel: "unknown", fitLevel: "unknown", serviceInterest: "", assignedOwner: "", problemStated: "" });
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const F = ({ k, label, w = 1, ph }: { k: string; label: string; w?: number; ph?: string }) => (
+    <div style={{ gridColumn: `span ${w}` }}><label style={fieldLabel}>{label}</label><input value={f[k]} onChange={set(k)} placeholder={ph} style={{ ...inputStyle, width: "100%" }} /></div>
+  );
+  const Sel = ({ k, label, opts }: { k: string; label: string; opts: string[] }) => (
+    <div><label style={fieldLabel}>{label}</label><select value={f[k]} onChange={set(k)} style={{ ...selectStyle, width: "100%" }}>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select></div>
+  );
+  async function save() {
+    if (!f.name.trim() && !f.companyName.trim()) { setMsg("Enter a lead name or company."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const body = { name: f.name || f.companyName, contactName: f.contactName || undefined, email: f.email || undefined, phone: f.phone || undefined, whatsapp: f.whatsapp || undefined, companyName: f.companyName || undefined, website: f.website || undefined, industry: f.industry || undefined, source: f.source, campaign: f.campaign || undefined, intentLevel: f.intentLevel, budgetLevel: f.budgetLevel, urgencyLevel: f.urgencyLevel, fitLevel: f.fitLevel, serviceInterest: f.serviceInterest ? f.serviceInterest.split(",").map((s) => s.trim()).filter(Boolean) : [], assignedOwner: f.assignedOwner || undefined, problemStated: f.problemStated || undefined };
+      const r = await fetch("/api/crm/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) onSaved(); else { const j = await r.json().catch(() => ({})); setMsg("Error: " + (j.error ?? r.status)); }
+    } finally { setBusy(false); }
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,96vw)", maxHeight: "92vh", overflow: "auto", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 20, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New lead</div><button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
+        <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Contact</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <F k="contactName" label="Contact name" /><F k="email" label="Email" ph="name@company.com" /><F k="phone" label="Phone" /><F k="whatsapp" label="WhatsApp" />
+        </div>
+        <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Company</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <F k="companyName" label="Company name" /><F k="website" label="Website" /><F k="industry" label="Industry" /><F k="name" label="Lead label (optional)" ph="defaults to company" />
+        </div>
+        <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Qualification</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <Sel k="intentLevel" label="Intent" opts={LEVELS_UI} /><Sel k="budgetLevel" label="Budget" opts={LEVELS_UI} /><Sel k="urgencyLevel" label="Urgency" opts={LEVELS_UI} /><Sel k="fitLevel" label="Fit" opts={LEVELS_UI} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <Sel k="source" label="Source" opts={LEAD_SOURCES} /><F k="campaign" label="Campaign" /><F k="serviceInterest" label="Service interest (comma-sep)" /><F k="assignedOwner" label="Assigned owner" />
+        </div>
+        <div style={{ marginBottom: 14 }}><label style={fieldLabel}>Problem stated</label><textarea value={f.problemStated} onChange={set("problemStated")} style={{ ...inputStyle, width: "100%", minHeight: 54, resize: "vertical" }} /></div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button onClick={save} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Saving…" : "Save lead"}</button>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CrmPage() {
   const oppState = useApi<{ opportunities: CrmOpp[] }>("/api/crm/opportunities?limit=500");
   const leadState = useApi<{ leads: CrmLead[] }>("/api/crm/leads?limit=200");
   const coState = useApi<{ companies: CrmCompany[] }>("/api/crm/companies?limit=200");
-  const [ln, setLn] = useState(""); const [lsrc, setLsrc] = useState("manual"); const [lintent, setLintent] = useState("medium"); const [lprob, setLprob] = useState("");
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const guard = offlineIf(oppState) ?? offlineIf(leadState) ?? offlineIf(coState);
   if (guard) return guard;
   const opps = oppState.data?.opportunities ?? [];
@@ -2874,21 +2927,11 @@ function CrmPage() {
   const wonValue = opps.filter((o) => o.status === "won").reduce((s, o) => s + o.valueCents, 0);
   async function reload() { oppState.reload(); leadState.reload(); coState.reload(); }
   async function moveStage(id: string, stage: string) { await fetch(`/api/crm/opportunities/${id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) }); reload(); }
-  async function addLead() {
-    if (!ln.trim()) { setMsg("Lead needs a name."); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/crm/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: ln, source: lsrc, intentLevel: lintent, problemStated: lprob || undefined }) });
-      if (r.ok) { setLn(""); setLprob(""); reload(); } else setMsg("Error saving lead.");
-    } finally { setBusy(false); }
-  }
   async function convert(lead: CrmLead) {
-    const companyName = window.prompt("Convert to which company name?", lead.name);
-    if (!companyName) return;
-    await fetch(`/api/crm/leads/${lead.id}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyName }) });
+    if (!window.confirm(`Convert "${lead.name}" into a company + contact + deal?`)) return;
+    await fetch(`/api/crm/leads/${lead.id}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     reload();
   }
-  const stagesWithDeals = STAGE_ORDER.filter((s) => opps.some((o) => o.stage === s));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2900,17 +2943,12 @@ function CrmPage() {
       </div>
 
       <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New lead</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={ln} onChange={(e) => setLn(e.target.value)} placeholder="Lead / business name" style={{ ...inputStyle, width: 200 }} />
-          <select value={lsrc} onChange={(e) => setLsrc(e.target.value)} style={selectStyle}>{["manual", "referral", "inbound", "cold_email", "instagram", "call", "import"].map((s) => <option key={s} value={s}>{s}</option>)}</select>
-          <select value={lintent} onChange={(e) => setLintent(e.target.value)} style={selectStyle}>{["unknown", "low", "medium", "high"].map((s) => <option key={s} value={s}>intent: {s}</option>)}</select>
-          <input value={lprob} onChange={(e) => setLprob(e.target.value)} placeholder="Problem stated (optional)" style={{ ...inputStyle, width: 240 }} />
-          <button onClick={addLead} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Add lead"}</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Leads ({leads.length})</div>
+          <button onClick={() => setAddOpen(true)} style={{ ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>+ Add lead</button>
         </div>
-        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
-        {leads.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+        {leads.length === 0 ? <StateBlock kind="empty" message="No leads yet. Click “Add lead” to capture one." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {leads.map((l) => (
               <div key={l.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <Tag text={`score ${l.score}`} color={l.score >= 60 ? C.lime : l.score >= 30 ? C.blue : C.gray} />
@@ -2921,44 +2959,42 @@ function CrmPage() {
               </div>
             ))}
           </div>
-        ) : null}
+        )}
       </Panel>
 
       <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Pipeline</div>
-        {opps.length === 0 ? (
-          <StateBlock kind="empty" message="No deals yet. Add a lead above and convert it, or create an opportunity." />
-        ) : (
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
-            {stagesWithDeals.map((stage) => {
-              const list = opps.filter((o) => o.stage === stage);
-              const val = list.reduce((s, o) => s + o.valueCents, 0);
-              return (
-                <div key={stage} style={{ minWidth: 210, flex: "0 0 210px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: stage === "won" ? C.lime : stage === "lost" ? C.orange : C.white }}>{STAGE_LABELS[stage]}</span>
-                    <span style={{ fontSize: 10.5, color: faint }}>{list.length} · {money(val)}</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    {list.map((o) => (
-                      <div key={o.id} style={{ ...card, padding: "9px 10px" }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{o.name}</div>
-                        <div style={{ fontSize: 10.5, color: faint, marginTop: 2 }}>{coName(o.companyId)}</div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7, gap: 6 }}>
-                          <span style={{ fontSize: 11.5, fontWeight: 600, color: C.lime }}>{money(o.valueCents, o.currency)}</span>
-                          <select value={o.stage} onChange={(e) => moveStage(o.id, e.target.value)} style={{ ...selectStyle, padding: "3px 6px", fontSize: 10.5 }}>
-                            {STAGE_ORDER.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Pipeline · all stages</div>
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+          {STAGE_ORDER.map((stage) => {
+            const list = opps.filter((o) => o.stage === stage);
+            const val = list.reduce((s, o) => s + o.valueCents, 0);
+            const accent = stage === "won" ? C.lime : stage === "lost" ? C.orange : "#2a2a30";
+            return (
+              <div key={stage} style={{ minWidth: 208, flex: "0 0 208px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, borderTop: `2px solid ${accent}`, paddingTop: 7 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: stage === "won" ? C.lime : stage === "lost" ? C.orange : C.white }}>{STAGE_LABELS[stage]}</span>
+                  <span style={{ fontSize: 10.5, color: faint }}>{list.length}{val ? ` · ${money(val)}` : ""}</span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 40 }}>
+                  {list.length === 0 ? <div style={{ fontSize: 10.5, color: "#4a4a52", padding: "10px 4px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 8 }}>—</div> : list.map((o) => (
+                    <div key={o.id} style={{ ...card, padding: "9px 10px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{o.name}</div>
+                      <div style={{ fontSize: 10.5, color: faint, marginTop: 2 }}>{coName(o.companyId)}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7, gap: 6 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: C.lime }}>{money(o.valueCents, o.currency)}</span>
+                        <select value={o.stage} onChange={(e) => moveStage(o.id, e.target.value)} style={{ ...selectStyle, padding: "3px 6px", fontSize: 10.5 }}>
+                          {STAGE_ORDER.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Panel>
+      {addOpen ? <AddLeadModal onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); reload(); }} /> : null}
     </div>
   );
 }
@@ -2966,25 +3002,82 @@ function CrmPage() {
 interface FinInvoice { id: string; invoiceNumber: string; totalCents: number; amountPaidCents: number; currency: string; status: string; companyId: string | null; opportunityId: string | null }
 interface RevSummary { paidRevenueCents: number; outstandingCents: number; overdueCents: number; pipelineValueCents: number; weightedPipelineCents: number; wonValueCents: number; invoiceCounts: Record<string, number>; openDeals: number; wonDeals: number; avgDealSizeCents: number; revenueByService: Record<string, number> }
 
+interface LineItemUI { description: string; quantity: string; unitPrice: string }
+
+/** Full invoice builder — bill-to, multiple line items, tax/discount, due date, terms. */
+function InvoiceBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [billTo, setBillTo] = useState({ companyName: "", contactName: "", email: "", address: "" });
+  const [items, setItems] = useState<LineItemUI[]>([{ description: "", quantity: "1", unitPrice: "" }]);
+  const [tax, setTax] = useState(""); const [discount, setDiscount] = useState(""); const [currency, setCurrency] = useState("USD");
+  const [due, setDue] = useState(""); const [terms, setTerms] = useState("Net 14"); const [notes, setNotes] = useState(""); const [oppId, setOppId] = useState("");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const setItem = (i: number, k: keyof LineItemUI, v: string) => setItems((arr) => arr.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
+  const subtotal = items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * Math.round((parseFloat(it.unitPrice) || 0) * 100), 0);
+  const total = Math.max(0, subtotal + Math.round((parseFloat(tax) || 0) * 100) - Math.round((parseFloat(discount) || 0) * 100));
+  async function save() {
+    const lineItems = items.filter((it) => it.description.trim() && (parseFloat(it.unitPrice) || 0) > 0).map((it) => ({ description: it.description, quantity: parseFloat(it.quantity) || 1, unitPriceCents: Math.round((parseFloat(it.unitPrice) || 0) * 100) }));
+    if (!lineItems.length) { setMsg("Add at least one line item with an amount."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const body = { lineItems, taxCents: Math.round((parseFloat(tax) || 0) * 100), discountCents: Math.round((parseFloat(discount) || 0) * 100), currency, dueDate: due || undefined, paymentTerms: terms || undefined, notes: notes || undefined, opportunityId: oppId || undefined, billingDetails: { companyName: billTo.companyName, contactName: billTo.contactName, email: billTo.email, address: billTo.address } };
+      const r = await fetch("/api/finance/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) onSaved(); else { const j = await r.json().catch(() => ({})); setMsg("Error: " + (j.error ?? r.status)); }
+    } finally { setBusy(false); }
+  }
+  const lbl: React.CSSProperties = { fontSize: 10.5, color: "#8a8a95", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3, display: "block" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "92vh", overflow: "auto", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 20, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New invoice</div><button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
+        <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Bill to</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div><label style={lbl}>Company</label><input value={billTo.companyName} onChange={(e) => setBillTo((b) => ({ ...b, companyName: e.target.value }))} style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Contact</label><input value={billTo.contactName} onChange={(e) => setBillTo((b) => ({ ...b, contactName: e.target.value }))} style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Email</label><input value={billTo.email} onChange={(e) => setBillTo((b) => ({ ...b, email: e.target.value }))} style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Billing address</label><input value={billTo.address} onChange={(e) => setBillTo((b) => ({ ...b, address: e.target.value }))} style={{ ...inputStyle, width: "100%" }} /></div>
+        </div>
+        <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Line items</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 70px 110px 28px", gap: 6, alignItems: "center" }}>
+              <input value={it.description} onChange={(e) => setItem(i, "description", e.target.value)} placeholder="Description" style={{ ...inputStyle, width: "100%" }} />
+              <input value={it.quantity} onChange={(e) => setItem(i, "quantity", e.target.value)} placeholder="Qty" inputMode="decimal" style={{ ...inputStyle, width: "100%" }} />
+              <input value={it.unitPrice} onChange={(e) => setItem(i, "unitPrice", e.target.value)} placeholder="Unit ($)" inputMode="decimal" style={{ ...inputStyle, width: "100%" }} />
+              <button onClick={() => setItems((arr) => arr.length > 1 ? arr.filter((_, j) => j !== i) : arr)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 0", fontSize: 12 }}>✕</button>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setItems((arr) => [...arr, { description: "", quantity: "1", unitPrice: "" }])} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 10px", fontSize: 11.5, marginBottom: 14 }}>+ Add line</button>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <div><label style={lbl}>Tax ($)</label><input value={tax} onChange={(e) => setTax(e.target.value)} inputMode="decimal" style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Discount ($)</label><input value={discount} onChange={(e) => setDiscount(e.target.value)} inputMode="decimal" style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Currency</label><select value={currency} onChange={(e) => setCurrency(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{["USD", "EUR", "GBP", "PKR", "AED"].map((c) => <option key={c}>{c}</option>)}</select></div>
+          <div><label style={lbl}>Due date</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Payment terms</label><input value={terms} onChange={(e) => setTerms(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
+          <div><label style={lbl}>Link deal (opp id)</label><input value={oppId} onChange={(e) => setOppId(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
+        </div>
+        <div style={{ marginBottom: 12 }}><label style={lbl}>Notes</label><textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle, width: "100%", minHeight: 44, resize: "vertical" }} /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
+          <div style={{ fontSize: 13 }}>Total <b style={{ fontSize: 18, marginLeft: 6 }}>{money(total, currency)}</b></div>
+          <div style={{ flex: 1 }} />
+          <button onClick={save} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Saving…" : "Draft invoice"}</button>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function InvoicesPage() {
   const sumState = useApi<{ summary: RevSummary }>("/api/finance/summary");
   const invState = useApi<{ invoices: FinInvoice[] }>("/api/finance/invoices?limit=200");
-  const [desc, setDesc] = useState(""); const [amt, setAmt] = useState(""); const [oppId, setOppId] = useState("");
-  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const guard = offlineIf(sumState) ?? offlineIf(invState);
   if (guard) return guard;
   const s = sumState.data?.summary;
   const invoices = invState.data?.invoices ?? [];
   async function reload() { sumState.reload(); invState.reload(); }
-  async function createInvoice() {
-    const cents = Math.round(parseFloat(amt) * 100);
-    if (!desc.trim() || !Number.isFinite(cents) || cents <= 0) { setMsg("Need a description and a positive amount."); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/finance/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lineItems: [{ description: desc, quantity: 1, unitPriceCents: cents }], opportunityId: oppId || undefined }) });
-      if (r.ok) { setDesc(""); setAmt(""); setOppId(""); reload(); } else setMsg("Error creating invoice.");
-    } finally { setBusy(false); }
-  }
   async function act(id: string, action: string) { await fetch(`/api/finance/invoices/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }); reload(); }
   const actionsFor = (st: string): Array<{ a: string; label: string }> => {
     if (st === "draft" || st === "needs_approval") return [{ a: "approve", label: "Approve" }, { a: "cancel", label: "Cancel" }];
@@ -3012,18 +3105,10 @@ function InvoicesPage() {
       </Panel>
 
       <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New invoice (draft)</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Line item, e.g. Wobble AI OS Audit" style={{ ...inputStyle, width: 260 }} />
-          <input value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Amount (USD)" inputMode="decimal" style={{ ...inputStyle, width: 120 }} />
-          <input value={oppId} onChange={(e) => setOppId(e.target.value)} placeholder="Link opportunity id (optional)" style={{ ...inputStyle, width: 200 }} />
-          <button onClick={createInvoice} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Draft invoice"}</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Invoices ({invoices.length})</div>
+          <button onClick={() => setBuilderOpen(true)} style={{ ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>+ New invoice</button>
         </div>
-        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
-      </Panel>
-
-      <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Invoices ({invoices.length})</div>
         {invoices.length === 0 ? (
           <StateBlock kind="empty" message="No invoices yet. Draft one above." />
         ) : (
@@ -3041,6 +3126,7 @@ function InvoicesPage() {
           </div>
         )}
       </Panel>
+      {builderOpen ? <InvoiceBuilderModal onClose={() => setBuilderOpen(false)} onSaved={() => { setBuilderOpen(false); reload(); }} /> : null}
     </div>
   );
 }

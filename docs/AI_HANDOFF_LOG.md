@@ -3199,3 +3199,18 @@ DEPTH UPGRADE (paid audit is now a real consulting deliverable, not 6 thin slide
 VERIFIED: typecheck clean; 395 tests pass (was 383: +proposal 7, +paid-audit reshaped, +doc). build compiles (proposals + audit doc/deck routes registered). Live depth re-run pending (next). NOTE: model ROI still can misread cents-vs-dollars occasionally — the report prompt now gives explicit cents examples; monitor.
 
 NEXT: live-verify the deep report+deck (screenshot); then free-audit LLM enrichment + Apify social scrape (gated); LLM narrative-polish on proposals; feedback→diff-edit loop on generated docs; premium binary PDF export (puppeteer). REVENUE engine now end-to-end: Free Audit → lead/CRM → Paid Audit (deep 5-agent, HTML report+deck) → Proposal → Invoice → revenue dashboard.
+
+## 2026-07-09 - Claude (Opus 4.8) - CRM/invoice depth fixes + Presentation Maker removed
+
+Founder flagged basic flaws: lead/invoice forms took too little info, pipeline hid empty stages. Fixed (the ERP brief specifies full field sets):
+- crm_leads: +capture columns (migration 0017): contact_name, email, phone, whatsapp, company_name, website, industry (a lead often arrives before formal company/contact records). domain/crm + service updated; convertLead now PROMOTES the lead's captured company/contact data (companyName/website/industry → company; contactName/email/phone → contact), and companyName is now optional on convert (falls back to the lead's).
+- UI: AddLeadModal — full form (contact: name/email/phone/whatsapp; company: name/website/industry; qualification: intent/budget/urgency/fit + source/campaign/service-interest/owner + problem). Pipeline now shows ALL 14 stages as columns (empty ones too, dashed placeholder) with per-deal stage dropdown. InvoiceBuilderModal — bill-to (company/contact/email/address), multiple line items (desc/qty/unit), tax/discount, currency, due date, terms, notes, link-deal, live total. Both open from "+ Add lead" / "+ New invoice" buttons.
+- Removed the Presentation Maker module (redundant with the audit decks) from MODULES + NAV_GROUPS.
+
+VERIFIED LIVE (API round-trip): full lead payload persisted all fields (score 93); convert pulled the lead's company+website (no re-typing); invoice builder payload → subtotal $7000, total $6900 (+tax/−discount), bill-to from billingDetails. Sidebar confirms Presentation Maker gone + REVENUE group (Free/Paid Audit, CRM, Proposals). Test data cleaned. Typecheck clean; 395 tests pass; build compiles; migration 0017 applied.
+
+LOCKED (founder answers) for NEXT — the 3-doc AUDIT WORKSPACE (one workspace per company, 3 stages, per-client data isolation, no cross-client leak):
+- Doc 1 = "What Wobble can do" pitch = the Free Audit MERGED into a niche-customized capability pitch (leads with "what we found" + "what we can do"). Inputs via an APIFY scraper of their website/socials (WIRE NOW, gated on APIFY_API_KEY, fallback to founder-entered).
+- Doc 2 = INTERNAL audit roadmap: asks for the client's stakeholders/team + free-call info, then (using the paid-audit interview methodology from the YouTube transcript) outputs who to interview + what to ask + sequence. Reads ONLY this client's Doc 1.
+- Doc 3 = final client-facing McKinsey deck: per-interview notes/transcript slots (off the Doc 2 roadmap) → synthesized detailed findings + recommendations. Reads ONLY this client's Doc 1 + Doc 2 + findings.
+- Also pending from the partner's full ERP brief (pasted in chat): contacts/tasks/meetings/projects modules, entity detail pages + activity timelines, RBAC/permissions, versioning/rollback, automation rules engine, the 5 dashboards, system health, integrations registry. Build in the brief's phase order.

@@ -97,6 +97,13 @@ export interface LeadRow {
   name: string;
   companyId: string | null;
   contactId: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  companyName: string | null;
+  website: string | null;
+  industry: string | null;
   source: string | null;
   campaign: string | null;
   score: number;
@@ -256,6 +263,13 @@ export const createLeadSchema = z.object({
   name: z.string().trim().min(1),
   companyId: z.string().trim().min(1).optional(),
   contactId: z.string().trim().min(1).optional(),
+  contactName: z.string().trim().min(1).optional(),
+  email: z.string().trim().min(1).optional(),
+  phone: z.string().trim().min(1).optional(),
+  whatsapp: z.string().trim().min(1).optional(),
+  companyName: z.string().trim().min(1).optional(),
+  website: z.string().trim().min(1).optional(),
+  industry: z.string().trim().min(1).optional(),
   source: z.string().trim().min(1).optional(),
   campaign: z.string().trim().min(1).optional(),
   intentLevel: z.enum(LEVELS).default("unknown"),
@@ -285,6 +299,13 @@ export function buildLeadRow(input: CreateLeadInput, opts: { now?: Date; id?: st
     name: p.name,
     companyId: p.companyId ?? null,
     contactId: p.contactId ?? null,
+    contactName: p.contactName ?? null,
+    email: p.email ?? null,
+    phone: p.phone ?? null,
+    whatsapp: p.whatsapp ?? null,
+    companyName: p.companyName ?? null,
+    website: p.website ?? null,
+    industry: p.industry ?? null,
     source: p.source ?? null,
     campaign: p.campaign ?? null,
     score: scoreLead(p),

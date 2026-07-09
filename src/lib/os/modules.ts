@@ -41,7 +41,6 @@ export const MODULES: Record<string, ModuleDef> = {
   content: { id: "content", label: "Content Command", title: "Content Command", icon: "PenTool", status: "wired", chunk: 14, api: "/api/content", tagline: "Every piece of content from idea to handoff. Nothing publishes without a founder." },
   library: { id: "library", label: "Library & Scheduler", title: "Content Library & Scheduler", icon: "CalendarClock", status: "wired", api: "/api/library", tagline: "Every publishable asset in one place - your existing content plus approved packs - queued and scheduled to each platform through a pluggable publisher." },
   media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "planned", chunk: 21, tagline: "Video and visual production. Render jobs are isolated from web and API compute." },
-  presentations: { id: "presentations", label: "Presentation Maker", title: "Presentation Maker", icon: "Presentation", status: "planned", chunk: 23, tagline: "Turn research, decisions and content into investor updates, client pitches and brand decks - approved by a founder." },
 
   // STRATEGY
   decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "planned", chunk: 24, tagline: "Where strategy is debated, scored and committed. Each decision keeps its reasoning trail." },
@@ -78,7 +77,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
-  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media", "presentations"] },
+  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "REVENUE", items: ["free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },

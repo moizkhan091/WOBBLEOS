@@ -133,7 +133,7 @@ export async function listLeads(query: { status?: string; limit?: number } = {},
 /** Convert a qualified lead into a company + contact + opportunity (the whole chain, connected). */
 export async function convertLead(
   leadId: string,
-  input: { companyName: string; contactName?: string; valueCents?: number; stage?: PipelineStage; actor?: string } ,
+  input: { companyName?: string; contactName?: string; valueCents?: number; stage?: PipelineStage; actor?: string },
   deps: CrmDeps = {},
 ): Promise<{ company: CompanyRow; contact: ContactRow | null; opportunity: OpportunityRow } | null> {
   const store = deps.store ?? defaultStore();
@@ -141,12 +141,14 @@ export async function convertLead(
   if (!lead || lead.status === "converted") return null;
   const now = deps.now ?? new Date();
 
-  const company = buildCompanyRow({ name: input.companyName, leadSource: lead.source ?? undefined, status: "qualified_prospect", createdBy: input.actor, metadata: { fromLeadId: leadId } }, { now });
+  const companyName = input.companyName || lead.companyName || lead.name;
+  const company = buildCompanyRow({ name: companyName, website: lead.website ?? undefined, industry: lead.industry ?? undefined, leadSource: lead.source ?? undefined, status: "qualified_prospect", createdBy: input.actor, metadata: { fromLeadId: leadId } }, { now });
   await store.insertCompany(company);
 
+  const contactName = input.contactName || lead.contactName;
   let contact: ContactRow | null = null;
-  if (input.contactName) {
-    contact = buildContactRow({ companyId: company.id, fullName: input.contactName, leadSource: lead.source ?? undefined }, { now });
+  if (contactName) {
+    contact = buildContactRow({ companyId: company.id, fullName: contactName, email: lead.email ?? undefined, phone: lead.phone ?? undefined, whatsapp: lead.whatsapp ?? undefined, leadSource: lead.source ?? undefined }, { now });
     await store.insertContact(contact);
   }
 

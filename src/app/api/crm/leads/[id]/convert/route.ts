@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  companyName: z.string().trim().min(1),
+  companyName: z.string().trim().min(1).optional(),
   contactName: z.string().trim().min(1).optional(),
   valueCents: z.number().int().min(0).optional(),
   stage: z.enum(PIPELINE_STAGES).optional(),
