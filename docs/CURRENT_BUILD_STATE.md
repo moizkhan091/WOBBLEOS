@@ -37,8 +37,14 @@ Purpose: the single "catch up in 2 minutes" doc for ANY builder (Codex, Claude, 
 ## FRONT-END NOTE (design system to MAINTAIN)
 os-ui.tsx (single client component, ~2200 lines) renders every module via a registry (bottom of file) -> ModuleContent. Design = dark + lime (#B8FF2C) glass. Reuse the existing primitives: `glass`/`card` styles, `C` colors, `muted`/`faint`, `Panel`, `Tag`, `StatusPill`, `StateBlock` (loading/empty/error/offline), `PlannedState`, `useApi<T>(url)` hook (+reload), `offlineIf`, `fmtTime`, `FOUNDERS`, `primaryBtn`/`disabledBtn`/`inputStyle`/`selectStyle`/`labelStyle`, `DetailDrawer`, modal overlay pattern (see AddMemoryModal). Do NOT introduce a new UI framework/look; match this.
 
+## BREAK-AGENT (done 2026-07-09)
+Ran 3 adversarial QA sub-agents over the whole session. Found + FIXED (with regression tests, 297 tests green): a CRITICAL model-approval rubber-stamp, cross-founder read leak (search_memory), unconfirmed forget_memory, embedding-wipe on edit, dedup matching archived records, non-idempotent harvest + all-or-nothing candidate parse + personal-facts-to-shared-bank leak, setModelRoleMap non-upsert, tool_call-id crash. See AI_HANDOFF_LOG.md 2026-07-09 break-agent entry.
+REMAINING HARDENING (tracked, not corner-cuts; mostly gated on Auth or a tx refactor): DB transactions for compound memory writes (orphan risk); confirmActions bound per-action; actor-is-a-founder verification (= Auth); version-number race; harvest atomic row-claim + re-harvest watermark + transcript cap; embeddings dimension validation.
+
 ## NEXT (in order)
-1. Memory extras (optional, founder-proposed): access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback.
+1. AUTH (Chunk 02) — now the top priority: gives every chat/action a real founder identity, which per-founder memory/taste AND several break-agent findings depend on. Also the deploy gate.
+2. Memory transaction wrapper (atomicity for create/approve/archive/merge/split/deleteRecordCascade).
+3. Memory extras (optional, founder-proposed): access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback.
 2. Proposed extras (access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback).
 3. ADVERSARIAL BREAK-AGENT over the whole session's work (founder wants this AFTER all 10 upgrades).
 4. Then: Auth (Chunk 02, raised priority), Knowledge Compiler (Chunk 13 — first real research/knowledge TEAM), Content multi-agent team (Chunk 15 — where "talk to the output, refine, it learns" + per-module chat live), Prospect→Audit→Proposal revenue engine.
