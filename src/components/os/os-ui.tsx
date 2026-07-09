@@ -3154,6 +3154,7 @@ function FreeAuditPage() {
   const [signals, setSignals] = useState<string[]>([]); const [leads, setLeads] = useState(""); const [deal, setDeal] = useState("");
   const [busy, setBusy] = useState(false); const [result, setResult] = useState<FreeAuditRow | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const [pitch, setPitch] = useState<{ auditId: string; usedLlm: boolean; scraped: boolean; pitch: { headline: string; whatWeNoticed: string[]; services: { name: string; whatItDoes: string; outcomeForYou: string }[]; cta: string } } | null>(null);
+  const [roadmap, setRoadmap] = useState<{ auditId: string; usedLlm: boolean; plan: { interviewPlan: { role: string }[]; sequence: { week: string }[] } } | null>(null);
   const guard = offlineIf(listState);
   if (guard) return guard;
   const audits = listState.data?.audits ?? [];
@@ -3176,7 +3177,16 @@ function FreeAuditPage() {
     try {
       const r = await fetch("/api/audit/pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(auditBody()) });
       const j = await r.json();
-      if (r.ok && j.ok !== false) setPitch(j); else setMsg("Error: " + String(j.error ?? r.status));
+      if (r.ok && j.ok !== false) { setPitch(j); setRoadmap(null); } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  async function runRoadmap() {
+    if (!pitch) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/audit/roadmap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessName: name, industry: industry || undefined, pitchAuditId: pitch.auditId }) });
+      const j = await r.json();
+      if (r.ok && j.ok !== false) setRoadmap(j); else setMsg("Error: " + String(j.error ?? r.status));
     } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
   }
   const impactColor = (i: string) => (i === "high" ? C.lime : i === "medium" ? C.blue : C.gray);
@@ -3237,6 +3247,11 @@ function FreeAuditPage() {
                 <div style={{ fontSize: 11.5, color: "#2a6a00", marginTop: 3 }}>→ {s.outcomeForYou}</div>
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, color: faint }}>Sold the paid audit? Plan the internal interview roadmap (Doc 2):</span>
+            <button onClick={runRoadmap} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy ? "Planning…" : "Plan audit interviews →"}</button>
+            {roadmap ? <a href={`/api/audit/${roadmap.auditId}/document`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open roadmap ↗ ({roadmap.plan.interviewPlan.length} interviews)</a> : null}
           </div>
         </Panel>
       ) : null}

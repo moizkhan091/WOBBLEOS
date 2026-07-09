@@ -55,6 +55,7 @@ function modelRoles() {
     audit_roadmap: or(process.env.AUDIT_ROADMAP_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     audit_report: or(process.env.AUDIT_REPORT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     pitch_writer: or(process.env.PITCH_WRITER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    audit_interview_planner: or(process.env.AUDIT_INTERVIEW_PLANNER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
   };
 }
 
