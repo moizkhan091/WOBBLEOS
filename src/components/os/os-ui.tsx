@@ -2984,11 +2984,74 @@ function AddLeadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   );
 }
 
+interface Company360Data {
+  company: Record<string, unknown> | null;
+  contacts: Record<string, unknown>[]; opportunities: Record<string, unknown>[]; tasks: Record<string, unknown>[];
+  meetings: Record<string, unknown>[]; projects: Record<string, unknown>[]; invoices: Record<string, unknown>[]; timeline: Record<string, unknown>[];
+  stats: { openDeals: number; wonDeals: number; pipelineValueCents: number; invoicedCents: number; paidCents: number; openTasks: number; activeProjects: number };
+}
+function Company360Drawer({ companyId, onClose }: { companyId: string; onClose: () => void }) {
+  const s = useApi<Company360Data>(`/api/crm/companies/${companyId}/overview`);
+  const d = s.data;
+  const co = d?.company as Record<string, unknown> | null | undefined;
+  const section = (title: string, rows: Record<string, unknown>[], render: (r: Record<string, unknown>) => React.ReactNode) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>{title} ({rows.length})</div>
+      {rows.length === 0 ? <div style={{ fontSize: 11.5, color: "#4a4a52" }}>None yet.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>{rows.slice(0, 20).map((r, i) => <div key={String(r.id ?? i)} style={{ ...card, padding: "8px 11px" }}>{render(r)}</div>)}</div>}
+    </div>
+  );
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px,96vw)", height: "100%", overflow: "auto", background: "#0d0e11", borderLeft: "1px solid rgba(255,255,255,0.10)", padding: 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{String(co?.name ?? "Company")}</div>
+            <div style={{ fontSize: 11.5, color: faint, marginTop: 3 }}>{String(co?.industry ?? "")}{co?.website ? " · " + String(co.website) : ""}</div>
+          </div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+        </div>
+        {s.loading ? <StateBlock kind="loading" /> : !co ? <StateBlock kind="empty" message="Company not found." /> : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
+              <MiniStat label="Pipeline" value={money(d!.stats.pipelineValueCents)} />
+              <MiniStat label="Invoiced" value={money(d!.stats.invoicedCents)} />
+              <MiniStat label="Paid" value={money(d!.stats.paidCents)} />
+              <MiniStat label="Open deals" value={String(d!.stats.openDeals)} />
+              <MiniStat label="Projects" value={String(d!.stats.activeProjects)} />
+              <MiniStat label="Open tasks" value={String(d!.stats.openTasks)} />
+            </div>
+            {section("Contacts", d!.contacts, (r) => <span style={{ fontSize: 12.5 }}>{String(r.name ?? r.fullName ?? "contact")}{r.email ? <span style={{ color: faint }}> · {String(r.email)}</span> : null}{r.title ? <span style={{ color: faint }}> · {String(r.title)}</span> : null}</span>)}
+            {section("Deals", d!.opportunities, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><Tag text={String(r.stage ?? "")} color={r.status === "won" ? C.lime : r.status === "lost" ? C.orange : C.blue} /><span style={{ fontSize: 12.5, flex: 1 }}>{String(r.name ?? "deal")}</span><span style={{ fontSize: 11.5, color: C.lime }}>{money(Number(r.valueCents ?? 0), String(r.currency ?? "USD"))}</span></div>)}
+            {section("Projects", d!.projects, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Tag text={String(r.status ?? "")} color={C.blue} /><span style={{ fontSize: 12.5, flex: 1 }}>{String(r.name ?? "project")}</span>{typeof r.healthScore === "number" ? <span style={{ fontSize: 11, color: faint }}>health {String(r.healthScore)}</span> : null}</div>)}
+            {section("Invoices", d!.invoices, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><Tag text={String(r.status ?? "")} color={r.status === "paid" ? C.lime : C.gray} /><span style={{ fontSize: 12.5, flex: 1 }}>{String(r.invoiceNumber ?? r.id)}</span><span style={{ fontSize: 11.5, color: C.lime }}>{money(Number(r.totalCents ?? 0), String(r.currency ?? "USD"))}</span></div>)}
+            {section("Tasks", d!.tasks, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Tag text={String(r.status ?? "")} color={r.status === "completed" ? C.lime : C.gray} /><span style={{ fontSize: 12.5 }}>{String(r.title ?? "task")}</span></div>)}
+            {section("Meetings", d!.meetings, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Tag text={String(r.status ?? "")} color={C.gray} /><span style={{ fontSize: 12.5 }}>{String(r.title ?? "meeting")}</span></div>)}
+            <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Activity timeline ({d!.timeline.length})</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {d!.timeline.length === 0 ? <div style={{ fontSize: 11.5, color: "#4a4a52" }}>No activity yet.</div> : d!.timeline.map((e, i) => (
+                <div key={String(e.id ?? i)} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  <span style={{ color: C.lime, fontFamily: "monospace", fontSize: 10.5 }}>{String(e.eventType ?? "")}</span>
+                  <span style={{ flex: 1, color: faint }}>{String(e.actor ?? "")}{e.module ? " · " + String(e.module) : ""}</span>
+                  <span style={{ color: "#4a4a52", whiteSpace: "nowrap" }}>{fmtTime(e.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return <div style={{ ...card, padding: "9px 11px" }}><div style={{ fontSize: 9.5, letterSpacing: "0.05em", color: faint, textTransform: "uppercase", fontWeight: 600 }}>{label}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 3 }}>{value}</div></div>;
+}
+
 function CrmPage() {
   const oppState = useApi<{ opportunities: CrmOpp[] }>("/api/crm/opportunities?limit=500");
   const leadState = useApi<{ leads: CrmLead[] }>("/api/crm/leads?limit=200");
   const coState = useApi<{ companies: CrmCompany[] }>("/api/crm/companies?limit=200");
   const [addOpen, setAddOpen] = useState(false);
+  const [co360, setCo360] = useState<string | null>(null);
   const guard = offlineIf(oppState) ?? offlineIf(leadState) ?? offlineIf(coState);
   if (guard) return guard;
   const opps = oppState.data?.opportunities ?? [];
@@ -3067,7 +3130,23 @@ function CrmPage() {
           })}
         </div>
       </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Companies ({companies.length})</div>
+        {companies.length === 0 ? <StateBlock kind="empty" message="No companies yet. Convert a lead or win a deal — click any company here to open its 360." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {companies.map((c) => (
+              <button key={c.id} onClick={() => setCo360(c.id)} style={{ ...card, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left", border: "1px solid rgba(255,255,255,0.085)", color: C.white }}>
+                <span style={{ width: 30, height: 30, flex: "none", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, background: "rgba(255,255,255,0.04)" }}><Icon name="Building2" size={14} /></span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{c.name}</span>
+                <span style={{ fontSize: 11, color: faint }}>{opps.filter((o) => o.companyId === c.id).length} deals</span>
+                <Icon name="ChevronRight" size={15} />
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
       {addOpen ? <AddLeadModal onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); reload(); }} /> : null}
+      {co360 ? <Company360Drawer companyId={co360} onClose={() => setCo360(null)} /> : null}
     </div>
   );
 }

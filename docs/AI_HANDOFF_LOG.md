@@ -3326,3 +3326,14 @@ Modules now wired this session: Tasks, Meetings, Projects, AI Chat, Decision Roo
 Still planned: radar (Research Radar), media (Media Studio - kept/flagged), seo, social, webstats, backup. Plus entity 360 pages, dashboards, audit pass.
 
 NOTE: fireEventRules exists but isn't yet wired into a central event bus — event-trigger rules run when something calls fireEventRules(eventType,...). Wiring it into writeAuditEvent would make event automations fully live; deferred to avoid a broad change mid-batch.
+
+## 2026-07-10 - Claude (Opus 4.8) - Entity 360: Company detail page + activity timeline
+
+The connective tissue — click a company in CRM, see everything linked, on one screen.
+- lib/crm/overview.ts getCompanyOverview(companyId): aggregates contacts, opportunities, tasks, meetings, projects, invoices + a merged activity timeline (audit_logs for the company and all its related record ids) + rollup stats (pipeline/invoiced/paid/open deals/active projects/open tasks).
+- Route: GET /api/crm/companies/[id]/overview.
+- UI: Company360Drawer (right-side drawer) with stat tiles + sectioned lists + timeline. CrmPage now renders a clickable Companies panel that opens the 360.
+
+VERIFIED: typecheck clean; getCompanyOverview runs against the live DB (valid SQL, correct shape; DB currently has 0 companies so it returns empty — populates once leads convert / deals are won). 
+
+NEXT: role dashboards (sales/finance/delivery — aggregate existing data), remaining growth modules (SEO/Radar as AI-real; Social/Webstats/Backup honest re: connectors), then the audit/break pass. Deploy deferred.
