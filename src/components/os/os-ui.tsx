@@ -3045,12 +3045,119 @@ function InvoicesPage() {
   );
 }
 
+const AUDIT_SIGNAL_OPTS: { key: string; label: string }[] = [
+  { key: "missed_calls", label: "Missed calls" }, { key: "slow_response", label: "Slow lead response" },
+  { key: "no_website_chat", label: "No website chat" }, { key: "website_no_booking", label: "No online booking" },
+  { key: "no_followup", label: "No follow-up" }, { key: "no_crm", label: "No CRM" },
+  { key: "not_running_ads", label: "Not running ads" }, { key: "ads_underperforming", label: "Ads underperform" },
+  { key: "few_reviews", label: "Few reviews" }, { key: "no_referrals", label: "No referrals" },
+  { key: "no_after_hours", label: "No after-hours cover" }, { key: "slow_dms", label: "Slow DMs" },
+  { key: "cart_abandonment", label: "Cart abandonment" }, { key: "no_nurture", label: "No email/SMS nurture" },
+  { key: "no_show", label: "No-shows" }, { key: "unpaid_invoices", label: "Unpaid invoices" },
+  { key: "not_posting", label: "Not posting content" }, { key: "no_seo", label: "Not found on search" },
+  { key: "manual_data_entry", label: "Manual data entry" }, { key: "no_visibility", label: "No reporting/visibility" },
+];
+
+interface AuditOpp { service: string; name: string; category: string; quickWin: boolean; reason: string; impact: string }
+interface FreeAuditRow { id: string; businessName: string; report: { summary: string; quickWins: AuditOpp[]; opportunities: AuditOpp[]; serviceCount: number; estimatedMonthlyUpsideCents: number | null }; createdAt: string }
+
+function FreeAuditPage() {
+  const listState = useApi<{ audits: FreeAuditRow[] }>("/api/audit/free");
+  const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [problems, setProblems] = useState("");
+  const [signals, setSignals] = useState<string[]>([]); const [leads, setLeads] = useState(""); const [deal, setDeal] = useState("");
+  const [busy, setBusy] = useState(false); const [result, setResult] = useState<FreeAuditRow | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(listState);
+  if (guard) return guard;
+  const audits = listState.data?.audits ?? [];
+  function toggle(k: string) { setSignals((s) => s.includes(k) ? s.filter((x) => x !== k) : [...s, k]); }
+  async function run() {
+    if (!name.trim()) { setMsg("Enter the business name."); return; }
+    setBusy(true); setMsg(null); setResult(null);
+    try {
+      const body = { businessName: name, industry: industry || undefined, signals, problems: problems.split("\n").map((s) => s.trim()).filter(Boolean), monthlyLeads: leads ? Number(leads) : undefined, avgDealValueCents: deal ? Math.round(Number(deal) * 100) : undefined };
+      const r = await fetch("/api/audit/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json()) as { ok?: boolean; audit?: FreeAuditRow; error?: string };
+      if (r.ok && j.ok !== false && j.audit) { setResult(j.audit); listState.reload(); } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  const impactColor = (i: string) => (i === "high" ? C.lime : i === "medium" ? C.blue : C.gray);
+  const rep = result?.report;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="ClipboardCheck" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Free AI Audit</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 760 }}>Answer what you learned on the call — the audit maps the prospect's gaps against the <b>full Wobble service menu</b> (34 services), surfaces quick wins, and estimates upside. This is the free, convert-first version; the deep multi-agent + paid McKinsey audit build on top.</div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Run an audit</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 220 }} />
+          <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (optional)" style={{ ...inputStyle, width: 160 }} />
+          <input value={leads} onChange={(e) => setLeads(e.target.value)} placeholder="Monthly leads" inputMode="numeric" style={{ ...inputStyle, width: 120 }} />
+          <input value={deal} onChange={(e) => setDeal(e.target.value)} placeholder="Avg deal ($)" inputMode="decimal" style={{ ...inputStyle, width: 110 }} />
+        </div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 6 }}>What's true today? (tap all that apply)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {AUDIT_SIGNAL_OPTS.map((s) => (
+            <button key={s.key} onClick={() => toggle(s.key)} style={{ ...(signals.includes(s.key) ? primaryBtn : { ...disabledBtn, opacity: 1, cursor: "pointer" }), padding: "5px 10px", fontSize: 11 }}>{s.label}</button>
+          ))}
+        </div>
+        <textarea value={problems} onChange={(e) => setProblems(e.target.value)} placeholder="Anything else they said (one problem per line)…" style={{ ...inputStyle, width: "100%", minHeight: 58, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+          <button onClick={run} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Diagnosing…" : "Run free audit"}</button>
+          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+        </div>
+      </Panel>
+
+      {rep ? (
+        <Panel>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{result!.businessName} — audit</div>
+          <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5, marginBottom: 10 }}>{rep.summary}{rep.estimatedMonthlyUpsideCents ? ` Estimated recoverable upside ≈ ${money(rep.estimatedMonthlyUpsideCents)}/mo.` : ""}</div>
+          {rep.quickWins.length ? <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Quick wins</div> : null}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {rep.opportunities.map((o) => (
+              <div key={o.service} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {o.quickWin ? <Tag text="quick win" color={C.lime} /> : null}
+                <Tag text={o.impact} color={impactColor(o.impact)} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 140 }}>{o.name}</span>
+                <span style={{ fontSize: 11, color: faint }}>{o.reason}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {audits.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Recent audits ({audits.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {audits.map((a) => (
+              <div key={a.id} onClick={() => setResult(a)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <Tag text={`${a.report.serviceCount} opps`} color={C.blue} />
+                <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
   library: LibraryPage,
   crm: CrmPage,
   invoices: InvoicesPage,
+  free_audit: FreeAuditPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,

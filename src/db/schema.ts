@@ -1209,3 +1209,24 @@ export const invoices = pgTable("invoices", {
   index("invoices_company_idx").on(table.companyId),
   index("invoices_opportunity_idx").on(table.opportunityId),
 ]);
+
+// ---------------------------------------------------------------- Audits (Free / Paid AI audits)
+// A prospect audit attached to a company/opportunity. v1 free audit = deterministic diagnosis over
+// the Wobble service catalog; the LLM agent team + paid McKinsey-depth audit layer on later.
+
+export const audits = pgTable("audits", {
+  id: id(),
+  kind: varchar("kind", { length: 16 }).notNull().default("free"), // free | paid
+  companyId: text("company_id"),
+  opportunityId: text("opportunity_id"),
+  businessName: text("business_name").notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("complete"),
+  report: jsonb("report").$type<Record<string, unknown>>().notNull().default({}),
+  input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: varchar("created_by", { length: 120 }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("audits_kind_idx").on(table.kind),
+  index("audits_company_idx").on(table.companyId),
+]);
