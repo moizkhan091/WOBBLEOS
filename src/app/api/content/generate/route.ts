@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { enqueueContentGenerationJob } from "@/lib/content-worker";
 import { contentGenerationRequestSchema } from "@/lib/domain/content-worker";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function dbUnavailable() {
@@ -23,8 +25,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   try {
-    const result = await enqueueContentGenerationJob(parsed.data);
+    const result = await enqueueContentGenerationJob({ ...parsed.data, requestedBy: auth });
     return NextResponse.json({ ok: true, ...result }, { status: result.deduped ? 200 : 202 });
   } catch (error) {
     return NextResponse.json(
