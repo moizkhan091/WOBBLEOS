@@ -2854,3 +2854,21 @@ Tests: tests/memory-conflicts.test.ts (classifier, dedupe, conflict-flag, clean-
 Verified live (real embeddings): identical memory DEDUPED (returned same id, no pile-up). Conflict band proven in unit tests (real-embedding thresholds are tunable constants; calibrate on real data). Staleness unit-tested.
 
 PROGRESS: upgrades done = #1 version history, #8 dedup, #2 conflict detection, #5 staleness (+ 48h revert + audit labeling). REMAINING before break-agent: #3 "what WOBBLE knows about me" export, #4 Ask WOBBLE memory tools (search/edit/forget), #6 pinning, #7 bulk ops, #9 merge/split, #10 Memory UI page; plus extras. Follow-up: wire dedup into approveMemoryUpdate/harvester (auto-learning path); schedule purge + review + harvest sweeps via Automations.
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory upgrades Batch 3a: pinning (#6) + founder export (#3) + Ask WOBBLE memory tools (#4)
+
+Schema (migration 0011, no drift): memory_records += pinned bool, importance int; memory_chunks += pinned bool (denormalized for retrieval).
+
+Domain: MemoryRecordRow/MemoryChunkRow += pinned (+importance on record); MemoryChunkCandidate.pinned optional; rankMemoryChunks adds PIN_BOOST (0.25) so pinned memories reliably surface.
+
+Service (src/lib/memory): pinMemory (permission + updates record pinned/importance + chunk pinned + audit pinned/unpinned); getFounderMemory("Moiz") -> personal-bank export ("what WOBBLE knows about me"); retrieveMemoryCandidates now selects+returns pinned so ranking uses it. New optional store method setChunksPinnedForRecord.
+
+Ask WOBBLE tools (src/lib/ask-tools): search_memory (semantic recall, bank-scoped), forget_memory (archive, reversible 48h), pin_memory (pin/unpin). Now Ask WOBBLE can manage memory conversationally. ToolContext already carries memoryDeps.
+
+API: POST /api/memory/records/[id]/pin; GET /api/memory/founder/[founder].
+
+Tests: rankMemoryChunks pin-boost (memory.test.ts); pinMemory + cross-founder block + getFounderMemory (memory-manage.test.ts). 287 tests pass, typecheck + build green.
+
+Verified live: pinned memory ranked #1 (1.414) over a near-identical unpinned one (1.174); founder export returned founder_moiz records; runTool('search_memory') returned results.
+
+PROGRESS: upgrades done = #1,#2,#3,#4,#5,#6,#8 (+48h revert, audit labeling). REMAINING before break-agent: #7 bulk ops, #9 merge/split, #10 Memory browser UI page. Then extras + break-agent. Follow-ups still queued: dedup in approveMemoryUpdate/harvester; schedule purge/review/harvest via Automations; wire memory tools' confirmation policy if desired.

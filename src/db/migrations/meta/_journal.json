@@ -78,6 +78,13 @@
       "when": 1783578553280,
       "tag": "0010_aspiring_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783579446416,
+      "tag": "0011_sudden_madrox",
+      "breakpoints": true
     }
   ]
 }

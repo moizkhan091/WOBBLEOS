@@ -40,6 +40,18 @@ describe("rankMemoryChunks", () => {
     expect(ranked.map((chunk) => chunk.id)).toEqual(["fresh"]);
   });
 
+  it("boosts pinned memories so they outrank a slightly-more-similar unpinned one", () => {
+    const ranked = rankMemoryChunks({
+      now: new Date("2026-06-26T00:00:00.000Z"),
+      queryMode: "current",
+      chunks: [
+        { id: "unpinned", similarity: 0.8, tier: "working", trustLevel: "monitored", createdAt: "2026-06-25T00:00:00.000Z", archived: false },
+        { id: "pinned", similarity: 0.7, tier: "working", trustLevel: "monitored", createdAt: "2026-06-25T00:00:00.000Z", archived: false, pinned: true },
+      ],
+    });
+    expect(ranked[0]?.id).toBe("pinned");
+  });
+
   it("uses recency to break close similarity ties for current queries", () => {
     const ranked = rankMemoryChunks({
       now: new Date("2026-06-26T00:00:00.000Z"),

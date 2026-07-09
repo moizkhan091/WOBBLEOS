@@ -249,6 +249,9 @@ export const memoryRecords = pgTable("memory_records", {
   // Staleness: prompt a founder to re-confirm a memory after this time (interval depends on tier).
   reviewAfter: timestamp("review_after", { withTimezone: true }),
   lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+  // Pinning: pinned/important memories are protected and weigh more in retrieval.
+  pinned: boolean("pinned").notNull().default(false),
+  importance: integer("importance").notNull().default(0),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -303,6 +306,7 @@ export const memoryChunks = pgTable("memory_chunks", {
   archived: boolean("archived").notNull().default(false),
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
   bankSlugs: jsonb("bank_slugs").$type<string[]>().notNull().default([]),
+  pinned: boolean("pinned").notNull().default(false),
   sourceTimestamp: timestamp("source_timestamp", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

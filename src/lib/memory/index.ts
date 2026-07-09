@@ -6,6 +6,7 @@ import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalSto
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { embedText, embedTexts, type Embedder } from "@/lib/embeddings";
+import { founderBankSlug } from "@/lib/domain/conversations";
 import {
   buildMemoryChunkRows,
   buildMemoryBankLinkRow,
@@ -99,6 +100,7 @@ export interface MemoryStore {
   updateConflict?(id: string, fields: Partial<MemoryConflictRow>): Promise<void>;
   listOpenConflicts?(limit: number): Promise<MemoryConflictRow[]>;
   listRecordsDueForReview?(before: Date, limit: number): Promise<MemoryRecordRow[]>;
+  setChunksPinnedForRecord?(recordId: string, pinned: boolean, updatedAt: Date): Promise<void>;
 }
 
 /** Semantic nearest-neighbours of a candidate memory within the given banks (for dedup/conflict). */
@@ -836,6 +838,45 @@ export async function reviewMemory(input: { id: string; reviewedBy: string }, de
   });
 }
 
+// ---- Pinning + per-founder export ----
+
+/** Pin/unpin a memory (permission-checked, audited). Pinned memories weigh more in retrieval. */
+export async function pinMemory(input: { id: string; pinned: boolean; importance?: number; actor: string }, deps: MemoryDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const record = await store.getMemoryRecordById(input.id);
+  if (!record) throw new Error(`memory record '${input.id}' not found`);
+  const permission = canEditMemoryBanks(input.actor, record.bankSlugs);
+  if (!permission.allowed) throw new Error(permission.reason);
+  const importance = input.importance ?? (input.pinned ? Math.max(record.importance, 1) : 0);
+  await store.updateMemoryRecordFields(input.id, { pinned: input.pinned, importance, updatedAt: now });
+  if (store.setChunksPinnedForRecord) await store.setChunksPinnedForRecord(input.id, input.pinned, now);
+  await recordAudit({
+    eventType: input.pinned ? "memory_record.pinned" : "memory_record.unpinned",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.id,
+    actor: input.actor,
+    metadata: { title: record.title, importance },
+  });
+}
+
+export interface FounderMemoryExport {
+  founder: string;
+  bank: string;
+  count: number;
+  records: MemoryRecordRow[];
+}
+
+/** "What WOBBLE knows about me" — everything in a founder's personal bank, for review/export. */
+export async function getFounderMemory(founder: string, deps: MemoryDeps = {}): Promise<FounderMemoryExport> {
+  const store = deps.store ?? defaultStore();
+  const bank = founderBankSlug(founder);
+  const records = await store.listMemoryRecords({ bankSlug: bank, status: "active", limit: MAX_MEMORY_LIMIT });
+  return { founder, bank, count: records.length, records };
+}
+
 function memoryManageSlug(area: string): string {
   const base = area.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "memory";
   return `${base}-${newId("m").split("_").pop()!.slice(0, 8)}`;
@@ -914,6 +955,7 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         entityType: memoryChunksTable.entityType,
         status: memoryChunksTable.status,
         archived: memoryChunksTable.archived,
+        pinned: memoryChunksTable.pinned,
         tags: memoryChunksTable.tags,
         bankSlugs: memoryChunksTable.bankSlugs,
         createdAt: memoryChunksTable.createdAt,
@@ -955,6 +997,7 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         entityType: (row.entityType as string | null) ?? null,
         status: row.status as "active" | "archived",
         archived: row.archived as boolean,
+        pinned: Boolean(row.pinned),
         tags: row.tags as string[],
         bankSlugs: row.bankSlugs as string[],
         createdAt: asIsoDate(row.createdAt as Date | string),
@@ -1012,6 +1055,9 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
     },
     async setChunksStatusForRecord(recordId, status, archived, updatedAt) {
       await db.update(memoryChunksTable).set({ status, archived, updatedAt }).where(eq(memoryChunksTable.memoryRecordId, recordId));
+    },
+    async setChunksPinnedForRecord(recordId, pinned, updatedAt) {
+      await db.update(memoryChunksTable).set({ pinned, updatedAt }).where(eq(memoryChunksTable.memoryRecordId, recordId));
     },
     async insertRecordVersion(row) {
       await db.insert(memoryRecordVersions).values(row);

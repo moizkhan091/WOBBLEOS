@@ -302,6 +302,7 @@ export interface MemoryChunkCandidate {
   trustLevel: TrustLevel;
   createdAt: string;
   archived: boolean;
+  pinned?: boolean;
 }
 
 export interface RankedMemoryChunk extends MemoryChunkCandidate {
@@ -448,6 +449,8 @@ export interface MemoryRecordRow {
   purgeAfter: Date | null;
   reviewAfter: Date | null;
   lastReviewedAt: Date | null;
+  pinned: boolean;
+  importance: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -487,6 +490,8 @@ export function buildMemoryRecordRow(
     purgeAfter: null,
     reviewAfter: computeReviewAfter(parsed.memoryTier, now),
     lastReviewedAt: null,
+    pinned: false,
+    importance: 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -620,6 +625,7 @@ export interface MemoryChunkRow {
   entityType: string | null;
   status: "active" | "archived";
   archived: boolean;
+  pinned: boolean;
   tags: string[];
   bankSlugs: string[];
   sourceTimestamp: Date | null;
@@ -649,6 +655,7 @@ export function buildMemoryChunkRows(
       archived: false,
       tags: parsed.tags,
       bankSlugs: parsed.bankSlugs?.length ? parsed.bankSlugs : parsed.tags,
+      pinned: false,
       sourceTimestamp: parsed.sourceTimestamp ?? null,
       createdAt: now,
       updatedAt: now,
@@ -851,6 +858,9 @@ export function suggestMemoryBanks(
   };
 }
 
+/** Pinned/important memories get a strong ranking boost so they surface reliably. */
+const PIN_BOOST = 0.25;
+
 const tierBoost: Record<MemoryTier, number> = {
   core: 0.18,
   working: 0.1,
@@ -882,7 +892,12 @@ export function rankMemoryChunks<T extends MemoryChunkCandidate>(input: {
     .filter((chunk) => input.queryMode === "include_archived" || !chunk.archived)
     .map((chunk) => ({
       ...chunk,
-      score: chunk.similarity + tierBoost[chunk.tier] + trustBoost[chunk.trustLevel] + recencyScore(chunk.createdAt, input.now, input.queryMode),
+      score:
+        chunk.similarity +
+        tierBoost[chunk.tier] +
+        trustBoost[chunk.trustLevel] +
+        recencyScore(chunk.createdAt, input.now, input.queryMode) +
+        (chunk.pinned ? PIN_BOOST : 0),
     }))
     .sort((a, b) => b.score - a.score);
 }

@@ -3,7 +3,7 @@ import { newId } from "@/lib/ids";
 import { getSystemSnapshot, type SystemMapDeps } from "@/lib/system-map";
 import { getModelCatalog, proposeModelSwap, applyModelSwapApproval, type ModelRegistryDeps } from "@/lib/model-registry";
 import { MODEL_MODALITIES } from "@/lib/domain/model-registry";
-import { approveMemoryUpdate, proposeMemoryUpdate, type MemoryDeps } from "@/lib/memory";
+import { approveMemoryUpdate, archiveMemoryRecord, pinMemory, proposeMemoryUpdate, retrieveMemoryContext, type MemoryDeps } from "@/lib/memory";
 import { classifyCandidateRouting, founderBankSlug } from "@/lib/domain/conversations";
 
 /**
@@ -228,6 +228,49 @@ const rememberTool = defineTool<{ fact: string; scope?: "founder" | "company" | 
   },
 });
 
+const searchMemoryTool = defineTool<{ query: string; bank?: string; limit?: number }>({
+  name: "search_memory",
+  description: "Search WOBBLE's memory semantically to recall facts, preferences, brand rules, decisions. Optionally scope to a bank (e.g. 'founder_moiz', 'brand', 'company').",
+  jsonSchema: objectSchema(
+    { query: { type: "string" }, bank: { type: "string", description: "Optional bank slug to scope the search." }, limit: { type: "number" } },
+    ["query"],
+  ),
+  argsSchema: z.object({ query: z.string().trim().min(1), bank: z.string().trim().min(1).optional(), limit: z.number().int().min(1).max(10).optional() }),
+  mutates: false,
+  handler: async (args, ctx) => {
+    const hits = await retrieveMemoryContext(
+      { query: args.query, bankSlugs: args.bank ? [args.bank] : undefined, limit: args.limit ?? 5 },
+      ctx.memoryDeps,
+    );
+    return { results: hits.map((h) => ({ recordId: h.memoryRecordId, content: h.content, similarity: Number(h.similarity.toFixed(3)), trust: h.trustLevel })) };
+  },
+});
+
+const forgetMemoryTool = defineTool<{ recordId: string; reason?: string }>({
+  name: "forget_memory",
+  description: "Archive (soft-delete) a memory by its record id when the founder asks to forget/remove it. Reversible for 48h.",
+  jsonSchema: objectSchema({ recordId: { type: "string" }, reason: { type: "string" } }, ["recordId"]),
+  argsSchema: z.object({ recordId: z.string().trim().min(1), reason: z.string().trim().min(1).optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    await archiveMemoryRecord({ id: args.recordId, archivedBy: ctx.actor ?? "founder", reason: args.reason }, ctx.memoryDeps);
+    return { status: "archived", restorableFor: "48h" };
+  },
+});
+
+const pinMemoryTool = defineTool<{ recordId: string; pinned?: boolean; importance?: number }>({
+  name: "pin_memory",
+  description: "Pin (or unpin) a memory so it weighs more in recall. pinned defaults to true.",
+  jsonSchema: objectSchema({ recordId: { type: "string" }, pinned: { type: "boolean" }, importance: { type: "number" } }, ["recordId"]),
+  argsSchema: z.object({ recordId: z.string().trim().min(1), pinned: z.boolean().optional(), importance: z.number().int().min(0).max(10).optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const pinned = args.pinned ?? true;
+    await pinMemory({ id: args.recordId, pinned, importance: args.importance, actor: ctx.actor ?? "founder" }, ctx.memoryDeps);
+    return { status: pinned ? "pinned" : "unpinned" };
+  },
+});
+
 export const ASK_TOOLS: ToolDefinition[] = [
   listAgentsTool,
   listPendingApprovalsTool,
@@ -236,6 +279,9 @@ export const ASK_TOOLS: ToolDefinition[] = [
   proposeModelSwapTool,
   applyModelUpgradeTool,
   rememberTool,
+  searchMemoryTool,
+  forgetMemoryTool,
+  pinMemoryTool,
 ];
 
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));

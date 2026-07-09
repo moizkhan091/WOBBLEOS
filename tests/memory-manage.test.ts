@@ -4,7 +4,9 @@ import {
   archiveMemoryRecord,
   createMemoryRecord,
   editMemoryRecord,
+  getFounderMemory,
   listMemoryVersions,
+  pinMemory,
   purgeExpiredArchivedMemory,
   restoreMemoryRecord,
   restoreMemoryVersion,
@@ -166,6 +168,44 @@ describe("version history + 48h purge", () => {
     const late = await purgeExpiredArchivedMemory({}, { store, recordAudit: audit, now: new Date(now.getTime() + 49 * 60 * 60 * 1000) });
     expect(late.purged).toBe(1);
     expect(records).toHaveLength(0);
+  });
+});
+
+describe("pinning + founder export", () => {
+  it("pins a memory (sets pinned + importance) with permission + audit", async () => {
+    const { store, records } = makeStore();
+    const audit = async () => {};
+    const rec = await createMemoryRecord(
+      { title: "t", content: "important fact", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    await pinMemory({ id: rec.id, pinned: true, actor: "Moiz" }, { store, recordAudit: audit, now });
+    const pinnedRec = records.find((r) => r.id === rec.id);
+    expect(pinnedRec?.pinned).toBe(true);
+    expect(pinnedRec?.importance).toBeGreaterThanOrEqual(1);
+  });
+
+  it("blocks pinning a memory in another founder's bank", async () => {
+    const { store } = makeStore();
+    const audit = async () => {};
+    // seed a record owned by Ali, then Moiz tries to pin it
+    const rec = await createMemoryRecord(
+      { title: "t", content: "ali fact", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_ali"], createdBy: "Ali" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    await expect(pinMemory({ id: rec.id, pinned: true, actor: "Moiz" }, { store, recordAudit: audit, now })).rejects.toThrow(/personal memory bank/);
+  });
+
+  it("exports a founder's personal memory", async () => {
+    const { store } = makeStore();
+    const audit = async () => {};
+    await createMemoryRecord(
+      { title: "t", content: "moiz fact", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    const dump = await getFounderMemory("Moiz", { store });
+    expect(dump.bank).toBe("founder_moiz");
+    expect(dump.count).toBeGreaterThanOrEqual(1);
   });
 });
 
