@@ -130,3 +130,11 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Alternatives rejected: building the audit UI as a "fake CRM screen" floating with no company record (the partner explicitly warned against this); one shared AI for both audits; running paid LLM/scrape jobs autonomously without the founder present.
 - Do NOT change: the connected-object model (no orphans), founder-gated money actions, separate free/paid teams, retrieve-don't-hardcode the Wobble service catalog.
 - Open: image/PDF engine choice; deploy + public URL (shared with Zernio) for any external posting/scraping; the partner's remaining ERP modules (tasks/meetings/projects/RBAC/versioning/integrations) staged later.
+
+## 2026-07-10 - Universal AI chat + file intelligence (Claude, Opus 4.8)
+- DECISION: One universal chat service (chatWithWobble / /api/ai/chat) powers every "talk to AI" spot, rather than bespoke chat per module. Ask WOBBLE is the first mount.
+- DECISION: File intelligence routes by type — images→vision model, PDFs→OpenRouter file-parser plugin (works with any model), text/code→inlined. Kept in pure domain/attachments.ts so it's testable + reusable by agents/audits later.
+- DECISION: Attachments go to /api/ai/chat; plain questions stay on /api/ask to preserve grounded Brain/source citations + intent routing. Best of both.
+- DECISION: Greeting is a pure deterministic function (hour + founder + pick); server supplies randomness. Founder name comes from the verified session, never client input.
+- WHY: Founder wants the OS to feel alive and to "just handle" any file dropped anywhere. Building it as shared primitives means the next 10 modules get chat+files for free.
+- OMITTED (honesty): model-picker dropdown — no real per-call model override exists yet; a dead control would violate ENGINEERING_STANDARDS (no stubs).

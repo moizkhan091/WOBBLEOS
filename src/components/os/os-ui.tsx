@@ -775,72 +775,145 @@ function ContentPage() {
   );
 }
 
+function WobbleMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="presentation" style={{ flex: "none" }}>
+      <defs><ellipse id="wm-petal" cx="100" cy="100" rx="92" ry="21" /></defs>
+      <g fill={C.lime} fillRule="evenodd" opacity={0.92}>
+        <use href="#wm-petal" transform="rotate(0 100 100)" />
+        <use href="#wm-petal" transform="rotate(45 100 100)" />
+        <use href="#wm-petal" transform="rotate(90 100 100)" />
+        <use href="#wm-petal" transform="rotate(135 100 100)" />
+      </g>
+      <circle cx="100" cy="100" r="17" fill="#06070A" />
+    </svg>
+  );
+}
+
+interface ChatFile { id: string; name: string; size: number; mimeType: string; kind: "image" | "pdf" | "text" | "other"; preview: string | null; dataBase64: string }
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg|heic)$/i;
+function fileKind(f: File): ChatFile["kind"] {
+  if (f.type.startsWith("image/") || IMG_EXT_RE.test(f.name)) return "image";
+  if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) return "pdf";
+  if (f.type.startsWith("text/") || /\.(txt|md|csv|json|ya?ml|xml|html?|js|ts|tsx|jsx|py|sql|css|log)$/i.test(f.name)) return "text";
+  return "other";
+}
+function readFileB64(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const s = String(r.result ?? ""); resolve(s.includes(",") ? s.split(",")[1] : s); };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+}
+
 function AskPage() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string; citations?: Record<string, unknown>[]; needsFounderJudgment?: string[]; modelRunId?: string | null }[]>([]);
+  const [files, setFiles] = useState<ChatFile[]>([]);
+  const [drag, setDrag] = useState(false);
+  const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string; files?: { name: string; kind: string }[]; citations?: Record<string, unknown>[]; needsFounderJudgment?: string[] }[]>([]);
+  const greet = useApi<{ greeting: string; subline: string; dayPart: string }>("/api/ai/greeting");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function addFiles(list: FileList | File[]) {
+    const arr = Array.from(list).slice(0, 10);
+    const built = await Promise.all(arr.map(async (f) => ({ id: Math.random().toString(36).slice(2), name: f.name, size: f.size, mimeType: f.type || "application/octet-stream", kind: fileKind(f), preview: fileKind(f) === "image" ? URL.createObjectURL(f) : null, dataBase64: await readFileB64(f) })));
+    setFiles((prev) => [...prev, ...built].slice(0, 10));
+  }
+  function removeFile(id: string) { setFiles((prev) => prev.filter((f) => f.id !== id)); }
+
   async function send() {
     const question = q.trim();
-    if (!question || busy) return;
-    setTurns((t) => [...t, { role: "you", text: question }]);
-    setQ("");
-    setBusy(true);
+    if ((!question && files.length === 0) || busy) return;
+    const attached = files.map((f) => ({ name: f.name, kind: f.kind }));
+    setTurns((t) => [...t, { role: "you", text: question || "(analyze attached)", files: attached }]);
+    const sendFiles = files;
+    setQ(""); setFiles([]); setBusy(true);
     try {
-      const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, maxTokens: 600 }) });
-      const j = (await r.json()) as Record<string, unknown>;
-      if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
-      else {
-        const res = (j.result ?? {}) as Record<string, unknown>;
-        if (res.type === "answer") {
-          const answer = (res.answer ?? {}) as Record<string, unknown>;
-          const citations = Array.isArray(answer.citations) ? answer.citations as Record<string, unknown>[] : [];
-          const needsFounderJudgment = Array.isArray(answer.needsFounderJudgment) ? answer.needsFounderJudgment.map((item) => String(item)) : [];
-          const metaParts = [
-            answer.confidence != null ? "confidence " + String(answer.confidence) : null,
-            citations.length ? citations.length + " citation" + (citations.length === 1 ? "" : "s") : null,
-            answer.modelRunId ? "run " + String(answer.modelRunId) : null,
-          ].filter(Boolean);
-          setTurns((t) => [...t, { role: "wob", text: String(answer.answer ?? ""), meta: metaParts.join(" - "), citations, needsFounderJudgment, modelRunId: answer.modelRunId ? String(answer.modelRunId) : null }]);
-        } else {
-          const text = String(res.message ?? (res.type === "route" ? "Intent recognized and routed." : JSON.stringify(res)));
-          const meta = [res.intent ? "intent " + String(res.intent) : null, res.module ? "module " + String(res.module) : null, res.status ? "status " + String(res.status) : null].filter(Boolean).join(" - ");
-          setTurns((t) => [...t, { role: "wob", text, meta }]);
+      if (sendFiles.length > 0) {
+        // Attachments -> universal multimodal chat (images/PDFs/text).
+        const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, useMemory: true, attachments: sendFiles.map((f) => ({ filename: f.name, mimeType: f.mimeType, dataBase64: f.dataBase64 })) }) });
+        const j = (await r.json()) as Record<string, unknown>;
+        if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
+        else setTurns((t) => [...t, { role: "wob", text: String(j.text ?? ""), meta: [Array.isArray(j.attachments) && j.attachments.length ? (j.attachments as string[]).join(" · ") : null, j.runId ? "run " + String(j.runId) : null].filter(Boolean).join(" — ") }]);
+      } else {
+        const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, maxTokens: 600 }) });
+        const j = (await r.json()) as Record<string, unknown>;
+        if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
+        else {
+          const res = (j.result ?? {}) as Record<string, unknown>;
+          if (res.type === "answer") {
+            const answer = (res.answer ?? {}) as Record<string, unknown>;
+            const citations = Array.isArray(answer.citations) ? answer.citations as Record<string, unknown>[] : [];
+            const needsFounderJudgment = Array.isArray(answer.needsFounderJudgment) ? answer.needsFounderJudgment.map((item) => String(item)) : [];
+            const metaParts = [answer.confidence != null ? "confidence " + String(answer.confidence) : null, citations.length ? citations.length + " citation" + (citations.length === 1 ? "" : "s") : null, answer.modelRunId ? "run " + String(answer.modelRunId) : null].filter(Boolean);
+            setTurns((t) => [...t, { role: "wob", text: String(answer.answer ?? ""), meta: metaParts.join(" - "), citations, needsFounderJudgment }]);
+          } else {
+            const text = String(res.message ?? (res.type === "route" ? "Intent recognized and routed." : JSON.stringify(res)));
+            const meta = [res.intent ? "intent " + String(res.intent) : null, res.module ? "module " + String(res.module) : null, res.status ? "status " + String(res.status) : null].filter(Boolean).join(" - ");
+            setTurns((t) => [...t, { role: "wob", text, meta }]);
+          }
         }
       }
     } catch (e) { setTurns((t) => [...t, { role: "wob", text: "Error: " + String(e) }]); }
     setBusy(false);
   }
+
+  const hasContent = q.trim() || files.length > 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 820 }}>
-      <div style={{ ...glass, padding: 16, display: "flex", gap: 10 }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Ask WOBBLE across the OS…" style={{ flex: 1, padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: C.white, fontSize: 13.5, outline: "none" }} />
-        <button onClick={send} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1, cursor: busy ? "wait" : "pointer" }}>{busy ? "Thinking…" : "Run"}</button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 820 }} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={(e) => { e.preventDefault(); setDrag(false); }} onDrop={(e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files); }}>
       {turns.length === 0 ? (
-        <StateBlock kind="empty" message="Ask a question. Answers come from approved Brain + sources with citations. Needs a database plus OPENROUTER_API_KEY and model roles configured to answer live." />
+        <div style={{ padding: "18px 4px 4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <WobbleMark size={30} />
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: C.white }}>{greet.data?.greeting ?? "Hey there"}</div>
+          </div>
+          <div style={{ fontSize: 13.5, color: faint, marginLeft: 42 }}>{greet.data?.subline ?? "What are we building today?"}</div>
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {turns.map((m, i) => (
             <div key={i} style={{ display: "flex", justifyContent: m.role === "you" ? "flex-end" : "flex-start" }}>
-              <div style={{ maxWidth: "78%", padding: "12px 15px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, border: "1px solid " + (m.role === "you" ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.09)"), background: m.role === "you" ? "linear-gradient(135deg,rgba(184,255,44,0.16),rgba(184,255,44,0.06))" : "rgba(255,255,255,0.05)" }}>
+              <div style={{ maxWidth: "80%", padding: "12px 15px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap", border: "1px solid " + (m.role === "you" ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.09)"), background: m.role === "you" ? "linear-gradient(135deg,rgba(184,255,44,0.16),rgba(184,255,44,0.06))" : "rgba(255,255,255,0.05)" }}>
+                {m.files?.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>{m.files.map((f, k) => <Tag key={k} text={(f.kind === "image" ? "🖼 " : f.kind === "pdf" ? "📄 " : "📎 ") + f.name.slice(0, 26)} color={C.blue} />)}</div> : null}
                 {m.text}
                 {m.meta ? <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{m.meta}</div> : null}
-                {m.needsFounderJudgment?.length ? (
-                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
-                    {m.needsFounderJudgment.map((item) => <div key={item} style={{ fontSize: 11.5, color: C.orange }}>{item}</div>)}
-                  </div>
-                ) : null}
-                {m.citations?.length ? (
-                  <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {m.citations.slice(0, 8).map((c, idx) => <Tag key={String(c.id ?? idx)} text={String(c.kind ?? "source") + " - " + String(c.label ?? c.id ?? idx).slice(0, 48)} color={String(c.kind) === "source" ? C.blue : C.lime} />)}
-                    {m.citations.length > 8 ? <Tag text={"+" + String(m.citations.length - 8) + " more"} color={C.gray} /> : null}
-                  </div>
-                ) : null}
+                {m.needsFounderJudgment?.length ? <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>{m.needsFounderJudgment.map((item) => <div key={item} style={{ fontSize: 11.5, color: C.orange }}>{item}</div>)}</div> : null}
+                {m.citations?.length ? <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 }}>{m.citations.slice(0, 8).map((c, idx) => <Tag key={String(c.id ?? idx)} text={String(c.kind ?? "source") + " - " + String(c.label ?? c.id ?? idx).slice(0, 48)} color={String(c.kind) === "source" ? C.blue : C.lime} />)}{m.citations.length > 8 ? <Tag text={"+" + String(m.citations.length - 8) + " more"} color={C.gray} /> : null}</div> : null}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Composer */}
+      <div style={{ position: "relative", ...glass, padding: 12, border: drag ? "1px dashed rgba(184,255,44,0.6)" : glass.border }}>
+        {files.length > 0 ? (
+          <div style={{ display: "flex", gap: 9, overflowX: "auto", paddingBottom: 10, marginBottom: 4 }}>
+            {files.map((f) => (
+              <div key={f.id} style={{ position: "relative", flex: "none", width: 92, height: 92, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.3)" }}>
+                {f.preview ? <img src={f.preview} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (
+                  <div style={{ padding: 9, height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                    <Icon name={f.kind === "pdf" ? "FileText" : "File"} size={17} />
+                    <div><div style={{ fontSize: 10.5, color: C.white, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div><div style={{ fontSize: 9.5, color: faint }}>{(f.size / 1024).toFixed(0)} KB</div></div>
+                  </div>
+                )}
+                <button onClick={() => removeFile(f.id)} style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11, cursor: "pointer", lineHeight: 1 }}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <textarea value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Ask WOBBLE anything — or drop an image / PDF / doc to analyze…" rows={2} style={{ width: "100%", padding: "6px 6px 10px", border: "none", background: "transparent", color: C.white, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => fileRef.current?.click()} title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
+          <span style={{ fontSize: 10.5, color: faint }}>Images → vision · PDFs & docs → parsed · Shift+Enter for newline</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={send} disabled={!hasContent || busy} style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: hasContent && !busy ? C.lime : "rgba(184,255,44,0.3)", color: "#0A0A0A", cursor: hasContent && !busy ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>{busy ? <Icon name="Loader2" size={17} /> : <Icon name="ArrowUp" size={18} />}</button>
+        </div>
+        <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+        {drag ? <div style={{ position: "absolute", inset: 0, borderRadius: 14, background: "rgba(6,7,10,0.85)", display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, fontSize: 13, fontWeight: 600, pointerEvents: "none" }}>Drop files to attach</div> : null}
+      </div>
     </div>
   );
 }

@@ -3287,3 +3287,17 @@ VERIFIED: typecheck clean; full suite 426 passing; production build compiles (al
 Business flow now complete end to end: Lead → (Quick Pitch / Audit Workspace 3-doc) → Proposal → Invoice → Deal Won → **Project / Delivery**.
 
 NEXT (partner ERP remaining): entity DETAIL PAGES + activity timelines (click a company/deal → everything: contacts, deals, tasks, meetings, projects, invoices, audit trail — highest-value connective UI), RBAC/permissions, versioning/rollback, automation-rules engine, role dashboards (sales/finance/delivery), system health, integrations registry. Then Content Command upgrades. Deploy deferred (VPS + SSH pending).
+
+## 2026-07-10 - Claude (Opus 4.8) - Universal WOBBLE AI Chat: greeting + attachments + vision (UI live)
+
+Backend (committed ad6a7c5) + now the UI. Ask WOBBLE is now a proper ChatGPT-style surface, Wobble-branded (lime WobbleMark + #B8FF2C on near-black):
+- Personality greeting header: founder first-name from session + time-of-day variety ("Late night grind, Moiz?", "Good morning", "Hola", etc.) via GET /api/ai/greeting + domain/greeting.ts.
+- Composer: multiline textarea, [+] attach button, drag-drop overlay, image/pdf/text preview cards with remove, lime send.
+- Routing: attachments -> POST /api/ai/chat (multimodal: images→vision, PDFs→OpenRouter file-parser, text→inline). Plain questions -> /api/ask (keeps grounded citations + intent routing).
+- WobbleMark logo component added (lime petal mark).
+
+VERIFIED LIVE IN BROWSER: greeting rendered "Late night grind, Moiz?"; sent "what is WOBBLE?" → real answer + confidence high + 12 citations + model run id. Backend vision separately verified (red PNG → "Red"). Prod build clean.
+
+NOTE for reuse: chatWithWobble + /api/ai/chat are generic — any module can mount the same composer. Model-picker dropdown intentionally omitted (would need a real per-call model override in runTextProvider; not faking a dead control). PDF path uses OpenRouter file-parser plugin — validate with a real client PDF when convenient.
+
+NEXT: build the "planned" modules (Decision Room, Offer Lab, Research Radar, SEO, Social, Web Analytics, Automations, Workers, Backup, Settings) + entity 360 detail pages + role dashboards; then a full audit/break pass. Media Studio: keep (flagged, founder unsure). Deploy still deferred (VPS + SSH).
