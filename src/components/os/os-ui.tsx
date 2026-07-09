@@ -2842,10 +2842,215 @@ function LibraryPage() {
   );
 }
 
+// ---------------------------------------------------------------- Pipeline / CRM + Finance
+
+const STAGE_LABELS: Record<string, string> = {
+  new_lead: "New Lead", contacted: "Contacted", qualified: "Qualified", ai_readiness_call_booked: "Readiness Call",
+  call_completed: "Call Done", paid_audit_offered: "Audit Offered", paid_audit_sold: "Audit Sold",
+  audit_in_progress: "Audit In Progress", audit_delivered: "Audit Delivered", proposal_sent: "Proposal Sent",
+  negotiation: "Negotiation", won: "Won", lost: "Lost", nurture: "Nurture",
+};
+const STAGE_ORDER = Object.keys(STAGE_LABELS);
+const money = (cents: number, currency = "USD") => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format((cents ?? 0) / 100);
+
+interface CrmOpp { id: string; name: string; companyId: string; stage: string; valueCents: number; currency: string; probability: number; priority: string; status: string; serviceInterest: string[] }
+interface CrmLead { id: string; name: string; source: string | null; score: number; status: string; intentLevel: string; problemStated: string | null; serviceInterest: string[]; convertedOpportunityId: string | null }
+interface CrmCompany { id: string; name: string; status: string }
+
+function CrmPage() {
+  const oppState = useApi<{ opportunities: CrmOpp[] }>("/api/crm/opportunities?limit=500");
+  const leadState = useApi<{ leads: CrmLead[] }>("/api/crm/leads?limit=200");
+  const coState = useApi<{ companies: CrmCompany[] }>("/api/crm/companies?limit=200");
+  const [ln, setLn] = useState(""); const [lsrc, setLsrc] = useState("manual"); const [lintent, setLintent] = useState("medium"); const [lprob, setLprob] = useState("");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(oppState) ?? offlineIf(leadState) ?? offlineIf(coState);
+  if (guard) return guard;
+  const opps = oppState.data?.opportunities ?? [];
+  const leads = leadState.data?.leads ?? [];
+  const companies = coState.data?.companies ?? [];
+  const coName = (id: string) => companies.find((c) => c.id === id)?.name ?? "";
+  const openOpps = opps.filter((o) => o.status === "open");
+  const pipelineValue = openOpps.reduce((s, o) => s + o.valueCents, 0);
+  const wonValue = opps.filter((o) => o.status === "won").reduce((s, o) => s + o.valueCents, 0);
+  async function reload() { oppState.reload(); leadState.reload(); coState.reload(); }
+  async function moveStage(id: string, stage: string) { await fetch(`/api/crm/opportunities/${id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) }); reload(); }
+  async function addLead() {
+    if (!ln.trim()) { setMsg("Lead needs a name."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/crm/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: ln, source: lsrc, intentLevel: lintent, problemStated: lprob || undefined }) });
+      if (r.ok) { setLn(""); setLprob(""); reload(); } else setMsg("Error saving lead.");
+    } finally { setBusy(false); }
+  }
+  async function convert(lead: CrmLead) {
+    const companyName = window.prompt("Convert to which company name?", lead.name);
+    if (!companyName) return;
+    await fetch(`/api/crm/leads/${lead.id}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyName }) });
+    reload();
+  }
+  const stagesWithDeals = STAGE_ORDER.filter((s) => opps.some((o) => o.stage === s));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Companies" value={String(companies.length)} icon="Building2" color={C.lime} />
+        <Kpi label="Open deals" value={String(openOpps.length)} icon="Kanban" color={C.blue} />
+        <Kpi label="Pipeline value" value={money(pipelineValue)} icon="TrendingUp" color="#B87CFF" sub="open deals" />
+        <Kpi label="Won" value={money(wonValue)} icon="Trophy" color="#2DD4BF" />
+      </div>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New lead</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={ln} onChange={(e) => setLn(e.target.value)} placeholder="Lead / business name" style={{ ...inputStyle, width: 200 }} />
+          <select value={lsrc} onChange={(e) => setLsrc(e.target.value)} style={selectStyle}>{["manual", "referral", "inbound", "cold_email", "instagram", "call", "import"].map((s) => <option key={s} value={s}>{s}</option>)}</select>
+          <select value={lintent} onChange={(e) => setLintent(e.target.value)} style={selectStyle}>{["unknown", "low", "medium", "high"].map((s) => <option key={s} value={s}>intent: {s}</option>)}</select>
+          <input value={lprob} onChange={(e) => setLprob(e.target.value)} placeholder="Problem stated (optional)" style={{ ...inputStyle, width: 240 }} />
+          <button onClick={addLead} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Add lead"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+        {leads.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+            {leads.map((l) => (
+              <div key={l.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Tag text={`score ${l.score}`} color={l.score >= 60 ? C.lime : l.score >= 30 ? C.blue : C.gray} />
+                <Tag text={l.status} color={l.status === "converted" ? C.lime : C.gray} />
+                <span style={{ fontSize: 12.5, flex: 1, minWidth: 120 }}>{l.name}</span>
+                <span style={{ fontSize: 11, color: faint }}>{l.source ?? ""}</span>
+                {l.status !== "converted" ? <button onClick={() => convert(l)} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5 }}>Convert →</button> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Pipeline</div>
+        {opps.length === 0 ? (
+          <StateBlock kind="empty" message="No deals yet. Add a lead above and convert it, or create an opportunity." />
+        ) : (
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+            {stagesWithDeals.map((stage) => {
+              const list = opps.filter((o) => o.stage === stage);
+              const val = list.reduce((s, o) => s + o.valueCents, 0);
+              return (
+                <div key={stage} style={{ minWidth: 210, flex: "0 0 210px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: stage === "won" ? C.lime : stage === "lost" ? C.orange : C.white }}>{STAGE_LABELS[stage]}</span>
+                    <span style={{ fontSize: 10.5, color: faint }}>{list.length} · {money(val)}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {list.map((o) => (
+                      <div key={o.id} style={{ ...card, padding: "9px 10px" }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{o.name}</div>
+                        <div style={{ fontSize: 10.5, color: faint, marginTop: 2 }}>{coName(o.companyId)}</div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7, gap: 6 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 600, color: C.lime }}>{money(o.valueCents, o.currency)}</span>
+                          <select value={o.stage} onChange={(e) => moveStage(o.id, e.target.value)} style={{ ...selectStyle, padding: "3px 6px", fontSize: 10.5 }}>
+                            {STAGE_ORDER.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+interface FinInvoice { id: string; invoiceNumber: string; totalCents: number; amountPaidCents: number; currency: string; status: string; companyId: string | null; opportunityId: string | null }
+interface RevSummary { paidRevenueCents: number; outstandingCents: number; overdueCents: number; pipelineValueCents: number; weightedPipelineCents: number; wonValueCents: number; invoiceCounts: Record<string, number>; openDeals: number; wonDeals: number; avgDealSizeCents: number; revenueByService: Record<string, number> }
+
+function InvoicesPage() {
+  const sumState = useApi<{ summary: RevSummary }>("/api/finance/summary");
+  const invState = useApi<{ invoices: FinInvoice[] }>("/api/finance/invoices?limit=200");
+  const [desc, setDesc] = useState(""); const [amt, setAmt] = useState(""); const [oppId, setOppId] = useState("");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(sumState) ?? offlineIf(invState);
+  if (guard) return guard;
+  const s = sumState.data?.summary;
+  const invoices = invState.data?.invoices ?? [];
+  async function reload() { sumState.reload(); invState.reload(); }
+  async function createInvoice() {
+    const cents = Math.round(parseFloat(amt) * 100);
+    if (!desc.trim() || !Number.isFinite(cents) || cents <= 0) { setMsg("Need a description and a positive amount."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/finance/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lineItems: [{ description: desc, quantity: 1, unitPriceCents: cents }], opportunityId: oppId || undefined }) });
+      if (r.ok) { setDesc(""); setAmt(""); setOppId(""); reload(); } else setMsg("Error creating invoice.");
+    } finally { setBusy(false); }
+  }
+  async function act(id: string, action: string) { await fetch(`/api/finance/invoices/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }); reload(); }
+  const actionsFor = (st: string): Array<{ a: string; label: string }> => {
+    if (st === "draft" || st === "needs_approval") return [{ a: "approve", label: "Approve" }, { a: "cancel", label: "Cancel" }];
+    if (st === "approved") return [{ a: "send", label: "Send" }, { a: "cancel", label: "Cancel" }];
+    if (["sent", "viewed", "partially_paid", "overdue"].includes(st)) return [{ a: "mark_paid", label: "Mark paid" }, { a: "cancel", label: "Cancel" }];
+    return [];
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Paid revenue" value={money(s?.paidRevenueCents ?? 0)} icon="Wallet" color={C.lime} />
+        <Kpi label="Outstanding" value={money(s?.outstandingCents ?? 0)} icon="Hourglass" color={C.blue} sub="unpaid invoices" />
+        <Kpi label="Overdue" value={money(s?.overdueCents ?? 0)} icon="AlertTriangle" color={C.orange} />
+        <Kpi label="Won revenue" value={money(s?.wonValueCents ?? 0)} icon="Trophy" color="#2DD4BF" sub={`${s?.wonDeals ?? 0} deals`} />
+        <Kpi label="Pipeline value" value={money(s?.pipelineValueCents ?? 0)} icon="TrendingUp" color="#B87CFF" sub={`weighted ${money(s?.weightedPipelineCents ?? 0)}`} />
+      </div>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Invoices & Finance</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 720 }}>Draft invoices from deals, then a founder approves → sends → marks paid. The OS <b>never moves money on its own</b> — every step is logged in the audit trail.</div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New invoice (draft)</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Line item, e.g. Wobble AI OS Audit" style={{ ...inputStyle, width: 260 }} />
+          <input value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Amount (USD)" inputMode="decimal" style={{ ...inputStyle, width: 120 }} />
+          <input value={oppId} onChange={(e) => setOppId(e.target.value)} placeholder="Link opportunity id (optional)" style={{ ...inputStyle, width: 200 }} />
+          <button onClick={createInvoice} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Draft invoice"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Invoices ({invoices.length})</div>
+        {invoices.length === 0 ? (
+          <StateBlock kind="empty" message="No invoices yet. Draft one above." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {invoices.map((inv) => (
+              <div key={inv.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, minWidth: 120 }}>{inv.invoiceNumber}</span>
+                <Tag text={inv.status} color={inv.status === "paid" ? C.lime : inv.status === "overdue" ? C.orange : inv.status === "sent" ? C.blue : C.gray} />
+                <span style={{ fontSize: 12.5, flex: 1, minWidth: 80, color: C.lime, fontWeight: 600 }}>{money(inv.totalCents, inv.currency)}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {actionsFor(inv.status).map((x) => <button key={x.a} onClick={() => act(inv.id, x.a)} style={{ ...(x.a === "cancel" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5 }}>{x.label}</button>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
   library: LibraryPage,
+  crm: CrmPage,
+  invoices: InvoicesPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,

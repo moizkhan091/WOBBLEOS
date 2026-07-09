@@ -1041,3 +1041,171 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   index("scheduled_posts_asset_id_idx").on(table.assetId),
   index("scheduled_posts_platform_idx").on(table.platform),
 ]);
+
+// ---------------------------------------------------------------- Wobble ERP Control Layer (CRM spine)
+// Connected business backbone: Company is the parent object; Contacts/Leads/Opportunities hang off
+// it. Soft-delete via archived_at (no hard delete); every stage move logged to history + audit.
+
+export const crmCompanies = pgTable("crm_companies", {
+  id: id(),
+  name: text("name").notNull(),
+  legalName: text("legal_name"),
+  industry: varchar("industry", { length: 120 }),
+  website: text("website"),
+  country: varchar("country", { length: 80 }),
+  city: varchar("city", { length: 120 }),
+  email: text("email"),
+  phone: varchar("phone", { length: 60 }),
+  whatsapp: varchar("whatsapp", { length: 60 }),
+  socialLinks: jsonb("social_links").$type<Record<string, string>>().notNull().default({}),
+  leadSource: varchar("lead_source", { length: 80 }),
+  status: varchar("status", { length: 40 }).notNull().default("prospect"),
+  clientType: varchar("client_type", { length: 60 }),
+  companySize: varchar("company_size", { length: 40 }),
+  notes: text("notes"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  metadata: metadata(),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("crm_companies_status_idx").on(table.status),
+  index("crm_companies_archived_idx").on(table.archivedAt),
+]);
+
+export const crmContacts = pgTable("crm_contacts", {
+  id: id(),
+  companyId: text("company_id"),
+  fullName: text("full_name").notNull(),
+  role: varchar("role", { length: 120 }),
+  email: text("email"),
+  phone: varchar("phone", { length: 60 }),
+  whatsapp: varchar("whatsapp", { length: 60 }),
+  linkedin: text("linkedin"),
+  relationshipType: varchar("relationship_type", { length: 40 }).notNull().default("other"),
+  leadSource: varchar("lead_source", { length: 80 }),
+  preferredChannel: varchar("preferred_channel", { length: 40 }),
+  lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+  nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
+  assignedOwner: varchar("assigned_owner", { length: 120 }),
+  notes: text("notes"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  metadata: metadata(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("crm_contacts_company_idx").on(table.companyId),
+  index("crm_contacts_archived_idx").on(table.archivedAt),
+]);
+
+export const crmLeads = pgTable("crm_leads", {
+  id: id(),
+  name: text("name").notNull(),
+  companyId: text("company_id"),
+  contactId: text("contact_id"),
+  source: varchar("source", { length: 80 }),
+  campaign: varchar("campaign", { length: 120 }),
+  score: integer("score").notNull().default(0),
+  intentLevel: varchar("intent_level", { length: 20 }).notNull().default("unknown"),
+  budgetLevel: varchar("budget_level", { length: 20 }).notNull().default("unknown"),
+  urgencyLevel: varchar("urgency_level", { length: 20 }).notNull().default("unknown"),
+  fitLevel: varchar("fit_level", { length: 20 }).notNull().default("unknown"),
+  problemStated: text("problem_stated"),
+  serviceInterest: jsonb("service_interest").$type<string[]>().notNull().default([]),
+  assignedOwner: varchar("assigned_owner", { length: 120 }),
+  status: varchar("status", { length: 32 }).notNull().default("new"),
+  convertedOpportunityId: text("converted_opportunity_id"),
+  metadata: metadata(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("crm_leads_status_idx").on(table.status),
+  index("crm_leads_company_idx").on(table.companyId),
+]);
+
+export const crmOpportunities = pgTable("crm_opportunities", {
+  id: id(),
+  name: text("name").notNull(),
+  companyId: text("company_id").notNull(),
+  contactId: text("contact_id"),
+  stage: varchar("stage", { length: 40 }).notNull().default("new_lead"),
+  valueCents: integer("value_cents").notNull().default(0),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  probability: integer("probability").notNull().default(0),
+  expectedCloseAt: timestamp("expected_close_at", { withTimezone: true }),
+  source: varchar("source", { length: 80 }),
+  assignedOwner: varchar("assigned_owner", { length: 120 }),
+  priority: varchar("priority", { length: 20 }).notNull().default("medium"),
+  serviceInterest: jsonb("service_interest").$type<string[]>().notNull().default([]),
+  painPoints: text("pain_points"),
+  nextAction: text("next_action"),
+  nextActionAt: timestamp("next_action_at", { withTimezone: true }),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  lostReason: text("lost_reason"),
+  winReason: text("win_reason"),
+  proposalId: text("proposal_id"),
+  invoiceId: text("invoice_id"),
+  metadata: metadata(),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("crm_opportunities_stage_idx").on(table.stage),
+  index("crm_opportunities_status_idx").on(table.status),
+  index("crm_opportunities_company_idx").on(table.companyId),
+]);
+
+export const crmStageHistory = pgTable("crm_stage_history", {
+  id: id(),
+  opportunityId: text("opportunity_id").notNull(),
+  oldStage: varchar("old_stage", { length: 40 }),
+  newStage: varchar("new_stage", { length: 40 }).notNull(),
+  movedBy: varchar("moved_by", { length: 120 }),
+  reason: text("reason"),
+  createdAt: createdAt(),
+}, (table) => [
+  index("crm_stage_history_opportunity_idx").on(table.opportunityId),
+]);
+
+// ---------------------------------------------------------------- Invoices + Finance-lite
+// Draft/track invoices, link to opportunities. AI may DRAFT but must not approve/send/mark-paid or
+// move money without human approval (ERP brief section G).
+
+export const invoices = pgTable("invoices", {
+  id: id(),
+  invoiceNumber: varchar("invoice_number", { length: 40 }).notNull(),
+  companyId: text("company_id"),
+  contactId: text("contact_id"),
+  opportunityId: text("opportunity_id"),
+  proposalId: text("proposal_id"),
+  billingDetails: jsonb("billing_details").$type<Record<string, unknown>>().notNull().default({}),
+  lineItems: jsonb("line_items").$type<Array<{ description: string; quantity: number; unitPriceCents: number }>>().notNull().default([]),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  subtotalCents: integer("subtotal_cents").notNull().default(0),
+  taxCents: integer("tax_cents").notNull().default(0),
+  discountCents: integer("discount_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull().default(0),
+  amountPaidCents: integer("amount_paid_cents").notNull().default(0),
+  dueDate: timestamp("due_date", { withTimezone: true }),
+  paymentTerms: varchar("payment_terms", { length: 80 }),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  paymentReference: text("payment_reference"),
+  notes: text("notes"),
+  createdBy: varchar("created_by", { length: 120 }),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("invoices_number_idx").on(table.invoiceNumber),
+  index("invoices_status_idx").on(table.status),
+  index("invoices_company_idx").on(table.companyId),
+  index("invoices_opportunity_idx").on(table.opportunityId),
+]);

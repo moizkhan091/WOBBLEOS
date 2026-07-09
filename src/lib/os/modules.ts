@@ -47,11 +47,14 @@ export const MODULES: Record<string, ModuleDef> = {
   decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "planned", chunk: 24, tagline: "Where strategy is debated, scored and committed. Each decision keeps its reasoning trail." },
   offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "planned", chunk: 25, tagline: "Design, test and iterate offers. Low-confidence experiments never reach a founder cold." },
 
+  // REVENUE (Wobble ERP Control Layer)
+  crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone — companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
+
   // GROWTH & BUSINESS
   seo: { id: "seo", label: "SEO & Blog Engine", title: "SEO & Blog Engine", icon: "SearchCheck", status: "planned", chunk: 37, tagline: "Keyword targets, blog pipeline and AI-search visibility - drafted by the workforce, published on your say-so." },
   social: { id: "social", label: "Social Intelligence", title: "Social Intelligence", icon: "Share2", status: "planned", chunk: 38, tagline: "Platform stats, post performance and competitor patterns - feeding the next post back into Content Command." },
   webstats: { id: "webstats", label: "Website Analytics", title: "Website Analytics", icon: "BarChart3", status: "planned", chunk: 39, tagline: "Traffic, top pages and conversion signals for wobblepk.com - rolled up into Memory and Ask WOBBLE." },
-  invoices: { id: "invoices", label: "Invoice Builder", title: "Invoice Builder", icon: "ReceiptText", status: "planned", chunk: 40, tagline: "Draft, send and track client invoices. Every issue and status change lands in the audit trail." },
+  invoices: { id: "invoices", label: "Invoices & Finance", title: "Invoices & Finance", icon: "ReceiptText", status: "wired", api: "/api/finance", tagline: "Draft, approve and track client invoices + a live revenue dashboard. AI drafts; a founder approves, sends, and marks paid — the OS never moves money on its own." },
   docs: { id: "docs", label: "Business Docs", title: "Business Docs", icon: "FileStack", status: "planned", chunk: 42, tagline: "Reports, briefs and proposals built from approved Brain and client context - approved before they leave the building." },
 
   // OPERATIONS
@@ -75,7 +78,8 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
-  { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
+  { label: "REVENUE", items: ["crm", "invoices"] },
+  { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "docs"] },
   { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
