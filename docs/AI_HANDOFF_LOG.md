@@ -3139,3 +3139,20 @@ FILES:
 VERIFIED LIVE (one real run via a throwaway script, then deleted the row + script): OPENROUTER_API_KEY is set, so ran the real 5-agent team on a dental-clinic intake -> 5 model runs, 3 bottlenecks, 7 opportunities (grounded in real Wobble slugs: ai-ads-tracking-intelligence, crm-pipeline-automation, review-reputation-system, website-chat-booking-agent...), 4-phase 12-month roadmap (Quick Wins -> CRM -> Booking -> Advanced Marketing), exec summary + ROI. Real models return parseable JSON for the prompts. (Note: model ROI numbers can lowball/misread cents-vs-dollars — a prompt-tuning refinement, not a code bug.) Page renders (screenshot). Typecheck clean; 387 tests pass (was 383, +4); build compiles (/api/audit/paid). 4th commit of the session.
 
 NEXT: proposal-builder AI (3rd team on returned paid-audit findings -> proposal, into crm/proposals); free-audit LLM enrichment + Apify social scrape (gated); premium HTML/PDF deck export of the audit report (still no pdf deps); feedback->diff-edit loop + memory on the generated audit/deck; ROI-prompt tuning (cents vs dollars). REVENUE engine now: Free Audit + Paid Audit (live 5-agent team) + CRM + Invoices/Finance, all wired.
+
+## 2026-07-09 (session 2) - Claude (Opus 4.8) - Proposal builder: closes Audit → Proposal → Invoice loop
+
+Resumed: generated + applied migration 0016 (proposals table). Built the Proposal builder — the piece that connects an audit's findings to a client proposal and on acceptance auto-drafts the invoice.
+
+FILES:
+- src/lib/domain/proposal.ts - proposal statuses + machine, buildProposalRow (sums service prices), proposalInputFromAudit (deterministic: report.opportunities→services, report.roadmap→timeline, report.roi.estimatedImplementationCents→pricing, executiveSummary/summary→scope). Handles both free + paid audit report shapes.
+- src/lib/proposals/index.ts - createProposal, createProposalFromAudit (reads audit via getAudit), listProposals, proposalAction (approve/send/accept/reject) — ACCEPT auto-drafts an invoice via finance.createInvoice (linked companyId/opportunityId/proposalId). DI store + draftInvoice hook.
+- routes: /api/proposals (GET/POST), /api/proposals/from-audit (POST {auditId}), /api/proposals/[id]/action. requireFounder.
+- modules.ts: "docs" tile flipped planned→wired as "Proposals" (moved into REVENUE group). os-ui ProposalsPage: build-from-audit dropdown (lists free+paid audits) + proposals list w/ lifecycle actions; shows "invoice drafted" on accept. WIRED.
+- tests/proposal.test.ts - 5 tests: price summing, proposalInputFromAudit mapping, status machine, createProposalFromAudit (injected audit row), accept→draftInvoice (injected).
+
+VERIFIED LIVE: free audit → build proposal (6 services, title "…— Wobble AI OS Proposal") → approve → send → accept. Invoice NOT drafted here because a FREE audit has no implementation cost → pricing $0 (correct; the guard is pricingCents>0). The accept→invoice with real pricing is proven by unit test. Page renders (screenshot). Test data cleaned (proposals/audits back to 0). Typecheck clean; 392 tests pass (was 387, +5); build compiles (3 proposals routes). Migration 0016 applied.
+
+REVENUE ENGINE NOW COMPLETE (loop): Free Audit → Lead/Convert (CRM) → Paid Audit (5-agent team) → Proposal (from audit) → Invoice (on accept) → Finance dashboard. All wired in the REVENUE nav group: Free Audit, Paid Audit, Pipeline/CRM, Proposals, Invoices & Finance.
+
+NEXT: free-audit proposals need pricing (paid audit gives it, or add manual line-item pricing/LLM pricing suggestion in the proposal UI); LLM narrative-polish on proposals; premium HTML/PDF deck export of proposal + paid-audit report (still no pdf deps — build HTML first, puppeteer later); free-audit LLM enrichment + Apify social scrape (gated); feedback→diff-edit loop on generated docs; paid-audit ROI-prompt tuning (cents vs dollars). Partner's rest-of-ERP (tasks/meetings/projects/RBAC/versioning/integrations) still staged.

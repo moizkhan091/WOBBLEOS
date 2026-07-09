@@ -3267,6 +3267,86 @@ function PaidAuditPage() {
   );
 }
 
+interface ProposalUI { id: string; title: string; status: string; pricingCents: number; currency: string; services: { name: string }[]; timeline: unknown[]; auditId: string | null }
+interface AuditPick { id: string; businessName: string }
+
+function ProposalsPage() {
+  const listState = useApi<{ proposals: ProposalUI[] }>("/api/proposals");
+  const freeState = useApi<{ audits: AuditPick[] }>("/api/audit/free");
+  const paidState = useApi<{ audits: AuditPick[] }>("/api/audit/paid");
+  const [auditId, setAuditId] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(listState);
+  if (guard) return guard;
+  const proposals = listState.data?.proposals ?? [];
+  const audits = [...(paidState.data?.audits ?? []).map((a) => ({ ...a, kind: "paid" })), ...(freeState.data?.audits ?? []).map((a) => ({ ...a, kind: "free" }))];
+  async function build() {
+    if (!auditId) { setMsg("Pick an audit to build from."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/proposals/from-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId }) });
+      if (r.ok) { setAuditId(""); listState.reload(); } else setMsg("Error building proposal.");
+    } finally { setBusy(false); }
+  }
+  async function act(id: string, action: string) {
+    const r = await fetch(`/api/proposals/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+    const j = await r.json().catch(() => ({}));
+    if (action === "accept" && j?.invoiceId) setMsg("Accepted — invoice drafted (see Invoices & Finance).");
+    listState.reload();
+  }
+  const actionsFor = (st: string): Array<{ a: string; label: string }> => {
+    if (st === "draft" || st === "needs_review") return [{ a: "approve", label: "Approve" }];
+    if (st === "approved") return [{ a: "send", label: "Send" }];
+    if (["sent", "viewed"].includes(st)) return [{ a: "accept", label: "Mark accepted" }, { a: "reject", label: "Reject" }];
+    return [];
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="FileStack" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Proposals</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 740 }}>Build a client proposal straight from an audit's findings — services, scope, timeline and pricing. A founder approves before it's sent; <b>accepting a proposal auto-drafts the invoice</b>. This closes the loop: Audit → Proposal → Invoice.</div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Build from an audit</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={auditId} onChange={(e) => setAuditId(e.target.value)} style={{ ...selectStyle, minWidth: 260 }}>
+            <option value="">Pick an audit…</option>
+            {audits.map((a) => <option key={a.id} value={a.id}>{a.businessName} ({a.kind})</option>)}
+          </select>
+          <button onClick={build} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Build proposal"}</button>
+          {msg ? <span style={{ fontSize: 12, color: msg.startsWith("Accepted") ? C.lime : C.orange }}>{msg}</span> : null}
+        </div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Proposals ({proposals.length})</div>
+        {proposals.length === 0 ? (
+          <StateBlock kind="empty" message="No proposals yet. Build one from an audit above." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {proposals.map((p) => (
+              <div key={p.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Tag text={p.status} color={p.status === "accepted" ? C.lime : p.status === "rejected" ? C.orange : p.status === "sent" ? C.blue : C.gray} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 160 }}>{p.title}</span>
+                <span style={{ fontSize: 11, color: faint }}>{p.services.length} services · {p.timeline.length} phases</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.lime }}>{money(p.pricingCents, p.currency)}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {actionsFor(p.status).map((x) => <button key={x.a} onClick={() => act(p.id, x.a)} style={{ ...(x.a === "reject" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5 }}>{x.label}</button>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -3275,6 +3355,7 @@ const WIRED: Record<string, React.ComponentType> = {
   invoices: InvoicesPage,
   free_audit: FreeAuditPage,
   paid_audit: PaidAuditPage,
+  docs: ProposalsPage,
   agents: AgentsPage,
   connections: ConnectionsPage,
   intelligence: IntelligencePage,

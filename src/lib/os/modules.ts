@@ -57,7 +57,7 @@ export const MODULES: Record<string, ModuleDef> = {
   social: { id: "social", label: "Social Intelligence", title: "Social Intelligence", icon: "Share2", status: "planned", chunk: 38, tagline: "Platform stats, post performance and competitor patterns - feeding the next post back into Content Command." },
   webstats: { id: "webstats", label: "Website Analytics", title: "Website Analytics", icon: "BarChart3", status: "planned", chunk: 39, tagline: "Traffic, top pages and conversion signals for wobblepk.com - rolled up into Memory and Ask WOBBLE." },
   invoices: { id: "invoices", label: "Invoices & Finance", title: "Invoices & Finance", icon: "ReceiptText", status: "wired", api: "/api/finance", tagline: "Draft, approve and track client invoices + a live revenue dashboard. AI drafts; a founder approves, sends, and marks paid — the OS never moves money on its own." },
-  docs: { id: "docs", label: "Business Docs", title: "Business Docs", icon: "FileStack", status: "planned", chunk: 42, tagline: "Reports, briefs and proposals built from approved Brain and client context - approved before they leave the building." },
+  docs: { id: "docs", label: "Proposals", title: "Proposals", icon: "FileStack", status: "wired", api: "/api/proposals", tagline: "Build a client proposal from an audit's findings — services, scope, timeline, pricing. A founder approves before it's sent, and an accepted proposal auto-drafts the invoice." },
 
   // OPERATIONS
   automations: { id: "automations", label: "Automations", title: "Automations", icon: "Workflow", status: "planned", chunk: 19, tagline: "Recurring jobs and triggers that keep the OS moving while you sleep." },
@@ -80,8 +80,8 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media", "presentations"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
-  { label: "REVENUE", items: ["free_audit", "paid_audit", "crm", "invoices"] },
-  { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "docs"] },
+  { label: "REVENUE", items: ["free_audit", "paid_audit", "crm", "docs", "invoices"] },
+  { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
   { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
