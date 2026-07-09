@@ -3240,3 +3240,14 @@ Stage 2 of the audit workspace. Doc 2 = the INTERNAL playbook for how WE run the
 VERIFIED: typecheck clean; 410 tests pass (+5); build compiles (/api/audit/roadmap). Data isolation unit-tested (refuses another company's pitch). Live LLM path uses the same runTextProvider path already proven by Doc 1.
 
 NEXT: Doc 3 = final client deck from Doc1+Doc2+per-interview notes/transcript slots (reuse/feed the deep paid-audit-graph; render the big McKinsey deck). Then a per-company Audit WORKSPACE UI tying the 3 stages together (list a company's pitch/roadmap/final, generate each in sequence). Then the partner's fuller ERP (contacts/tasks/meetings/projects/detail-pages+timelines/RBAC/versioning/automation-rules/dashboards/system-health/integrations) per brief phases. APIFY_API_KEY still needed to actually scrape.
+
+## 2026-07-09 - Claude (Opus 4.8) - Audit Doc 3: final client deck (all 3 audit stages now exist)
+
+Stage 3 = the final client-facing McKinsey deck. Does NOT add a new agent team — it gathers this client's Doc 1 (pitch) + Doc 2 (roadmap) + the per-interview findings WE recorded, assembles them into the intake, and runs the deep 5-agent paid-audit graph (which persists kind="paid" + renders the 26KB report / 19-slide deck via the existing /api/audit/[id]/document + /deck).
+- lib/audit-final/index.ts: runFinalAudit — reads only this client's own docs (throws "data isolation" on companyId mismatch), builds intakeNotes from findings [{stakeholder,notes}] + pitch summary + roadmap overview, calls runPaidAuditGraph. FinalAuditDeps extends PaidAuditDeps (injectable for tests).
+- /api/audit/final (POST run — 502+needsModelKey when no OPENROUTER key; GET list kind=paid).
+- tests/audit-final.test.ts (2): the assemble-and-run happy path (canned 5-node graph, no spend) + the cross-client data-isolation refusal.
+
+VERIFIED: typecheck clean; 412 tests pass (+2); build compiles (/api/audit/final).
+
+AUDIT WORKSPACE STATUS: all 3 stages built + engines verified — Doc 1 pitch (live-verified), Doc 2 roadmap (data-isolation tested), Doc 3 final (data-isolation tested; reuses the live-verified deep graph). Data isolation enforced across Doc 2 + Doc 3 (companyId match or throw). NEXT: a per-company Audit WORKSPACE UI tying the 3 stages (pick/lookup a company → generate pitch → roadmap → per-interview findings slots → final deck, all in one place) + Doc 3 UI hook (findings input). Then the partner's fuller ERP (contacts/tasks/meetings/projects/detail-pages+timelines/RBAC/versioning/automation-rules/5 dashboards/system-health/integrations registry) per brief phases 1-5. APIFY_API_KEY still needed to actually scrape (gated). Repo pushed through this commit.
