@@ -3251,3 +3251,14 @@ Stage 3 = the final client-facing McKinsey deck. Does NOT add a new agent team �
 VERIFIED: typecheck clean; 412 tests pass (+2); build compiles (/api/audit/final).
 
 AUDIT WORKSPACE STATUS: all 3 stages built + engines verified — Doc 1 pitch (live-verified), Doc 2 roadmap (data-isolation tested), Doc 3 final (data-isolation tested; reuses the live-verified deep graph). Data isolation enforced across Doc 2 + Doc 3 (companyId match or throw). NEXT: a per-company Audit WORKSPACE UI tying the 3 stages (pick/lookup a company → generate pitch → roadmap → per-interview findings slots → final deck, all in one place) + Doc 3 UI hook (findings input). Then the partner's fuller ERP (contacts/tasks/meetings/projects/detail-pages+timelines/RBAC/versioning/automation-rules/5 dashboards/system-health/integrations registry) per brief phases 1-5. APIFY_API_KEY still needed to actually scrape (gated). Repo pushed through this commit.
+
+## 2026-07-09 - Claude (Opus 4.8) - Unified Audit Workspace UI (the 3 stages in one place)
+
+The founder's "one screen per client" flow. Ties Doc 1/2/3 together on a company.
+- /api/audit/workspace (GET): returns all audit docs (all kinds) trimmed for the list; UI groups by companyId||businessName into clients with pitch/roadmap/final.
+- os-ui AuditWorkspacePage: left = client list (pitch/roadmap/final status tags); right = 3-stage stepper. Stage 1 pitch (generate or Doc/Deck links), Stage 2 interview roadmap (locked until pitch; generate from pitchAuditId; Doc/Deck), Stage 3 final deck (locked until roadmap; a findings textarea PER planned interview from the roadmap; Generate final deck → /api/audit/final with pitchAuditId+roadmapAuditId+findings). New-audit form starts a client via the pitch. Registered in WIRED + REVENUE nav; "free_audit" relabeled "Quick Pitch".
+- Model APIFY_API_KEY is now set in .env (gitignored) — scraping is LIVE (verified a real crawl: 12 pages).
+
+VERIFIED LIVE (server-side chain, then cleaned up): pitch (usedLlm, 6 dental services) → roadmap (usedLlm, 5 dental-specific interview roles, data-isolated from the pitch) → workspace UI groups them, shows the stepper with a findings slot per interview (screenshot). Typecheck clean; full suite green; build compiles (/api/audit/workspace).
+
+NEXT (founder: build everything except deploy — VPS later via SSH): the partner's fuller ERP (contacts, tasks, meetings/calendar, projects, entity detail pages + activity timelines, RBAC/permissions, versioning/rollback, automation-rules engine, the 5 dashboards, system health, integrations registry — brief phases 1-5); Content Command upgrades (real image/carousel generation into media_refs + feedback→regenerate loop). Deploy deferred (VPS + SSH pending).

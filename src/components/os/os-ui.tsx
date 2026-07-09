@@ -3493,12 +3493,157 @@ function ProposalsPage() {
   );
 }
 
+interface WsAudit { id: string; kind: string; companyId: string | null; businessName: string; createdAt: string; headline: string; interviewPlan: { name?: string; expectedOutcome?: string }[] }
+interface WsClient { key: string; businessName: string; companyId: string | null; pitch: WsAudit | null; roadmap: WsAudit | null; final: WsAudit | null }
+
+/** The unified audit flow: one client, three stages — pitch → interview roadmap → findings → final deck. */
+function AuditWorkspacePage() {
+  const state = useApi<{ audits: WsAudit[] }>("/api/audit/workspace");
+  const [sel, setSel] = useState<string | null>(null);
+  const [nb, setNb] = useState({ name: "", industry: "", website: "", instagram: "" });
+  const [findings, setFindings] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const audits = state.data?.audits ?? [];
+  const clients: WsClient[] = (() => {
+    const map = new Map<string, WsClient>();
+    for (const a of audits) {
+      const key = a.companyId || a.businessName;
+      if (!map.has(key)) map.set(key, { key, businessName: a.businessName, companyId: a.companyId, pitch: null, roadmap: null, final: null });
+      const c = map.get(key)!;
+      if (a.kind === "pitch" && !c.pitch) c.pitch = a;
+      else if (a.kind === "roadmap" && !c.roadmap) c.roadmap = a;
+      else if (a.kind === "paid" && !c.final) c.final = a;
+    }
+    return [...map.values()];
+  })();
+  const active = clients.find((c) => c.key === sel) ?? null;
+
+  async function reload() { state.reload(); }
+  async function gen(url: string, body: Record<string, unknown>, after?: () => void): Promise<void> {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (r.ok && j.ok !== false) { after?.(); reload(); } else setMsg("Error: " + String(j.error ?? (j.needsModelKey ? "set OPENROUTER_API_KEY to run this" : r.status)));
+    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+  }
+  async function newPitch() {
+    if (!nb.name.trim()) { setMsg("Enter a business name."); return; }
+    await gen("/api/audit/pitch", { businessName: nb.name, industry: nb.industry || undefined, website: nb.website || undefined, instagram: nb.instagram || undefined }, () => { setSel(nb.name); setNb({ name: "", industry: "", website: "", instagram: "" }); });
+  }
+  function DocLinks({ id }: { id: string }) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <a href={`/api/audit/${id}/document`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11.5 }}>Doc ↗</a>
+        <a href={`/api/audit/${id}/deck`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11.5 }}>Deck ↗</a>
+      </div>
+    );
+  }
+  function Stage({ n, title, done, locked, children }: { n: number; title: string; done: boolean; locked: boolean; children: React.ReactNode }) {
+    return (
+      <div style={{ ...card, padding: "13px 15px", opacity: locked ? 0.5 : 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ width: 22, height: 22, borderRadius: "50%", background: done ? C.lime : "#2a2a30", color: done ? "#0b0b0d" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{done ? "✓" : n}</span>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
+        </div>
+        {locked ? <div style={{ fontSize: 11.5, color: faint }}>Complete the previous step first.</div> : children}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="FolderKanban" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Audit Workspace</div>
+          <StatusPill label="LIVE" color={C.lime} />
+        </div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 760 }}>One client, the whole audit: <b>Doc 1</b> niche pitch → <b>Doc 2</b> internal interview roadmap → record findings → <b>Doc 3</b> final McKinsey deck. Each client's data stays isolated — the AI never sees another client's docs.</div>
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New audit — start with the pitch</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={nb.name} onChange={(e) => setNb((s) => ({ ...s, name: e.target.value }))} placeholder="Business name" style={{ ...inputStyle, width: 200 }} />
+          <input value={nb.industry} onChange={(e) => setNb((s) => ({ ...s, industry: e.target.value }))} placeholder="Industry / niche" style={{ ...inputStyle, width: 150 }} />
+          <input value={nb.website} onChange={(e) => setNb((s) => ({ ...s, website: e.target.value }))} placeholder="Website (scraped)" style={{ ...inputStyle, width: 170 }} />
+          <input value={nb.instagram} onChange={(e) => setNb((s) => ({ ...s, instagram: e.target.value }))} placeholder="Instagram @" style={{ ...inputStyle, width: 120 }} />
+          <button onClick={newPitch} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Generate pitch →"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(200px,260px) 1fr", gap: 16 }}>
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Clients ({clients.length})</div>
+          {clients.length === 0 ? <StateBlock kind="empty" message="No audits yet. Generate a pitch above." /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {clients.map((c) => (
+                <div key={c.key} onClick={() => setSel(c.key)} style={{ ...card, padding: "9px 11px", cursor: "pointer", border: c.key === sel ? `1px solid ${C.lime}` : card.border }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.businessName}</div>
+                  <div style={{ display: "flex", gap: 4, marginTop: 5 }}>
+                    <Tag text="pitch" color={c.pitch ? C.lime : C.gray} />
+                    <Tag text="roadmap" color={c.roadmap ? C.lime : C.gray} />
+                    <Tag text="final" color={c.final ? C.lime : C.gray} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel>
+          {!active ? <StateBlock kind="empty" message="Pick a client to run their audit stages." /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{active.businessName}</div>
+              <Stage n={1} title="Pitch (client-facing)" done={!!active.pitch} locked={false}>
+                {active.pitch ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 12, color: muted, flex: 1 }}>{active.pitch.headline?.slice(0, 90)}</span><DocLinks id={active.pitch.id} /></div>
+                ) : (
+                  <button onClick={() => gen("/api/audit/pitch", { businessName: active.businessName, companyId: active.companyId || undefined })} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>Generate pitch</button>
+                )}
+              </Stage>
+              <Stage n={2} title="Interview roadmap (internal)" done={!!active.roadmap} locked={!active.pitch}>
+                {active.roadmap ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 12, color: muted, flex: 1 }}>{active.roadmap.interviewPlan.length} interviews planned</span><DocLinks id={active.roadmap.id} /></div>
+                ) : (
+                  <button onClick={() => gen("/api/audit/roadmap", { businessName: active.businessName, companyId: active.companyId || undefined, pitchAuditId: active.pitch?.id })} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>Plan the interviews</button>
+                )}
+              </Stage>
+              <Stage n={3} title="Final deck (client-facing)" done={!!active.final} locked={!active.roadmap}>
+                {active.final ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 12, color: muted, flex: 1 }}>Final McKinsey deck ready</span><DocLinks id={active.final.id} /></div>
+                ) : active.roadmap ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: faint }}>Paste what you learned in each interview:</div>
+                    {active.roadmap.interviewPlan.map((iv, i) => (
+                      <div key={i}>
+                        <label style={{ fontSize: 11, color: muted, display: "block", marginBottom: 3 }}>{iv.name ?? `Interview ${i + 1}`}</label>
+                        <textarea value={findings[`${active.key}:${i}`] ?? ""} onChange={(e) => setFindings((f) => ({ ...f, [`${active.key}:${i}`]: e.target.value }))} placeholder="Findings, pain points, numbers…" style={{ ...inputStyle, width: "100%", minHeight: 44, resize: "vertical" }} />
+                      </div>
+                    ))}
+                    <button onClick={() => gen("/api/audit/final", { businessName: active.businessName, companyId: active.companyId || undefined, pitchAuditId: active.pitch?.id, roadmapAuditId: active.roadmap?.id, findings: active.roadmap!.interviewPlan.map((iv, i) => ({ stakeholder: iv.name ?? `Interview ${i + 1}`, notes: findings[`${active.key}:${i}`] ?? "" })).filter((x) => x.notes.trim()) })} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>{busy ? "Building deck…" : "Generate final deck"}</button>
+                  </div>
+                ) : null}
+              </Stage>
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
   library: LibraryPage,
   crm: CrmPage,
   invoices: InvoicesPage,
+  audit_workspace: AuditWorkspacePage,
   free_audit: FreeAuditPage,
   paid_audit: PaidAuditPage,
   docs: ProposalsPage,
