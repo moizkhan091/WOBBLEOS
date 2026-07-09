@@ -565,13 +565,41 @@ function PacketDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <Tag text={String(packet.approvalStatus ?? "")} color={C.lime} />
               <Tag text={String(packet.qualityStatus ?? "")} color={packet.qualityStatus === "passed" ? C.lime : C.orange} />
             </div>
+            {packet.angle ? <Field label="Angle" value={packet.angle} /> : null}
             <Field label="Hook" value={packet.hook} />
-            <Field label="Body" value={packet.bodyCopy ?? packet.body} />
+            {Array.isArray(packet.carouselSlides) && packet.carouselSlides.length ? (
+              <div>
+                <div style={{ fontSize: 10.5, letterSpacing: "0.06em", color: faint, fontWeight: 600, marginBottom: 6 }}>CAROUSEL SLIDES ({(packet.carouselSlides as unknown[]).length})</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(packet.carouselSlides as unknown[]).map((raw, i) => {
+                    const sl = (raw ?? {}) as Record<string, unknown>;
+                    const heading = typeof sl.heading === "string" ? sl.heading : typeof sl.title === "string" ? sl.title : "";
+                    const body = typeof sl.body === "string" ? sl.body : typeof raw === "string" ? raw : "";
+                    return (
+                      <div key={i} style={{ ...card, padding: "11px 13px" }}>
+                        <div style={{ fontSize: 9.5, letterSpacing: "0.08em", color: C.lime, fontWeight: 700, marginBottom: 4 }}>SLIDE {i + 1}</div>
+                        {heading ? <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{heading}</div> : null}
+                        <div style={{ fontSize: 12.3, color: muted, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{body}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {packet.mainCopy ? <Field label="Body copy" value={packet.mainCopy} /> : null}
             <Field label="Caption" value={packet.caption} />
             <Field label="CTA" value={packet.cta} />
-            <Field label="Track" value={packet.contentTrackId} />
-            <Field label="Created" value={fmtTime(packet.createdAt)} />
-            {d && Array.isArray(d.sources) ? <div style={{ fontSize: 11.5, color: faint }}>{(d.sources as unknown[]).length} approved source(s) · {Array.isArray(d.memoryChunks) ? (d.memoryChunks as unknown[]).length : 0} memory chunk(s)</div> : null}
+            {packet.designDirection ? <Field label="Design direction" value={packet.designDirection} /> : null}
+            {packet.evidenceSummary ? <Field label="Evidence" value={packet.evidenceSummary} /> : null}
+            <div style={{ ...card, padding: "10px 12px", fontSize: 11.5, color: muted, lineHeight: 1.6 }}>
+              <div style={{ fontSize: 9.5, letterSpacing: "0.08em", color: faint, fontWeight: 700, marginBottom: 5 }}>GROUNDING &amp; PROVENANCE</div>
+              Sources cited: <b style={{ color: C.white }}>{Array.isArray(packet.sourceIdsUsed) ? (packet.sourceIdsUsed as unknown[]).length : 0}</b> · knowledge notes: <b style={{ color: C.white }}>{Array.isArray(packet.insightIdsUsed) ? (packet.insightIdsUsed as unknown[]).length : 0}</b> · memory chunks: <b style={{ color: C.white }}>{Array.isArray(packet.memoryChunksUsed) ? (packet.memoryChunksUsed as unknown[]).length : 0}</b>
+              <div style={{ marginTop: 4 }}>Claim risk: {String(packet.claimRiskLevel ?? "low")}</div>
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <Field label="Audience" value={packet.targetAudience} />
+              <Field label="Created" value={fmtTime(packet.createdAt)} />
+            </div>
           </div>
         ) : <StateBlock kind="empty" message="Packet not found." />}
       </div>
