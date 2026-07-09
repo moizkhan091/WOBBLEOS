@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   try { body = await request.json(); } catch { return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 }); }
   const parsed = chatSchema.omit({ founder: true }).safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
+  if (!parsed.data.message.trim() && !(parsed.data.attachments?.length)) return NextResponse.json({ ok: false, error: "a message or at least one attachment is required" }, { status: 422 });
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {

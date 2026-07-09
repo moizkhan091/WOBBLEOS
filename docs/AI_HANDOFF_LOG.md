@@ -3337,3 +3337,19 @@ The connective tissue — click a company in CRM, see everything linked, on one 
 VERIFIED: typecheck clean; getCompanyOverview runs against the live DB (valid SQL, correct shape; DB currently has 0 companies so it returns empty — populates once leads convert / deals are won). 
 
 NEXT: role dashboards (sales/finance/delivery — aggregate existing data), remaining growth modules (SEO/Radar as AI-real; Social/Webstats/Backup honest re: connectors), then the audit/break pass. Deploy deferred.
+
+## 2026-07-10 - Claude (Opus 4.8) - Audit / "try to break it" pass
+
+Live authenticated sweep of the whole OS + malformed-input fuzzing:
+- 14 GET endpoints (decisions/offers/workers/settings/automations/tasks/meetings/projects/greeting/crm*/finance/proposals/audit-workspace): ALL 200 ✓.
+- Malformed POSTs handled cleanly: missing fields → 422; bad JSON → 400; unknown id → 404/409; bad discriminated action → 422. No unhandled 500s.
+- BUG FOUND + FIXED: POST /api/ai/chat with empty message + no attachments returned 500 (user error as server error) → now 422.
+- HARDENING: chat file upload rejects files >12 MB up front (oversized base64 was silently failing the request), with a friendly in-chat notice.
+- FILE INTELLIGENCE fully verified live end-to-end (Moiz's core ask):
+  * image → vision (red PNG → "Red")
+  * PDF → OpenRouter file-parser (real Wobble realtor starter-kit PDF → correct summary + real headlines extracted)
+  * text → inlined (unit-tested)
+
+Full suite 443 green; build clean. Session module tally now wired: Tasks, Meetings, Projects, AI Chat (+greeting+files), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360.
+
+STILL TODO: role dashboards; growth modules (SEO/Radar as AI-real; Social/Webstats need real analytics connectors — honest-gate; Backup = real export). Media Studio kept/flagged. Deploy deferred (VPS+SSH).

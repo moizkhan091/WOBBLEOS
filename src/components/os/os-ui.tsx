@@ -817,7 +817,12 @@ function AskPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function addFiles(list: FileList | File[]) {
-    const arr = Array.from(list).slice(0, 10);
+    const MAX = 12 * 1024 * 1024; // 12 MB per file — larger base64 payloads fail the request
+    const all = Array.from(list);
+    const tooBig = all.filter((f) => f.size > MAX);
+    const arr = all.filter((f) => f.size <= MAX).slice(0, 10);
+    if (tooBig.length) setTurns((t) => [...t, { role: "wob", text: `Skipped ${tooBig.map((f) => f.name).join(", ")} — over 12 MB. Compress or crop and try again.` }]);
+    if (!arr.length) return;
     const built = await Promise.all(arr.map(async (f) => ({ id: Math.random().toString(36).slice(2), name: f.name, size: f.size, mimeType: f.type || "application/octet-stream", kind: fileKind(f), preview: fileKind(f) === "image" ? URL.createObjectURL(f) : null, dataBase64: await readFileB64(f) })));
     setFiles((prev) => [...prev, ...built].slice(0, 10));
   }
