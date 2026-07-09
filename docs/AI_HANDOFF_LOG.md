@@ -2746,3 +2746,19 @@ Verified live (cheap model): asked "how many agents + what's pending approval" -
 Left a real pending approval (approval_006cad1f...) from the model_scout demo (ask_wobble gpt-4o-mini -> gpt-4o) as live test data; founder can approve/reject in Approvals.
 
 NEXT (Ask WOBBLE orchestrator step 2 - the "it does stuff" layer): add LLM tool-calling. Extend the OpenRouter adapter for OpenAI-style tools/tool_calls; define a TOOL REGISTRY of safe capabilities (read: list_agents, list_pending_approvals, get_model_config, list_models; action: propose_model_swap, apply_approval) each going through existing guardrails (validation/approvals/audit); an orchestration loop that lets Ask WOBBLE choose tools, ask clarifying questions ("which agent/role?"), and execute approved actions. This is how "tell Ask WOBBLE to upgrade a model -> it asks which -> proposes -> on yes, applies" works without exposing code.
+
+## 2026-07-09 - Claude (Opus 4.8) - Ask WOBBLE Tool Registry (orchestrator step 2a/2b)
+
+The safe "toolbox" Ask WOBBLE will use to TAKE actions - the backbone before the LLM tool-calling loop.
+
+New: src/lib/ask-tools/index.ts
+- ToolDefinition + defineTool() factory (type-safe args at definition, uniform runtime type; no any/casts). Each tool carries an OpenAI-compatible jsonSchema (for the upcoming tool-calling loop) + a zod argsSchema (runtime validation).
+- Read tools: list_agents (team/module filter), list_pending_approvals, get_model_config, list_models (modality filter) - all read the live system-map snapshot.
+- Action tools: propose_model_swap (creates a model_upgrade APPROVAL - never auto-applies; catalog-validated) and apply_model_upgrade (approve+apply, audited). Both go through the existing model-registry guardrails.
+- runTool(name, args, ctx): validates args, dispatches, NEVER throws - returns a structured {ok,result,error} the loop can feed back to the model. Unknown tool / bad args / handler failure all return ok:false.
+- toolSpecs(): OpenAI function specs for all tools.
+- tests/ask-tools.test.ts (8): specs, read tools, dispatch safety (unknown/invalid/handler-error all non-throwing), action tool creates pending approval.
+
+Verified: typecheck clean; 254 tests; build green.
+
+NEXT (step 2c - completes the "it does stuff" experience): extend createOpenRouterTextAdapter for OpenAI-style tools/tool_calls; add an askWobble orchestration loop that offers toolSpecs() to the model, executes returned tool_calls via runTool, feeds results back, and loops until a final answer - with a confirmation gate before any mutating tool actually applies. Then Ask WOBBLE can: "upgrade the content model" -> ask which -> propose -> on founder yes -> apply, all audited.
