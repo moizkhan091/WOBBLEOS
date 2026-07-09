@@ -41,13 +41,18 @@ os-ui.tsx (single client component, ~2200 lines) renders every module via a regi
 Ran 3 adversarial QA sub-agents over the whole session. Found + FIXED (with regression tests, 297 tests green): a CRITICAL model-approval rubber-stamp, cross-founder read leak (search_memory), unconfirmed forget_memory, embedding-wipe on edit, dedup matching archived records, non-idempotent harvest + all-or-nothing candidate parse + personal-facts-to-shared-bank leak, setModelRoleMap non-upsert, tool_call-id crash. See AI_HANDOFF_LOG.md 2026-07-09 break-agent entry.
 REMAINING HARDENING (tracked, not corner-cuts; mostly gated on Auth or a tx refactor): DB transactions for compound memory writes (orphan risk); confirmActions bound per-action; actor-is-a-founder verification (= Auth); version-number race; harvest atomic row-claim + re-harvest watermark + transcript cap; embeddings dimension validation.
 
-## NEXT (in order)
-1. AUTH (Chunk 02) — now the top priority: gives every chat/action a real founder identity, which per-founder memory/taste AND several break-agent findings depend on. Also the deploy gate.
-2. Memory transaction wrapper (atomicity for create/approve/archive/merge/split/deleteRecordCascade).
-3. Memory extras (optional, founder-proposed): access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback.
-2. Proposed extras (access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback).
-3. ADVERSARIAL BREAK-AGENT over the whole session's work (founder wants this AFTER all 10 upgrades).
-4. Then: Auth (Chunk 02, raised priority), Knowledge Compiler (Chunk 13 — first real research/knowledge TEAM), Content multi-agent team (Chunk 15 — where "talk to the output, refine, it learns" + per-module chat live), Prospect→Audit→Proposal revenue engine.
-5. Schedule the background sweeps (harvest, purge-expired, staleness review) via the Automations module (Chunk 19).
+## Built THIS session — part 2 (Auth → Knowledge → Content, all tested + pushed)
+7. AUTH (Chunk 02): shared team login + per-chat founder identity. `src/lib/auth/{edge,index,route}.ts`, `/api/auth/{login,logout,session}`, `src/proxy.ts` (Next 16 proxy convention — renamed from middleware.ts), glass/lime login page, `npm run auth:hash`. Base64 hash var (`SHARED_LOGIN_PASSWORD_HASH_B64`) avoids dotenv `$`-mangling. LOCAL dev password = `wobbletest123` (temp — set the real one before deploy; see FOUNDER_DECISIONS_NEEDED.md).
+8. IDENTITY WIRING: `requireFounder(request)` → 17 mutation routes (memory/approvals/proposals/skill+source approval/content/taste) now derive the actor from the SESSION, never a client field. Closes the break-agent actor-trust gap (live-proven: Moiz session blocked from editing Ali's bank). Also enforces DB revocation on mutations (edge proxy is JWT-only).
+9. KNOWLEDGE COMPILER (Chunk 13): Karpathy compile-don't-retrieve. `knowledge_notes` + `knowledge_note_links` tables (migration 0012 + HNSW). `src/lib/{domain/knowledge,knowledge}`. compileSource (guard→prompt→LLM→parse→embed→synthesize: reinforce dups / interlink related), retrieveKnowledge (hybrid: notes + source chunks), job `knowledge.compile` (auto-enqueued on source approval). API `/api/knowledge/{compile,notes,notes/[id],retrieve}`. LIVE-verified against real DB (re-compile reinforced, didn't duplicate). UI: Learning Engine page (wired).
+10. CONTENT GRAPH (Chunk 15 evolution): multi-agent creative graph. `src/lib/{domain/content-graph,content-graph}`. Strategy→Research(grounded)→Copywriter(draft→self-critique→revise)→Scorer→Assemble pack. 5 agent_runs/pack, provenance on every claim, quality gate → approval. 4 visible agents seeded (strategist/researcher/copywriter/scorer). Job `content.graph`, API POST `/api/content/graph` (session identity). Old single-call `content.generate` kept as fallback (also now session-identity). UI: Content Command "Content Team" panel + "Run the team" trigger. NOT live-run yet (5 model calls/pack; low credits — see FOUNDER_DECISIONS_NEEDED.md).
 
-## Test count baseline: ~287 tests green (grows each slice).
+## NEXT (in order)
+1. GREENLIGHT-GATED: a live content-graph run — needs a worker running (`npm run worker`) + credits + cheap model_roles for content_research/copywriting/scoring. Then verify a real pack end-to-end.
+2. Knowledge Compiler follow-ups: approval-gated PROMOTION of high-trust notes into Core Brain memory_records; LLM-tagged contradiction links; second auto-trigger on intake-completion (not just approval).
+3. Content graph deepening: parallel fan-out (Competitor + Brand-voice + Founder-taste alongside Research); founder-taste weighting + novelty scorer (Chunk 45/47); visuals (Chunk 22) after pack approval.
+4. Memory transaction wrapper (atomicity for create/approve/archive/merge/split/deleteRecordCascade) + remaining break-agent hardening (version-number race, harvest atomic row-claim + re-harvest watermark + transcript cap, embeddings dim validation).
+5. Schedule background sweeps (harvest, purge-expired, staleness review) via Automations (Chunk 19).
+6. Revenue engine: Prospect→Audit→Proposal.
+
+## Test count baseline: 340 tests green (was 287; grows each slice).
