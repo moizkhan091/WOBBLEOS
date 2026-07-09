@@ -2711,3 +2711,20 @@ Infra recap: local Postgres via Docker (container wobble-os-postgres, pgvector/p
 Verification: typecheck clean; 234/234 tests pass; live semantic retrieval still correct; memory_chunks index set clean; `db:generate` clean; migration applies idempotently.
 
 Recommendation for all builders: run `npm run db:generate` and expect "No schema changes"; if it re-emits existing objects, the snapshots have drifted again - reconcile with an idempotent migration, don't push. Next: Slice 2 = Knowledge Compiler (Chunk 13).
+
+## 2026-07-09 - Claude (Opus 4.8) - Model Registry (swappable, validated model brain) + git checkpoint
+
+Pushed the prior memory work to GitHub (main f305cf4). Then built the Model Registry so all agents can swap LLMs safely as better models ship - foundation for a 40-50 agent fleet.
+
+New:
+- src/lib/domain/model-registry.ts - model catalog schema (id, provider, modalities[], costTier, status, contextWindow, goodFor, notes), ROLE_MODALITY requirements, validateModelSwap (blocks unknown/deprecated/modality-mismatch), model upgrade proposal schema, DEFAULT_MODEL_CATALOG (6 seeded models).
+- src/lib/model-registry/index.ts - getModelCatalog/getModelRoleMap; setModelForRole (validated swap + model_role.changed audit); proposeModelSwap (creates a model_upgrade APPROVAL - offered, never force-fed); applyModelSwapApproval. defaultStore reads/writes settings (model_roles / model_catalog).
+- Agents: registered model_scout (proposes genuine per-role model upgrades, approval-gated) and system_auditor (continuously audits modules/agents/features for upgrades). Toward Moiz's vision: "tell Ask WOBBLE a new model came out -> it proposes swaps for approval; only when genuinely better for the job."
+- Seeded settings.model_catalog. IMPORTANT FIX: model_roles + model_catalog seeds are now onConflictDoNothing (were DoUpdate) so re-seeding no longer clobbers runtime model swaps.
+- tests/model-registry.test.ts (9 tests): validation matrix + swap + audit + approval-gated propose/apply.
+
+Verified: typecheck clean; 243 tests pass; production build green (pre-push). Live: model_scout/system_auditor in DB; catalog has 6 models; setModelForRole swapped content_strategy sonnet-4.5 -> gpt-4o-mini (budget mode) with audit; a bad swap (embedding model on a text role) was correctly BLOCKED.
+
+Budget mode remains: content_strategy = gpt-4o-mini (cheap testing). Restore to anthropic/claude-sonnet-4.5 for production content when credits are loaded (it is in the catalog).
+
+Next: Slice 2 = Knowledge Compiler (Chunk 13). Also queued: wire Ask WOBBLE to call proposeModelSwap conversationally; give model_scout a real source for new-model signals (provider model-list API / release notes); Settings UI for the catalog + role map.

@@ -1,0 +1,196 @@
+import { eq } from "drizzle-orm";
+import { settings } from "@/db/schema";
+import { getDb, type Db } from "@/db";
+import { writeAuditEvent } from "@/lib/audit";
+import type { AuditEventInput } from "@/lib/domain/audit";
+import { applyApprovalAction, createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
+import {
+  DEFAULT_MODEL_CATALOG,
+  modelCatalogSchema,
+  modelUpgradeProposalSchema,
+  validateModelSwap,
+  type ModelCatalog,
+  type ModelUpgradeProposalInput,
+} from "@/lib/domain/model-registry";
+import { modelRoleMapSchema, type ModelRoleConfig, type ModelRoleMap } from "@/lib/domain/providers";
+
+/**
+ * Model Registry service — the safe, central place to read the model catalog, read /
+ * change which model each role uses, and (approval-gated) PROPOSE upgrades. Every swap
+ * is validated against the catalog and written to the audit log. Nothing is force-swapped.
+ */
+
+export interface ModelRegistryStore {
+  getModelCatalog(): Promise<ModelCatalog>;
+  getModelRoleMap(): Promise<ModelRoleMap>;
+  setModelRoleMap(map: ModelRoleMap): Promise<void>;
+}
+
+export interface ModelRegistryDeps {
+  store?: ModelRegistryStore;
+  approvalStore?: ApprovalStore;
+  recordAudit?: (input: AuditEventInput) => Promise<void>;
+  now?: Date;
+}
+
+async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
+  await writeAuditEvent(input);
+}
+
+export async function getModelCatalog(deps: ModelRegistryDeps = {}): Promise<ModelCatalog> {
+  const store = deps.store ?? defaultStore();
+  return store.getModelCatalog();
+}
+
+export async function getModelRoleMap(deps: ModelRegistryDeps = {}): Promise<ModelRoleMap> {
+  const store = deps.store ?? defaultStore();
+  return store.getModelRoleMap();
+}
+
+export interface SetModelForRoleInput {
+  role: string;
+  modelId: string;
+  changedBy: string;
+  reason?: string;
+}
+
+export interface SetModelForRoleResult {
+  role: string;
+  config: ModelRoleConfig;
+  previousModelId: string | null;
+}
+
+/**
+ * Directly change the model a role uses — after validating it against the catalog.
+ * Throws with a clear reason if the model is unknown, deprecated, or incompatible.
+ * Records a model_role.changed audit event.
+ */
+export async function setModelForRole(input: SetModelForRoleInput, deps: ModelRegistryDeps = {}): Promise<SetModelForRoleResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  const [catalog, roleMap] = await Promise.all([store.getModelCatalog(), store.getModelRoleMap()]);
+  const validation = validateModelSwap({ role: input.role, modelId: input.modelId, catalog });
+  if (!validation.ok || !validation.entry) {
+    throw new Error(validation.reason);
+  }
+
+  const previous = roleMap[input.role] ?? null;
+  const nextConfig: ModelRoleConfig = { provider: validation.entry.provider, model: validation.entry.id };
+  const nextMap: ModelRoleMap = { ...roleMap, [input.role]: nextConfig };
+  await store.setModelRoleMap(nextMap);
+
+  await recordAudit({
+    eventType: "model_role.changed",
+    module: "settings",
+    entityType: "model_role",
+    entityId: input.role,
+    actor: input.changedBy,
+    metadata: {
+      role: input.role,
+      fromModel: previous?.model ?? null,
+      toModel: nextConfig.model,
+      provider: nextConfig.provider,
+      reason: input.reason ?? null,
+    },
+  });
+
+  return { role: input.role, config: nextConfig, previousModelId: previous?.model ?? null };
+}
+
+export interface ProposeModelSwapResult {
+  approval: ApprovalRow;
+  role: string;
+  fromModelId: string | null;
+  toModelId: string;
+}
+
+/**
+ * Propose a model upgrade for a role (e.g. from the Model Scout agent or Ask WOBBLE).
+ * Validates compatibility, then creates an approval so a founder decides — never applied
+ * automatically. This is the "offered, not force-fed" upgrade path.
+ */
+export async function proposeModelSwap(input: ModelUpgradeProposalInput, deps: ModelRegistryDeps = {}): Promise<ProposeModelSwapResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const proposal = modelUpgradeProposalSchema.parse(input);
+
+  const [catalog, roleMap] = await Promise.all([store.getModelCatalog(), store.getModelRoleMap()]);
+  const validation = validateModelSwap({ role: proposal.role, modelId: proposal.toModelId, catalog });
+  if (!validation.ok) {
+    throw new Error(validation.reason);
+  }
+  const currentModel = roleMap[proposal.role]?.model ?? proposal.fromModelId ?? null;
+
+  const approval = await createApproval(
+    {
+      approvalType: "model_upgrade",
+      entityType: "model_role",
+      entityId: proposal.role,
+      riskLevel: "normal",
+      requestedBy: proposal.proposedBy,
+      notes: `Proposed model upgrade for '${proposal.role}': ${currentModel ?? "(unset)"} -> ${proposal.toModelId}. ${proposal.rationale}`,
+      metadata: {
+        role: proposal.role,
+        fromModel: currentModel,
+        toModel: proposal.toModelId,
+        rationale: proposal.rationale,
+        confidence: proposal.confidence,
+        evidence: proposal.evidence,
+        proposedBy: proposal.proposedBy,
+      },
+    },
+    { store: deps.approvalStore, recordAudit, now },
+  );
+
+  return { approval, role: proposal.role, fromModelId: currentModel, toModelId: proposal.toModelId };
+}
+
+export interface ApplyModelSwapApprovalInput {
+  approvalId: string;
+  role: string;
+  toModelId: string;
+  approvedBy: string;
+  notes?: string;
+}
+
+/** Approve a proposed model upgrade and apply it (validated swap + audit). */
+export async function applyModelSwapApproval(input: ApplyModelSwapApprovalInput, deps: ModelRegistryDeps = {}): Promise<SetModelForRoleResult> {
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  await applyApprovalAction(
+    { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
+    { store: deps.approvalStore, recordAudit, now },
+  );
+
+  return setModelForRole(
+    { role: input.role, modelId: input.toModelId, changedBy: input.approvedBy, reason: `Approved model upgrade (approval ${input.approvalId})` },
+    deps,
+  );
+}
+
+function catalogFromValue(value: unknown): ModelCatalog {
+  const models = (value as { models?: unknown } | null)?.models;
+  const parsed = modelCatalogSchema.safeParse(models);
+  return parsed.success ? parsed.data : DEFAULT_MODEL_CATALOG;
+}
+
+export function defaultStore(db: Db = getDb()): ModelRegistryStore {
+  return {
+    async getModelCatalog() {
+      const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, "model_catalog")).limit(1);
+      return rows[0] ? catalogFromValue(rows[0].value) : DEFAULT_MODEL_CATALOG;
+    },
+    async getModelRoleMap() {
+      const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, "model_roles")).limit(1);
+      return modelRoleMapSchema.parse(rows[0]?.value ?? {});
+    },
+    async setModelRoleMap(map) {
+      const value = modelRoleMapSchema.parse(map) as unknown as Record<string, unknown>;
+      await db.update(settings).set({ value, updatedAt: new Date() }).where(eq(settings.key, "model_roles"));
+    },
+  };
+}

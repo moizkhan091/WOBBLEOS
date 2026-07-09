@@ -19,6 +19,7 @@ import { DEFAULT_AGENTS, buildAgentRow } from "@/lib/domain/agents";
 import { buildSourceTypeDefinitionRow } from "@/lib/domain/sources";
 import { buildMemoryBankRow } from "@/lib/domain/memory";
 import { buildTasteProfileRow } from "@/lib/domain/taste";
+import { DEFAULT_MODEL_CATALOG } from "@/lib/domain/model-registry";
 
 function loadEnvFile(path = resolve(process.cwd(), ".env")) {
   if (!existsSync(path)) return;
@@ -252,10 +253,20 @@ export async function seedDatabase() {
       value: modelRoles(),
       description: "Model-role routing for provider adapter calls. Editable in Settings later.",
     })
-    .onConflictDoUpdate({
-      target: schema.settings.id,
-      set: { value: modelRoles(), updatedAt: now },
-    });
+    // Do NOT clobber runtime model swaps on re-seed — user/model-registry changes are sovereign.
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.settings)
+    .values({
+      id: "setting_model_catalog",
+      key: "model_catalog",
+      scope: "global",
+      value: { models: DEFAULT_MODEL_CATALOG },
+      description: "Known models + capabilities for validated, swappable model routing. Editable in Settings.",
+    })
+    // Preserve runtime catalog edits (user-added models) on re-seed.
+    .onConflictDoNothing();
 
   await db
     .insert(schema.promptSkills)
