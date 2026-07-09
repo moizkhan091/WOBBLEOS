@@ -43,6 +43,12 @@ describe("provider domain", () => {
     expect(() => resolveModelRole("missing_role", roleMap)).toThrowError(/model role/);
   });
 
+  it("falls back to the 'default' role for an unmapped role, but still throws with no default", () => {
+    const withDefault = { ...roleMap, default: { provider: "openrouter", model: "openai/gpt-4o-mini" } };
+    expect(resolveModelRole("some_new_agent_role", withDefault)).toEqual({ provider: "openrouter", model: "openai/gpt-4o-mini" });
+    expect(() => resolveModelRole("some_new_agent_role", roleMap)).toThrowError(/model role/);
+  });
+
   it("blocks disabled providers or modules outside provider permissions", () => {
     expect(() => assertProviderAllowedForModule(openRouterConnection, "ask_wobble")).not.toThrow();
     expect(() => assertProviderAllowedForModule({ ...openRouterConnection, enabled: false }, "ask_wobble")).toThrowError(/disabled/);

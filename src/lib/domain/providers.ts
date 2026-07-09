@@ -36,9 +36,12 @@ export interface NormalizedProviderError {
 
 export function resolveModelRole(role: string, roleMap: ModelRoleMap): ModelRoleConfig {
   const parsed = modelRoleMapSchema.parse(roleMap);
-  const config = parsed[role];
+  // Fall back to a "default" role when one is configured, so a new agent whose specific role
+  // hasn't been mapped yet uses the house model instead of crashing its run. With no default
+  // configured, an unmapped role still fails loudly (surfaces a genuine misconfiguration).
+  const config = parsed[role] ?? parsed.default;
   if (!config) {
-    throw new Error(`model role '${role}' is not configured`);
+    throw new Error(`model role '${role}' is not configured (and no 'default' role is set)`);
   }
   return config;
 }

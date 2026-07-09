@@ -36,19 +36,18 @@ function loadEnvFile(path = resolve(process.cwd(), ".env")) {
 }
 
 function modelRoles() {
+  const or = (model: string) => ({ provider: "openrouter", model });
+  // "default" is the house fallback: any agent role not explicitly mapped resolves to this
+  // (see resolveModelRole) so a new agent never crashes a run on an unmapped role.
   return {
-    ask_wobble: {
-      provider: "openrouter",
-      model: process.env.ASK_WOBBLE_MODEL?.trim() || "openai/gpt-4o-mini",
-    },
-    content_strategy: {
-      provider: "openrouter",
-      model: process.env.CONTENT_STRATEGY_MODEL?.trim() || "anthropic/claude-sonnet-4.5",
-    },
-    memory_router: {
-      provider: "openrouter",
-      model: process.env.MEMORY_ROUTER_MODEL?.trim() || "openai/gpt-4o-mini",
-    },
+    default: or(process.env.DEFAULT_MODEL?.trim() || "openai/gpt-4o-mini"),
+    ask_wobble: or(process.env.ASK_WOBBLE_MODEL?.trim() || "openai/gpt-4o-mini"),
+    content_strategy: or(process.env.CONTENT_STRATEGY_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    content_research: or(process.env.CONTENT_RESEARCH_MODEL?.trim() || "openai/gpt-4o-mini"),
+    content_copywriting: or(process.env.CONTENT_COPYWRITING_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    content_scoring: or(process.env.CONTENT_SCORING_MODEL?.trim() || "openai/gpt-4o-mini"),
+    knowledge_compiler: or(process.env.KNOWLEDGE_COMPILER_MODEL?.trim() || "openai/gpt-4o-mini"),
+    memory_router: or(process.env.MEMORY_ROUTER_MODEL?.trim() || "openai/gpt-4o-mini"),
   };
 }
 
