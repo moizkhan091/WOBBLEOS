@@ -834,15 +834,233 @@ function BrainPage() {
     </div>
   );
 }
+// ---- Memory management (browse/edit/pin/archive/restore + conflicts + stale review) ----
+
+const actBtn: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.05)", color: C.white, fontSize: 11, fontWeight: 600, cursor: "pointer" };
+const chipBtn = (on: boolean): React.CSSProperties => ({ padding: "8px 13px", borderRadius: 10, border: "1px solid " + (on ? "rgba(184,255,44,0.34)" : "rgba(255,255,255,0.10)"), background: on ? "linear-gradient(135deg,rgba(184,255,44,0.14),rgba(184,255,44,0.03))" : "rgba(255,255,255,0.03)", color: on ? C.white : muted, fontSize: 12.5, fontWeight: 600, cursor: "pointer" });
+
+async function memApi(path: string, method: string, body?: unknown): Promise<{ ok: boolean; error?: string; data?: Record<string, unknown> }> {
+  try {
+    const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || j.ok === false) return { ok: false, error: String(j.error ?? "HTTP " + r.status) };
+    return { ok: true, data: j };
+  } catch (e) { return { ok: false, error: String(e) }; }
+}
+
+function EditMemoryModal({ record, actor, onClose, onDone }: { record: Record<string, unknown>; actor: string; onClose: () => void; onDone: () => void }) {
+  const id = String(record.id ?? "");
+  const [title, setTitle] = useState(String(record.title ?? ""));
+  const [content, setContent] = useState(String(record.content ?? ""));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const vs = useApi<{ versions: Record<string, unknown>[] }>("/api/memory/records/" + encodeURIComponent(id) + "/versions");
+  async function save() {
+    setBusy(true); setMsg(null);
+    const res = await memApi("/api/memory/records/" + encodeURIComponent(id), "PATCH", { title, content, editedBy: actor });
+    setBusy(false);
+    if (!res.ok) { setMsg("Error: " + res.error); return; }
+    setMsg("Saved — memory re-embedded so search stays correct."); setTimeout(onDone, 800);
+  }
+  async function restoreVersion(vid: string) {
+    const res = await memApi("/api/memory/records/" + encodeURIComponent(id) + "/versions/" + encodeURIComponent(vid) + "/restore", "POST", { restoredBy: actor });
+    if (!res.ok) { setMsg("Error: " + res.error); return; }
+    setMsg("Rolled back to that version."); setTimeout(onDone, 800);
+  }
+  const versions = vs.data?.versions ?? [];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(4,5,8,0.6)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...glass, width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto", padding: "24px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Edit memory</div>
+          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Close</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} /></div>
+          <div><div style={labelStyle}>CONTENT</div><textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} /></div>
+          {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Cancel</button>
+            <button onClick={save} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save changes"}</button>
+          </div>
+          {versions.length ? (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ ...labelStyle, marginBottom: 8 }}>VERSION HISTORY</div>
+              <div style={{ ...card, padding: 4 }}>
+                {versions.map((v, i) => (
+                  <div key={String(v.id ?? i)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderBottom: i < versions.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <Tag text={"v" + String(v.versionNumber ?? "?")} color={C.blue} />
+                    <span style={{ flex: 1, fontSize: 12, color: muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(v.content ?? "")}</span>
+                    <span style={{ fontSize: 10.5, color: faint }}>{fmtTime(v.createdAt)}</span>
+                    <button onClick={() => restoreVersion(String(v.id))} style={actBtn}>Restore</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManagedMemoryList({ actor, status }: { actor: string; status: "active" | "archived" }) {
+  const [bump, setBump] = useState(0);
+  const s = useApi<{ records: Record<string, unknown>[] }>("/api/memory/records?status=" + status + "&limit=100&r=" + bump);
+  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const guard = offlineIf(s); if (guard) return guard;
+  const recs = s.data?.records ?? [];
+  async function run(r: Record<string, unknown>, act: "pin" | "archive" | "restore") {
+    const id = encodeURIComponent(String(r.id));
+    const res =
+      act === "pin" ? await memApi("/api/memory/records/" + id + "/pin", "POST", { pinned: !r.pinned, actor })
+      : act === "archive" ? await memApi("/api/memory/records/" + id, "DELETE", { archivedBy: actor, reason: "removed from dashboard" })
+      : await memApi("/api/memory/records/" + id + "/restore", "POST", { restoredBy: actor });
+    setNote(res.ok ? null : "Error: " + res.error);
+    setBump((x) => x + 1);
+  }
+  if (!recs.length) return <StateBlock kind="empty" message={status === "archived" ? "Nothing archived. Deleted memories live here for 48h before purge." : "No memories yet."} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {note ? <div style={{ fontSize: 12, color: C.orange }}>{note}</div> : null}
+      <div style={{ ...glass, padding: "8px 10px" }}>
+        {recs.map((r, i) => (
+          <div key={String(r.id ?? i)} style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < recs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+            <span style={{ width: 32, height: 32, flex: "none", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", color: r.pinned ? "#0A0A0A" : C.lime, border: "1px solid rgba(255,255,255,0.10)", background: r.pinned ? C.lime : "rgba(255,255,255,0.04)" }}><Icon name={r.pinned ? "Pin" : "Database"} size={14} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{String(r.title ?? r.content ?? "memory")}</span>
+                {r.memoryTier ? <Tag text={String(r.memoryTier)} color={C.lime} /> : null}
+                {Array.isArray(r.bankSlugs) ? r.bankSlugs.slice(0, 3).map((b) => <Tag key={String(b)} text={String(b)} color={C.orange} />) : null}
+                {r.pinned ? <Tag text="PINNED" color={C.lime} /> : null}
+              </div>
+              <div style={{ fontSize: 11, color: faint, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(r.content ?? "")}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flex: "none" }}>
+              {status === "active" ? (
+                <>
+                  <button onClick={() => run(r, "pin")} style={actBtn}>{r.pinned ? "Unpin" : "Pin"}</button>
+                  <button onClick={() => setEditing(r)} style={actBtn}>Edit</button>
+                  <button onClick={() => run(r, "archive")} style={{ ...actBtn, color: C.orange, borderColor: "rgba(255,107,0,0.34)" }}>Delete</button>
+                </>
+              ) : (
+                <button onClick={() => run(r, "restore")} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Restore</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {editing ? <EditMemoryModal record={editing} actor={actor} onClose={() => setEditing(null)} onDone={() => { setEditing(null); setBump((x) => x + 1); }} /> : null}
+    </div>
+  );
+}
+
+function MemoryConflictsPanel({ actor }: { actor: string }) {
+  const [bump, setBump] = useState(0);
+  const s = useApi<{ conflicts: Record<string, unknown>[] }>("/api/memory/conflicts?limit=50&r=" + bump);
+  const [note, setNote] = useState<string | null>(null);
+  const guard = offlineIf(s); if (guard) return guard;
+  const conflicts = s.data?.conflicts ?? [];
+  async function resolve(id: string, resolution: string) {
+    const res = await memApi("/api/memory/conflicts/" + encodeURIComponent(id) + "/resolve", "POST", { resolution, resolvedBy: actor });
+    setNote(res.ok ? null : "Error: " + res.error);
+    setBump((x) => x + 1);
+  }
+  if (!conflicts.length) return <StateBlock kind="empty" message="No open conflicts. When a new memory contradicts an existing one, it shows up here to resolve." />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {note ? <div style={{ fontSize: 12, color: C.orange }}>{note}</div> : null}
+      {conflicts.map((c, i) => (
+        <div key={String(c.id ?? i)} style={{ ...glass, padding: "16px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <Icon name="GitCompareArrows" size={15} color={C.orange} />
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Possible conflict</span>
+            {c.similarity ? <Tag text={"sim " + Number(c.similarity).toFixed(2)} color={C.blue} /> : null}
+            {c.bankSlug ? <Tag text={String(c.bankSlug)} color={C.orange} /> : null}
+          </div>
+          <div style={{ fontSize: 11.5, color: muted, marginBottom: 12 }}>New record <code>{String(c.newRecordId).slice(0, 14)}</code> is similar-but-different to existing <code>{String(c.existingRecordId).slice(0, 14)}</code>.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => resolve(String(c.id), "keep_new")} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Keep new (archive old)</button>
+            <button onClick={() => resolve(String(c.id), "keep_existing")} style={actBtn}>Keep existing (archive new)</button>
+            <button onClick={() => resolve(String(c.id), "keep_both")} style={actBtn}>Keep both</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemoryReviewPanel({ actor }: { actor: string }) {
+  const [bump, setBump] = useState(0);
+  const s = useApi<{ records: Record<string, unknown>[] }>("/api/memory/review?limit=50&r=" + bump);
+  const guard = offlineIf(s); if (guard) return guard;
+  const recs = s.data?.records ?? [];
+  async function reviewed(id: string) {
+    await memApi("/api/memory/records/" + encodeURIComponent(id) + "/review", "POST", { reviewedBy: actor });
+    setBump((x) => x + 1);
+  }
+  if (!recs.length) return <StateBlock kind="empty" message="Nothing stale. Memories resurface here for re-confirmation as they age." />;
+  return (
+    <div style={{ ...glass, padding: "8px 10px" }}>
+      {recs.map((r, i) => (
+        <div key={String(r.id ?? i)} style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < recs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+          <Icon name="Clock" size={15} color={C.blue} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{String(r.title ?? "memory")}</div>
+            <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>due since {fmtTime(r.reviewAfter)}</div>
+          </div>
+          <button onClick={() => reviewed(String(r.id))} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Still true</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FounderMemoryPanel({ founder }: { founder: string }) {
+  const s = useApi<{ bank: string; count: number; records: Record<string, unknown>[] }>("/api/memory/founder/" + encodeURIComponent(founder));
+  const guard = offlineIf(s); if (guard) return guard;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: muted }}>Everything WOBBLE has learned about <b>{founder}</b> personally (bank <code>{s.data?.bank}</code>) — {s.data?.count ?? 0} memories.</div>
+      <ManagedMemoryList actor={founder} status="active" />
+    </div>
+  );
+}
+
+const MEM_TABS = [
+  { id: "records", label: "All memory" },
+  { id: "conflicts", label: "Conflicts" },
+  { id: "review", label: "Stale review" },
+  { id: "mine", label: "What WOBBLE knows about me" },
+  { id: "archived", label: "Recently deleted" },
+];
+
 function MemoryPage() {
   const [open, setOpen] = useState(false);
-  const [k, setK] = useState(0);
+  const [tab, setTab] = useState("records");
+  const [actor, setActor] = useState(FOUNDERS[0]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div><button onClick={() => setOpen(true)} style={primaryBtn}>Add memory</button></div>
-      <div style={{ fontSize: 12, color: muted }}>Memory includes core Brain, working memory, episodic archive, and routed banks like content, design, SEO, offer, founder taste, and performance.</div>
-      <MemoryRecords key={k} url="/api/memory?limit=50" emptyMsg="No memory records yet." />
-      {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); setK((x) => x + 1); }} /> : null}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <button onClick={() => setOpen(true)} style={primaryBtn}>Add memory</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <span style={{ fontSize: 11.5, color: faint }}>Acting as</span>
+          <select value={actor} onChange={(e) => setActor(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {MEM_TABS.map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={chipBtn(tab === t.id)}>{t.label}</button>)}
+      </div>
+      <div style={{ fontSize: 12, color: muted }}>
+        Read, edit, pin, and remove memory. Deletions are reversible for 48 hours. Every change is tracked in the Audit Log. Each founder can edit their own personal bank; brand/company memory is shared.
+      </div>
+      {tab === "records" ? <ManagedMemoryList actor={actor} status="active" /> : null}
+      {tab === "archived" ? <ManagedMemoryList actor={actor} status="archived" /> : null}
+      {tab === "conflicts" ? <MemoryConflictsPanel actor={actor} /> : null}
+      {tab === "review" ? <MemoryReviewPanel actor={actor} /> : null}
+      {tab === "mine" ? <FounderMemoryPanel founder={actor} /> : null}
+      {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => setOpen(false)} /> : null}
     </div>
   );
 }

@@ -2886,3 +2886,21 @@ Tests: tests/memory-manage.test.ts += bulk archive, bulk partial-failure (cross-
 Verified live: bulk archive 2/2; merge -> source archived into new record; split -> original archived, 2 created.
 
 PROGRESS: memory upgrades #1-#9 all DONE (+48h revert, audit labeling). REMAINING: #10 Memory browser UI page (front-end). Then extras, then the ADVERSARIAL BREAK-AGENT over the whole session (founder wants it after the upgrades).
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory upgrade #10: Memory browser UI page (all 10 upgrades complete)
+
+Upgraded os-ui.tsx MemoryPage from a read-only list into a full management browser, matching the existing glass/lime design (reused glass/card/Tag/StateBlock/useApi/offlineIf/primaryBtn/disabledBtn/inputStyle/selectStyle/labelStyle/FOUNDERS; no new UI framework).
+
+Tabs + founder selector ("acting as"):
+- All memory: browse active records; per-row Pin/Unpin, Edit, Delete; row detail via edit modal.
+- Edit modal: title/content edit (PATCH -> re-embeds) + VERSION HISTORY list with per-version Restore.
+- Conflicts: open memory_conflicts with Keep new / Keep existing / Keep both resolve buttons.
+- Stale review: memories past freshness window with "Still true" (review) button.
+- What WOBBLE knows about me: per-founder personal-bank export.
+- Recently deleted: archived records (48h grace) with Restore.
+
+All wired to the real APIs shipped this session (/api/memory/records[/id][/versions][/restore][/pin], /conflicts[/resolve], /review, /founder/[founder]). New fetch helper memApi + actBtn/chipBtn styles kept local + on-brand.
+
+Verified: typecheck clean; production build compiled + generated the page; live dev server -> GET /memory 200 (52KB), /api/memory/records 200, /api/memory/conflicts 200. (Pixel-level visual polish is best eyeballed via `npm run dev` -> /memory; structure/data/actions all wired + serving.)
+
+MILESTONE: memory upgrades #1-#10 ALL COMPLETE (+48h revert + audit labeling). NEXT: optional memory extras, then the ADVERSARIAL BREAK-AGENT over the whole session (founder wants it after the upgrades), then Auth / Knowledge Compiler / Content team / revenue engine.

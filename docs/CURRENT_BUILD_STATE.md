@@ -32,11 +32,13 @@ Purpose: the single "catch up in 2 minutes" doc for ANY builder (Codex, Claude, 
 4. Conversational memory: conversation logging (per founder) + Memory Harvester (auto-learn, per-founder routing) + `remember` tool.
 5. Founder-editable memory banks: read/add/edit(re-embed)/remove/restore, permissioned per founder, audited. API under /api/memory/records.
 6. MEMORY UPGRADES (founder asked for 10 + 48h revert + full audit labeling; doing in batches, THEN break-agent):
-   - Done: #1 version history/undo, #2 conflict detection, #3 "what WOBBLE knows about me" export, #4 Ask WOBBLE memory tools (search/forget/pin), #5 staleness/review, #6 pinning/importance, #7 bulk ops (archive/restore/pin), #8 dedup-on-write, #9 merge/split. Plus 48h deletion-revert (purge after grace) and audit categorization (deletion/edit/... + `surface`).
-   - REMAINING: #10 Memory browser UI page (front-end).
+   - ALL 10 DONE: #1 version history/undo, #2 conflict detection, #3 "what WOBBLE knows about me" export, #4 Ask WOBBLE memory tools (search/forget/pin), #5 staleness/review, #6 pinning/importance, #7 bulk ops, #8 dedup-on-write, #9 merge/split, #10 Memory browser UI page (in os-ui.tsx MemoryPage — tabs: all memory / conflicts / stale review / what-WOBBLE-knows-about-me / recently-deleted; browse+edit+pin+delete+restore+resolve-conflicts+version-history, founder selector; matches the glass/lime design). Plus 48h deletion-revert and audit categorization (deletion/edit/... + `surface`).
+
+## FRONT-END NOTE (design system to MAINTAIN)
+os-ui.tsx (single client component, ~2200 lines) renders every module via a registry (bottom of file) -> ModuleContent. Design = dark + lime (#B8FF2C) glass. Reuse the existing primitives: `glass`/`card` styles, `C` colors, `muted`/`faint`, `Panel`, `Tag`, `StatusPill`, `StateBlock` (loading/empty/error/offline), `PlannedState`, `useApi<T>(url)` hook (+reload), `offlineIf`, `fmtTime`, `FOUNDERS`, `primaryBtn`/`disabledBtn`/`inputStyle`/`selectStyle`/`labelStyle`, `DetailDrawer`, modal overlay pattern (see AddMemoryModal). Do NOT introduce a new UI framework/look; match this.
 
 ## NEXT (in order)
-1. Finish memory upgrade #10 (Memory browser UI page — front-end in os-ui).
+1. Memory extras (optional, founder-proposed): access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback.
 2. Proposed extras (access logging, provenance graph, confidence decay, weekly digest, bank visibility controls, structured memory, sensitive-data flagging, harvest-batch rollback).
 3. ADVERSARIAL BREAK-AGENT over the whole session's work (founder wants this AFTER all 10 upgrades).
 4. Then: Auth (Chunk 02, raised priority), Knowledge Compiler (Chunk 13 — first real research/knowledge TEAM), Content multi-agent team (Chunk 15 — where "talk to the output, refine, it learns" + per-module chat live), Prospect→Audit→Proposal revenue engine.
