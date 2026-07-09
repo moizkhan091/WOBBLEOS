@@ -3313,3 +3313,16 @@ Migration 0020: decisions + offers tables.
 VERIFIED: typecheck clean; tests green. LIVE AI: decision "which lead channel" → LLM scored 3 options 72/85/80, leader = free-audit lead magnet (85), confidence 85, status→scoring. Test data cleaned.
 
 NEXT: Workers + Settings + Automations (mostly surface existing infra), then growth modules (Research Radar / SEO / Social / Web Analytics — AI-planning versions, no stubs), entity 360 pages, dashboards, audit pass. Media Studio kept (flagged). Deploy deferred.
+
+## 2026-07-10 - Claude (Opus 4.8) - Operations: Workers, Settings, Automations (planned→wired)
+
+- Workers (no table): /api/workers + lib/workers/view.ts — heartbeats online/stale + queue summary. WorkersPage.
+- Settings (no table): /api/settings + lib/settings-view — model roles, providers, integration key status from env (never leaks values). SettingsPage.
+- Automations (migration 0021, automation_rules): domain/automation.ts (manual|event|schedule triggers, matchingRules) + lib/automations (add/list/toggle/runAutomation=enqueues a REAL job + bumps stats, fireEventRules for the event bus). Routes /api/automations + /[id]/action (toggle|run). AutomationsPage: create rule, Run now, enable/disable. tests/automation.test.ts (5).
+
+VERIFIED: full suite 443 green; build clean (all 8 new routes). Automation "run" enqueues real jobs (unit-verified incl. event firing).
+
+Modules now wired this session: Tasks, Meetings, Projects, AI Chat, Decision Room, Offer Lab, Workers, Settings, Automations.
+Still planned: radar (Research Radar), media (Media Studio - kept/flagged), seo, social, webstats, backup. Plus entity 360 pages, dashboards, audit pass.
+
+NOTE: fireEventRules exists but isn't yet wired into a central event bus — event-trigger rules run when something calls fireEventRules(eventType,...). Wiring it into writeAuditEvent would make event automations fully live; deferred to avoid a broad change mid-batch.

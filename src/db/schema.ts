@@ -1418,3 +1418,30 @@ export const offers = pgTable("offers", {
 }, (table) => [
   index("offers_status_idx").on(table.status),
 ]);
+
+// ---------------------------------------------------------------- Automations (operations)
+// Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
+
+export const automationRules = pgTable("automation_rules", {
+  id: id(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerType: varchar("trigger_type", { length: 20 }).notNull().default("manual"), // manual|event|schedule
+  triggerEvent: varchar("trigger_event", { length: 80 }), // audit event type to match, when triggerType=event
+  schedule: varchar("schedule", { length: 60 }), // cron-ish, when triggerType=schedule
+  actionQueue: varchar("action_queue", { length: 60 }).notNull().default("general"),
+  actionType: varchar("action_type", { length: 80 }).notNull(),
+  actionPayload: jsonb("action_payload").$type<Record<string, unknown>>().notNull().default({}),
+  enabled: boolean("enabled").notNull().default(true),
+  runCount: integer("run_count").notNull().default(0),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  lastStatus: varchar("last_status", { length: 20 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("automation_rules_enabled_idx").on(table.enabled),
+  index("automation_rules_trigger_idx").on(table.triggerEvent),
+]);

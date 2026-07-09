@@ -148,6 +148,13 @@
       "when": 1783626855147,
       "tag": "0020_abnormal_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783627578461,
+      "tag": "0021_ancient_spectrum",
+      "breakpoints": true
     }
   ]
 }

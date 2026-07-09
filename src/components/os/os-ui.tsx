@@ -4200,6 +4200,72 @@ function SettingsPage() {
   );
 }
 
+interface AutomationRowUI { id: string; name: string; description: string | null; triggerType: string; triggerEvent: string | null; actionQueue: string; actionType: string; enabled: boolean; runCount: number; lastStatus: string | null; lastRunAt: string | null }
+function AutomationsPage() {
+  const state = useApi<{ rules: AutomationRowUI[] }>("/api/automations?limit=200");
+  const [f, setF] = useState({ name: "", triggerType: "manual", triggerEvent: "", actionQueue: "general", actionType: "" });
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const rules = state.data?.rules ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.name.trim() || !f.actionType.trim()) { setMsg("A rule needs a name and an action type."); return; }
+    if (f.triggerType === "event" && !f.triggerEvent.trim()) { setMsg("Event triggers need an event name (e.g. crm.opportunity_stage_moved)."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const r = await fetch("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: f.name, triggerType: f.triggerType, triggerEvent: f.triggerType === "event" ? f.triggerEvent : undefined, actionQueue: f.actionQueue, actionType: f.actionType }) });
+      if (r.ok) { setF({ name: "", triggerType: "manual", triggerEvent: "", actionQueue: "general", actionType: "" }); reload(); } else { const j = await r.json(); setMsg("Error: " + String(j.error ?? "failed")); }
+    } finally { setBusy(null); }
+  }
+  async function toggle(id: string, enabled: boolean) { setBusy(id); try { await fetch(`/api/automations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggle", enabled }) }); reload(); } finally { setBusy(null); } }
+  async function run(id: string) { setBusy("run_" + id); try { const r = await fetch(`/api/automations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run" }) }); const j = await r.json(); if (j.ok) setMsg("Ran → job " + String(j.jobId).slice(0, 14)); reload(); } finally { setBusy(null); } }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Rules" value={String(rules.length)} icon="Workflow" color={C.blue} />
+        <Kpi label="Enabled" value={String(rules.filter((r) => r.enabled).length)} icon="Power" color={C.lime} />
+        <Kpi label="Total runs" value={String(rules.reduce((s, r) => s + r.runCount, 0))} icon="Repeat" color={C.gray} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New automation rule</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>A rule fires an action = it enqueues a real job. Event rules trigger on an audit event; manual rules run on demand.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+          <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="Rule name" style={inputStyle} />
+          <select value={f.triggerType} onChange={(e) => setF((s) => ({ ...s, triggerType: e.target.value }))} style={selectStyle}>
+            <option value="manual">Trigger: manual (run on demand)</option>
+            <option value="event">Trigger: on event</option>
+            <option value="schedule">Trigger: schedule</option>
+          </select>
+          {f.triggerType === "event" ? <input value={f.triggerEvent} onChange={(e) => setF((s) => ({ ...s, triggerEvent: e.target.value }))} placeholder="Event (e.g. crm.opportunity_stage_moved)" style={inputStyle} /> : <div />}
+          <input value={f.actionType} onChange={(e) => setF((s) => ({ ...s, actionType: e.target.value }))} placeholder="Action job type (e.g. content.generate)" style={inputStyle} />
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input value={f.actionQueue} onChange={(e) => setF((s) => ({ ...s, actionQueue: e.target.value }))} placeholder="Queue" style={{ ...inputStyle, width: 160 }} />
+          <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Create rule"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Ran") ? C.lime : C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {rules.length === 0 ? <StateBlock kind="empty" message="No automation rules yet. Create one — it'll enqueue a real job when it fires." /> : rules.map((r) => (
+        <Panel key={r.id}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.enabled ? C.lime : "rgba(255,255,255,0.2)" }} />
+            <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, minWidth: 150 }}>{r.name}</span>
+            <Tag text={r.triggerType + (r.triggerEvent ? ` · ${r.triggerEvent}` : "")} color={C.blue} />
+            <Tag text={`→ ${r.actionQueue}/${r.actionType}`} color={C.gray} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: faint }}>{r.runCount} run{r.runCount === 1 ? "" : "s"}{r.lastStatus ? ` · last: ${r.lastStatus}` : ""}</span>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => run(r.id)} disabled={busy === "run_" + r.id} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "run_" + r.id ? "…" : "Run now"}</button>
+            <button onClick={() => toggle(r.id, !r.enabled)} disabled={busy === r.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>{r.enabled ? "Disable" : "Enable"}</button>
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4226,6 +4292,7 @@ const WIRED: Record<string, React.ComponentType> = {
   offers: OfferLabPage,
   workers: WorkersPage,
   settings: SettingsPage,
+  automations: AutomationsPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
