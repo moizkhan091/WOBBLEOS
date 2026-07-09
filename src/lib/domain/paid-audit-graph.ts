@@ -5,12 +5,11 @@ import { WOBBLE_SERVICES } from "@/lib/domain/free-audit";
 /**
  * Paid Audit Graph (pure domain) — the McKinsey-depth AI audit team.
  *
- * SEPARATE from the Free Audit (the founder was explicit: not one AI doing both). Five distinct
- * agent_runs, each its own model role, grounded in the intake + Free-Audit diagnosis + brand Brain +
- * the FULL Wobble service catalog: Discovery/current-state -> Opportunity identification ->
- * Prioritization (impact/difficulty) -> 12-month Roadmap -> ROI + executive report. Mirrors the
- * content-graph pattern (parse-or-throw strict JSON per node, provenance, assembly). Orchestrator +
- * IO live in src/lib/paid-audit-graph. Artifact spec: WOBBLE_COMPANY_OS lines 199-215.
+ * SEPARATE from the Free Audit. Five agent_runs, each its own model role, grounded in the intake +
+ * Free-Audit diagnosis + brand Brain + the FULL Wobble service catalog: Discovery (deep current-state
+ * map) → Opportunity (15-20 detailed opportunities) → Prioritization → 12-month Roadmap (objectives +
+ * deliverables per phase) → Executive report (ROI + risks + KPIs + tech stack + next steps). Built for
+ * DEPTH — this is a real consulting deliverable. Orchestrator + IO in src/lib/paid-audit-graph.
  */
 
 export const PAID_AUDIT_MODULE = "paid_audit";
@@ -35,13 +34,17 @@ export const PAID_AUDIT_AGENTS = {
 
 const LEVEL = z.enum(["low", "medium", "high"]);
 
-// ---------------------------------------------------------------- node schemas
+// ---------------------------------------------------------------- node schemas (deep)
+
+const processStepSchema = z.object({ step: z.string().trim().min(1), detail: z.string().trim().default(""), tool: z.string().trim().default(""), pain: z.string().trim().default("") });
 
 export const discoverySchema = z.object({
-  acquisition: z.array(z.string().trim().min(1)).default([]),
-  delivery: z.array(z.string().trim().min(1)).default([]),
-  support: z.array(z.string().trim().min(1)).default([]),
-  bottlenecks: z.array(z.object({ area: z.string().trim().min(1), pain: z.string().trim().min(1), severity: LEVEL.default("medium") })).default([]),
+  situation: z.string().trim().default(""),
+  acquisition: z.array(processStepSchema).default([]),
+  delivery: z.array(processStepSchema).default([]),
+  support: z.array(processStepSchema).default([]),
+  bottlenecks: z.array(z.object({ area: z.string().trim().min(1), pain: z.string().trim().min(1), rootCause: z.string().trim().default(""), severity: LEVEL.default("medium"), businessImpact: z.string().trim().default("") })).default([]),
+  keyMetrics: z.array(z.object({ label: z.string().trim().min(1), value: z.string().trim().default("") })).default([]),
 });
 export type Discovery = z.infer<typeof discoverySchema>;
 
@@ -50,12 +53,16 @@ export const opportunitySchema = z.object({
     .array(
       z.object({
         title: z.string().trim().min(1),
-        area: z.string().trim().min(1),
-        service: z.string().trim().default(""), // a Wobble service slug when one fits
+        area: z.string().trim().default(""),
+        service: z.string().trim().default(""),
         description: z.string().trim().min(1),
+        howItWorks: z.string().trim().default(""),
+        expectedOutcome: z.string().trim().default(""),
         impact: LEVEL.default("medium"),
         difficulty: LEVEL.default("medium"),
         monthlyHoursSaved: z.number().min(0).optional(),
+        estimatedMonthlyValueCents: z.number().int().min(0).optional(),
+        kpis: z.array(z.string().trim().min(1)).default([]),
       }),
     )
     .default([]),
@@ -63,30 +70,44 @@ export const opportunitySchema = z.object({
 export type OpportunitySet = z.infer<typeof opportunitySchema>;
 
 export const prioritizationSchema = z.object({
-  quickWins: z.array(z.string().trim().min(1)).default([]), // titles: high impact / low difficulty
-  bigSwings: z.array(z.string().trim().min(1)).default([]), // high impact / high difficulty
+  quickWins: z.array(z.string().trim().min(1)).default([]),
+  bigSwings: z.array(z.string().trim().min(1)).default([]),
   rationale: z.string().trim().default(""),
 });
 export type Prioritization = z.infer<typeof prioritizationSchema>;
 
 export const roadmapSchema = z.object({
   phases: z
-    .array(z.object({ title: z.string().trim().min(1), months: z.string().trim().default(""), focus: z.string().trim().default(""), items: z.array(z.string().trim().min(1)).default([]) }))
+    .array(z.object({
+      title: z.string().trim().min(1),
+      months: z.string().trim().default(""),
+      focus: z.string().trim().default(""),
+      objectives: z.array(z.string().trim().min(1)).default([]),
+      deliverables: z.array(z.string().trim().min(1)).default([]),
+      items: z.array(z.string().trim().min(1)).default([]),
+      expectedOutcome: z.string().trim().default(""),
+    }))
     .default([]),
 });
 export type Roadmap = z.infer<typeof roadmapSchema>;
 
 export const reportSchema = z.object({
   executiveSummary: z.string().trim().min(1),
+  situationSummary: z.string().trim().default(""),
   roi: z.object({
     estimatedMonthlyUpsideCents: z.number().int().min(0).optional(),
     estimatedImplementationCents: z.number().int().min(0).optional(),
     paybackMonths: z.number().min(0).optional(),
-  }).default({}),
+    breakdown: z.array(z.object({ area: z.string().trim().min(1), monthlyValueCents: z.number().int().min(0).default(0) })).default([]),
+  }).optional(),
+  risks: z.array(z.object({ risk: z.string().trim().min(1), mitigation: z.string().trim().default("") })).default([]),
+  successMetrics: z.array(z.string().trim().min(1)).default([]),
+  recommendedTechStack: z.array(z.string().trim().min(1)).default([]),
+  nextSteps: z.array(z.string().trim().min(1)).default([]),
 });
 export type AuditReportNode = z.infer<typeof reportSchema>;
 
-// ---------------------------------------------------------------- robust JSON parse (same as content-graph)
+// ---------------------------------------------------------------- robust JSON parse
 
 function extractJson(text: string): string | null {
   if (!text) return null;
@@ -112,54 +133,52 @@ export function parseJsonObject<T>(text: string, schema: z.ZodType<T>): T | null
   return result.success ? result.data : null;
 }
 
-// ---------------------------------------------------------------- prompts
+// ---------------------------------------------------------------- prompts (demand depth)
 
 export interface AuditContext {
   businessName: string;
   industry?: string | null;
-  intakeNotes: string; // stakeholder answers, current-state notes
-  freeAuditSummary?: string; // the deterministic Free-Audit summary, if run
+  intakeNotes: string;
+  freeAuditSummary?: string;
   brain: Array<{ title: string; content: string }>;
 }
 
 const SERVICE_MENU = WOBBLE_SERVICES.map((s) => `${s.slug} (${s.name})`).join(", ");
 
 export function buildDiscoveryPrompt(ctx: AuditContext): ProviderMessage[] {
-  const system = `You are the DISCOVERY consultant on an AI transformation audit (McKinsey-grade). From the stakeholder notes, map the business as three systems — how they ACQUIRE customers, DELIVER, and SUPPORT — and pinpoint the real bottlenecks. Be concrete and specific to THIS business; never generic. Respond with STRICT JSON only:
-{"acquisition":["..."],"delivery":["..."],"support":["..."],"bottlenecks":[{"area":"...","pain":"...","severity":"low|medium|high"}]}`;
+  const system = `You are the DISCOVERY partner on a McKinsey-grade AI transformation audit. Map the business in DEPTH from the stakeholder notes — do not be brief. For each of the three systems (how they ACQUIRE customers, DELIVER the work, SUPPORT/retain customers), list the concrete PROCESS STEPS with detail, the tool used, and the pain at that step. Then the bottlenecks with root cause + business impact, and any key metrics they mentioned. Be specific to THIS business; infer sensibly where notes are thin. Respond with STRICT JSON only:
+{"situation":"2-4 sentence narrative of where the business is today","acquisition":[{"step":"...","detail":"...","tool":"...","pain":"..."}],"delivery":[{...}],"support":[{...}],"bottlenecks":[{"area":"...","pain":"...","rootCause":"...","severity":"low|medium|high","businessImpact":"..."}],"keyMetrics":[{"label":"...","value":"..."}]}`;
   const user = [`BUSINESS: ${ctx.businessName}${ctx.industry ? ` (${ctx.industry})` : ""}`, `STAKEHOLDER NOTES:\n${ctx.intakeNotes}`, ctx.freeAuditSummary ? `PRELIMINARY SCAN: ${ctx.freeAuditSummary}` : null].filter(Boolean).join("\n\n");
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
 export function buildOpportunityPrompt(ctx: AuditContext, discovery: Discovery): ProviderMessage[] {
-  const system = `You are the OPPORTUNITY consultant. Given the current-state map and its bottlenecks, identify concrete AI/automation opportunities. Where a Wobble service fits, name its slug in "service" (only from the menu). Rate impact and difficulty honestly. Respond with STRICT JSON only:
-{"opportunities":[{"title":"...","area":"...","service":"wobble-slug-or-empty","description":"...","impact":"low|medium|high","difficulty":"low|medium|high","monthlyHoursSaved":0}]}
+  const system = `You are the OPPORTUNITY partner. From the current-state map and bottlenecks, identify a COMPREHENSIVE set of AI/automation opportunities — aim for 12 to 20, covering every system (acquisition, delivery, support, ops, finance, marketing). For EACH: a description, how it works, the expected outcome, impact + difficulty, estimated monthly hours saved, estimated monthly value in INTEGER CENTS, and 1-3 KPIs to measure it. Where a Wobble service fits, put its slug in "service" (only from the menu). Be thorough — this is a paid audit. Respond with STRICT JSON only:
+{"opportunities":[{"title":"...","area":"...","service":"wobble-slug-or-empty","description":"...","howItWorks":"...","expectedOutcome":"...","impact":"low|medium|high","difficulty":"low|medium|high","monthlyHoursSaved":0,"estimatedMonthlyValueCents":0,"kpis":["..."]}]}
 WOBBLE SERVICE MENU (use these slugs): ${SERVICE_MENU}`;
-  const user = `CURRENT STATE:\n${JSON.stringify(discovery)}\n\nBUSINESS: ${ctx.businessName}`;
+  const user = `CURRENT STATE:\n${JSON.stringify(discovery)}\n\nBUSINESS: ${ctx.businessName}. Generate the full opportunity set (12-20).`;
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
 export function buildPrioritizationPrompt(opps: OpportunitySet): ProviderMessage[] {
-  const system = `You are the PRIORITIZATION consultant. Sort opportunities onto an impact/difficulty matrix: quickWins = high impact + low/medium difficulty; bigSwings = high impact + high difficulty. Reference opportunities by their exact titles. Respond with STRICT JSON only:
-{"quickWins":["title",...],"bigSwings":["title",...],"rationale":"..."}`;
+  const system = `You are the PRIORITIZATION partner. Sort opportunities onto an impact/difficulty matrix: quickWins = high impact + low/medium difficulty; bigSwings = high impact + high difficulty. Reference opportunities by their exact titles, and give a clear sequencing rationale. Respond with STRICT JSON only:
+{"quickWins":["title",...],"bigSwings":["title",...],"rationale":"why this sequence"}`;
   const user = `OPPORTUNITIES:\n${JSON.stringify(opps.opportunities.map((o) => ({ title: o.title, impact: o.impact, difficulty: o.difficulty })))}`;
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
 export function buildRoadmapPrompt(opps: OpportunitySet, priority: Prioritization): ProviderMessage[] {
-  const system = `You are the ROADMAP architect. Build a phased 12-month plan. Phase 1 = the quick wins (fast ROI to justify the engagement), later phases = the bigger swings. Each phase: title, month range, focus, and the item titles it delivers. Respond with STRICT JSON only:
-{"phases":[{"title":"...","months":"Month 1-3","focus":"...","items":["title",...]}]}`;
+  const system = `You are the ROADMAP architect. Build a detailed phased 12-month plan (4-5 phases). Phase 1 = quick wins for fast ROI. For EACH phase give: title, month range, focus, 2-4 objectives, the concrete deliverables, the opportunity item titles it delivers, and the expected outcome at the end of the phase. Respond with STRICT JSON only:
+{"phases":[{"title":"...","months":"Month 1-3","focus":"...","objectives":["..."],"deliverables":["..."],"items":["title",...],"expectedOutcome":"..."}]}`;
   const user = `QUICK WINS: ${priority.quickWins.join(", ")}\nBIG SWINGS: ${priority.bigSwings.join(", ")}\n\nALL OPPORTUNITIES:\n${JSON.stringify(opps.opportunities.map((o) => o.title))}`;
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
 export function buildReportPrompt(ctx: AuditContext, discovery: Discovery, opps: OpportunitySet, roadmap: Roadmap): ProviderMessage[] {
-  const system = `You are the ENGAGEMENT LEAD writing the executive summary of the audit for the client's leadership. Tie the current-state pain to the opportunities and the roadmap.
-Estimate ROI grounded in the business's own economics (deal value, lead volume, hours saved, leaked revenue) — realistic, not inflated, not trivial.
-CRITICAL: all money amounts are INTEGER CENTS (multiply dollars by 100). Example: $18,000/month upside = 1800000; a $45,000 build = 4500000. Do NOT output dollars.
-Respond with STRICT JSON only:
-{"executiveSummary":"...","roi":{"estimatedMonthlyUpsideCents":1800000,"estimatedImplementationCents":4500000,"paybackMonths":6}}`;
-  const user = `BUSINESS: ${ctx.businessName}\nBOTTLENECKS: ${discovery.bottlenecks.map((b) => b.pain).join("; ")}\nOPPORTUNITIES: ${opps.opportunities.length}\nROADMAP PHASES: ${roadmap.phases.length}`;
+  const system = `You are the ENGAGEMENT LEAD writing the full executive report for the client's leadership. Write a substantial executive summary (4-6 sentences) AND a situation summary, then estimate ROI, key risks with mitigations, the success metrics/KPIs to track, a recommended tech stack, and clear next steps.
+CRITICAL: all money amounts are INTEGER CENTS (dollars×100). Example: $18,000/month = 1800000; a $45,000 build = 4500000. Ground ROI in the business's own economics (deal value, lead volume, hours saved, leaked revenue) — realistic, not trivial, not inflated. Respond with STRICT JSON only:
+{"executiveSummary":"...","situationSummary":"...","roi":{"estimatedMonthlyUpsideCents":1800000,"estimatedImplementationCents":4500000,"paybackMonths":6,"breakdown":[{"area":"...","monthlyValueCents":0}]},"risks":[{"risk":"...","mitigation":"..."}],"successMetrics":["..."],"recommendedTechStack":["..."],"nextSteps":["..."]}`;
+  const user = `BUSINESS: ${ctx.businessName}\nSITUATION: ${discovery.situation}\nBOTTLENECKS: ${discovery.bottlenecks.map((b) => b.pain).join("; ")}\nOPPORTUNITIES (${opps.opportunities.length}): ${opps.opportunities.map((o) => o.title).slice(0, 20).join("; ")}\nROADMAP PHASES: ${roadmap.phases.length}`;
   return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
@@ -169,11 +188,16 @@ export interface PaidAuditReport {
   businessName: string;
   industry: string | null;
   executiveSummary: string;
+  situationSummary: string;
   currentState: Discovery;
   opportunities: OpportunitySet["opportunities"];
   prioritization: Prioritization;
   roadmap: Roadmap["phases"];
   roi: AuditReportNode["roi"];
+  risks: AuditReportNode["risks"];
+  successMetrics: string[];
+  recommendedTechStack: string[];
+  nextSteps: string[];
   serviceCount: number;
 }
 
@@ -190,11 +214,16 @@ export function assemblePaidAuditReport(input: {
     businessName: input.businessName,
     industry: input.industry ?? null,
     executiveSummary: input.report.executiveSummary,
+    situationSummary: input.report.situationSummary || input.discovery.situation,
     currentState: input.discovery,
     opportunities: input.opportunities.opportunities,
     prioritization: input.prioritization,
     roadmap: input.roadmap.phases,
     roi: input.report.roi,
+    risks: input.report.risks,
+    successMetrics: input.report.successMetrics,
+    recommendedTechStack: input.report.recommendedTechStack,
+    nextSteps: input.report.nextSteps,
     serviceCount: new Set(input.opportunities.opportunities.map((o) => o.service).filter(Boolean)).size,
   };
 }

@@ -15,10 +15,15 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const html = renderAuditDeckHtml({
     businessName: audit.businessName,
     executiveSummary: (report.executiveSummary as string) ?? (report.summary as string) ?? "",
+    situationSummary: report.situationSummary as never,
     currentState: report.currentState as never,
     opportunities: report.opportunities as never,
     roadmap: report.roadmap as never,
     roi: report.roi as never,
+    risks: report.risks as never,
+    successMetrics: report.successMetrics as never,
+    recommendedTechStack: report.recommendedTechStack as never,
+    nextSteps: report.nextSteps as never,
   });
   return new NextResponse(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" } });
 }

@@ -83,7 +83,7 @@ export interface PaidAuditResult {
 }
 
 async function defaultRunNode(input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }): Promise<NodeRunResult> {
-  const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 2200, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId });
+  const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 6000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId });
   return { text: result.text, runId: result.run?.id };
 }
 

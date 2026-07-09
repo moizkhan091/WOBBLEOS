@@ -3184,3 +3184,18 @@ VERIFIED LIVE: opened /api/audit/{id}/deck -> 200, 5 slides, navigable; screensh
 
 SESSION 2 SUMMARY (all pushed): proposal builder (f8d7d38) → premium documents report+proposal (eabf874) → slide deck (this). Revenue engine loop COMPLETE with premium deliverables: Free Audit → CRM → Paid Audit → Proposal → Invoice → Finance, each audit/proposal exportable as a branded report doc + a present-ready deck.
 NEXT: feedback→diff-edit loop on docs (founder's "I don't like slide 3, change X, rebuild only that" + memory); LLM narrative-polish; free-audit LLM enrichment + Apify social scrape (gated on Apify key); paid-audit ROI-prompt tuning (cents); free-audit proposal pricing; binary PDF (puppeteer) if needed; partner's rest-of-ERP (tasks/meetings/projects/RBAC/versioning).
+
+## 2026-07-09 - Claude (Opus 4.8) - Proposal builder + DEPTH upgrade to audits/decks/proposals
+
+Two things: (1) finished the Proposal builder (closes Audit→Proposal→Invoice), (2) founder feedback "decks/audits/proposals are too small — needs to be hella detailed" → deepened the whole paid-audit + document pipeline.
+
+PROPOSALS (migration 0016 applied): proposals table + domain/proposal.ts (statuses, buildProposalRow, proposalInputFromAudit deterministic from audit report, status machine) + lib/proposals (createProposal, createProposalFromAudit, listProposals, proposalAction approve/send/accept/reject — ACCEPT auto-drafts an invoice via finance.createInvoice, closing the loop) + routes /api/proposals, /from-audit, /[id]/action + "docs" tile flipped to wired "Proposals". tests/proposal.test.ts (7).
+
+DEPTH UPGRADE (paid audit is now a real consulting deliverable, not 6 thin slides):
+- domain/paid-audit-graph.ts: node schemas massively deepened. Discovery = situation narrative + acquisition/delivery/support as PROCESS STEPS ({step,detail,tool,pain}) + bottlenecks ({area,pain,rootCause,severity,businessImpact}) + keyMetrics. Opportunity = prompt now demands 12-20 opportunities, each {description,howItWorks,expectedOutcome,impact,difficulty,monthlyHoursSaved,estimatedMonthlyValueCents,kpis[]}. Roadmap phases = +objectives[]+deliverables[]+expectedOutcome. Report = +situationSummary, roi.breakdown[], risks[], successMetrics[], recommendedTechStack[], nextSteps[]. maxTokens 2200→6000.
+- documents/render.ts REWRITTEN: renderAuditReportHtml = long-form report (cover + TOC + exec summary + situation/ROI + value-by-area + current-state 3-col process tables + bottleneck cards + key metrics + detailed opportunity cards w/ how-it-works/outcome/KPIs/value + roadmap phases w/ objectives+deliverables+outcome + risks + success metrics + tech-stack chips + next steps). renderAuditDeckHtml = 20+ slide deck (cover, exec, situation, current-state, bottlenecks, opportunities 3/slide, one slide PER roadmap phase, risks, metrics, stack, next steps, close). Renderers are defensive — handle both deep PAID shape and light FREE shape (step can be string|object, opp title|name, description|reason). Deepened proposal render too.
+- audit document + deck routes pass the new fields.
+
+VERIFIED: typecheck clean; 395 tests pass (was 383: +proposal 7, +paid-audit reshaped, +doc). build compiles (proposals + audit doc/deck routes registered). Live depth re-run pending (next). NOTE: model ROI still can misread cents-vs-dollars occasionally — the report prompt now gives explicit cents examples; monitor.
+
+NEXT: live-verify the deep report+deck (screenshot); then free-audit LLM enrichment + Apify social scrape (gated); LLM narrative-polish on proposals; feedback→diff-edit loop on generated docs; premium binary PDF export (puppeteer). REVENUE engine now end-to-end: Free Audit → lead/CRM → Paid Audit (deep 5-agent, HTML report+deck) → Proposal → Invoice → revenue dashboard.
