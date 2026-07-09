@@ -12,6 +12,7 @@ import {
   type JobRow,
   type JobStatus,
 } from "@/lib/domain/jobs";
+import { assertJobConnectionsAllowed } from "@/lib/connections";
 
 /**
  * Chunk 06: Job Queue service.
@@ -70,6 +71,8 @@ export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Pr
   const row = buildJobRow(input, { now: deps.now });
   const store = deps.store ?? defaultStore();
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+
+  await assertJobConnectionsAllowed(row, { recordAudit });
 
   if (row.idempotencyKey) {
     const existing = await store.findActiveByIdempotencyKey(row.idempotencyKey);

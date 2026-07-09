@@ -45,7 +45,6 @@ export const MODULES: Record<string, ModuleDef> = {
   // STRATEGY
   decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "planned", chunk: 24, tagline: "Where strategy is debated, scored and committed. Each decision keeps its reasoning trail." },
   offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "planned", chunk: 25, tagline: "Design, test and iterate offers. Low-confidence experiments never reach a founder cold." },
-  clients: { id: "clients", label: "Client AIOS Lab", title: "Client AIOS Lab", icon: "Building2", status: "planned", chunk: 26, tagline: "Build and ship AI operating systems for clients - the same engine, pointed outward." },
 
   // GROWTH & BUSINESS
   seo: { id: "seo", label: "SEO & Blog Engine", title: "SEO & Blog Engine", icon: "SearchCheck", status: "planned", chunk: 37, tagline: "Keyword targets, blog pipeline and AI-search visibility - drafted by the workforce, published on your say-so." },
@@ -56,6 +55,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
   // OPERATIONS
   automations: { id: "automations", label: "Automations", title: "Automations", icon: "Workflow", status: "planned", chunk: 19, tagline: "Recurring jobs and triggers that keep the OS moving while you sleep." },
+  connections: { id: "connections", label: "Connections", title: "Connections Registry", icon: "Cable", status: "wired", chunk: 35, api: "/api/connections", tagline: "The permission map for every API, scraper, model gateway, webhook, media tool, storage rail and external service WOBBLE OS is allowed to call." },
   skills: { id: "skills", label: "Skill Registry", title: "Prompt / Skill Registry", icon: "Wand2", status: "wired", chunk: 34, api: "/api/skills", tagline: "Versioned, approval-gated SOPs the workers run. Edit a skill, approve it, and behavior changes with no code." },
   approvals: { id: "approvals", label: "Approvals", title: "Approvals", icon: "BadgeCheck", status: "wired", chunk: 4, api: "/api/approvals", tagline: "The single gate. Every output here cleared self-review - your decision is logged with explicit attribution." },
   workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "planned", chunk: 20, tagline: "Persistent worker processes running outside the web lifecycle. Live load, queue and health." },
@@ -73,9 +73,9 @@ export const MODULES: Record<string, ModuleDef> = {
 export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "media", "presentations"] },
-  { label: "STRATEGY", items: ["decision", "offers", "clients"] },
+  { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats", "invoices", "docs"] },
-  { label: "OPERATIONS", items: ["automations", "approvals", "skills", "workers", "handoff"] },
+  { label: "OPERATIONS", items: ["automations", "connections", "approvals", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
 

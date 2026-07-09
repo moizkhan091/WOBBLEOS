@@ -1291,6 +1291,171 @@ function AgentsPage() {
   );
 }
 
+type ConnectionEntry = {
+  id: string;
+  slug: string;
+  label: string;
+  providerType: string;
+  credentialKeyName: string;
+  credentialConfigured: boolean;
+  enabled: boolean;
+  allowedModules: string[];
+  permissionMode: string;
+  costCategory: string;
+  healthStatus: string;
+  referenceDocPath: string | null;
+  metadata: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+function ConnectionDetailDrawer({ connection, onClose, onChanged }: { connection: ConnectionEntry; onClose: () => void; onChanged: () => void }) {
+  const [current, setCurrent] = useState(connection);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => setCurrent(connection), [connection]);
+
+  async function toggleEnabled() {
+    setBusy("toggle");
+    setMessage(null);
+    try {
+      const response = await fetch("/api/connections/" + encodeURIComponent(current.slug), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !current.enabled }),
+      });
+      const json = await response.json();
+      if (!response.ok || json.ok === false) throw new Error(String(json.error ?? "connection update failed"));
+      setCurrent(json.connection);
+      setMessage(current.enabled ? "Connection disabled. Dependent jobs will now be blocked." : "Connection enabled. Run health check before using it live.");
+      onChanged();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "connection update failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runHealthCheck() {
+    setBusy("health");
+    setMessage(null);
+    try {
+      const response = await fetch("/api/connections/" + encodeURIComponent(current.slug) + "/health", { method: "POST" });
+      const json = await response.json();
+      if (!response.ok || json.ok === false) throw new Error(String(json.error ?? "health check failed"));
+      setCurrent(json.connection);
+      setMessage(json.credentialConfigured ? "Health check passed. Env credential is configured." : "Missing env credential. Add it to .env/VPS env before live use.");
+      onChanged();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "health check failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const healthColor = current.healthStatus === "healthy" ? C.lime : current.healthStatus === "missing_credential" || current.healthStatus === "disabled" ? C.orange : C.blue;
+  return (
+    <DetailDrawer
+      title={current.label}
+      subtitle={current.slug}
+      tags={[
+        { text: current.enabled ? "ENABLED" : "DISABLED", color: current.enabled ? C.lime : C.orange },
+        { text: current.providerType, color: C.blue },
+        { text: current.costCategory, color: C.gray },
+      ]}
+      fields={[
+        { label: "Provider type", value: current.providerType },
+        { label: "Credential env key", value: current.credentialKeyName },
+        { label: "Credential configured", value: current.credentialConfigured ? "yes" : "no" },
+        { label: "Permission mode", value: current.permissionMode },
+        { label: "Allowed modules", value: current.allowedModules },
+        { label: "Health", value: current.healthStatus },
+        { label: "Reference docs", value: current.referenceDocPath },
+        { label: "Updated", value: current.updatedAt },
+      ]}
+      raw={current.metadata}
+      onClose={onClose}
+    >
+      <div style={{ ...card, padding: 14, display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={runHealthCheck} disabled={busy !== null} style={busy ? disabledBtn : primaryBtn}>
+            {busy === "health" ? "Checking..." : "Check health"}
+          </button>
+          <button onClick={toggleEnabled} disabled={busy !== null} style={busy ? disabledBtn : current.enabled ? rejectBtn : primaryBtn}>
+            {busy === "toggle" ? "Saving..." : current.enabled ? "Disable connection" : "Enable connection"}
+          </button>
+          <StatusPill label={current.healthStatus} color={healthColor} />
+        </div>
+        <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>
+          Secrets are never stored here. WOBBLE only stores the env key name, checks whether that env value exists, and blocks jobs when the connection is disabled or not allowed for that module.
+        </div>
+        {message ? <div style={{ fontSize: 12, color: message.toLowerCase().includes("failed") || message.toLowerCase().includes("missing") ? C.orange : C.lime }}>{message}</div> : null}
+      </div>
+    </DetailDrawer>
+  );
+}
+
+function ConnectionsPage() {
+  const s = useApi<{ connections: ConnectionEntry[] }>("/api/connections?limit=200");
+  const [selected, setSelected] = useState<ConnectionEntry | null>(null);
+  const guard = offlineIf(s);
+  if (guard) return guard;
+  const items = s.data?.connections ?? [];
+  if (!items.length) return <StateBlock kind="empty" message="No connections registered yet. Run the seed to register OpenRouter, search, fal/Seedance, n8n and storage rails." />;
+
+  const enabled = items.filter((item) => item.enabled).length;
+  const healthy = items.filter((item) => item.healthStatus === "healthy").length;
+  const missing = items.filter((item) => !item.credentialConfigured).length;
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14, marginBottom: 16 }}>
+        <Kpi label="Connections" value={String(items.length)} icon="Cable" color={C.lime} sub="registered tools and APIs" />
+        <Kpi label="Enabled" value={String(enabled)} icon="Power" color={C.blue} sub="allowed to be called" />
+        <Kpi label="Healthy" value={String(healthy)} icon="ShieldCheck" color={C.lime} sub="env key present + enabled" />
+        <Kpi label="Missing env" value={String(missing)} icon="KeyRound" color={C.orange} sub="needs .env or VPS secret" />
+      </div>
+
+      <Panel style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>Connection rules</div>
+            <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55, maxWidth: 760 }}>
+              Connections are the permission layer for the hive mind. Agents and workers should declare the connection they need; disabled, missing-credential, or module-blocked connections stop the job and write an audit event.
+            </div>
+          </div>
+          <Tag text="NO SECRETS STORED" color={C.lime} />
+        </div>
+      </Panel>
+
+      <div style={{ ...glass, padding: "8px 10px" }}>
+        {items.map((connection, i) => {
+          const healthColor = connection.healthStatus === "healthy" ? C.lime : connection.healthStatus === "missing_credential" || connection.healthStatus === "disabled" ? C.orange : C.blue;
+          return (
+            <button key={connection.id ?? connection.slug ?? i} onClick={() => setSelected(connection)} style={{ width: "100%", border: "none", background: "transparent", color: C.white, textAlign: "left", display: "flex", gap: 14, padding: 14, alignItems: "center", cursor: "pointer", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+              <span style={{ width: 34, height: 34, flex: "none", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: connection.enabled ? C.lime : C.orange, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="PlugZap" size={15} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{connection.label}</span>
+                  <Tag text={connection.providerType} color={C.blue} />
+                  <Tag text={connection.permissionMode} color={C.gray} />
+                  <Tag text={connection.costCategory} color={C.orange} />
+                  <StatusPill label={connection.enabled ? "enabled" : "disabled"} color={connection.enabled ? C.lime : C.orange} />
+                  <StatusPill label={connection.healthStatus} color={healthColor} />
+                </div>
+                <div style={{ fontSize: 11.5, color: faint, marginTop: 5 }}>
+                  {connection.credentialKeyName} - {connection.credentialConfigured ? "env configured" : "env missing"} - modules {(connection.allowedModules ?? []).join(", ") || "all"}
+                </div>
+              </div>
+              <span style={{ color: faint, display: "inline-flex", alignItems: "center" }}><Icon name="ChevronRight" size={16} /></span>
+            </button>
+          );
+        })}
+      </div>
+      {selected ? <ConnectionDetailDrawer connection={selected} onClose={() => setSelected(null)} onChanged={s.reload} /> : null}
+    </>
+  );
+}
+
 type IntelligenceEntry = {
   recordType: string;
   id: string;
@@ -1747,6 +1912,7 @@ function TastePage() {
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   agents: AgentsPage,
+  connections: ConnectionsPage,
   intelligence: IntelligencePage,
   taste: TastePage,
   approvals: ApprovalsPage,

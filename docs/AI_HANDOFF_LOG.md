@@ -2674,3 +2674,40 @@ Final verification nuance for Chunk 56:
   - `npm run typecheck` passed.
   - `npm run test` passed: 31 files / 221 tests.
   - `npm run build` passed and included all `/api/taste/*` routes.
+
+## 2026-07-09 - Claude (Opus 4.8) - Semantic memory layer (module-completion pass, Slice 1)
+
+Founder (Moiz) directed a module-by-module completion pass, memory layer FIRST ("make it solid"). Also: removed the Client AIOS Lab module from the registry (client service delivery, not an internal OS module) and wrote docs/WOBBLE_OS_WHOLE_ANIMAL.md (all 25 modules + 17 seeded agents + 25 banks + the blackboard/shared-data model).
+
+Problem found (looks-done-but-isnt): memory retrieval was NOT semantic. `retrieveMemoryCandidates` ignored the embedding column, ordered by recency, and returned a hardcoded `similarity: 0.75`; chunk embeddings were always null. "Remembering" was really "newest in bank."
+
+Changes:
+- NEW src/lib/embeddings/index.ts - pluggable OpenAI-compatible embedder; defaults to OpenRouter + openai/text-embedding-3-small (1536 dims, matches schema) using existing OPENROUTER_API_KEY. Configurable via EMBEDDINGS_API_KEY/MODEL/BASE_URL. Returns null (graceful) when unconfigured.
+- src/lib/memory/index.ts - approveMemoryUpdate generates+stores chunk embeddings (attachEmbeddings, non-fatal). retrieveMemoryContext embeds the query; defaultStore.retrieveMemoryCandidates now uses real pgvector cosine (cosineDistance -> 1-distance) with isNotNull(embedding), falling back to recency when no query embedding. Added queryEmbedding to RetrieveMemoryQuery, embedder to MemoryDeps.
+- NEW src/scripts/backfill-memory-embeddings.ts + `npm run memory:backfill-embeddings`.
+- NEW tests/memory-embeddings.test.ts. .env.example documents EMBEDDINGS_* vars.
+
+Infra: local Postgres via Docker - image pgvector/pgvector:pg16, container `wobble-os-postgres`, db wobble_os / user wobble / port 5432. 45 tables + seed present.
+
+Verification:
+- typecheck clean; full suite 234 tests pass (was 221).
+- Live backfill: 12/12 chunks embedded via OpenRouter.
+- Live semantic retrieval proven end-to-end: brand-voice query -> Brand Voice; founders query -> About WOBBLE + Founder Preferences; avoid-saying -> Do Not Say Rules; content-strategy -> Content Strategy. Real cosine ordering, not recency.
+
+Next: Slice 2 = Knowledge Compiler (Chunk 13) so approved sources compound into linked notes; then Content multi-agent upgrade (Chunk 15); then the NEW Prospect->Audit->Proposal revenue engine. Remaining memory-hardening items tracked in docs/WOBBLE_OS_WHOLE_ANIMAL.md Part 3.6 (shared retrieval contract for all output agents, provenance-on-write, per-founder taste effect, "I don't know" empty-state).
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory hardening + migration-drift/deploy-bug fix
+
+Applied a strict "harden before advancing" review of the Slice 1 memory work. Two outcomes:
+
+1) HONEST CORRECTION: I initially thought memory had "no vector index" and added one. WRONG - migration 0000_init_pgvector.sql already creates the correct HNSW cosine index (memory_chunks_embedding_idx) AND a composite filter index (memory_chunks_scope_idx on memory_tier,trust_level,status,archived). My additions were duplicates. Reverted the schema.ts index change and dropped the 3 duplicate indexes I had created. Final memory_chunks indexes = pkey + embedding_idx (HNSW) + scope_idx only. (The indexes just weren't mirrored in schema.ts, which is why they were invisible on a code read.)
+
+2) REAL DEPLOY BUG FOUND + FIXED: `drizzle-kit generate` revealed snapshot drift - the migration SNAPSHOTS were behind the live schema for taste_profiles, feedback_events, and intelligence_items.metrics/extracted/relations. Root cause: those objects were added to the live DB outside the migration SQL (push/hand). taste/feedback are also created by 0006, but the three intelligence_items columns are created by NO committed migration SQL - so a from-scratch `drizzle-kit migrate` (VPS deploy) would build a broken intelligence_items table and crash the intelligence module. Fix: new migration 0007_lovely_baron_zemo.sql - an idempotent (IF NOT EXISTS) reconciliation that safely no-ops on existing DBs and correctly builds a fresh one. Verified `db:generate` now reports "No schema changes" (schema == snapshot == DB).
+
+Process note: reviewed the generated migration BEFORE applying and caught that the raw generated 0007 had non-idempotent CREATE TABLE / ADD COLUMN that would have failed on both the current DB and a fresh build. Never run generated migrations unread.
+
+Infra recap: local Postgres via Docker (container wobble-os-postgres, pgvector/pgvector:pg16). Embeddings on OPENROUTER_API_KEY (openai/text-embedding-3-small). Budget mode: all model_roles set to openai/gpt-4o-mini for cheap testing; content_strategy's original (claude-sonnet-4.5) stashed in settings.model_roles.content_strategy._restoreTo - restore for production content.
+
+Verification: typecheck clean; 234/234 tests pass; live semantic retrieval still correct; memory_chunks index set clean; `db:generate` clean; migration applies idempotently.
+
+Recommendation for all builders: run `npm run db:generate` and expect "No schema changes"; if it re-emits existing objects, the snapshots have drifted again - reconcile with an idempotent migration, don't push. Next: Slice 2 = Knowledge Compiler (Chunk 13).

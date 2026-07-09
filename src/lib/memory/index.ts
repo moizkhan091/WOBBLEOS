@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryRecords, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
+import { embedText, embedTexts, type Embedder } from "@/lib/embeddings";
 import {
   buildMemoryChunkRows,
   buildMemoryBankLinkRow,
@@ -45,6 +46,7 @@ export interface ListMemoryProposalsQuery {
 
 export interface RetrieveMemoryQuery {
   query: string;
+  queryEmbedding?: number[];
   queryMode?: QueryMode;
   tiers?: MemoryTier[];
   trustLevels?: TrustLevel[];
@@ -75,7 +77,25 @@ export interface MemoryDeps {
   store?: MemoryStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  embedder?: Embedder | null;
   now?: Date;
+}
+
+/**
+ * Attach embedding vectors to memory chunks so they are semantically retrievable.
+ * Non-fatal: if embeddings are not configured or the call fails, the chunk is
+ * stored without a vector rather than losing the memory.
+ */
+async function attachEmbeddings(chunks: MemoryChunkRow[], deps: MemoryDeps): Promise<MemoryChunkRow[]> {
+  if (!chunks.length) return chunks;
+  try {
+    const vectors = await embedTexts(chunks.map((chunk) => chunk.content), { embedder: deps.embedder });
+    if (!vectors) return chunks;
+    return chunks.map((chunk, index) => ({ ...chunk, embedding: vectors[index] ?? chunk.embedding }));
+  } catch (error) {
+    console.error("memory embedding failed:", error instanceof Error ? error.message : error);
+    return chunks;
+  }
 }
 
 export const DEFAULT_MEMORY_LIMIT = 50;
@@ -276,8 +296,10 @@ export async function approveMemoryUpdate(
     { now },
   );
 
+  const embeddedChunks = await attachEmbeddings(memoryChunks, deps);
+
   await store.insertMemoryRecord(memoryRecord);
-  await store.insertMemoryChunks(memoryChunks);
+  await store.insertMemoryChunks(embeddedChunks);
   if (store.insertMemoryBankLinks) {
     await store.insertMemoryBankLinks(
       approvedBankSlugs.flatMap((bankSlug) => [
@@ -333,7 +355,7 @@ export async function approveMemoryUpdate(
     },
   });
 
-  return { proposal: updatedProposal, memoryRecord, memoryChunks };
+  return { proposal: updatedProposal, memoryRecord, memoryChunks: embeddedChunks };
 }
 
 export interface RejectMemoryUpdateInput {
@@ -393,7 +415,17 @@ export async function retrieveMemoryContext(
   const queryMode = input.queryMode ?? "current";
   const limit = clampMemoryLimit(input.limit);
 
-  const candidates = await store.retrieveMemoryCandidates({ ...input, queryMode, limit: MAX_MEMORY_LIMIT });
+  let queryEmbedding = input.queryEmbedding;
+  if (!queryEmbedding) {
+    try {
+      const vector = await embedText(input.query, { embedder: deps.embedder });
+      queryEmbedding = vector ?? undefined;
+    } catch (error) {
+      console.error("memory query embedding failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  const candidates = await store.retrieveMemoryCandidates({ ...input, queryEmbedding, queryMode, limit: MAX_MEMORY_LIMIT });
   const activeCandidates =
     queryMode === "include_archived" ? candidates : candidates.filter((chunk) => chunk.status === "active");
   const ranked = rankMemoryChunks({ chunks: activeCandidates, now, queryMode });
@@ -471,29 +503,62 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         if (!chunkIds.length) return [];
         conditions.push(inArray(memoryChunksTable.id, chunkIds));
       }
-      const where = conditions.length ? and(...conditions) : undefined;
-      const rows = await db
-        .select()
-        .from(memoryChunksTable)
-        .where(where)
-        .orderBy(desc(memoryChunksTable.createdAt))
-        .limit(input.limit);
+
+      const columns = {
+        id: memoryChunksTable.id,
+        memoryRecordId: memoryChunksTable.memoryRecordId,
+        content: memoryChunksTable.content,
+        memoryTier: memoryChunksTable.memoryTier,
+        trustLevel: memoryChunksTable.trustLevel,
+        sourceId: memoryChunksTable.sourceId,
+        parentEntityId: memoryChunksTable.parentEntityId,
+        entityType: memoryChunksTable.entityType,
+        status: memoryChunksTable.status,
+        archived: memoryChunksTable.archived,
+        tags: memoryChunksTable.tags,
+        bankSlugs: memoryChunksTable.bankSlugs,
+        createdAt: memoryChunksTable.createdAt,
+      };
+
+      // Semantic path: real pgvector cosine similarity when a query embedding is available.
+      // Fallback path: recency ordering (used before embeddings are configured/backfilled).
+      const useVector = Array.isArray(input.queryEmbedding) && input.queryEmbedding.length > 0;
+
+      let rows: Array<Record<string, unknown> & { similarity: number }>;
+      if (useVector) {
+        const similarity = sql<number>`1 - (${cosineDistance(memoryChunksTable.embedding, input.queryEmbedding as number[])})`;
+        rows = (await db
+          .select({ ...columns, similarity })
+          .from(memoryChunksTable)
+          .where(and(...conditions, isNotNull(memoryChunksTable.embedding)))
+          .orderBy(desc(similarity))
+          .limit(input.limit)) as typeof rows;
+      } else {
+        const where = conditions.length ? and(...conditions) : undefined;
+        const base = await db
+          .select(columns)
+          .from(memoryChunksTable)
+          .where(where)
+          .orderBy(desc(memoryChunksTable.createdAt))
+          .limit(input.limit);
+        rows = base.map((row) => ({ ...row, similarity: 0.75 }));
+      }
 
       return rows.map((row) => ({
-        id: row.id,
-        memoryRecordId: row.memoryRecordId,
-        content: row.content,
-        similarity: 0.75,
+        id: row.id as string,
+        memoryRecordId: (row.memoryRecordId as string | null) ?? null,
+        content: row.content as string,
+        similarity: Number(row.similarity),
         tier: row.memoryTier as MemoryTier,
         trustLevel: row.trustLevel as TrustLevel,
-        sourceId: row.sourceId,
-        parentEntityId: row.parentEntityId,
-        entityType: row.entityType,
+        sourceId: (row.sourceId as string | null) ?? null,
+        parentEntityId: (row.parentEntityId as string | null) ?? null,
+        entityType: (row.entityType as string | null) ?? null,
         status: row.status as "active" | "archived",
-        archived: row.archived,
-        tags: row.tags,
-        bankSlugs: row.bankSlugs,
-        createdAt: asIsoDate(row.createdAt),
+        archived: row.archived as boolean,
+        tags: row.tags as string[],
+        bankSlugs: row.bankSlugs as string[],
+        createdAt: asIsoDate(row.createdAt as Date | string),
       }));
     },
     async listMemoryRecords(query = { limit: DEFAULT_MEMORY_LIMIT }) {
