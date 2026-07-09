@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderAuditReportHtml, renderProposalHtml } from "@/lib/documents/render";
+import { renderAuditDeckHtml, renderAuditReportHtml, renderProposalHtml } from "@/lib/documents/render";
 
 describe("document renderer", () => {
   it("renders a premium audit report with the key sections + escapes HTML", () => {
@@ -19,6 +19,22 @@ describe("document renderer", () => {
     expect(html).toContain("$15,000"); // monthly upside formatted
     expect(html).toContain("Executive Summary");
     expect(html).toContain("Transformation roadmap");
+  });
+
+  it("renders a self-contained slide deck with nav script", () => {
+    const html = renderAuditDeckHtml({
+      businessName: "Acme",
+      executiveSummary: "Leaking leads.",
+      opportunities: [{ title: "Text-back", impact: "high", difficulty: "low" }],
+      roadmap: [{ title: "Phase 1", months: "Month 1-3" }],
+      roi: { estimatedMonthlyUpsideCents: 1500000 },
+    });
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("class=\"deck\"");
+    expect(html).toContain("ArrowRight"); // keyboard nav
+    expect(html).toContain("Acme");
+    expect(html).toContain("Text-back");
+    expect(html).toContain("Transformation Roadmap");
   });
 
   it("renders a proposal document with services + total", () => {

@@ -3142,6 +3142,7 @@ function FreeAuditPage() {
                 <Tag text={`${a.report.serviceCount} opps`} color={C.blue} />
                 <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
                 <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
+                <a href={`/api/audit/${a.id}/deck`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Deck ↗</a>
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}
@@ -3259,6 +3260,7 @@ function PaidAuditPage() {
                 <Tag text={`${a.report.opportunities?.length ?? 0} opps`} color={C.blue} />
                 <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
                 <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
+                <a href={`/api/audit/${a.id}/deck`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Deck ↗</a>
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}

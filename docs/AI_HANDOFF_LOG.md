@@ -3172,3 +3172,15 @@ VERIFIED LIVE: created a free audit, opened /api/audit/{id}/document -> 200 text
 NOTE: free-audit docs leave Current State + Roadmap empty (free audits don't produce those — only paid). Free-audit opportunities have impact but no difficulty (2nd pill shows "—") — cosmetic; paid audits have both.
 
 NEXT: premium DECK/slide variant (this is a report doc; a slide-per-section deck is the founder's other ask — build an HTML slide deck renderer reusing this data); binary PDF export (puppeteer) if they want server-side PDF vs print; LLM narrative-polish + feedback→diff-edit loop on the documents; free-audit LLM enrichment + Apify scrape; paid-audit ROI-prompt tuning; free-audit proposal pricing (manual/LLM). Revenue engine loop is complete + now has premium deliverables.
+
+## 2026-07-09 (session 2) - Claude (Opus 4.8) - Audit slide DECK (present-ready, alongside the PDF report)
+
+Founder wanted BOTH a PDF report AND a slide deck. Added the deck variant.
+- src/lib/documents/render.ts: renderAuditDeckHtml — self-contained HTML slide deck (cover → exec summary + ROI stats → current state → opportunities w/ pills → roadmap → "Let's build it" close). Inline CSS + tiny vanilla JS: arrow-key / space / click nav, slide counter, prev/next buttons. Wobble dark + lime.
+- src/app/api/audit/[id]/deck/route.ts: serves it. os-ui: "Deck ↗" link beside "Report ↗" on free + paid audit rows.
+- tests/documents.test.ts: +1 (deck has doctype, .deck, ArrowRight nav, content).
+
+VERIFIED LIVE: opened /api/audit/{id}/deck -> 200, 5 slides, navigable; screenshot shows the premium closing slide + counter + nav arrows. Test audit cleaned. 395 tests pass (was 394, +1); typecheck + build clean (deck route registered).
+
+SESSION 2 SUMMARY (all pushed): proposal builder (f8d7d38) → premium documents report+proposal (eabf874) → slide deck (this). Revenue engine loop COMPLETE with premium deliverables: Free Audit → CRM → Paid Audit → Proposal → Invoice → Finance, each audit/proposal exportable as a branded report doc + a present-ready deck.
+NEXT: feedback→diff-edit loop on docs (founder's "I don't like slide 3, change X, rebuild only that" + memory); LLM narrative-polish; free-audit LLM enrichment + Apify social scrape (gated on Apify key); paid-audit ROI-prompt tuning (cents); free-audit proposal pricing; binary PDF (puppeteer) if needed; partner's rest-of-ERP (tasks/meetings/projects/RBAC/versioning).

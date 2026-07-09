@@ -116,6 +116,54 @@ export function renderAuditReportHtml(report: AuditReportShape): string {
   return shell(`${biz} — Wobble AI Audit`, body);
 }
 
+/** Premium, self-contained HTML SLIDE DECK of an audit — one slide per section, arrow-key nav. */
+export function renderAuditDeckHtml(report: AuditReportShape): string {
+  const biz = report.businessName ?? "Client";
+  const cs = report.currentState ?? {};
+  const opps = report.opportunities ?? [];
+  const roadmap = report.roadmap ?? [];
+  const roi = report.roi ?? {};
+
+  const slides: string[] = [];
+  slides.push(`<section class="s cover"><div class="brand">Wobble · AI Transformation Audit</div><h1>${esc(biz)}</h1><p class="sub">Current state · opportunities · a 12-month roadmap</p></section>`);
+  slides.push(`<section class="s"><p class="k">Executive Summary</p><p class="big">${esc(report.executiveSummary ?? "")}</p>${roi.estimatedMonthlyUpsideCents ? `<div class="stats"><div class="stat"><div class="n">${money(roi.estimatedMonthlyUpsideCents)}</div><div class="l">Monthly upside</div></div><div class="stat"><div class="n">${money(roi.estimatedImplementationCents)}</div><div class="l">Investment</div></div><div class="stat"><div class="n">${roi.paybackMonths ?? "—"} mo</div><div class="l">Payback</div></div></div>` : ""}</section>`);
+  slides.push(`<section class="s"><p class="k">Current State</p><h2>How the business runs today</h2><div class="g3"><div class="c"><div class="t">Acquisition</div>${(cs.acquisition ?? []).map((x) => `<div>• ${esc(x)}</div>`).join("") || "—"}</div><div class="c"><div class="t">Delivery</div>${(cs.delivery ?? []).map((x) => `<div>• ${esc(x)}</div>`).join("") || "—"}</div><div class="c"><div class="t">Support</div>${(cs.support ?? []).map((x) => `<div>• ${esc(x)}</div>`).join("") || "—"}</div></div></section>`);
+  slides.push(`<section class="s"><p class="k">Opportunities</p><h2>${opps.length} AI opportunities</h2>${opps.slice(0, 8).map((o) => `<div class="opp"><span class="name">${esc(o.title)}</span>${levelPill(o.impact)}${o.difficulty ? levelPill(o.difficulty) : ""}</div>`).join("")}</section>`);
+  if (roadmap.length) slides.push(`<section class="s"><p class="k">Transformation Roadmap</p><h2>12-month plan</h2>${roadmap.map((ph) => `<div class="phase"><div class="h">${esc(ph.title)}</div><div class="m">${esc(ph.months ?? "")}${ph.focus ? ` · ${esc(ph.focus)}` : ""}</div></div>`).join("")}</section>`);
+  slides.push(`<section class="s cover"><div class="brand">Next step</div><h1>Let's build it.</h1><p class="sub">Wobble — your AI transformation partner.</p></section>`);
+
+  const css = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',system-ui,sans-serif;background:${INK};color:#fff;overflow:hidden}
+.deck{height:100vh;width:100vw;position:relative}
+.s{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;padding:8vh 10vw;background:#fff;color:${INK}}
+.s.active{display:flex}
+.s.cover{background:${INK};color:#fff;justify-content:center}
+.brand{font-size:14px;letter-spacing:3px;text-transform:uppercase;color:${BRAND};font-weight:700;margin-bottom:20px}
+.cover h1{font-size:6vw;font-weight:800;letter-spacing:-2px;line-height:1.02}
+.cover .sub{font-size:20px;color:#b9b9c2;margin-top:16px}
+.k{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#6b6b73;font-weight:700;margin-bottom:10px}
+h2{font-size:38px;font-weight:800;letter-spacing:-1px;margin-bottom:24px}
+.big{font-size:26px;line-height:1.4;font-weight:500;max-width:900px}
+.stats{display:flex;gap:18px;margin-top:32px}
+.stat{background:#f6f6f4;border:1px solid #e7e7ea;border-radius:16px;padding:20px 24px}
+.stat .n{font-size:34px;font-weight:800}.stat .l{font-size:12px;color:#6b6b73;text-transform:uppercase;letter-spacing:.6px;margin-top:4px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;font-size:16px}
+.c{border:1px solid #e7e7ea;border-radius:14px;padding:18px 20px}.c .t{font-weight:800;margin-bottom:10px;font-size:15px}
+.opp{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #eee;font-size:19px}.opp .name{flex:1;font-weight:600}
+.pill{font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;text-transform:uppercase}.hi{background:#e9ffcf;color:#4a7000}.me{background:#e6efff;color:#2a5bd7}.lo{background:#eee;color:#666}
+.phase{border-left:3px solid ${BRAND};padding:2px 0 18px 18px;margin-left:6px}.phase .h{font-weight:800;font-size:20px}.phase .m{color:#6b6b73;font-size:14px}
+.nav{position:fixed;bottom:22px;right:26px;display:flex;gap:8px;align-items:center;z-index:10}
+.nav button{background:${BRAND};color:${INK};border:none;border-radius:10px;width:40px;height:40px;font-size:20px;cursor:pointer;font-weight:800}
+.count{position:fixed;bottom:30px;left:26px;color:#8a8a95;font-size:13px;z-index:10}`;
+
+  const js = `let i=0;const S=[...document.querySelectorAll('.s')];const C=document.querySelector('.count');
+function show(n){i=Math.max(0,Math.min(S.length-1,n));S.forEach((s,k)=>s.classList.toggle('active',k===i));C.textContent=(i+1)+' / '+S.length;}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' ')show(i+1);if(e.key==='ArrowLeft')show(i-1);});
+document.querySelector('.deck').addEventListener('click',e=>{if(!e.target.closest('.nav'))show(i+1);});
+show(0);`;
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(biz)} — Wobble Audit Deck</title><style>${css}</style></head><body><div class="deck">${slides.join("")}</div><div class="count"></div><div class="nav"><button onclick="show(i-1)">‹</button><button onclick="show(i+1)">›</button></div><script>${js}</script></body></html>`;
+}
+
 interface ProposalShape {
   title?: string; businessName?: string; currency?: string; pricingCents?: number; scope?: string | null;
   services?: { name?: string; description?: string; priceCents?: number }[];
