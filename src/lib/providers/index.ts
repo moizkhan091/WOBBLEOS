@@ -29,10 +29,16 @@ export interface ProviderToolCall {
   arguments: unknown;
 }
 
+/** Multimodal content parts (OpenAI/OpenRouter compatible) — lets any call carry images/PDFs/text. */
+export type ProviderContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+
 /** Rich chat message supporting tool-calling roundtrips (assistant tool_calls + tool results). */
 export interface ProviderChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | ProviderContentPart[] | null;
   tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
   name?: string;
@@ -45,6 +51,8 @@ export interface TextProviderInput {
   maxTokens?: number;
   tools?: ProviderToolSpec[];
   toolChoice?: "auto" | "none" | "required";
+  /** OpenRouter plugins (e.g. file-parser for PDFs). Passed through verbatim. */
+  plugins?: Array<Record<string, unknown>>;
 }
 
 export interface TextProviderOutput extends ModelCallResult {
@@ -87,6 +95,7 @@ export interface RunTextProviderInput {
   maxTokens?: number;
   tools?: ProviderToolSpec[];
   toolChoice?: "auto" | "none" | "required";
+  plugins?: Array<Record<string, unknown>>;
   linkedEntityType?: string;
   linkedEntityId?: string;
 }
@@ -135,6 +144,7 @@ export function createOpenRouterTextAdapter(input: {
           temperature: request.temperature,
           max_tokens: request.maxTokens,
           ...(request.tools?.length ? { tools: request.tools, tool_choice: request.toolChoice ?? "auto" } : {}),
+          ...(request.plugins?.length ? { plugins: request.plugins } : {}),
         }),
       });
 
@@ -223,6 +233,7 @@ export async function runTextProvider(
         maxTokens: input.maxTokens,
         tools: input.tools,
         toolChoice: input.toolChoice,
+        plugins: input.plugins,
       }),
     deps.modelRunDeps,
   );
