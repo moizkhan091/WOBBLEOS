@@ -3353,3 +3353,14 @@ Live authenticated sweep of the whole OS + malformed-input fuzzing:
 Full suite 443 green; build clean. Session module tally now wired: Tasks, Meetings, Projects, AI Chat (+greeting+files), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360.
 
 STILL TODO: role dashboards; growth modules (SEO/Radar as AI-real; Social/Webstats need real analytics connectors — honest-gate; Backup = real export). Media Studio kept/flagged. Deploy deferred (VPS+SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - SEO & Blog Engine (planned→wired, real AI)
+
+Migration 0022: seo_plans table.
+- domain/seo.ts (4 statuses, seoPlanOutputSchema) + lib/seo (addSeoPlan/listSeoPlans/archiveSeoPlan + generateSeoPlan = REAL AI: LLM produces a content pillar, 8-14 target keywords with intent+priority, and 6-10 blog ideas with outlines; role seo_planner). Routes /api/seo + /[id]/action (generate|archive). SeoPage: enter a topic → auto-generates, expandable plan with keyword table + blog ideas + outlines, regenerate/archive. Tile planned→wired.
+- tests/seo.test.ts (3).
+
+VERIFIED: full suite 446 green; build clean. LIVE AI: "AI receptionists for dental clinics" → pillar + 11 keywords (intent/priority) + 6 blog ideas with outlines. Test data cleaned.
+
+Wired this session: Tasks, Meetings, Projects, AI Chat (+greeting+files), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO & Blog Engine. Audit/break pass done.
+STILL PLANNED: radar (Research Radar - can be AI-real), social + webstats (need real analytics connectors - honest-gate), media (kept/flagged), backup (real export). Plus role dashboards. Deploy deferred (VPS+SSH).

@@ -4350,6 +4350,95 @@ function AutomationsPage() {
   );
 }
 
+interface SeoPlanUI { id: string; topic: string; audience: string | null; status: string; pillar: string | null; targetKeywords: Array<{ keyword: string; intent?: string; priority?: string }>; blogIdeas: Array<{ title: string; angle?: string; targetKeyword?: string; outline?: string[] }> }
+const SEO_STATUS_COLORS: Record<string, string> = { draft: C.gray, planned: C.blue, active: C.lime, archived: C.gray };
+function SeoPage() {
+  const state = useApi<{ plans: SeoPlanUI[] }>("/api/seo?limit=100");
+  const [f, setF] = useState({ topic: "", audience: "" });
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const plans = state.data?.plans ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.topic.trim()) { setMsg("A plan needs a topic."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const r = await fetch("/api/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: f.topic, audience: f.audience || undefined }) });
+      if (r.ok) { const j = await r.json(); setF({ topic: "", audience: "" }); reload(); if (j.plan?.id) generate(j.plan.id); } else setMsg("Error creating plan.");
+    } finally { setBusy(null); }
+  }
+  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Generate failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
+  async function archive(id: string) { setBusy(id); try { await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive" }) }); reload(); } finally { setBusy(null); } }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Plans" value={String(plans.length)} icon="SearchCheck" color={C.blue} />
+        <Kpi label="Keywords" value={String(plans.reduce((s, p) => s + p.targetKeywords.length, 0))} icon="KeyRound" color={C.lime} />
+        <Kpi label="Blog ideas" value={String(plans.reduce((s, p) => s + p.blogIdeas.length, 0))} icon="PenTool" color="#B87CFF" />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New SEO / blog plan</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Give a topic — WOBBLE generates a content pillar, target keywords (with intent + priority) and blog ideas with outlines.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input value={f.topic} onChange={(e) => setF((s) => ({ ...s, topic: e.target.value }))} placeholder="Topic (e.g. AI receptionists for dental clinics)" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
+          <input value={f.audience} onChange={(e) => setF((s) => ({ ...s, audience: e.target.value }))} placeholder="Audience (optional)" style={{ ...inputStyle, width: 200 }} />
+          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : busy?.startsWith("gen_") ? "Generating…" : "Generate plan"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {plans.length === 0 ? <StateBlock kind="empty" message="No SEO plans yet. Enter a topic above and WOBBLE builds the keyword + blog plan." /> : plans.map((p) => (
+        <Panel key={p.id}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(open === p.id ? null : p.id)}>
+            <Tag text={p.status} color={SEO_STATUS_COLORS[p.status] ?? C.gray} />
+            <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{p.topic}</span>
+            <span style={{ fontSize: 11, color: faint }}>{p.targetKeywords.length} kw · {p.blogIdeas.length} ideas</span>
+            <Icon name={open === p.id ? "ChevronDown" : "ChevronRight"} size={15} />
+          </div>
+          {p.pillar ? <div style={{ fontSize: 11.5, color: faint, marginTop: 6 }}>Pillar: <span style={{ color: C.white }}>{p.pillar}</span></div> : null}
+          {open === p.id ? (
+            <div style={{ marginTop: 12 }}>
+              {p.targetKeywords.length ? (
+                <>
+                  <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>Target keywords</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+                    {p.targetKeywords.map((k, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                        <span style={{ fontSize: 12.5, flex: 1 }}>{k.keyword}</span>
+                        {k.intent ? <Tag text={k.intent} color={C.blue} /> : null}
+                        {k.priority ? <Tag text={k.priority} color={k.priority === "high" ? C.lime : C.gray} /> : null}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+              {p.blogIdeas.length ? (
+                <>
+                  <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>Blog ideas</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {p.blogIdeas.map((b, i) => (
+                      <div key={i} style={{ ...card, padding: "9px 12px" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600 }}>{b.title}</div>
+                        {b.angle ? <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{b.angle}{b.targetKeyword ? ` · ${b.targetKeyword}` : ""}</div> : null}
+                        {b.outline?.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5, color: faint }}>{b.outline.map((o, j) => <li key={j} style={{ marginBottom: 2 }}>{o}</li>)}</ul> : null}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => generate(p.id)} disabled={busy === "gen_" + p.id} style={busy === "gen_" + p.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + p.id ? "Generating…" : p.targetKeywords.length ? "⚡ Regenerate" : "⚡ Generate"}</button>
+            {p.status !== "archived" ? <button onClick={() => archive(p.id)} disabled={busy === p.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Archive</button> : null}
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4377,6 +4466,7 @@ const WIRED: Record<string, React.ComponentType> = {
   workers: WorkersPage,
   settings: SettingsPage,
   automations: AutomationsPage,
+  seo: SeoPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
