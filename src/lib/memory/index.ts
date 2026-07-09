@@ -877,6 +877,140 @@ export async function getFounderMemory(founder: string, deps: MemoryDeps = {}): 
   return { founder, bank, count: records.length, records };
 }
 
+// ---- Bulk operations + merge / split ----
+
+export type BulkMemoryOperation = "archive" | "restore" | "pin" | "unpin";
+
+export interface BulkMemoryResult {
+  operation: BulkMemoryOperation;
+  total: number;
+  succeeded: string[];
+  failed: Array<{ id: string; error: string }>;
+}
+
+/** Apply one operation to many memories; per-record permission + audit; collects partial failures. */
+export async function bulkMemoryOperation(
+  input: { recordIds: string[]; operation: BulkMemoryOperation; actor: string; reason?: string },
+  deps: MemoryDeps = {},
+): Promise<BulkMemoryResult> {
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const succeeded: string[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+  for (const id of input.recordIds) {
+    try {
+      if (input.operation === "archive") await archiveMemoryRecord({ id, archivedBy: input.actor, reason: input.reason }, deps);
+      else if (input.operation === "restore") await restoreMemoryRecord({ id, restoredBy: input.actor }, deps);
+      else if (input.operation === "pin") await pinMemory({ id, pinned: true, actor: input.actor }, deps);
+      else await pinMemory({ id, pinned: false, actor: input.actor }, deps);
+      succeeded.push(id);
+    } catch (error) {
+      failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  await recordAudit({
+    eventType: `memory.bulk_${input.operation}`,
+    module: "memory",
+    entityType: "memory_record",
+    actor: input.actor,
+    metadata: { operation: input.operation, total: input.recordIds.length, succeeded: succeeded.length, failed: failed.length },
+  });
+  return { operation: input.operation, total: input.recordIds.length, succeeded, failed };
+}
+
+export interface MergeMemoryInput {
+  sourceIds: string[];
+  title: string;
+  content: string;
+  area?: string;
+  memoryTier?: MemoryTier;
+  trustLevel?: TrustLevel;
+  bankSlugs?: string[];
+  actor: string;
+}
+
+/** Merge several memories into one new record (union of banks by default), archiving the sources. Audited. */
+export async function mergeMemoryRecords(input: MergeMemoryInput, deps: MemoryDeps = {}): Promise<MemoryRecordRow> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  if (input.sourceIds.length < 2) throw new Error("merge requires at least 2 source memories");
+
+  const sources = await Promise.all(input.sourceIds.map((id) => store.getMemoryRecordById(id)));
+  const missing = input.sourceIds.filter((_id, i) => !sources[i]);
+  if (missing.length) throw new Error(`memory record(s) not found: ${missing.join(", ")}`);
+  const found = sources.filter((s): s is MemoryRecordRow => Boolean(s));
+
+  const bankSlugs = input.bankSlugs ?? [...new Set(found.flatMap((s) => s.bankSlugs))];
+  const merged = await createMemoryRecord(
+    {
+      title: input.title,
+      content: input.content,
+      area: input.area ?? found[0].area,
+      memoryTier: input.memoryTier ?? found[0].memoryTier,
+      trustLevel: input.trustLevel ?? "approved_expert",
+      bankSlugs,
+      createdBy: input.actor,
+      dedupe: false,
+      detectConflicts: false,
+    },
+    deps,
+  );
+  for (const source of found) {
+    await archiveMemoryRecord({ id: source.id, archivedBy: input.actor, reason: `merged into ${merged.id}` }, deps);
+  }
+  await recordAudit({
+    eventType: "memory.merged",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: merged.id,
+    actor: input.actor,
+    metadata: { mergedFrom: input.sourceIds, into: merged.id },
+  });
+  return merged;
+}
+
+/** Split one memory into several new records, archiving the original. Audited. */
+export async function splitMemoryRecord(
+  input: { recordId: string; parts: Array<{ title: string; content: string }>; actor: string },
+  deps: MemoryDeps = {},
+): Promise<MemoryRecordRow[]> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  if (input.parts.length < 2) throw new Error("split requires at least 2 parts");
+
+  const record = await store.getMemoryRecordById(input.recordId);
+  if (!record) throw new Error(`memory record '${input.recordId}' not found`);
+
+  const created: MemoryRecordRow[] = [];
+  for (const part of input.parts) {
+    created.push(
+      await createMemoryRecord(
+        {
+          title: part.title,
+          content: part.content,
+          area: record.area,
+          memoryTier: record.memoryTier,
+          trustLevel: "approved_expert",
+          bankSlugs: record.bankSlugs,
+          createdBy: input.actor,
+          dedupe: false,
+          detectConflicts: false,
+        },
+        deps,
+      ),
+    );
+  }
+  await archiveMemoryRecord({ id: input.recordId, archivedBy: input.actor, reason: `split into ${created.length} memories` }, deps);
+  await recordAudit({
+    eventType: "memory.split",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.recordId,
+    actor: input.actor,
+    metadata: { splitInto: created.map((c) => c.id) },
+  });
+  return created;
+}
+
 function memoryManageSlug(area: string): string {
   const base = area.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "memory";
   return `${base}-${newId("m").split("_").pop()!.slice(0, 8)}`;

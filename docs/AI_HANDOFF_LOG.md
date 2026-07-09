@@ -2872,3 +2872,17 @@ Tests: rankMemoryChunks pin-boost (memory.test.ts); pinMemory + cross-founder bl
 Verified live: pinned memory ranked #1 (1.414) over a near-identical unpinned one (1.174); founder export returned founder_moiz records; runTool('search_memory') returned results.
 
 PROGRESS: upgrades done = #1,#2,#3,#4,#5,#6,#8 (+48h revert, audit labeling). REMAINING before break-agent: #7 bulk ops, #9 merge/split, #10 Memory browser UI page. Then extras + break-agent. Follow-ups still queued: dedup in approveMemoryUpdate/harvester; schedule purge/review/harvest via Automations; wire memory tools' confirmation policy if desired.
+
+## 2026-07-09 - Claude (Opus 4.8) - Memory upgrades Batch 3b: bulk ops (#7) + merge/split (#9) + handoff doc
+
+Also added docs/CURRENT_BUILD_STATE.md - a single living "catch up in 2 min" handoff (decisions + plan + state + env/budget/git/migration rules) so any builder (Codex) can pick up mid-stream without re-explanation. Keep it current.
+
+Service (src/lib/memory): bulkMemoryOperation (archive/restore/pin/unpin many; per-record permission + audit; collects partial failures without aborting); mergeMemoryRecords (>=2 sources -> one new record in union of banks, sources archived, audited memory.merged); splitMemoryRecord (one -> >=2 new, original archived, audited memory.split). All reuse the tested primitives (createMemoryRecord/archiveMemoryRecord/restoreMemoryRecord/pinMemory) with dedupe+detectConflicts off for merge/split synthesis.
+
+API: POST /api/memory/bulk, POST /api/memory/merge, POST /api/memory/split (403 personal-bank / 404 not-found / 422 too-few).
+
+Tests: tests/memory-manage.test.ts += bulk archive, bulk partial-failure (cross-founder), merge, split. 291 tests pass, typecheck + build green.
+
+Verified live: bulk archive 2/2; merge -> source archived into new record; split -> original archived, 2 created.
+
+PROGRESS: memory upgrades #1-#9 all DONE (+48h revert, audit labeling). REMAINING: #10 Memory browser UI page (front-end). Then extras, then the ADVERSARIAL BREAK-AGENT over the whole session (founder wants it after the upgrades).

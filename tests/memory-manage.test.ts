@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { canEditMemoryBanks } from "@/lib/domain/memory";
 import {
   archiveMemoryRecord,
+  bulkMemoryOperation,
   createMemoryRecord,
   editMemoryRecord,
   getFounderMemory,
   listMemoryVersions,
+  mergeMemoryRecords,
   pinMemory,
   purgeExpiredArchivedMemory,
   restoreMemoryRecord,
   restoreMemoryVersion,
+  splitMemoryRecord,
   type MemoryStore,
 } from "@/lib/memory";
 import { deriveAuditCategory } from "@/lib/domain/audit";
@@ -206,6 +209,48 @@ describe("pinning + founder export", () => {
     const dump = await getFounderMemory("Moiz", { store });
     expect(dump.bank).toBe("founder_moiz");
     expect(dump.count).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("bulk ops + merge/split", () => {
+  const mk = { area: "content", memoryTier: "working" as const, trustLevel: "approved_expert" as const, bankSlugs: ["founder_moiz"], createdBy: "Moiz" };
+  const audit = async () => {};
+
+  it("bulk-archives many memories and reports success/failure", async () => {
+    const { store, records } = makeStore();
+    const a = await createMemoryRecord({ ...mk, title: "a", content: "one" }, { store, embedder, recordAudit: audit, now });
+    const b = await createMemoryRecord({ ...mk, title: "b", content: "two" }, { store, embedder, recordAudit: audit, now });
+    const res = await bulkMemoryOperation({ recordIds: [a.id, b.id], operation: "archive", actor: "Moiz" }, { store, recordAudit: audit, now });
+    expect(res.succeeded).toHaveLength(2);
+    expect(res.failed).toHaveLength(0);
+    expect(records.filter((r) => r.status === "archived")).toHaveLength(2);
+  });
+
+  it("captures partial failure (cross-founder) without aborting the batch", async () => {
+    const { store } = makeStore();
+    const mine = await createMemoryRecord({ ...mk, title: "mine", content: "mine" }, { store, embedder, recordAudit: audit, now });
+    const theirs = await createMemoryRecord({ ...mk, bankSlugs: ["founder_ali"], createdBy: "Ali", title: "theirs", content: "theirs" }, { store, embedder, recordAudit: audit, now });
+    const res = await bulkMemoryOperation({ recordIds: [mine.id, theirs.id], operation: "archive", actor: "Moiz" }, { store, recordAudit: audit, now });
+    expect(res.succeeded).toEqual([mine.id]);
+    expect(res.failed[0].id).toBe(theirs.id);
+  });
+
+  it("merges memories into one and archives the sources", async () => {
+    const { store, records } = makeStore();
+    const a = await createMemoryRecord({ ...mk, title: "a", content: "likes red" }, { store, embedder, recordAudit: audit, now });
+    const b = await createMemoryRecord({ ...mk, title: "b", content: "likes blue" }, { store, embedder, recordAudit: audit, now });
+    const merged = await mergeMemoryRecords({ sourceIds: [a.id, b.id], title: "colors", content: "likes red and blue", actor: "Moiz" }, { store, embedder, recordAudit: audit, now });
+    expect(merged.content).toBe("likes red and blue");
+    expect(records.find((r) => r.id === a.id)?.status).toBe("archived");
+    expect(records.find((r) => r.id === b.id)?.status).toBe("archived");
+  });
+
+  it("splits a memory into several and archives the original", async () => {
+    const { store, records } = makeStore();
+    const rec = await createMemoryRecord({ ...mk, title: "combo", content: "likes red and blue" }, { store, embedder, recordAudit: audit, now });
+    const parts = await splitMemoryRecord({ recordId: rec.id, parts: [{ title: "r", content: "likes red" }, { title: "b", content: "likes blue" }], actor: "Moiz" }, { store, embedder, recordAudit: audit, now });
+    expect(parts).toHaveLength(2);
+    expect(records.find((r) => r.id === rec.id)?.status).toBe("archived");
   });
 });
 
