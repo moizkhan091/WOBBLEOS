@@ -4,6 +4,8 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { listMemoryRecords, retrieveMemoryContext } from "@/lib/memory";
 import { listApprovedSourcesForJobs, listSourceChunks } from "@/lib/sources";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
+import { getIntelligenceContextBlock, type IntelligenceContextBlock } from "@/lib/intelligence/context-block";
+import { logOutputIntelligenceUsage } from "@/lib/intelligence";
 import { enqueueJob } from "@/lib/jobs";
 import { formatSystemSnapshot, getSystemSnapshot } from "@/lib/system-map";
 import {
@@ -61,6 +63,7 @@ export interface AskWobbleDeps {
   retrieveSources?: () => Promise<AskSourceRef[]>;
   retrieveSystemSnapshot?: () => Promise<string | undefined>;
   runProvider?: (input: { role: string; module: string; messages: ProviderMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   enqueueJob?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   doNotSay?: string;
@@ -124,23 +127,30 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
   const retrieveSystemSnapshot = deps.retrieveSystemSnapshot ?? defaultRetrieveSystemSnapshot;
   const runProvider = deps.runProvider ?? defaultRunProvider;
 
-  const [brain, memory, sources, systemSnapshot] = await Promise.all([
+  const retrieveIntelligence = deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("ask"));
+  const [brain, memory, sources, systemSnapshot, intel] = await Promise.all([
     retrieveBrain(),
     retrieveMemory(parsed.question),
     retrieveSources(),
     retrieveSystemSnapshot(),
+    retrieveIntelligence(),
   ]);
   const doNotSay = deps.doNotSay ?? extractDoNotSay(brain);
   const context = buildAskContext({ question: parsed.question, brain, memory, sources, doNotSay, systemSnapshot });
+
+  // Fold live approved intelligence in as an extra system message so answers reflect
+  // the latest competitor/market/performance knowledge, not stale assumptions.
+  const messages = intel.block ? [{ role: "system" as const, content: intel.block }, ...context.messages] : context.messages;
 
   // Always call the model (cost-logged). When evidence is thin the prompt makes
   // it explain the gap / ask a clarifying question instead of inventing.
   const { text, run } = await runProvider({
     role: "ask_wobble",
     module: "ask_wobble",
-    messages: context.messages,
+    messages,
     maxTokens: parsed.maxTokens ?? 500,
   });
+  await logOutputIntelligenceUsage({ outputType: "ask_answer", outputId: run.id, itemIds: intel.itemIds, insightIds: intel.insightIds }, { now: deps.now }).catch(() => {});
   const answer = buildAskAnswer(text, context, run.id);
 
   await recordAudit({

@@ -3410,3 +3410,15 @@ Phase 1 (the multiplier — "nothing hardcoded, every output backed by current a
 VERIFIED LIVE end-to-end: seeded 2 approved intelligence items (competitor reel + winning hook) → getIntelligenceContextBlock('social_content') returned them (hasIntelligence, block contains them) → generateSocialStrategy pulled 6 approved items into its prompt and logged 6 output_intelligence_usage provenance rows. Test data cleaned. Build clean.
 
 NEXT (Phase 2): ingestion — signed /api/webhooks/intelligence (normalize reel/post payloads → recordIntelligenceItem pending) + Apify Competitor Scout worker over research_targets. Then Phase 3 analysis workers (Competitor/Social/Transcript analysts → insight proposals), Phase 4 Dreamer + Performance Learning + Freshness scheduled workers, Phase 5 Intelligence Command Center UI. Decision: built-in agent teams + Apify (gated), n8n optional. Also wire context-block into content-graph + ask next.
+
+## 2026-07-10 - Claude (Opus 4.8) - Intelligence P1 finish: wire Ask WOBBLE + Content Command
+
+Completed the retrieval wiring I'd left unfinished — the two most-used surfaces now also read live approved intelligence before generating:
+- Ask WOBBLE (src/lib/ask): retrieveIntelligence("ask") folded into the Promise.all + injected as a leading system message; logs output_intelligence_usage (outputType ask_answer). Injectable retrieveIntelligence dep.
+- Content Command / content-graph (src/lib/content-graph): retrieveIntelligence("social_content") added to the STRATEGY node's Promise.all + injected into the strategist prompt; logs usage (outputType content_packet). Injectable dep.
+
+Now ALL generators read live intelligence: ask, content-graph, social, seo, radar.
+
+VERIFIED: full suite 459 green (Phase 1 broke nothing); ask+content-graph tests (21) green; build clean.
+
+NEXT: Phase 2 ingestion (signed /api/webhooks/intelligence + Apify Competitor Scout worker over research_targets).

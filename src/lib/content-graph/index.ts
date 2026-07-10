@@ -3,6 +3,8 @@ import type { EnqueueJobInput, JobRow } from "@/lib/domain/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { createContentPacket, listContentTracks, type CreateContentPacketServiceInput } from "@/lib/content";
+import { getIntelligenceContextBlock, type IntelligenceContextBlock } from "@/lib/intelligence/context-block";
+import { logOutputIntelligenceUsage } from "@/lib/intelligence";
 import { getContentTrackPersonaName, type ContentTrackRow } from "@/lib/domain/content-command";
 import { passesQualityGate } from "@/lib/domain/content-packet";
 import { listMemoryRecords } from "@/lib/memory";
@@ -60,6 +62,7 @@ export interface ContentGraphDeps {
   getTrack?: (contentTrackId: string) => Promise<ContentTrackRow>;
   retrieveBrain?: () => Promise<Array<{ title: string; content: string }>>;
   retrieve?: (query: string) => Promise<{ notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }>;
+  retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
   recordAgentRun?: (input: Record<string, unknown>) => Promise<unknown>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -157,21 +160,24 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
 
   try {
     // ---- Node 1: STRATEGY (creative brief) ----
-    const [brain, stratKnowledge] = await Promise.all([
+    const [brain, stratKnowledge, intel] = await Promise.all([
       (deps.retrieveBrain ?? defaultRetrieveBrain)(),
       retrieve(input.objective),
+      (deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("social_content")))(),
     ]);
+    const strategyMessages = buildStrategyPrompt({
+      objective: input.objective,
+      track: trackCtx,
+      platformFocus: input.platformFocus,
+      formatFocus: input.formatFocus,
+      brain,
+      knowledgeTopics: [...new Set(stratKnowledge.notes.map((n) => n.title))],
+    });
+    // Fold live approved intelligence (competitor patterns, winning/failed hooks, trends) into the brief.
     const strategyText = await runNode({
       role: CONTENT_GRAPH_ROLES.strategy,
       module: CONTENT_GRAPH_MODULE,
-      messages: buildStrategyPrompt({
-        objective: input.objective,
-        track: trackCtx,
-        platformFocus: input.platformFocus,
-        formatFocus: input.formatFocus,
-        brain,
-        knowledgeTopics: [...new Set(stratKnowledge.notes.map((n) => n.title))],
-      }),
+      messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
       linkedEntityId: track.id,
     });
     if (strategyText.runId) modelRunIds.push(strategyText.runId);
@@ -241,6 +247,9 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     const packetInput = assembleContentPacketInput({ contentTrackId: track.id, brief, copy: finalCopy, evidence, score, provenance, createdBy: actor });
     const gatePassed = passesQualityGate(score.selfReview);
     const created = await (deps.createPacket ?? createContentPacket)({ ...packetInput, requestApproval: gatePassed });
+
+    // Provenance: record which approved intelligence shaped this content packet.
+    await logOutputIntelligenceUsage({ outputType: "content_packet", outputId: created.packet.id, itemIds: intel.itemIds, insightIds: intel.insightIds }).catch(() => {});
 
     await recordAudit({
       eventType: "content_graph.completed",
