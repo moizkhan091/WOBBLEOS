@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "jobs_idempotency_live_idx" ON "jobs" USING btree ("idempotency_key") WHERE status in ('pending','active') and idempotency_key is not null;

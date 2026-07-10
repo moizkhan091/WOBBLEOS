@@ -45,6 +45,8 @@ export interface JobStore {
   requeue(id: string, runAfter: Date | null, now: Date, reason: string): Promise<void>;
   markFailed(id: string, now: Date, reason: string): Promise<void>;
   recordAttempt(attempt: JobAttemptRow): Promise<void>;
+  /** Reset jobs stuck in 'active' (worker crashed mid-run) back to 'pending', or 'failed' if out of attempts. Returns count. */
+  reclaimStalled(olderThan: Date, now: Date): Promise<number>;
 }
 
 export type JobHandler = (job: JobRow) => Promise<Record<string, unknown> | void>;
@@ -67,6 +69,13 @@ export interface EnqueueResult {
   deduped: boolean;
 }
 
+/** Postgres unique-violation (SQLSTATE 23505), however the driver wraps it. */
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: string; cause?: { code?: string }; message?: string };
+  return e.code === "23505" || e.cause?.code === "23505" || Boolean(e.message?.includes("duplicate key value"));
+}
+
 export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Promise<EnqueueResult> {
   const row = buildJobRow(input, { now: deps.now });
   const store = deps.store ?? defaultStore();
@@ -81,7 +90,17 @@ export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Pr
     }
   }
 
-  await store.insert(row);
+  try {
+    await store.insert(row);
+  } catch (error) {
+    // Race: another enqueue inserted the same idempotency key between our check and insert.
+    // The partial unique index rejects the dupe — fall back to the winner instead of failing.
+    if (row.idempotencyKey && isUniqueViolation(error)) {
+      const winner = await store.findActiveByIdempotencyKey(row.idempotencyKey);
+      if (winner) return { job: winner, deduped: true };
+    }
+    throw error;
+  }
   await recordAudit({
     eventType: "job.enqueued",
     module: "jobs",
@@ -278,5 +297,31 @@ export function defaultStore(db: Db = getDb()): JobStore {
     async recordAttempt(attempt) {
       await db.insert(jobAttempts).values(attempt);
     },
+    async reclaimStalled(olderThan, now) {
+      // A worker that crashed mid-run leaves its job 'active' forever. Reset stale ones to
+      // 'pending' (or 'failed' if out of attempts) so another worker can pick them up.
+      const result = await db.execute(sql`
+        UPDATE jobs
+        SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
+            locked_at = NULL,
+            failed_at = CASE WHEN attempts >= max_attempts THEN ${now} ELSE failed_at END,
+            failure_reason = 'reclaimed: worker stalled or crashed mid-run',
+            updated_at = ${now}
+        WHERE status = 'active' AND locked_at IS NOT NULL AND locked_at < ${olderThan}
+        RETURNING id
+      `);
+      return (result.rows as unknown[]).length;
+    },
   };
+}
+
+/**
+ * Reclaim jobs stranded in 'active' by a crashed/killed worker (default: locked > 5 min ago).
+ * Safe to call periodically from every worker — the UPDATE is atomic and idempotent.
+ */
+export async function reclaimStalledJobs(deps: JobDeps = {}, opts: { timeoutMs?: number } = {}): Promise<number> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const olderThan = new Date(now.getTime() - (opts.timeoutMs ?? 5 * 60_000));
+  return store.reclaimStalled(olderThan, now);
 }

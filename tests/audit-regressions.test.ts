@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { invoiceAction, type InvoiceStore } from "@/lib/finance";
+import { invoiceAction, type FinanceStore } from "@/lib/finance";
 import type { InvoiceRow } from "@/lib/domain/finance";
 import { selectApprovedIntelligenceForTask, buildIntelligenceContextPlan } from "@/lib/domain/intelligence";
 
 // Regression: partial payments must ACCUMULATE, not overwrite (audit money-flow finding).
 describe("finance mark_paid accumulation", () => {
-  function store(inv: InvoiceRow): { store: InvoiceStore; get: () => InvoiceRow } {
+  function store(inv: InvoiceRow): { store: FinanceStore; get: () => InvoiceRow } {
     let row = inv;
     return {
       get: () => row,
       store: {
         getInvoice: async () => row,
-        updateInvoice: async (_id, fields) => { row = { ...row, ...fields } as InvoiceRow; },
-      } as unknown as InvoiceStore,
+        updateInvoice: async (_id: string, fields: Partial<InvoiceRow>) => { row = { ...row, ...fields } as InvoiceRow; },
+      } as unknown as FinanceStore,
     };
   }
   const base = { id: "inv_1", status: "sent", totalCents: 10000, amountPaidCents: 0, invoiceNumber: "INV-1" } as unknown as InvoiceRow;
@@ -52,5 +52,39 @@ describe("intelligence client isolation", () => {
     const plan = buildIntelligenceContextPlan({ task: "social_content", scope: "client", clientId: "clientA" });
     const ctx = selectApprovedIntelligenceForTask({ plan, items: [clientRow] as never, insights: [] });
     expect(ctx.items).toHaveLength(1);
+  });
+});
+
+// Regression: idempotency race — a unique-violation on insert must dedupe, not crash.
+import { enqueueJob, type JobStore } from "@/lib/jobs";
+import { runWorker } from "@/lib/workers/runtime";
+
+describe("jobs idempotency race", () => {
+  it("returns the winning job (deduped) when insert hits a unique violation", async () => {
+    let inserts = 0;
+    const winner = { id: "job_win", queue: "q", type: "t", idempotencyKey: "k" };
+    const store = {
+      findActiveByIdempotencyKey: async () => (inserts === 0 ? null : winner),
+      insert: async () => { inserts++; throw new Error("duplicate key value violates unique constraint"); },
+      reclaimStalled: async () => 0,
+    } as unknown as JobStore;
+    const res = await enqueueJob({ queue: "q", type: "t", idempotencyKey: "k" }, { store, recordAudit: async () => {} });
+    expect(res.deduped).toBe(true);
+    expect(res.job.id).toBe("job_win");
+  });
+});
+
+describe("worker stalled-job reaper", () => {
+  it("runs the reaper every N idle cycles", async () => {
+    let reclaimCalls = 0; let cycles = 0;
+    await runWorker({
+      queue: "q", registry: {}, reclaimEveryIdleCycles: 3,
+      process: async () => ({ processed: false }),
+      reclaimStalled: async () => { reclaimCalls++; return 0; },
+      sleep: async () => {},
+      heartbeat: async () => {},
+      shouldStop: () => ++cycles > 7,
+    });
+    expect(reclaimCalls).toBe(2); // fires on idle cycles 3 and 6
   });
 });

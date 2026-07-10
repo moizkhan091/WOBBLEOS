@@ -69,6 +69,7 @@ function makeFakeStore(claimed: JobRow | null, existing: JobRow | null = null) {
     recordAttempt: async (a) => {
       calls.attempts.push(a);
     },
+    reclaimStalled: async () => 0,
   };
   return { store, calls };
 }

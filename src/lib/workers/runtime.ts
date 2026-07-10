@@ -1,4 +1,4 @@
-import { processNextJob, type JobHandlerRegistry, type ProcessResult } from "@/lib/jobs";
+import { processNextJob, reclaimStalledJobs, type JobHandlerRegistry, type ProcessResult } from "@/lib/jobs";
 
 /**
  * Chunk 07: Worker runtime loop (pure orchestration; injectable for tests).
@@ -18,6 +18,9 @@ export interface RunWorkerOptions {
   process?: (queue: string, registry: JobHandlerRegistry) => Promise<ProcessResult>;
   heartbeat?: (status: string, currentJobId?: string) => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
+  /** Reclaim jobs stranded by crashed workers. Defaults to reclaimStalledJobs; runs every ~30 idle cycles. */
+  reclaimStalled?: () => Promise<number>;
+  reclaimEveryIdleCycles?: number;
 }
 
 export interface RunWorkerResult {
@@ -29,8 +32,11 @@ export async function runWorker(opts: RunWorkerOptions): Promise<RunWorkerResult
   const heartbeat = opts.heartbeat ?? (async () => undefined);
   const sleep = opts.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const idleDelayMs = opts.idleDelayMs ?? 1000;
+  const reclaim = opts.reclaimStalled ?? (() => reclaimStalledJobs());
+  const reclaimEvery = opts.reclaimEveryIdleCycles ?? 30;
 
   let processedCount = 0;
+  let idleCycles = 0;
   await heartbeat("online");
 
   while (!opts.shouldStop()) {
@@ -39,6 +45,9 @@ export async function runWorker(opts: RunWorkerOptions): Promise<RunWorkerResult
       processedCount += 1;
       await heartbeat("online", result.jobId);
     } else {
+      idleCycles += 1;
+      // Periodically rescue jobs stranded by a crashed worker (cheap no-op UPDATE when none).
+      if (idleCycles % reclaimEvery === 0) await reclaim().catch(() => 0);
       await heartbeat("online");
       await sleep(idleDelayMs);
     }

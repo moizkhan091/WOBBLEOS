@@ -176,6 +176,13 @@
       "when": 1783657131455,
       "tag": "0024_melodic_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783671444231,
+      "tag": "0025_watery_talkback",
+      "breakpoints": true
     }
   ]
 }

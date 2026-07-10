@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, varchar, vector } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
@@ -57,7 +58,11 @@ export const jobs = pgTable("jobs", {
   failureReason: text("failure_reason"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+}, (table) => [
+  // Only ONE live (pending/active) job may hold a given idempotency key — closes the
+  // check-then-insert race so a double-submit can't create two runs of the same work.
+  uniqueIndex("jobs_idempotency_live_idx").on(table.idempotencyKey).where(sql`status in ('pending','active') and idempotency_key is not null`),
+]);
 
 export const jobAttempts = pgTable("job_attempts", {
   id: id(),
