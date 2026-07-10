@@ -1994,6 +1994,38 @@ function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEnt
   );
 }
 
+function IntelligenceControlBar({ onRan }: { onRan: () => void }) {
+  const [scoutHandle, setScoutHandle] = useState("");
+  const [tgt, setTgt] = useState({ name: "", platform: "instagram", handleOrUrl: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function post(url: string, body: Record<string, unknown>, key: string, okMsg: (j: Record<string, unknown>) => string) {
+    setBusy(key); setMsg(null);
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg(okMsg(j)); onRan(); } else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
+  return (
+    <Panel>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Drive the intelligence loop</div>
+      <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Add a competitor to watch, pull their recent posts, then let the analyst propose insights. Everything lands here as <b>pending</b> for your approval before any agent uses it.</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+        <input value={tgt.name} onChange={(e) => setTgt((s) => ({ ...s, name: e.target.value }))} placeholder="Competitor name" style={{ ...inputStyle, width: 160 }} />
+        <input value={tgt.handleOrUrl} onChange={(e) => setTgt((s) => ({ ...s, handleOrUrl: e.target.value }))} placeholder="@handle or URL" style={{ ...inputStyle, width: 160 }} />
+        <button onClick={() => { if (!tgt.name.trim()) { setMsg("Name the competitor first."); return; } post("/api/intelligence/targets", { targetType: "competitor_account", name: tgt.name, platform: tgt.platform, handleOrUrl: tgt.handleOrUrl || undefined, cadence: "weekly" }, "target", () => `Added "${tgt.name}" to the watchlist.`); }} disabled={busy === "target"} style={busy === "target" ? disabledBtn : { ...primaryBtn, padding: "8px 12px", fontSize: 12 }}>{busy === "target" ? "…" : "+ Watch competitor"}</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={scoutHandle} onChange={(e) => setScoutHandle(e.target.value)} placeholder="IG @handle to scout now" style={{ ...inputStyle, width: 200 }} />
+        <button onClick={() => { if (!scoutHandle.trim()) { setMsg("Enter a handle to scout."); return; } post("/api/intelligence/scout", { handleOrUrl: scoutHandle, platform: "instagram" }, "scout", (j) => j.configured === false ? "Set APIFY_API_KEY to enable the scout." : `Scouted — ${Number(j.found ?? 0)} posts ingested pending.`); }} disabled={busy === "scout"} style={busy === "scout" ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "8px 12px" }}>{busy === "scout" ? "Scouting…" : "⚡ Run scout"}</button>
+        <button onClick={() => post("/api/intelligence/analyze", {}, "analyze", (j) => `Analyst proposed ${Number(j.proposedInsights ?? 0)} insight(s).`)} disabled={busy === "analyze"} style={busy === "analyze" ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "8px 12px" }}>{busy === "analyze" ? "Analyzing…" : "⚡ Run analyst"}</button>
+      </div>
+      {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 9 }}>{msg}</div> : null}
+    </Panel>
+  );
+}
+
 function IntelligencePage() {
   const [status, setStatus] = useState("pending");
   const [selected, setSelected] = useState<IntelligenceEntry | null>(null);
@@ -2012,6 +2044,7 @@ function IntelligencePage() {
         <Kpi label="Approved" value={String(counts.approved ?? 0)} icon="BadgeCheck" color={C.lime} sub="usable by context" />
         <Kpi label="Rejected" value={String(counts.rejected ?? 0)} icon="CircleSlash" color={C.orange} sub="reason stored" />
       </div>
+      <IntelligenceControlBar onRan={() => s.reload()} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {filters.map((f) => <button key={f} onClick={() => setStatus(f)} style={toggleBtn(status === f)}>{f === "active" ? "Inbox default" : f}</button>)}
       </div>

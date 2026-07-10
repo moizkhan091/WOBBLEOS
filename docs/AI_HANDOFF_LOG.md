@@ -3481,3 +3481,11 @@ MONEY:
 VERIFIED: full suite 468 → 473 green (+5 regression tests: finance accumulation, client isolation); typecheck + build clean.
 
 REMAINING from audit (batch 2, reliability): jobs idempotency race (needs partial unique index + ON CONFLICT) + stuck-'active' job reaper. Then finish Phase 5 Intelligence Command Center UI + VPS-readiness checklist.
+
+## 2026-07-10 - Claude (Opus 4.8) - Intelligence loop drivable from UI + VPS readiness
+
+- Intelligence UI control bar (IntelligencePage): founder can now DRIVE the loop without curl — "+ Watch competitor" (adds a research_target), "Run scout" (Apify pull → pending items), "Run analyst" (proposes insights). Everything lands pending in the same inbox for approval. Suggestions (Dreamer) already surface in the inbox.
+- Fixed the last identity-forge: /api/intelligence/targets now requireFounder + addedBy from session.
+- VPS readiness: docs/VPS_DEPLOYMENT.md (full runbook), .env.example completed (optional model overrides + STORAGE_ROOT note). Verified: schema↔migrations zero drift, db:seed clean, all env vars documented.
+
+STATE: OS functionally complete + audited. Multi-agent break-audit done (2 fix batches: security/isolation/money + job reliability). Intelligence layer P1-P5 complete (retrieval wiring, ingestion, analyst, dreamer, UI). 475 tests green, build clean. Ready to move to VPS.
