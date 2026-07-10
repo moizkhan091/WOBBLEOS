@@ -3375,3 +3375,12 @@ VERIFIED: full suite 449 green; build clean (all radar routes). LIVE AI: "AI voi
 
 Wired this session: Tasks, Meetings, Projects, AI Chat, Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO & Blog Engine, Research Radar. Audit/break pass done.
 REMAINING planned: social + webstats (need real analytics connectors — should be honest-gated not stubbed), media (kept/flagged), backup (real export). Plus role dashboards. Deploy deferred (VPS+SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - Chat model picker + Backup & Restore (planned→wired)
+
+- Chat model picker (real): runTextProvider now accepts an optional model override (same provider); model_run logs the actual model. CHAT_MODELS allowlist (Fast/Smart/Deep, all multimodal), GET /api/ai/models, composer dropdown. Picking a model routes the turn through /api/ai/chat. Verified live (sonnet-4.5 → replied).
+- Backup & Restore (no table): lib/backup — getBackupOverview (row counts for 15 business tables) + exportSnapshot (full JSON, per-table cap 10k with truncation REPORTED not silent). GET /api/backup + GET /api/backup/export (founder-gated download). BackupPage: table counts + "Export snapshot" downloads JSON. Verified live (15 tables, snapshot shape). Tile wired.
+
+Build clean. Wired this session: Tasks, Meetings, Projects, AI Chat (+greeting+files+model picker), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO, Research Radar, Backup. Audit/break pass done.
+
+REMAINING planned tiles: social (Social Intelligence) + webstats (Website Analytics) — these genuinely need real analytics connectors (IG/LinkedIn insights, GA); per ENGINEERING_STANDARDS they should be honest-gated, NOT faked with dummy charts. media (Media Studio) kept/flagged (fal.ai, no key). Role dashboards optional (Command Center already aggregates). Deploy deferred (VPS+SSH).

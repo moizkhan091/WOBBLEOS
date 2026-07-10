@@ -4516,6 +4516,51 @@ function RadarPage() {
   );
 }
 
+function BackupPage() {
+  const state = useApi<{ tables: { key: string; rows: number }[]; totalRows: number }>("/api/backup");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  async function exportSnapshot() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/backup/export");
+      if (!r.ok) { setMsg("Export failed: " + r.status); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `wobble-os-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      setMsg("Snapshot downloaded.");
+    } finally { setBusy(false); }
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Tables" value={String(d?.tables.filter((t) => t.rows >= 0).length ?? 0)} icon="Database" color={C.blue} />
+        <Kpi label="Total records" value={String(d?.totalRows ?? 0)} icon="HardDrive" color={C.lime} />
+      </div>
+      <Panel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Point-in-time snapshot</div>
+          <button onClick={exportSnapshot} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Exporting…" : "⬇ Export snapshot"}</button>
+        </div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 12 }}>Downloads a JSON backup of every business table (CRM, invoices, proposals, audits, tasks, projects, decisions, offers, SEO, radar, automations). Company assets are never auto-deleted.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {(d?.tables ?? []).map((t) => (
+            <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+              <span style={{ fontSize: 12.5, flex: 1, fontFamily: "monospace" }}>{t.key}</span>
+              <span style={{ fontSize: 12, color: t.rows < 0 ? C.orange : t.rows > 0 ? C.lime : faint }}>{t.rows < 0 ? "missing" : `${t.rows} rows`}</span>
+            </div>
+          ))}
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.includes("failed") ? C.orange : C.lime, marginTop: 10 }}>{msg}</div> : null}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4545,6 +4590,7 @@ const WIRED: Record<string, React.ComponentType> = {
   automations: AutomationsPage,
   seo: SeoPage,
   radar: RadarPage,
+  backup: BackupPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
