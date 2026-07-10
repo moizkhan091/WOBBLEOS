@@ -3364,3 +3364,14 @@ VERIFIED: full suite 446 green; build clean. LIVE AI: "AI receptionists for dent
 
 Wired this session: Tasks, Meetings, Projects, AI Chat (+greeting+files), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO & Blog Engine. Audit/break pass done.
 STILL PLANNED: radar (Research Radar - can be AI-real), social + webstats (need real analytics connectors - honest-gate), media (kept/flagged), backup (real export). Plus role dashboards. Deploy deferred (VPS+SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - Research Radar (planned→wired, real AI)
+
+Migration 0023: radar_scans table.
+- domain/radar.ts (4 statuses, radarOutputSchema, topSignals) + lib/radar (add/list/setRadarStatus + generateRadarScan = REAL AI: LLM surfaces 6-10 scored signals across market|competitor|technology|culture|regulation, each with summary + implication for WOBBLE; role radar_scout). Routes /api/radar + /[id]/action (generate|status). RadarPage: name a focus → auto-scan, signals sorted by score with category tags + implication, mark actioned / dismiss. Tile planned→wired.
+- tests/radar.test.ts (3).
+
+VERIFIED: full suite 449 green; build clean (all radar routes). LIVE AI: "AI voice agents for healthcare in emerging markets" → 8 scored signals (telemedicine rise 85, competitor launches 78, gov digital-health 82). Test data cleaned.
+
+Wired this session: Tasks, Meetings, Projects, AI Chat, Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO & Blog Engine, Research Radar. Audit/break pass done.
+REMAINING planned: social + webstats (need real analytics connectors — should be honest-gated not stubbed), media (kept/flagged), backup (real export). Plus role dashboards. Deploy deferred (VPS+SSH).

@@ -1466,3 +1466,20 @@ export const seoPlans = pgTable("seo_plans", {
 }, (table) => [
   index("seo_plans_status_idx").on(table.status),
 ]);
+
+// ---------------------------------------------------------------- Research Radar (pipeline)
+// AI signal scan across markets, competitors and culture. Surfaced + scored for review.
+
+export const radarScans = pgTable("radar_scans", {
+  id: id(),
+  focus: text("focus").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("new"), // new|reviewed|actioned|dismissed
+  signals: jsonb("signals").$type<Array<{ title: string; category?: string; summary?: string; implication?: string; score?: number }>>().notNull().default([]),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("radar_scans_status_idx").on(table.status),
+]);

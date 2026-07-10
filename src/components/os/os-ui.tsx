@@ -4439,6 +4439,74 @@ function SeoPage() {
   );
 }
 
+interface RadarScanUI { id: string; focus: string; status: string; signals: Array<{ title: string; category?: string; summary?: string; implication?: string; score?: number }> }
+const RADAR_STATUS_COLORS: Record<string, string> = { new: C.blue, reviewed: "#F5C542", actioned: C.lime, dismissed: C.gray };
+const RADAR_CAT_COLORS: Record<string, string> = { market: C.blue, competitor: C.orange, technology: C.lime, culture: "#B87CFF", regulation: C.gray };
+function RadarPage() {
+  const state = useApi<{ scans: RadarScanUI[] }>("/api/radar?limit=100");
+  const [focus, setFocus] = useState("");
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const scans = state.data?.scans ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!focus.trim()) { setMsg("Enter a focus area."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const r = await fetch("/api/radar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ focus }) });
+      if (r.ok) { const j = await r.json(); setFocus(""); reload(); if (j.scan?.id) generate(j.scan.id); } else setMsg("Error creating scan.");
+    } finally { setBusy(null); }
+  }
+  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/radar/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Scan failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
+  async function setStatus(id: string, status: string) { setBusy(id); try { await fetch(`/api/radar/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); } finally { setBusy(null); } }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Scans" value={String(scans.length)} icon="Radar" color={C.blue} />
+        <Kpi label="Signals" value={String(scans.reduce((s, p) => s + p.signals.length, 0))} icon="Zap" color={C.lime} />
+        <Kpi label="Actioned" value={String(scans.filter((s) => s.status === "actioned").length)} icon="CheckCircle2" color={C.lime} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New radar scan</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Name a focus — WOBBLE surfaces scored signals (market, competitor, tech, culture) with the implication for WOBBLE.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Focus (e.g. AI voice agents in healthcare, Pakistan SMB automation)" style={{ ...inputStyle, flex: 1, minWidth: 260 }} />
+          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : busy?.startsWith("gen_") ? "Scanning…" : "Run scan"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {scans.length === 0 ? <StateBlock kind="empty" message="No scans yet. Name a focus area and WOBBLE surfaces scored signals to review." /> : scans.map((s) => (
+        <Panel key={s.id}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <Tag text={s.status} color={RADAR_STATUS_COLORS[s.status] ?? C.gray} />
+            <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{s.focus}</span>
+            <span style={{ fontSize: 11, color: faint }}>{s.signals.length} signals</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {[...s.signals].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).map((sig, i) => (
+              <div key={i} style={{ ...card, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {typeof sig.score === "number" ? <span style={{ fontSize: 12, fontWeight: 700, color: sig.score >= 70 ? C.lime : sig.score >= 40 ? "#F5C542" : C.gray, width: 26 }}>{sig.score}</span> : null}
+                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{sig.title}</span>
+                  {sig.category ? <Tag text={sig.category} color={RADAR_CAT_COLORS[sig.category] ?? C.gray} /> : null}
+                </div>
+                {sig.summary ? <div style={{ fontSize: 11.5, color: faint, marginTop: 4 }}>{sig.summary}</div> : null}
+                {sig.implication ? <div style={{ fontSize: 11.5, color: C.lime, marginTop: 4 }}>→ {sig.implication}</div> : null}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button onClick={() => generate(s.id)} disabled={busy === "gen_" + s.id} style={busy === "gen_" + s.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + s.id ? "Scanning…" : s.signals.length ? "⚡ Rescan" : "⚡ Scan"}</button>
+            {s.status !== "actioned" ? <button onClick={() => setStatus(s.id, "actioned")} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Mark actioned</button> : null}
+            {s.status !== "dismissed" ? <button onClick={() => setStatus(s.id, "dismissed")} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Dismiss</button> : null}
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4467,6 +4535,7 @@ const WIRED: Record<string, React.ComponentType> = {
   settings: SettingsPage,
   automations: AutomationsPage,
   seo: SeoPage,
+  radar: RadarPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,
