@@ -4597,6 +4597,71 @@ function SocialPage() {
   );
 }
 
+interface WebstatsData { configured: boolean; needs?: string[]; siteId?: string; period?: string; aggregate?: { visitors?: number; pageviews?: number; bounceRate?: number; visitDuration?: number }; topPages?: Array<{ page: string; visitors?: number; pageviews?: number }>; topSources?: Array<{ source: string; visitors?: number }>; error?: string }
+function WebstatsPage() {
+  const state = useApi<WebstatsData>("/api/webstats?period=30d");
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  if (d && !d.configured) {
+    return (
+      <div style={{ maxWidth: 640 }}>
+        <Panel>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: C.orange, background: "rgba(255,104,0,0.1)" }}><Icon name="PlugZap" size={16} /></span>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>Connect a web-analytics source</div>
+          </div>
+          <div style={{ fontSize: 12.5, color: faint, lineHeight: 1.55, marginBottom: 12 }}>Website Analytics reads <b>live</b> traffic for wobblepk.com from Plausible. No data is shown until it&apos;s connected — WOBBLE never fabricates traffic numbers. Set these in <code>.env</code> and reload:</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(d.needs ?? ["PLAUSIBLE_API_KEY", "PLAUSIBLE_SITE_ID"]).map((n) => (
+              <div key={n} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.orange }} />
+                <span style={{ fontSize: 12.5, fontFamily: "monospace" }}>{n}</span>
+                <span style={{ fontSize: 11, color: faint, marginLeft: "auto" }}>required</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: faint, marginTop: 12 }}>Optional: <code>PLAUSIBLE_HOST</code> for a self-hosted instance. Compatible with any Plausible-hosted or self-hosted site.</div>
+        </Panel>
+      </div>
+    );
+  }
+  const fmtDur = (s?: number) => s == null ? "—" : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 820 }}>
+      {d?.error ? <div style={{ fontSize: 12, color: C.orange }}>Plausible error: {d.error}</div> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Visitors (30d)" value={String(d?.aggregate?.visitors ?? 0)} icon="Users" color={C.lime} />
+        <Kpi label="Pageviews" value={String(d?.aggregate?.pageviews ?? 0)} icon="Eye" color={C.blue} />
+        <Kpi label="Bounce rate" value={`${d?.aggregate?.bounceRate ?? 0}%`} icon="TrendingDown" color={C.orange} />
+        <Kpi label="Avg visit" value={fmtDur(d?.aggregate?.visitDuration)} icon="Clock" color="#B87CFF" />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Top pages</div>
+        {(d?.topPages ?? []).length === 0 ? <StateBlock kind="empty" message="No page data for this period." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {(d?.topPages ?? []).map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                <span style={{ fontSize: 12.5, flex: 1, fontFamily: "monospace" }}>{p.page}</span>
+                <span style={{ fontSize: 11.5, color: C.lime }}>{p.visitors} visitors</span>
+                <span style={{ fontSize: 11, color: faint }}>{p.pageviews} views</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      {(d?.topSources ?? []).length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Top sources</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {(d?.topSources ?? []).map((s, i) => <Tag key={i} text={`${s.source}: ${s.visitors}`} color={C.blue} />)}
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
 function BackupPage() {
   const state = useApi<{ tables: { key: string; rows: number }[]; totalRows: number }>("/api/backup");
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
@@ -4672,6 +4737,7 @@ const WIRED: Record<string, React.ComponentType> = {
   seo: SeoPage,
   radar: RadarPage,
   social: SocialPage,
+  webstats: WebstatsPage,
   backup: BackupPage,
   brain: BrainPage,
   memory: MemoryPage,
