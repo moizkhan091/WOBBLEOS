@@ -4740,6 +4740,95 @@ function BackupPage() {
   );
 }
 
+function MediaStudioPage() {
+  const state = useApi<{ configured: boolean; needs: string[]; capabilities: { key: string; label: string; note: string }[]; worker: string }>("/api/media");
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: d?.configured ? C.lime : C.orange, background: d?.configured ? "rgba(184,255,44,0.1)" : "rgba(255,104,0,0.1)" }}><Icon name="Clapperboard" size={16} /></span>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Media Studio</div>
+          <div style={{ flex: 1 }} />
+          <Tag text={d?.configured ? "connected" : "needs key"} color={d?.configured ? C.lime : C.orange} />
+        </div>
+        <div style={{ fontSize: 12.5, color: faint, lineHeight: 1.55, marginBottom: 12 }}>Video + image generation runs on fal.ai, compute-isolated in the dedicated video worker so renders never block the web/API. It stays inert until connected — WOBBLE never fabricates media.</div>
+        {!d?.configured ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+            {(d?.needs ?? ["FAL_KEY"]).map((n) => (
+              <div key={n} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.orange }} />
+                <span style={{ fontSize: 12.5, fontFamily: "monospace" }}>{n}</span>
+                <span style={{ fontSize: 11, color: faint, marginLeft: "auto" }}>set in .env, then run <code>npm run {d?.worker ?? "worker:video"}</code></span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Capabilities</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(d?.capabilities ?? []).map((c) => (
+            <div key={c.key} style={{ ...card, padding: "10px 12px" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
+              <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{c.note}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+interface HandoffEventUI { id: string; direction: string; eventType: string; status: string; signatureVerified: boolean; replayProtected: boolean; createdAt: string }
+function HandoffPage() {
+  const state = useApi<{ configured: boolean; endpoints: { id: string; url: string; secretRefName: string; enabled: boolean }[]; events: HandoffEventUI[]; counts: { endpoints: number; events: number; verified: number; failed: number } }>("/api/n8n");
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const d = state.data;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Endpoints" value={String(d?.counts.endpoints ?? 0)} icon="Cable" color={C.blue} />
+        <Kpi label="Events" value={String(d?.counts.events ?? 0)} icon="Webhook" color={C.lime} />
+        <Kpi label="Verified" value={String(d?.counts.verified ?? 0)} icon="ShieldCheck" color={C.lime} />
+        <Kpi label="Failed" value={String(d?.counts.failed ?? 0)} icon="AlertTriangle" color={C.orange} />
+      </div>
+      {!d?.configured ? <Panel><div style={{ fontSize: 12.5, color: faint }}>Set <code>N8N_WEBHOOK_SECRET</code> to enable signed handoff to/from n8n. Inbound + outbound events are HMAC-verified and replay-protected.</div></Panel> : null}
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Registered endpoints</div>
+        {(d?.endpoints ?? []).length === 0 ? <StateBlock kind="empty" message="No endpoints registered yet." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(d?.endpoints ?? []).map((e) => (
+              <div key={e.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Tag text={e.enabled ? "enabled" : "off"} color={e.enabled ? C.lime : C.gray} />
+                <span style={{ fontSize: 12, flex: 1, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>{e.url}</span>
+                <span style={{ fontSize: 11, color: faint }}>{e.secretRefName}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Recent events</div>
+        {(d?.events ?? []).length === 0 ? <StateBlock kind="empty" message="No webhook events yet. Signed inbound/outbound handoffs appear here." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {(d?.events ?? []).map((ev) => (
+              <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)", flexWrap: "wrap" }}>
+                <Tag text={ev.direction} color={ev.direction === "inbound" ? C.blue : "#B87CFF"} />
+                <span style={{ fontSize: 12, flex: 1, fontFamily: "monospace" }}>{ev.eventType}</span>
+                {ev.signatureVerified ? <Tag text="signed" color={C.lime} /> : <Tag text="unsigned" color={C.orange} />}
+                <Tag text={ev.status} color={ev.status === "ok" || ev.status === "received" || ev.status === "delivered" ? C.lime : C.gray} />
+                <span style={{ fontSize: 10.5, color: faint }}>{fmtTime(ev.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   command: CommandPage,
   learning: LearningPage,
@@ -4772,6 +4861,8 @@ const WIRED: Record<string, React.ComponentType> = {
   social: SocialPage,
   webstats: WebstatsPage,
   backup: BackupPage,
+  media: MediaStudioPage,
+  handoff: HandoffPage,
   brain: BrainPage,
   memory: MemoryPage,
   sources: SourcesPage,

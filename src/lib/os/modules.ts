@@ -40,7 +40,7 @@ export const MODULES: Record<string, ModuleDef> = {
   learning: { id: "learning", label: "Learning Engine", title: "Learning Engine", icon: "GraduationCap", status: "wired", chunk: 13, api: "/api/knowledge", tagline: "The Knowledge Compiler: approved sources become atomic, interlinked knowledge notes that compound — the compiled brain every agent reads." },
   content: { id: "content", label: "Content Command", title: "Content Command", icon: "PenTool", status: "wired", chunk: 14, api: "/api/content", tagline: "Every piece of content from idea to handoff. Nothing publishes without a founder." },
   library: { id: "library", label: "Library & Scheduler", title: "Content Library & Scheduler", icon: "CalendarClock", status: "wired", api: "/api/library", tagline: "Every publishable asset in one place - your existing content plus approved packs - queued and scheduled to each platform through a pluggable publisher." },
-  media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "planned", chunk: 21, tagline: "Video and visual production. Render jobs are isolated from web and API compute." },
+  media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "wired", api: "/api/media", tagline: "Video and visual production on fal.ai — render jobs isolated in the dedicated video worker. Inert until FAL_KEY is set; never fabricates media." },
 
   // STRATEGY
   decision: { id: "decision", label: "Decision Room", title: "Decision Room", icon: "Scale", status: "wired", api: "/api/decisions", tagline: "Where strategy is debated, scored and committed. Add options, let WOBBLE score them 0-100, then commit — every decision keeps its reasoning trail." },
@@ -68,7 +68,7 @@ export const MODULES: Record<string, ModuleDef> = {
   skills: { id: "skills", label: "Skill Registry", title: "Prompt / Skill Registry", icon: "Wand2", status: "wired", chunk: 34, api: "/api/skills", tagline: "Versioned, approval-gated SOPs the workers run. Edit a skill, approve it, and behavior changes with no code." },
   approvals: { id: "approvals", label: "Approvals", title: "Approvals", icon: "BadgeCheck", status: "wired", chunk: 4, api: "/api/approvals", tagline: "The single gate. Every output here cleared self-review - your decision is logged with explicit attribution." },
   workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "wired", api: "/api/workers", tagline: "Persistent worker processes running outside the web lifecycle — live heartbeats (online/stale) and a job-queue summary." },
-  handoff: { id: "handoff", label: "n8n Handoff", title: "n8n Handoff", icon: "Webhook", status: "backend-ready", chunk: 18, api: "/api/n8n", tagline: "The bridge to execution - HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery." },
+  handoff: { id: "handoff", label: "n8n Handoff", title: "n8n Handoff", icon: "Webhook", status: "wired", api: "/api/n8n", tagline: "The bridge to execution - HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery. Endpoints + live event log." },
 
   // SYSTEM
   memory: { id: "memory", label: "Memory", title: "Memory", icon: "Database", status: "wired", chunk: 10, api: "/api/memory", tagline: "Long-term recall across the workforce. What WOBBLE remembers, and why." },
