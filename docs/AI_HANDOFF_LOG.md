@@ -3448,3 +3448,14 @@ The loop's middle: raw observations → insight PROPOSALS.
 Build clean; typecheck clean. Full loop now: ingest(pending) → [analyst proposes insights(pending)] → founder approves items/insights in Inbox → all generators retrieve → provenance logged.
 
 NEXT: Phase 4 Dreamer (nightly suggestions) + Freshness worker; Phase 5 Intelligence Command Center UI. (A multi-agent break-audit is running in parallel — fixes to follow.)
+
+## 2026-07-10 - Claude (Opus 4.8) - Intelligence Layer Phase 4 (Dreamer)
+
+The proactive engine: WOBBLE proposes moves before you ask.
+- NEW src/lib/intelligence/dreamer.ts runDreamer({scope,clientId}): gathers ALL approved intelligence across tasks (strategy/social/blog_seo/offer/decision, deduped) + recent items → LLM proposes 3-8 concrete moves (content_experiment/campaign_idea/offer_change/automation_idea/…) each with rationale, proposedAction, validated evidence ids, priority, confidence → createIntelligenceSuggestion PENDING (also creates an approval row). Role dreamer.
+- NEW POST /api/intelligence/dream (founder-gated) + intelligence.dream job handler (registered) so it can run nightly via a schedule/automation.
+- tests/intelligence-dreamer.test.ts (2).
+
+Build + typecheck clean. Intelligence agent workers now: scout (ingest), analyst (insights), dreamer (suggestions) — all approval-gated, all runnable as jobs.
+
+NEXT: Phase 5 Intelligence Command Center UI (research targets + competitor feed + scout/analyze/dream buttons + suggestions inbox). Then apply the multi-agent break-audit findings.
