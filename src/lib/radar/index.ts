@@ -4,6 +4,8 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { getIntelligenceContextBlock, type IntelligenceContextBlock } from "@/lib/intelligence/context-block";
+import { logOutputIntelligenceUsage } from "@/lib/intelligence";
 import { RADAR_MODULE, buildRadarScanRow, radarOutputSchema, type CreateRadarScanInput, type RadarScanRow, type RadarStatus } from "@/lib/domain/radar";
 
 /** Research Radar service. Create a scan, let the LLM surface + score signals, set review status. */
@@ -18,6 +20,7 @@ export interface RadarDeps {
   store?: RadarStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   now?: Date;
 }
 async function audit(deps: RadarDeps, input: AuditEventInput): Promise<void> {
@@ -57,7 +60,12 @@ export async function generateRadarScan(id: string, input: { actor?: string } = 
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const now = deps.now ?? new Date();
 
+  // Retrieval-before-generation: build on the latest APPROVED intelligence, and don't
+  // re-surface signals we've already logged. Nothing hardcoded.
+  const intel = await (deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("strategy")))();
+
   const messages: ProviderChatMessage[] = [
+    ...(intel.block ? [{ role: "system" as const, content: intel.block }] : []),
     { role: "system", content: `You are WOBBLE's research radar. WOBBLE is an AI automation studio selling AI audits, chatbots/voice agents, content and automations to growing businesses. Surface 6-10 concrete signals for the given focus (market shifts, competitor moves, tech releases, cultural/behaviour changes, buyer pain). For each: a title, a category (market|competitor|technology|culture|regulation), a 1-2 sentence summary, the implication for WOBBLE, and a relevance score 0-100. Prefer specific, actionable signals over generic trends. Reply ONLY with JSON: {"signals":[{"title","category","summary","implication","score"}]}. No prose.` },
     { role: "user", content: `Focus: ${scan.focus}` },
   ];
@@ -74,7 +82,8 @@ export async function generateRadarScan(id: string, input: { actor?: string } = 
   const signals = parsed.signals.map((s) => ({ ...s, score: typeof s.score === "number" ? Math.max(0, Math.min(100, Math.round(s.score))) : undefined }));
   const fields: Partial<RadarScanRow> = { signals, status: "reviewed", updatedAt: now };
   await store.updateScan(id, fields);
-  await audit(deps, { eventType: "radar.generated", module: RADAR_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { scanId: id, signals: signals.length } });
+  await logOutputIntelligenceUsage({ outputType: "radar_scan", outputId: id, itemIds: intel.itemIds, insightIds: intel.insightIds }, { now }).catch(() => {});
+  await audit(deps, { eventType: "radar.generated", module: RADAR_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { scanId: id, signals: signals.length, intelUsed: intel.itemIds.length + intel.insightIds.length } });
   return { ...scan, ...fields };
 }
 

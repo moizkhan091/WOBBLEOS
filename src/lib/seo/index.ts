@@ -4,6 +4,8 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { getIntelligenceContextBlock, type IntelligenceContextBlock } from "@/lib/intelligence/context-block";
+import { logOutputIntelligenceUsage } from "@/lib/intelligence";
 import { SEO_MODULE, buildSeoPlanRow, seoPlanOutputSchema, type CreateSeoPlanInput, type SeoPlanRow, type SeoStatus } from "@/lib/domain/seo";
 
 /** SEO & Blog Engine service. Create a plan, let the LLM generate keywords + blog ideas, archive. */
@@ -18,6 +20,7 @@ export interface SeoDeps {
   store?: SeoStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   now?: Date;
 }
 async function audit(deps: SeoDeps, input: AuditEventInput): Promise<void> {
@@ -55,8 +58,13 @@ export async function generateSeoPlan(id: string, input: { actor?: string } = {}
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const now = deps.now ?? new Date();
 
+  // Retrieval-before-generation: ground the plan in the latest APPROVED intelligence
+  // (keyword/blog performance, competitor articles, search trends). Nothing hardcoded.
+  const intel = await (deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("blog_seo")))();
+
   const messages: ProviderChatMessage[] = [
     { role: "system", content: `You are WOBBLE's SEO + content strategist. WOBBLE is an AI automation studio (AI audits, chatbots/voice agents, content, automations) selling to growing businesses. Produce an SEO plan: a content pillar, 8-14 target keywords (each with search intent: informational|commercial|transactional, and a priority: high|medium|low), and 6-10 blog post ideas (each with a title, an angle, the target keyword, and a 3-5 bullet outline). Ground everything in real buyer questions. Reply ONLY with JSON: {"pillar": string, "targetKeywords":[{"keyword","intent","priority","note"}], "blogIdeas":[{"title","angle","targetKeyword","outline":[...]}]}. No prose.` },
+    ...(intel.block ? [{ role: "system" as const, content: intel.block }] : []),
     { role: "user", content: `Topic: ${plan.topic}\nAudience: ${plan.audience ?? "growing businesses considering AI"}\n${plan.pillar ? `Existing pillar: ${plan.pillar}` : ""}` },
   ];
   const { text, run } = await runProvider({ role: "seo_planner", module: SEO_MODULE, messages, maxTokens: 2500 });
@@ -77,7 +85,8 @@ export async function generateSeoPlan(id: string, input: { actor?: string } = {}
     updatedAt: now,
   };
   await store.updatePlan(id, fields);
-  await audit(deps, { eventType: "seo.generated", module: SEO_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { planId: id, keywords: parsed.targetKeywords.length, ideas: parsed.blogIdeas.length } });
+  await logOutputIntelligenceUsage({ outputType: "seo_plan", outputId: id, itemIds: intel.itemIds, insightIds: intel.insightIds }, { now }).catch(() => {});
+  await audit(deps, { eventType: "seo.generated", module: SEO_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { planId: id, keywords: parsed.targetKeywords.length, ideas: parsed.blogIdeas.length, intelUsed: intel.itemIds.length + intel.insightIds.length } });
   return { ...plan, ...fields };
 }
 

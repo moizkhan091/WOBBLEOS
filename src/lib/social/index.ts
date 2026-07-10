@@ -4,6 +4,8 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { getIntelligenceContextBlock, type IntelligenceContextBlock } from "@/lib/intelligence/context-block";
+import { logOutputIntelligenceUsage } from "@/lib/intelligence";
 import { SOCIAL_MODULE, buildSocialRow, socialOutputSchema, type CreateSocialInput, type SocialStrategyRow, type SocialStatus } from "@/lib/domain/social";
 
 /** Social Intelligence service. Create a target, let the LLM build a real platform content strategy. */
@@ -18,6 +20,7 @@ export interface SocialDeps {
   store?: SocialStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   now?: Date;
 }
 async function audit(deps: SocialDeps, input: AuditEventInput): Promise<void> {
@@ -55,8 +58,13 @@ export async function generateSocialStrategy(id: string, input: { actor?: string
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const now = deps.now ?? new Date();
 
+  // Retrieval-before-generation: ground the strategy in the latest APPROVED intelligence
+  // (competitor patterns, winning/failed hooks, platform trends). Nothing hardcoded.
+  const intel = await (deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("social_content")))();
+
   const messages: ProviderChatMessage[] = [
     { role: "system", content: `You are WOBBLE's social strategist. WOBBLE is an AI automation studio (AI audits, chatbots/voice agents, content, automations). Build a concrete ${row.platform} content strategy for the given niche: positioning (one line), posting cadence, 3-5 content pillars, 6-10 scroll-stopping hooks, 3-5 competitor/differentiation angles, and 6-10 post ideas (each with a format e.g. reel/carousel/text, the idea, and a hook). Make it specific and usable, not generic advice. Reply ONLY with JSON: {"positioning","cadence","pillars":[],"hooks":[],"competitorAngles":[],"contentIdeas":[{"format","idea","hook"}]}. No prose.` },
+    ...(intel.block ? [{ role: "system" as const, content: intel.block }] : []),
     { role: "user", content: `Platform: ${row.platform}\nNiche / account: ${row.niche}` },
   ];
   const { text, run } = await runProvider({ role: "social_strategist", module: SOCIAL_MODULE, messages, maxTokens: 2500 });
@@ -71,7 +79,9 @@ export async function generateSocialStrategy(id: string, input: { actor?: string
   }
   const fields: Partial<SocialStrategyRow> = { strategy: parsed, status: row.status === "draft" ? "active" : row.status, updatedAt: now };
   await store.updateRow(id, fields);
-  await audit(deps, { eventType: "social.generated", module: SOCIAL_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { id, ideas: parsed.contentIdeas.length } });
+  // Provenance: record which approved intelligence this strategy used.
+  await logOutputIntelligenceUsage({ outputType: "social_strategy", outputId: id, itemIds: intel.itemIds, insightIds: intel.insightIds }, { now }).catch(() => {});
+  await audit(deps, { eventType: "social.generated", module: SOCIAL_MODULE, entityType: "model_run", entityId: run.id, modelRunId: run.id, actor: input.actor ?? "system", metadata: { id, ideas: parsed.contentIdeas.length, intelUsed: intel.itemIds.length + intel.insightIds.length } });
   return { ...row, ...fields };
 }
 

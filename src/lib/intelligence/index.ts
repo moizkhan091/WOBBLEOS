@@ -8,6 +8,7 @@ import {
   researchTargets,
 } from "@/db/schema";
 import { getDb, type Db } from "@/db";
+import { newId } from "@/lib/ids";
 import { createApproval, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -547,6 +548,28 @@ export interface OutputIntelligenceUsageRow {
   weight: string | null;
   metadata: Record<string, unknown>;
   createdAt: Date;
+}
+
+/**
+ * Record which approved intelligence an output used — the output→evidence provenance
+ * that lets us later ask "what did this content rely on?" and measure what's working.
+ * Best-effort: never throws (provenance logging must not break a generation).
+ */
+export async function logOutputIntelligenceUsage(
+  input: { outputType: string; outputId: string; itemIds?: string[]; insightIds?: string[] },
+  deps: IntelligenceDeps = {},
+): Promise<void> {
+  if (!(input.itemIds?.length || input.insightIds?.length)) return;
+  const store = deps.store ?? defaultStore();
+  if (!store.recordOutputUsage) return;
+  const now = deps.now ?? new Date();
+  const rows: OutputIntelligenceUsageRow[] = [
+    ...(input.itemIds ?? []).map((intelligenceItemId) => ({ id: newId("oiu"), outputType: input.outputType, outputId: input.outputId, sourceId: null, intelligenceItemId, insightId: null, memoryChunkId: null, weight: null, metadata: {}, createdAt: now })),
+    ...(input.insightIds ?? []).map((insightId) => ({ id: newId("oiu"), outputType: input.outputType, outputId: input.outputId, sourceId: null, intelligenceItemId: null, insightId, memoryChunkId: null, weight: null, metadata: {}, createdAt: now })),
+  ];
+  for (const row of rows) {
+    try { await store.recordOutputUsage(row); } catch { /* provenance is best-effort */ }
+  }
 }
 
 export function defaultStore(db: Db = getDb()): IntelligenceStore {

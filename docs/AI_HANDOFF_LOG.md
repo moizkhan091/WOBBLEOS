@@ -3396,3 +3396,17 @@ DELIBERATELY NOT faked: this is an AI *strategy* module (real value), NOT fake f
 VERIFIED: full suite 452 green; build clean. LIVE AI: "AI voice agents for real estate" (instagram) → positioning + 5 pillars + hooks + 10 post ideas. Test data cleaned.
 
 REMAINING planned tiles: webstats (Website Analytics — genuinely needs a GA/Plausible connector; will honest-gate, not fake traffic numbers), media (Media Studio — fal.ai gen, no key; kept/flagged). Deploy deferred (VPS+SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - Self-Improving Intelligence Layer: Phase 1 (retrieval wiring)
+
+Audited the codebase: the intelligence SUBSTRATE already exists (research_targets, intelligence_items [incl. competitor_reel/winning_hook/etc types + rawText/metrics/extracted/summaryEmbedding/freshness], intelligence_insights, intelligence_suggestions, experiments, output_intelligence_usage) + the review inbox + knowledge compiler + memory + taste + the buildApprovedIntelligenceContext retrieval contract. The gap is WIRING, workers, and ingestion — not architecture. Full plan: docs/INTELLIGENCE_LAYER_IMPLEMENTATION_PLAN.md.
+
+Phase 1 (the multiplier — "nothing hardcoded, every output backed by current approved knowledge"):
+- NEW src/lib/intelligence/context-block.ts getIntelligenceContextBlock(task, {scope,clientId}) → formats APPROVED items+insights into a grounding prompt block + returns their ids; degrades to empty (never fake) with honest gap notes; never throws.
+- NEW logOutputIntelligenceUsage() in src/lib/intelligence — writes output_intelligence_usage (output→evidence provenance).
+- WIRED into generators (retrieval-before-generation + provenance logging): social (task social_content), seo (blog_seo), radar (strategy). Each takes an injectable retrieveIntelligence dep.
+- tests/intelligence-context.test.ts (3). All generator tests still green (9).
+
+VERIFIED LIVE end-to-end: seeded 2 approved intelligence items (competitor reel + winning hook) → getIntelligenceContextBlock('social_content') returned them (hasIntelligence, block contains them) → generateSocialStrategy pulled 6 approved items into its prompt and logged 6 output_intelligence_usage provenance rows. Test data cleaned. Build clean.
+
+NEXT (Phase 2): ingestion — signed /api/webhooks/intelligence (normalize reel/post payloads → recordIntelligenceItem pending) + Apify Competitor Scout worker over research_targets. Then Phase 3 analysis workers (Competitor/Social/Transcript analysts → insight proposals), Phase 4 Dreamer + Performance Learning + Freshness scheduled workers, Phase 5 Intelligence Command Center UI. Decision: built-in agent teams + Apify (gated), n8n optional. Also wire context-block into content-graph + ask next.
