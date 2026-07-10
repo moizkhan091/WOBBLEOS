@@ -71,7 +71,9 @@ export async function runAuditRoadmap(input: RunRoadmapInput, deps: RoadmapDeps 
     const getPitch = deps.getPitch ?? (async (id: string) => { const a = await getAudit(id); return a ? { companyId: a.companyId, report: a.report as unknown as Record<string, unknown> } : null; });
     const pitch = await getPitch(input.pitchAuditId);
     if (pitch) {
-      if (input.companyId && pitch.companyId && pitch.companyId !== input.companyId) {
+      // Fail closed: if a company is asserted, the pitch MUST belong to it — a null/absent
+      // pitch company counts as a mismatch (never bleed one client's pitch into another's roadmap).
+      if (input.companyId && pitch.companyId !== input.companyId) {
         throw new Error("data isolation: pitch belongs to a different company");
       }
       pitchSummary = String(pitch.report.executiveSummary ?? pitch.report.summary ?? "");

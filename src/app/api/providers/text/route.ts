@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { runTextProvider } from "@/lib/providers";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
+  // Gate the raw LLM proxy — it spends the OpenRouter key; only founders may call it directly.
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   try {
     const result = await runTextProvider(parsed.data);

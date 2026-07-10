@@ -25,7 +25,9 @@ export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const raw = await request.text();
   const secret = process.env.ZERNIO_WEBHOOK_SECRET;
-  if (secret && !verify(raw, request.headers.get("X-Zernio-Signature"), secret)) {
+  // Fail CLOSED: public route — with no secret set, anyone could flip post status. Require it.
+  if (!secret) return NextResponse.json({ ok: false, error: "webhook disabled — set ZERNIO_WEBHOOK_SECRET" }, { status: 503 });
+  if (!verify(raw, request.headers.get("X-Zernio-Signature"), secret)) {
     return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
   }
 

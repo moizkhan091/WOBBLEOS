@@ -36,7 +36,8 @@ async function readDoc(id: string, deps: FinalAuditDeps): Promise<{ companyId: s
 }
 
 function assertSameCompany(doc: { companyId: string | null } | null, companyId?: string): void {
-  if (doc && companyId && doc.companyId && doc.companyId !== companyId) {
+  // Fail closed: if a company is asserted, the doc MUST match it — null doc company = mismatch.
+  if (doc && companyId && doc.companyId !== companyId) {
     throw new Error("data isolation: a referenced document belongs to a different company");
   }
 }
@@ -44,6 +45,11 @@ function assertSameCompany(doc: { companyId: string | null } | null, companyId?:
 export async function runFinalAudit(input: RunFinalAuditInput, deps: FinalAuditDeps = {}): Promise<{ auditId: string; report: unknown }> {
   const pitch = input.pitchAuditId ? await readDoc(input.pitchAuditId, deps) : null;
   const roadmap = input.roadmapAuditId ? await readDoc(input.roadmapAuditId, deps) : null;
+  // The two client documents feeding one client-facing deck MUST belong to the same company —
+  // this catches a pitch(A) + roadmap(B) mix even when no explicit companyId is passed.
+  if (pitch && roadmap && (pitch.companyId ?? null) !== (roadmap.companyId ?? null)) {
+    throw new Error("data isolation: pitch and roadmap belong to different companies");
+  }
   assertSameCompany(pitch, input.companyId);
   assertSameCompany(roadmap, input.companyId);
 

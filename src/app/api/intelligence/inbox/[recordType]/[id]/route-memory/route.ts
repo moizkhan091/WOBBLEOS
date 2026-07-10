@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { intelligenceRouteToMemoryInputSchema } from "@/lib/domain/intelligence";
 import { routeIntelligenceRecordToMemory } from "@/lib/intelligence";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,12 @@ export async function POST(request: Request, context: { params: Promise<{ record
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
 
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+
   const bodyObject =
     body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
-  const parsed = intelligenceRouteToMemoryInputSchema.safeParse({ ...bodyObject, recordType, id });
+  const parsed = intelligenceRouteToMemoryInputSchema.safeParse({ ...bodyObject, recordType, id, proposedBy: auth });
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }

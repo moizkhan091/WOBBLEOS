@@ -77,7 +77,11 @@ export async function invoiceAction(id: string, action: InvoiceAction, input: { 
   if (action === "approve") fields.approvedBy = input.actor;
   if (action === "send") fields.sentAt = now;
   if (action === "mark_paid") {
-    const paid = input.amountPaidCents ?? inv.totalCents;
+    // Accumulate against the outstanding balance — a second partial payment must ADD to the
+    // amount already recorded, not overwrite it (previously lost the earlier payment).
+    const remaining = Math.max(0, inv.totalCents - inv.amountPaidCents);
+    const applied = input.amountPaidCents ?? remaining;
+    const paid = Math.min(inv.amountPaidCents + applied, inv.totalCents);
     fields.amountPaidCents = paid;
     fields.paymentReference = input.paymentReference ?? inv.paymentReference;
     fields.paidAt = now;

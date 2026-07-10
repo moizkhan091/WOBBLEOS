@@ -816,8 +816,11 @@ export function buildIntelligenceContextPlan(input: IntelligenceContextPlanInput
 }
 
 function scopeMatches(rowScope: IntelligenceScope, plan: IntelligenceContextPlan, rowClientId?: string | null): boolean {
-  if (plan.clientId && rowClientId === plan.clientId) return true;
-  return rowScope === plan.scope || rowScope === "global";
+  // Client-scoped rows are visible ONLY to a request for that exact client — never leak across
+  // clients (previously a scope=client request with no clientId matched every client's data).
+  if (rowScope === "client") return Boolean(plan.clientId) && rowClientId === plan.clientId;
+  if (rowScope === "global") return true;
+  return rowScope === plan.scope;
 }
 
 function freshnessRank(status: FreshnessStatus): number {

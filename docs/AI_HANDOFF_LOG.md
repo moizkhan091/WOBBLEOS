@@ -3459,3 +3459,25 @@ The proactive engine: WOBBLE proposes moves before you ask.
 Build + typecheck clean. Intelligence agent workers now: scout (ingest), analyst (insights), dreamer (suggestions) — all approval-gated, all runnable as jobs.
 
 NEXT: Phase 5 Intelligence Command Center UI (research targets + competitor feed + scout/analyze/dream buttons + suggestions inbox). Then apply the multi-agent break-audit findings.
+
+## 2026-07-10 - Claude (Opus 4.8) - Multi-agent break-audit + fixes (batch 1: security/money/isolation)
+
+Ran a 9-dimension multi-agent adversarial audit (workflow wobble-os-break-audit) + verification. Key context: src/proxy.ts IS Next 16's middleware (gates all non-public routes — the "everything unauthenticated on VPS" framing was overstated), but real bugs existed underneath. Fixed the CONFIRMED ones:
+
+SECURITY / AUTH:
+- Webhooks (zernio + intelligence) now FAIL CLOSED — 503 if their secret env var is unset (was: skip HMAC when secret missing → open injection). 
+- proxy.ts: added /api/n8n to PUBLIC_PREFIXES so HMAC-verified n8n callbacks reach their handler (were 401'd).
+- Identity forging fixed on all intelligence inbox routes (review/edit/route-memory/merge): now requireFounder + actor (reviewedBy/editedBy/proposedBy/mergedBy) overridden from the verified session, never body.
+- Added requireFounder to /api/ask (was body-settable founder + knowledge exfil), /api/ask/agent (destructive, body founder+confirmActions), /api/providers/text (raw LLM proxy), POST /api/jobs (money-spending enqueue). founder always from session.
+
+DATA ISOLATION:
+- intelligence scopeMatches: client-scoped rows now visible ONLY to a request with the matching clientId (was: scope=client + no clientId matched EVERY client's data). 
+- audit-roadmap + audit-final: fail-closed — a null/absent doc companyId now counts as a mismatch; final deck additionally requires pitch.companyId === roadmap.companyId (catches pitch(A)+roadmap(B) even with no explicit companyId).
+
+MONEY:
+- finance mark_paid: partial payments now ACCUMULATE (was: second payment overwrote the first, losing money + corrupting rollups); capped at total.
+- crm convertLead: deal name uses the resolved companyName (was literal "undefined" from the raw optional input).
+
+VERIFIED: full suite 468 → 473 green (+5 regression tests: finance accumulation, client isolation); typecheck + build clean.
+
+REMAINING from audit (batch 2, reliability): jobs idempotency race (needs partial unique index + ON CONFLICT) + stuck-'active' job reaper. Then finish Phase 5 Intelligence Command Center UI + VPS-readiness checklist.

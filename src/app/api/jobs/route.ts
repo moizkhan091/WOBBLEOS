@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { enqueueJob, listJobs } from "@/lib/jobs";
 import type { JobStatus } from "@/lib/domain/jobs";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
+  // Enqueuing spends money (AI/network jobs) — founder-gated, like every other mutating route.
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   try {
     const { job, deduped } = await enqueueJob(parsed.data);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { askWobbleAgent, askAgentSchema } from "@/lib/ask/agent";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = askAgentSchema.safeParse(body);
+  const parsed = askAgentSchema.omit({ founder: true }).safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
+  // Founder identity is the verified session — never client-supplied. This surface can apply
+  // confirmed OS actions, so attribution + gating must be trustworthy.
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   try {
-    const result = await askWobbleAgent(parsed.data);
+    const result = await askWobbleAgent({ ...parsed.data, founder: auth });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

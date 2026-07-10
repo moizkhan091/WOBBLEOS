@@ -25,7 +25,9 @@ export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const raw = await request.text();
   const secret = process.env.INTELLIGENCE_WEBHOOK_SECRET;
-  if (secret && !verify(raw, request.headers.get("X-Wobble-Signature"), secret)) {
+  // Fail CLOSED: this is a public route, so with no secret set anyone could inject intelligence.
+  if (!secret) return NextResponse.json({ ok: false, error: "ingestion webhook disabled — set INTELLIGENCE_WEBHOOK_SECRET" }, { status: 503 });
+  if (!verify(raw, request.headers.get("X-Wobble-Signature"), secret)) {
     return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
   }
 

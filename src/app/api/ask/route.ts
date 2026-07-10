@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { askWobble, askWobbleSchema } from "@/lib/ask";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = askWobbleSchema.safeParse(body);
+  const parsed = askWobbleSchema.omit({ founder: true }).safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   }
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   try {
-    const result = await askWobble(parsed.data);
+    const result = await askWobble({ ...parsed.data, founder: auth });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json(
