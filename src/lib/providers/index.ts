@@ -96,6 +96,8 @@ export interface RunTextProviderInput {
   tools?: ProviderToolSpec[];
   toolChoice?: "auto" | "none" | "required";
   plugins?: Array<Record<string, unknown>>;
+  /** Override the role's model for this one call (e.g. a chat model picker). Must use the role's provider. */
+  model?: string;
   linkedEntityType?: string;
   linkedEntityId?: string;
 }
@@ -199,6 +201,8 @@ export async function runTextProvider(
   const store = deps.store ?? defaultStore();
   const roleMap = await store.getModelRoleMap();
   const roleConfig = resolveModelRole(input.role, roleMap);
+  // A caller may override just the model (same provider) — e.g. the chat model picker.
+  const model = input.model?.trim() || roleConfig.model;
 
   const connection = await store.getProviderConnection(roleConfig.provider);
   if (!connection) {
@@ -219,7 +223,7 @@ export async function runTextProvider(
   const { result, run } = await recordModelCall(
     {
       provider: connection.slug,
-      model: roleConfig.model,
+      model,
       role: input.role,
       module: input.module,
       linkedEntityType: input.linkedEntityType,
@@ -227,7 +231,7 @@ export async function runTextProvider(
     },
     () =>
       adapter.generateText({
-        model: roleConfig.model,
+        model,
         messages: input.messages,
         temperature: input.temperature,
         maxTokens: input.maxTokens,

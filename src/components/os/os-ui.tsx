@@ -814,7 +814,10 @@ function AskPage() {
   const [drag, setDrag] = useState(false);
   const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string; files?: { name: string; kind: string }[]; citations?: Record<string, unknown>[]; needsFounderJudgment?: string[] }[]>([]);
   const greet = useApi<{ greeting: string; subline: string; dayPart: string }>("/api/ai/greeting");
+  const modelState = useApi<{ models: { id: string; label: string; description: string }[] }>("/api/ai/models");
+  const [model, setModel] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const models = modelState.data?.models ?? [];
 
   async function addFiles(list: FileList | File[]) {
     const MAX = 12 * 1024 * 1024; // 12 MB per file — larger base64 payloads fail the request
@@ -836,9 +839,9 @@ function AskPage() {
     const sendFiles = files;
     setQ(""); setFiles([]); setBusy(true);
     try {
-      if (sendFiles.length > 0) {
-        // Attachments -> universal multimodal chat (images/PDFs/text).
-        const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, useMemory: true, attachments: sendFiles.map((f) => ({ filename: f.name, mimeType: f.mimeType, dataBase64: f.dataBase64 })) }) });
+      if (sendFiles.length > 0 || model) {
+        // Attachments or an explicit model pick -> universal multimodal chat (images/PDFs/text).
+        const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, useMemory: true, model: model || undefined, attachments: sendFiles.map((f) => ({ filename: f.name, mimeType: f.mimeType, dataBase64: f.dataBase64 })) }) });
         const j = (await r.json()) as Record<string, unknown>;
         if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
         else setTurns((t) => [...t, { role: "wob", text: String(j.text ?? ""), meta: [Array.isArray(j.attachments) && j.attachments.length ? (j.attachments as string[]).join(" · ") : null, j.runId ? "run " + String(j.runId) : null].filter(Boolean).join(" — ") }]);
@@ -912,6 +915,12 @@ function AskPage() {
         <textarea value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Ask WOBBLE anything — or drop an image / PDF / doc to analyze…" rows={2} style={{ width: "100%", padding: "6px 6px 10px", border: "none", background: "transparent", color: C.white, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => fileRef.current?.click()} title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
+          {models.length ? (
+            <select value={model} onChange={(e) => setModel(e.target.value)} title="Model" style={{ ...selectStyle, padding: "6px 9px", fontSize: 11.5 }}>
+              <option value="">Auto</option>
+              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          ) : null}
           <span style={{ fontSize: 10.5, color: faint }}>Images → vision · PDFs & docs → parsed · Shift+Enter for newline</span>
           <div style={{ flex: 1 }} />
           <button onClick={send} disabled={!hasContent || busy} style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: hasContent && !busy ? C.lime : "rgba(184,255,44,0.3)", color: "#0A0A0A", cursor: hasContent && !busy ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>{busy ? <Icon name="Loader2" size={17} /> : <Icon name="ArrowUp" size={18} />}</button>

@@ -15,6 +15,14 @@ import { buildUserContent, type AttachmentInput } from "@/lib/domain/attachments
 export const CHAT_MODULE = "ask_wobble"; // reuse the allowed module (provider allowlist)
 export const CHAT_ROLE = "ask_wobble";
 
+// Real, multimodal-capable OpenRouter models the chat picker may select. Empty/omitted → role default.
+export const CHAT_MODELS = [
+  { id: "openai/gpt-4o-mini", label: "Fast", description: "Quick everyday answers · vision" },
+  { id: "openai/gpt-4o", label: "Smart", description: "Stronger reasoning · vision" },
+  { id: "anthropic/claude-sonnet-4.5", label: "Deep", description: "Best for long/complex work · vision + PDF" },
+] as const;
+const CHAT_MODEL_IDS = CHAT_MODELS.map((m) => m.id) as unknown as [string, ...string[]];
+
 const attachmentSchema = z.object({
   filename: z.string().trim().min(1),
   mimeType: z.string().trim().optional(),
@@ -30,6 +38,7 @@ export const chatSchema = z.object({
   history: z.array(turnSchema).max(30).optional(),
   founder: z.string().trim().min(1).optional(),
   useMemory: z.boolean().optional(),
+  model: z.enum(CHAT_MODEL_IDS).optional(),
   maxTokens: z.number().int().min(100).max(4000).optional(),
 });
 export type ChatInput = z.input<typeof chatSchema>;
@@ -41,7 +50,7 @@ Voice: sharp, warm, founder-to-founder. Concise by default, deep when asked. No 
 You can reason over attached files: images (you see them), PDFs and documents (parsed for you), and pasted text/code. When a file is attached, analyze it and pull out what matters for the founder's goal. If you're missing context, ask one crisp question rather than guessing.`;
 
 export interface ChatDeps {
-  runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number; plugins?: Array<Record<string, unknown>> }) => Promise<{ text: string; run: { id: string } }>;
+  runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number; plugins?: Array<Record<string, unknown>>; model?: string }) => Promise<{ text: string; run: { id: string } }>;
   retrieveMemory?: (query: string) => Promise<string[]>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
 }
@@ -88,6 +97,7 @@ export async function chatWithWobble(input: ChatInput, deps: ChatDeps = {}): Pro
     module: CHAT_MODULE,
     messages,
     maxTokens: parsed.maxTokens ?? 1500,
+    model: parsed.model,
     // OpenRouter file-parser makes PDFs readable by any model.
     plugins: hasPdf ? [{ id: "file-parser", pdf: { engine: "pdf-text" } }] : undefined,
   });
@@ -105,7 +115,7 @@ export async function chatWithWobble(input: ChatInput, deps: ChatDeps = {}): Pro
   return { text, runId: run.id, attachments: notes };
 }
 
-async function defaultRunProvider(input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number; plugins?: Array<Record<string, unknown>> }) {
+async function defaultRunProvider(input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number; plugins?: Array<Record<string, unknown>>; model?: string }) {
   const result = await runTextProvider(input);
   return { text: result.text, run: { id: result.run.id } };
 }
