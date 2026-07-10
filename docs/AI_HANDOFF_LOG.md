@@ -3436,3 +3436,15 @@ VERIFIED LIVE: ingested a competitor_reel → stored pending, transcript+extract
 Decision recap: built-in agent teams + Apify for ingestion (runs on VPS, no n8n dependency); n8n optional via the same signed webhook. Transcripts/frame-summaries for reels arrive via n8n or a transcript actor into the SAME ingest pipe.
 
 NEXT (Phase 3): analysis workers — Competitor/Social/Transcript analyst graph (pending items → insight PROPOSALS, approval-gated) + register intelligence job handlers in worker registry. Then Phase 4 Dreamer + Performance Learning + Freshness scheduled workers. Then Phase 5 Intelligence Command Center UI (research targets, competitor feed, scout button, suggestions inbox).
+
+## 2026-07-10 - Claude (Opus 4.8) - Intelligence Layer Phase 3 (analysis workers)
+
+The loop's middle: raw observations → insight PROPOSALS.
+- NEW src/lib/intelligence/analyst.ts runIntelligenceAnalyst({scope,clientId,limit}): reads recent intelligence_items, LLM extracts 2-6 durable insights (competitor_pattern/content_pattern/performance_learning/etc) with evidenceItemIds (validated against real item ids — ghost ids dropped), recommendation, impactScore, appliesToModules → createIntelligenceInsight PENDING. Role performance_learning_agent.
+- NEW POST /api/intelligence/analyze (founder-gated).
+- NEW src/lib/intelligence/jobs.ts + registered intelligence.scout + intelligence.analyze in worker registry — so scout+analyst run from automations/schedules, not just routes. (Closes the "no intelligence job handlers" gap.)
+- tests/intelligence-analyst.test.ts (3).
+
+Build clean; typecheck clean. Full loop now: ingest(pending) → [analyst proposes insights(pending)] → founder approves items/insights in Inbox → all generators retrieve → provenance logged.
+
+NEXT: Phase 4 Dreamer (nightly suggestions) + Freshness worker; Phase 5 Intelligence Command Center UI. (A multi-agent break-audit is running in parallel — fixes to follow.)
