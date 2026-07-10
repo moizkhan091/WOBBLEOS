@@ -3422,3 +3422,17 @@ Now ALL generators read live intelligence: ask, content-graph, social, seo, rada
 VERIFIED: full suite 459 green (Phase 1 broke nothing); ask+content-graph tests (21) green; build clean.
 
 NEXT: Phase 2 ingestion (signed /api/webhooks/intelligence + Apify Competitor Scout worker over research_targets).
+
+## 2026-07-10 - Claude (Opus 4.8) - Self-Improving Intelligence Layer: Phase 2 (ingestion)
+
+Data now flows IN. The "reel problem" pipe is real.
+- NEW src/lib/intelligence/ingest.ts: single normalizer (ingestRecordSchema + mapIngestRecordToItemInput + ingestIntelligencePayload) — competitor/social/market records → intelligence_items PENDING. Maps caption→summary, transcript→rawText, {hook,format,cta,offerAngle,category}→extracted, engagement→metrics, postedAt→observedAt. Handles single OR {records:[...]} batch.
+- NEW POST /api/webhooks/intelligence — signed (X-Wobble-Signature / INTELLIGENCE_WEBHOOK_SECRET) public ingestion endpoint for n8n / any pusher.
+- NEW src/lib/intelligence/scout.ts runCompetitorScout — built-in Apify-gated Competitor Scout: scrapeInstagram(handle) → ingest posts as pending. Inert (configured:false) without APIFY_API_KEY. NEW POST /api/intelligence/scout (founder-gated).
+- tests/intelligence-ingest.test.ts (4).
+
+VERIFIED LIVE: ingested a competitor_reel → stored pending, transcript+extracted.hook captured; confirmed the pending item does NOT leak into approved retrieval context (approval-gating works). Full loop write→gate→read is real. Build clean.
+
+Decision recap: built-in agent teams + Apify for ingestion (runs on VPS, no n8n dependency); n8n optional via the same signed webhook. Transcripts/frame-summaries for reels arrive via n8n or a transcript actor into the SAME ingest pipe.
+
+NEXT (Phase 3): analysis workers — Competitor/Social/Transcript analyst graph (pending items → insight PROPOSALS, approval-gated) + register intelligence job handlers in worker registry. Then Phase 4 Dreamer + Performance Learning + Freshness scheduled workers. Then Phase 5 Intelligence Command Center UI (research targets, competitor feed, scout button, suggestions inbox).
