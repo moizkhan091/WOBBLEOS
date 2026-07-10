@@ -3384,3 +3384,15 @@ REMAINING planned: social + webstats (need real analytics connectors — should 
 Build clean. Wired this session: Tasks, Meetings, Projects, AI Chat (+greeting+files+model picker), Decision Room, Offer Lab, Workers, Settings, Automations, Company 360, SEO, Research Radar, Backup. Audit/break pass done.
 
 REMAINING planned tiles: social (Social Intelligence) + webstats (Website Analytics) — these genuinely need real analytics connectors (IG/LinkedIn insights, GA); per ENGINEERING_STANDARDS they should be honest-gated, NOT faked with dummy charts. media (Media Studio) kept/flagged (fal.ai, no key). Role dashboards optional (Command Center already aggregates). Deploy deferred (VPS+SSH).
+
+## 2026-07-10 - Claude (Opus 4.8) - Social Intelligence (planned→wired, real AI)
+
+Migration 0024: social_strategies table.
+- domain/social.ts (5 platforms, socialOutputSchema) + lib/social (add/list/archive + generateSocialStrategy = REAL AI: LLM builds positioning, cadence, 3-5 pillars, 6-10 hooks, competitor angles, 6-10 post ideas with format+hook; role social_strategist). Routes /api/social + /[id]/action. SocialPage: pick platform+niche → auto-build, expandable strategy (pillars/hooks/angles chips + post-idea cards). Tile planned→wired.
+- tests/social.test.ts (3).
+
+DELIBERATELY NOT faked: this is an AI *strategy* module (real value), NOT fake follower/reach metrics — we have no IG/LinkedIn insights connector, so inventing numbers would violate ENGINEERING_STANDARDS.
+
+VERIFIED: full suite 452 green; build clean. LIVE AI: "AI voice agents for real estate" (instagram) → positioning + 5 pillars + hooks + 10 post ideas. Test data cleaned.
+
+REMAINING planned tiles: webstats (Website Analytics — genuinely needs a GA/Plausible connector; will honest-gate, not fake traffic numbers), media (Media Studio — fal.ai gen, no key; kept/flagged). Deploy deferred (VPS+SSH).

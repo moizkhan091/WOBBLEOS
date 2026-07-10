@@ -4516,6 +4516,87 @@ function RadarPage() {
   );
 }
 
+interface SocialRowUI { id: string; platform: string; niche: string; status: string; strategy: { positioning?: string; cadence?: string; pillars?: string[]; hooks?: string[]; competitorAngles?: string[]; contentIdeas?: Array<{ format?: string; idea: string; hook?: string }> } }
+const SOCIAL_PLATFORMS_UI = ["multi", "instagram", "linkedin", "tiktok", "x"];
+function SocialPage() {
+  const state = useApi<{ strategies: SocialRowUI[] }>("/api/social?limit=100");
+  const [f, setF] = useState({ platform: "instagram", niche: "" });
+  const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const rows = state.data?.strategies ?? [];
+  function reload() { state.reload(); }
+  async function create() {
+    if (!f.niche.trim()) { setMsg("Enter a niche or account."); return; }
+    setBusy("create"); setMsg(null);
+    try {
+      const r = await fetch("/api/social", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: f.platform, niche: f.niche }) });
+      if (r.ok) { const j = await r.json(); setF({ platform: f.platform, niche: "" }); reload(); if (j.strategy?.id) generate(j.strategy.id); } else setMsg("Error creating.");
+    } finally { setBusy(null); }
+  }
+  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/social/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Generate failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
+  async function archive(id: string) { setBusy(id); try { await fetch(`/api/social/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive" }) }); reload(); } finally { setBusy(null); } }
+  const chips = (title: string, items?: string[]) => items?.length ? (
+    <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>{title}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{items.map((x, i) => <Tag key={i} text={x} color={C.gray} />)}</div></div>
+  ) : null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Strategies" value={String(rows.length)} icon="Share2" color={C.blue} />
+        <Kpi label="Post ideas" value={String(rows.reduce((s, r) => s + (r.strategy.contentIdeas?.length ?? 0), 0))} icon="Lightbulb" color={C.lime} />
+        <Kpi label="Active" value={String(rows.filter((r) => r.status === "active").length)} icon="Zap" color="#B87CFF" />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New social strategy</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Pick a platform + niche — WOBBLE builds positioning, pillars, hooks, competitor angles and post ideas.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select value={f.platform} onChange={(e) => setF((s) => ({ ...s, platform: e.target.value }))} style={selectStyle}>{SOCIAL_PLATFORMS_UI.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+          <input value={f.niche} onChange={(e) => setF((s) => ({ ...s, niche: e.target.value }))} placeholder="Niche / account (e.g. AI for dental clinics, @wobble)" style={{ ...inputStyle, flex: 1, minWidth: 240 }} />
+          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : busy?.startsWith("gen_") ? "Building…" : "Build strategy"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+      {rows.length === 0 ? <StateBlock kind="empty" message="No strategies yet. Pick a platform + niche and WOBBLE builds the content plan." /> : rows.map((r) => (
+        <Panel key={r.id}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)}>
+            <Tag text={r.platform} color={C.blue} />
+            <Tag text={r.status} color={r.status === "active" ? C.lime : C.gray} />
+            <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{r.niche}</span>
+            <span style={{ fontSize: 11, color: faint }}>{r.strategy.contentIdeas?.length ?? 0} ideas</span>
+            <Icon name={open === r.id ? "ChevronDown" : "ChevronRight"} size={15} />
+          </div>
+          {r.strategy.positioning ? <div style={{ fontSize: 12, marginTop: 7 }}>{r.strategy.positioning}{r.strategy.cadence ? <span style={{ color: faint }}> · {r.strategy.cadence}</span> : null}</div> : null}
+          {open === r.id ? (
+            <div style={{ marginTop: 12 }}>
+              {chips("Content pillars", r.strategy.pillars)}
+              {chips("Hooks", r.strategy.hooks)}
+              {chips("Competitor / differentiation angles", r.strategy.competitorAngles)}
+              {r.strategy.contentIdeas?.length ? (
+                <>
+                  <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>Post ideas</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {r.strategy.contentIdeas.map((c, i) => (
+                      <div key={i} style={{ ...card, padding: "8px 11px" }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{c.format ? <Tag text={c.format} color={C.blue} /> : null}<span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.idea}</span></div>
+                        {c.hook ? <div style={{ fontSize: 11.5, color: C.lime, marginTop: 3 }}>Hook: {c.hook}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => generate(r.id)} disabled={busy === "gen_" + r.id} style={busy === "gen_" + r.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + r.id ? "Building…" : r.strategy.pillars?.length ? "⚡ Rebuild" : "⚡ Build"}</button>
+            {r.status !== "archived" ? <button onClick={() => archive(r.id)} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Archive</button> : null}
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 function BackupPage() {
   const state = useApi<{ tables: { key: string; rows: number }[]; totalRows: number }>("/api/backup");
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
@@ -4590,6 +4671,7 @@ const WIRED: Record<string, React.ComponentType> = {
   automations: AutomationsPage,
   seo: SeoPage,
   radar: RadarPage,
+  social: SocialPage,
   backup: BackupPage,
   brain: BrainPage,
   memory: MemoryPage,

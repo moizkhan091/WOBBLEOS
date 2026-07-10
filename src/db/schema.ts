@@ -1483,3 +1483,21 @@ export const radarScans = pgTable("radar_scans", {
 }, (table) => [
   index("radar_scans_status_idx").on(table.status),
 ]);
+
+// ---------------------------------------------------------------- Social Intelligence (growth)
+// AI platform strategy: positioning, content pillars, hooks, competitor angles, post ideas.
+
+export const socialStrategies = pgTable("social_strategies", {
+  id: id(),
+  platform: varchar("platform", { length: 24 }).notNull().default("multi"), // instagram|linkedin|tiktok|x|multi
+  niche: text("niche").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("draft"), // draft|active|archived
+  strategy: jsonb("strategy").$type<{ positioning?: string; cadence?: string; pillars?: string[]; hooks?: string[]; competitorAngles?: string[]; contentIdeas?: Array<{ format?: string; idea: string; hook?: string }> }>().notNull().default({}),
+  createdBy: varchar("created_by", { length: 120 }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("social_strategies_status_idx").on(table.status),
+]);
