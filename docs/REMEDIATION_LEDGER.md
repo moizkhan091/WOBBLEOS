@@ -57,7 +57,12 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | 10 | Scout → analyze auto-chain | scout job enqueues `intelligence.analyze` (deduped per scope/day) when it ingests |
 | 11-12 | Real provider health checks / real states | `checkConnectionHealth` makes a real timeout-bounded probe → healthy/failed/unavailable/blocked/unverified; revoked key ≠ healthy |
 
-**Phases 2-10 — IN PROGRESS / QUEUED** (structured handoff envelopes → departments → QA boards → full Research & Intelligence dept → founder taste learning → selective artifact revision → org self-improvement → real Free Audit → real Media Studio). Migration order per mandate: PaidAudit → FreeAudit → Proposal → Research → Content → CRM/Sales/Finance/Delivery → Ask → rest. Each vertical: verified, tested, gated, committed before the next.
+**Phase 2 — structured inter-agent handoff envelopes — FOUNDATION + 2 workflows DONE.**
+- `domain/handoff.ts` (`ba58dff`): the versioned `HandoffEnvelope` (30 fields — lineage, tenancy/client scope, authorizedMemoryScopes, provenance, request, expectedOutputSchema, idempotencyKey, schemaVersion) + `buildHandoffEnvelope`/`nextHandoff`/`validateHandoff`. `validateHandoff` enforces strict schema, schema-version compatibility, **client/tenant isolation** (wrong-workspace rejected), **memory-scope authorization** (envelope can't exceed the receiver's grant), required-inputs. 9 tests.
+- **Real usage (not decorative):** the **paid-audit** graph (`ba58dff`) and the **content** graph (`d797b6f`) build a validated entry envelope (isolation + memory-auth enforced before any node) and emit an auditable `agent.handoff` with correlation/causation lineage at each hop. Tests assert the hops fire client-scoped with one correlation id.
+- **Remaining Phase 2:** handoff runtime persistence (table) + dead-letter/redrive/duplicate-consumption at the queue layer; migrate the remaining verticals (FreeAudit, Proposal, Research, CRM/Sales/Finance/Delivery, Ask) — several of which must first be BUILT as multi-agent workflows (Phases 5/9).
+
+**Phases 3-10 — QUEUED** (real departments → QA boards → full Research & Intelligence dept → founder taste learning → selective artifact revision → org self-improvement → real Free Audit → real Media Studio). Each vertical: verified, tested, gated, committed before the next. This is a large multi-session program; every increment lands green on `main`.
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
