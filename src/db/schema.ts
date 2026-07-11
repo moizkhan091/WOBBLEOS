@@ -379,7 +379,10 @@ export const approvals = pgTable("approvals", {
   metadata: metadata(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+}, (table) => [
+  index("approvals_status_idx").on(table.status),
+  index("approvals_created_at_idx").on(table.createdAt),
+]);
 
 export const approvalActions = pgTable("approval_actions", {
   id: id(),
@@ -481,7 +484,10 @@ export const modelRuns = pgTable("model_runs", {
   linkedEntityId: text("linked_entity_id"),
   providerRunId: text("provider_run_id"),
   createdAt: createdAt(),
-});
+}, (table) => [
+  index("model_runs_created_at_idx").on(table.createdAt),
+  index("model_runs_module_created_idx").on(table.module, table.createdAt),
+]);
 
 export const providerRuns = pgTable("provider_runs", {
   id: id(),
