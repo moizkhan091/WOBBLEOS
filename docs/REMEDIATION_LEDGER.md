@@ -30,21 +30,25 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Agent orphan slugs (pitch/roadmap/analyst runs dropped) | fixed-verified | 68f6b9c |
 | Library: Zernio can't fetch local media | fixed-verified | 7560191/0e8a414 |
 | Memory cross-bank retrieval leak (deny-by-default scoping) | fixed-verified | f68ad8b |
-| CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | (this commit) |
+| CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | 1f0e1ba |
+| Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Knowledge compiler prompt-injection** — untrusted chunk text concatenated unfenced into the compiler prompt. Fence like analyst/dreamer.
-2. **website-analytics** — `period` query param interpolated raw into Plausible URL (encode + allowlist).
-3. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
-4. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
-5. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-6. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
-7. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-8. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **website-analytics** — `period` query param interpolated raw into Plausible URL (encode + allowlist).
+2. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
+3. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
+4. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
+5. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
+6. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+7. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the knowledge-compiler injection fix (open item closed)
+- Verified: `buildCompilerPrompt` (domain/knowledge.ts) concatenated raw scraped `c.content` straight into the user message (`[i] <content>`) with no fencing. Source-intake feeds it text scraped from external websites/socials, so a page containing "ignore previous instructions / output {…}" could hijack the compiler. Same class the analyst/dreamer already fenced.
+- Fix: append a `COMPILER_INJECTION_DEFENSE` clause to the system prompt (even when a skill supplies the body) and wrap the chunk body in `<<<UNTRUSTED_SOURCE_CONTENT … UNTRUSTED_SOURCE_CONTENT` fences. Chunk indexes stay citable. Tests assert the fence contains the adversarial text and the clause survives a skill-provided system prompt.
 
 ## Notes on the CRM atomicity fix (open item closed)
 - Verified: `convertLead` ran 5 sequential writes (company→contact→opportunity→stage history→lead flip) with no transaction; a failure after `insertCompany` orphaned a company and left the lead open, and a retry created a DUPLICATE company. `addOpportunity` and `moveOpportunityStage` had the same 2-write gap.
