@@ -8,7 +8,7 @@ CI = Node 22 `typecheck → test → build`.
 
 ## ⭐ CURRENT STATE (authoritative — resumed sessions start HERE)
 _Reconciled against the real repo, not stale headers._
-- **Branch:** `main` · **HEAD:** `5f90e2a` (approval-effects outbox)
+- **Branch:** `main` · **HEAD:** `b8d35a1` (docs reconcile, atop `5f90e2a` approval-effects outbox)
 - **Latest migration:** `0031_approval_effects` (33 applied to the local dev DB; zero drift). 0027 graph_checkpoints · 0028 published-post unique · 0029 payments ledger · 0030 handoff runtime · 0031 approval effects.
 - **Gate at HEAD:** typecheck 0 · **570 tests (77 files)** · build 0. Real-OpenRouter smoke PASS; real-DB proofs PASS for checkpoints, payments ledger, **handoff runtime**, and **approval-effects outbox**.
 - **Phase 1 (release-blocking defects): COMPLETE** — `2bb2230` (FIX #21 payments), `4a71655` (FIX #22 approvals/workflow/health). **Approval cross-store atomicity: now fixed-verified** via the transactional-outbox (`5f90e2a`) — crash-resume/exactly-once/retry tests + real-DB proof.
@@ -68,10 +68,10 @@ _Reconciled against the real repo, not stale headers._
 | 10 | Scout → analyze auto-chain | scout job enqueues `intelligence.analyze` (deduped per scope/day) when it ingests |
 | 11-12 | Real provider health checks / real states | `checkConnectionHealth` makes a real timeout-bounded probe → healthy/failed/unavailable/blocked/unverified; revoked key ≠ healthy |
 
-**Phase 2 — structured inter-agent handoff envelopes — FOUNDATION + 2 workflows DONE.**
+**Phase 2 — structured inter-agent handoff envelopes — see the ⭐ block for the authoritative status (FOUNDATION + DURABLE RUNTIME + paid-audit + content DONE).** Historical detail below.
 - `domain/handoff.ts` (`ba58dff`): the versioned `HandoffEnvelope` (30 fields — lineage, tenancy/client scope, authorizedMemoryScopes, provenance, request, expectedOutputSchema, idempotencyKey, schemaVersion) + `buildHandoffEnvelope`/`nextHandoff`/`validateHandoff`. `validateHandoff` enforces strict schema, schema-version compatibility, **client/tenant isolation** (wrong-workspace rejected), **memory-scope authorization** (envelope can't exceed the receiver's grant), required-inputs. 9 tests.
-- **Real usage (not decorative):** the **paid-audit** graph (`ba58dff`) and the **content** graph (`d797b6f`) build a validated entry envelope (isolation + memory-auth enforced before any node) and emit an auditable `agent.handoff` with correlation/causation lineage at each hop. Tests assert the hops fire client-scoped with one correlation id.
-- **Remaining Phase 2:** handoff runtime persistence (table) + dead-letter/redrive/duplicate-consumption at the queue layer; migrate the remaining verticals (FreeAudit, Proposal, Research, CRM/Sales/Finance/Delivery, Ask) — several of which must first be BUILT as multi-agent workflows (Phases 5/9).
+- Durable runtime BUILT (`47459ae`): `handoffs` table (migration 0030), delivery state machine, leased claims, retry/backoff, dead-letter, redrive, dedup, retention, scheduler self-heal, command-centre counts. Real-DB proof passes.
+- **Remaining Phase 2** (as of HEAD `b8d35a1`): (a) prove destination consumers EXECUTE from claimed handoffs (the graphs persist handoffs but still call the next node in-process); (b) Command Centre handoff operations (list/inspect/retry/redrive/cancel); (c) migrate the remaining verticals (Proposal, Research, CRM/Sales/Finance/Delivery, Ask) — some must first be BUILT as multi-agent workflows (Phases 5/9).
 
 **Phases 3-10 — QUEUED** (real departments → QA boards → full Research & Intelligence dept → founder taste learning → selective artifact revision → org self-improvement → real Free Audit → real Media Studio). Each vertical: verified, tested, gated, committed before the next. This is a large multi-session program; every increment lands green on `main`.
 
@@ -82,7 +82,7 @@ _Reconciled against the real repo, not stale headers._
 ## OPEN — reclassified into the phase program (the loose "open list" is superseded)
 - **Connections health check shallow** → FIXED (FIX #22, items 11-12) — real timeout-bounded probe; revoked key = `failed`.
 - **Taste learning write-only loop** → Phase 6 (founder taste + feedback learning) — a mandate phase, not a loose item.
-- **Approval cross-store atomicity** → REOPENED (see the ⭐ current-state block + Phase-1 table row 5) — being fixed via an effect-ledger + reconciliation.
+- **Approval cross-store atomicity** → **fixed-verified** (`5f90e2a`) via the transactional-outbox + reconciliation (crash-resume/exactly-once/retry tests + real-DB proof). Source path migrated; remaining approval paths' coverage tracked in the Phase-2 section.
 - Remaining mediums/lows → tracked in `MODULE_DEEP_AUDIT.md`; folded into the relevant phase as each vertical is built.
 - **VPS deployment** → BLOCKED on external access (no VPS host/SSH/credentials). Deploy only after the full gate passes.
 
@@ -164,4 +164,4 @@ Everything independent of VPS access continues; the deployment itself resumes on
 
 ## Process notes
 - ALWAYS run full `vitest run` + `npm run typecheck` + `npm run build` before committing (Fix #7 went red from skipping the full suite).
-- Migrations: 0026 is the last (index migration). Recovered from a bad 0026/0027 (duplicate HNSW) — clean now, zero drift.
+- Migrations (HISTORICAL note): 0026 was the last at the time this line was written. **Current latest = 0031** (see the ⭐ block). Recovered once from a bad 0026/0027 (duplicate HNSW) — clean since, zero drift.
