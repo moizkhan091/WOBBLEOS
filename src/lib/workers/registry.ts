@@ -6,6 +6,7 @@ import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
 import { runPaidAuditJobHandler } from "@/lib/paid-audit-graph";
 import { runScoutJobHandler, runAnalyzeJobHandler, runDreamerJobHandler } from "@/lib/intelligence/jobs";
+import { runSourceIntakeJobHandler } from "@/lib/source-intake";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -32,6 +33,7 @@ export const generalRegistry: JobHandlerRegistry = {
   "intelligence.scout": runScoutJobHandler,
   "intelligence.analyze": runAnalyzeJobHandler,
   "intelligence.dream": runDreamerJobHandler,
+  "source.intake": runSourceIntakeJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {

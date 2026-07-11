@@ -3,6 +3,7 @@ import { files as filesTable, sourceChunks, sourceIntakeRuns, sources, sourceTru
 import { getDb, type Db } from "@/db";
 import { createApproval, applyApprovalAction, type ApprovalRow, type ApprovalStore } from "@/lib/approvals";
 import { enqueueKnowledgeCompileJob } from "@/lib/knowledge";
+import { embedTexts } from "@/lib/embeddings";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
@@ -209,14 +210,15 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     metadata: { trustLevel: trust.slug, canUpdateBrain: trust.canUpdateBrain, approvalId: input.approvalId },
   });
 
-  // Chunk 13: once a source is approved, compile its knowledge into the interlinked note base.
-  // Best-effort + env-gated so it never blocks approval; the job skips gracefully if intake
-  // hasn't produced chunks yet (see runKnowledgeCompileJobHandler).
+  // On approval: run intake (scrape → chunk → embed) FIRST; the intake worker then chains to the
+  // knowledge compiler once chunks exist. Best-effort + env-gated so it never blocks approval.
   if (process.env.DATABASE_URL) {
     try {
-      await enqueueKnowledgeCompileJob({ sourceId: source.id, triggeredBy: input.approvedBy });
+      const { enqueueJob } = await import("@/lib/jobs");
+      await enqueueJob({ queue: "general", type: "source.intake", payload: { sourceId: source.id, triggeredBy: input.approvedBy }, linkedModule: "source_library", idempotencyKey: `source.intake:${source.id}` });
     } catch {
-      /* never block a founder approval on a queue hiccup */
+      // Fallback: if intake couldn't be queued, still try to compile whatever chunks exist.
+      try { await enqueueKnowledgeCompileJob({ sourceId: source.id, triggeredBy: input.approvedBy }); } catch { /* never block approval */ }
     }
   }
 
@@ -285,6 +287,12 @@ export async function attachSourceChunks(
   }
 
   const rows = buildSourceChunkRows(input, { now });
+  // Embed chunk content so it's actually retrievable — searchSourceChunks filters on a non-null
+  // embedding, so previously every attached chunk was invisible. Best-effort (null if no embedder).
+  try {
+    const vectors = await embedTexts(rows.map((r) => r.content));
+    if (vectors) rows.forEach((r, i) => { if (vectors[i]) r.embedding = vectors[i]; });
+  } catch { /* embedding is best-effort; chunk still stored */ }
   await store.insertSourceChunks(rows);
   await recordAudit({
     eventType: "source.chunks_attached",
