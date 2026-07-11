@@ -308,8 +308,17 @@ export async function markAssetPostedOnPlatform(
     row.status = "published";
     row.publishedAt = now;
     row.publisherRef = input.publisherRef ?? null;
-    await store.insertScheduledPost(row);
-    post = row;
+    try {
+      await store.insertScheduledPost(row);
+      post = row;
+    } catch (error) {
+      // Lost a concurrent mark-posted race: the partial unique index (asset+platform WHERE published)
+      // rejected this second insert. Re-read the winner's published row and return it (idempotent)
+      // instead of failing or creating a duplicate.
+      const raced = store.findPostByAssetAndPlatform ? await store.findPostByAssetAndPlatform(assetId, platform) : null;
+      if (raced && raced.status === "published") post = raced;
+      else throw error;
+    }
   }
 
   await store.updateAsset(assetId, { status: "published", updatedAt: now });

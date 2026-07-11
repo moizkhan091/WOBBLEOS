@@ -38,7 +38,8 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | 0469dd0 |
 | Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | d351b13 |
 | Graph checkpointing + resumability (content + paid-audit) | fixed-verified | 857c0dd |
-| Hardening: content-graph idempotency + automation validation + Plausible host | fixed-verified | (this commit) |
+| Hardening: content-graph idempotency + automation validation + Plausible host | fixed-verified | f050eae |
+| markAssetPostedOnPlatform duplicate published rows (partial unique index) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
@@ -46,8 +47,7 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 
 ## OPEN — verified/likely, prioritized (next)
 1. **Taste learning is a write-only loop** (product) — `recordFeedbackEvent` updates `taste_profiles` but no generation worker reads them back. Wire `getTasteContextForGeneration` into content-worker/graph. (Bigger — a real feature.)
-2. **markAssetPostedOnPlatform find-or-create** — read-then-write with no unique key → concurrent duplicate published rows.
-3. **Connections health check is shallow** — a revoked/rotated API key still shows "healthy" (no live provider ping).
+2. **Connections health check is shallow** — a revoked/rotated API key still shows "healthy" (no live provider ping).
 4. Remaining mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
 5. **VPS deployment** — BLOCKED on external access (no VPS host/SSH/credentials in the local dev environment). See "VPS status" below.
 
@@ -74,6 +74,11 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 - Full gate: `typecheck 0`, **523 vitest pass (74 files)**, `build 0`.
 
 **Mandate scenario coverage**: late-node failure ✓, interruption/termination ✓ (durable DB + fresh-store read), retry/resume ✓, app restart ✓, worker restart ✓, duplicate workers ✓, duplicate job delivery ✓, concurrent execution ✓, malformed/corrupted checkpoints ✓, partial DB writes ✓ (best-effort save), schema-version mismatch ✓, idempotency ✓, retention/cleanup ✓, cancellation ✓ (clear), recovery after temporary DB failure ✓ (graceful degrade).
+
+## Notes on FIX #19 (mark-posted duplicate rows)
+- Verified: `markAssetPostedOnPlatform` did read-check-write (`findPostByAssetAndPlatform` → update-or-insert) with no DB guard, so two concurrent mark-posted calls (double-click / two founders) could each insert a published row for the same asset+platform.
+- Fix: partial unique index `scheduled_posts_published_asset_platform_uidx` on `(asset_id, platform) WHERE status='published'` (migration `0028`) — at most one published row per asset+platform; non-published history (scheduled/canceled/reschedule) is unaffected. The service catches the rejected duplicate insert and re-reads the winner's row (idempotent, no throw, no dupe). **Rollback**: `DROP INDEX scheduled_posts_published_asset_platform_uidx;`.
+- Verified on the live dev DB: migration applied, zero drift, DB-level proof (2nd published row rejected, non-published allowed) + a service test for the race-catch.
 
 ## VPS status — BLOCKED on external access (recorded, not faked)
 Actual controlled VPS deployment is **not possible from this environment** and has NOT been performed (no fake completion). Concrete blockers, each requiring founder-provided access:

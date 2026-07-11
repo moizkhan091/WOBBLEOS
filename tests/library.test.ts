@@ -290,6 +290,23 @@ describe("library service", () => {
     expect(await listScheduledPosts({ platform: "linkedin", status: "published" }, { store })).toHaveLength(1);
   });
 
+  it("mark-posted is race-safe: a rejected duplicate insert re-reads the winner (no duplicate published row)", async () => {
+    const { store, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+
+    // Simulate LOSING the concurrent race: our insert is rejected by the partial unique index, but a
+    // concurrent winner has already published. The winner row appears the moment our insert is attempted.
+    const winner = buildScheduledPostRow({ assetId: asset.id, platform: "instagram", scheduledAt: now, publisher: "manual" }, { now, id: "winner_pub" });
+    winner.status = "published";
+    winner.publishedAt = now;
+    store.insertScheduledPost = async () => { posts.set(winner.id, winner); throw new Error("duplicate key value violates unique constraint"); };
+
+    const post = await markAssetPostedOnPlatform(asset.id, "instagram", {}, { store, now, recordAudit: async () => {} });
+    expect(post.id).toBe("winner_pub"); // returned the winner — did NOT create a duplicate or throw
+    expect(post.status).toBe("published");
+    expect([...posts.values()].filter((p) => p.status === "published" && p.platform === "instagram")).toHaveLength(1);
+  });
+
   it("marking posted promotes an existing scheduled post instead of duplicating", async () => {
     const { store, posts } = makeStore();
     const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });

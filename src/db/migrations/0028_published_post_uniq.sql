@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "scheduled_posts_published_asset_platform_uidx" ON "scheduled_posts" USING btree ("asset_id","platform") WHERE status = 'published';

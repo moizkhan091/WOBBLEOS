@@ -1051,6 +1051,10 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   index("scheduled_posts_scheduled_at_idx").on(table.scheduledAt),
   index("scheduled_posts_asset_id_idx").on(table.assetId),
   index("scheduled_posts_platform_idx").on(table.platform),
+  // At most ONE published row per asset+platform — the DB backstop against a concurrent
+  // mark-posted race creating duplicate published rows. Partial, so non-published rows
+  // (scheduled/canceled history, reschedules) are unaffected.
+  uniqueIndex("scheduled_posts_published_asset_platform_uidx").on(table.assetId, table.platform).where(sql`status = 'published'`),
 ]);
 
 // ---------------------------------------------------------------- Wobble ERP Control Layer (CRM spine)
