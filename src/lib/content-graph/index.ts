@@ -14,7 +14,8 @@ import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
 import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { buildHandoffEnvelope, nextHandoff, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
-import { dispatchHandoff, completeHandoff, type HandoffStore } from "@/lib/handoff";
+import { type HandoffStore } from "@/lib/handoff";
+import { runHandoffHop, HandoffAlreadyProcessedError, type HandoffTransportContext } from "@/lib/handoff-transport";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import {
   CONTENT_GRAPH_AGENTS,
@@ -203,24 +204,36 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
         requestedAction: "decide topic/angle/format/platform",
         expectedOutputSchema: "creative_brief",
         confidence: 0.7,
+        // Stable per-agent dedup key: a retry re-dispatching this step dedups to the existing handoff.
+        idempotencyKey: `${input.graphRunId ?? track.id}:${CONTENT_GRAPH_AGENTS.strategy}`,
       },
       { now: deps.now ?? new Date() },
     );
     const entryCheck = validateHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES });
     if (!entryCheck.ok) throw new Error(`content-graph: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
     const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
-    const emitHandoff = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
-      envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs }, { now: deps.now ?? new Date() });
+    const transportCtx: HandoffTransportContext | null = handoffStore
+      ? { store: handoffStore, clientWorkspaceId: envelope.clientWorkspaceId, grantedMemoryScopes: CONTENT_MEMORY_SCOPES, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now: deps.now, consumer: "content" }
+      : null;
+
+    // Address the envelope to the next AGENT (fresh causation lineage + stable per-agent dedup key).
+    const advance = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
+      envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs, idempotencyKey: `${envelope.workflowId}:${toAgent}` }, { now: deps.now ?? new Date() });
       await recordAudit({ eventType: "agent.handoff", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, taskId: envelope.taskId, causationId: envelope.causationId, from: fromAgent, to: toAgent, department: "content" } });
-      // Durable backbone: persist + mark consumed (synchronous graph). Best-effort — never breaks the graph.
-      if (handoffStore) {
-        try {
-          const hdeps = { store: handoffStore, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now: deps.now ?? new Date() };
-          const { handoff, deduped } = await dispatchHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES }, hdeps);
-          if (!deduped) await completeHandoff(handoff.id, {}, hdeps);
-        } catch (error) {
-          console.error("handoff persist failed (non-fatal):", error instanceof Error ? error.message : error);
-        }
+    };
+
+    // Run an AGENT's work (one or two LLM nodes) THROUGH the durable handoff: dispatch → claim (lease) →
+    // validate → execute → ack → complete. The agent runs only after a valid claim of the handoff
+    // addressed to it. With no handoff store (dev/test without DB) it runs directly. On a retry whose
+    // step was already delivered, the handoff dedups and we resume from the node checkpoint(s).
+    const consumeAgent = async <T>(runWork: () => Promise<T>): Promise<T> => {
+      if (!transportCtx) return runWork();
+      try {
+        const { result } = await runHandoffHop<T>(envelope, async () => ({ value: await runWork() }), transportCtx);
+        return result;
+      } catch (error) {
+        if (error instanceof HandoffAlreadyProcessedError) return runWork(); // resume from checkpoint
+        throw error;
       }
     };
 
@@ -239,88 +252,95 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       knowledgeTopics: [...new Set(stratKnowledge.notes.map((n) => n.title))],
     });
     // Fold live approved intelligence (competitor patterns, winning/failed hooks, trends) into the brief.
-    const { parsed: briefParsed, run: strategyRun } = await runNodeWithTelemetry(deps, runNode, {
-      slug: CONTENT_GRAPH_AGENTS.strategy,
-      role: CONTENT_GRAPH_ROLES.strategy,
-      linkedEntityId: track.id,
-      messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
-      parse: (t) => parseJsonObject(t, creativeBriefSchema),
-      required: true,
-      parseErr: "content-graph: strategist returned an unparseable brief",
-      summarize: (brief) => ({ inputSummary: input.objective.slice(0, 300), outputSummary: `${brief!.format} on ${brief!.platform}: ${brief!.angle}`.slice(0, 400) }),
-      checkpoint: bindNodeCheckpoint(cpCtx, "strategy", 0),
+    const brief = await consumeAgent(async () => {
+      const { parsed: briefParsed, run: strategyRun } = await runNodeWithTelemetry(deps, runNode, {
+        slug: CONTENT_GRAPH_AGENTS.strategy,
+        role: CONTENT_GRAPH_ROLES.strategy,
+        linkedEntityId: track.id,
+        messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
+        parse: (t) => parseJsonObject(t, creativeBriefSchema),
+        required: true,
+        parseErr: "content-graph: strategist returned an unparseable brief",
+        summarize: (b) => ({ inputSummary: input.objective.slice(0, 300), outputSummary: `${b!.format} on ${b!.platform}: ${b!.angle}`.slice(0, 400) }),
+        checkpoint: bindNodeCheckpoint(cpCtx, "strategy", 0),
+      });
+      if (strategyRun.runId) modelRunIds.push(strategyRun.runId);
+      return briefParsed!;
     });
-    if (strategyRun.runId) modelRunIds.push(strategyRun.runId);
-    const brief = briefParsed!;
-    await emitHandoff(CONTENT_GRAPH_AGENTS.strategy, CONTENT_GRAPH_AGENTS.research, "evidence_pack", "gather grounded evidence for the angle", { brief });
+    await advance(CONTENT_GRAPH_AGENTS.strategy, CONTENT_GRAPH_AGENTS.research, "evidence_pack", "gather grounded evidence for the angle", { brief });
 
     // ---- Node 2: RESEARCH (grounded evidence for the chosen angle) ----
     const evidenceContext = await retrieve(`${brief.topic} ${brief.angle}`);
-    const { parsed: evidenceParsed, run: researchRun } = await runNodeWithTelemetry(deps, runNode, {
-      slug: CONTENT_GRAPH_AGENTS.research,
-      role: CONTENT_GRAPH_ROLES.research,
-      linkedEntityId: track.id,
-      messages: buildEvidencePrompt({ brief, notes: evidenceContext.notes, chunks: evidenceContext.chunks }),
-      parse: (t) => parseJsonObject(t, evidencePackSchema),
-      required: true,
-      parseErr: "content-graph: researcher returned an unparseable evidence pack",
-      summarize: (ev) => {
-        const prov = collectProvenance(ev!.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
-        return { inputSummary: `${brief.topic} / ${brief.angle}`.slice(0, 300), outputSummary: `${ev!.supportingPoints.length} points, ${prov.sourceIds.length} sources`, sourceIdsUsed: prov.sourceIds, memoryIdsUsed: prov.insightIds };
-      },
-      checkpoint: bindNodeCheckpoint(cpCtx, "research", 1),
+    const evidence = await consumeAgent(async () => {
+      const { parsed: evidenceParsed, run: researchRun } = await runNodeWithTelemetry(deps, runNode, {
+        slug: CONTENT_GRAPH_AGENTS.research,
+        role: CONTENT_GRAPH_ROLES.research,
+        linkedEntityId: track.id,
+        messages: buildEvidencePrompt({ brief, notes: evidenceContext.notes, chunks: evidenceContext.chunks }),
+        parse: (t) => parseJsonObject(t, evidencePackSchema),
+        required: true,
+        parseErr: "content-graph: researcher returned an unparseable evidence pack",
+        summarize: (ev) => {
+          const prov = collectProvenance(ev!.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
+          return { inputSummary: `${brief.topic} / ${brief.angle}`.slice(0, 300), outputSummary: `${ev!.supportingPoints.length} points, ${prov.sourceIds.length} sources`, sourceIdsUsed: prov.sourceIds, memoryIdsUsed: prov.insightIds };
+        },
+        checkpoint: bindNodeCheckpoint(cpCtx, "research", 1),
+      });
+      if (researchRun.runId) modelRunIds.push(researchRun.runId);
+      return evidenceParsed!;
     });
-    if (researchRun.runId) modelRunIds.push(researchRun.runId);
-    const evidence = evidenceParsed!;
     const provenance = collectProvenance(evidence.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
-    await emitHandoff(CONTENT_GRAPH_AGENTS.research, CONTENT_GRAPH_AGENTS.copywriting, "content_copy", "write in-brand copy", { evidence });
+    await advance(CONTENT_GRAPH_AGENTS.research, CONTENT_GRAPH_AGENTS.copywriting, "content_copy", "write in-brand copy", { evidence });
 
-    // ---- Node 3: COPYWRITER (draft) ----
-    const { parsed: draftParsed, run: draftRun } = await runNodeWithTelemetry(deps, runNode, {
-      slug: CONTENT_GRAPH_AGENTS.copywriting,
-      role: CONTENT_GRAPH_ROLES.copywriting,
-      linkedEntityId: track.id,
-      messages: buildCopyDraftPrompt({ brief, evidence, track: trackCtx }),
-      parse: (t) => parseJsonObject(t, copyDraftSchema),
-      required: true,
-      parseErr: "content-graph: copywriter returned an unparseable draft",
-      summarize: (d) => ({ inputSummary: "draft", outputSummary: d!.hook.slice(0, 200) }),
-      checkpoint: bindNodeCheckpoint(cpCtx, "draft", 2),
-    });
-    if (draftRun.runId) modelRunIds.push(draftRun.runId);
-    const draft = draftParsed!;
+    // ---- Copywriter AGENT: draft (Node 3) then self-critique → revise (Node 4), one claimed handoff. ----
+    const finalCopy = await consumeAgent(async () => {
+      const { parsed: draftParsed, run: draftRun } = await runNodeWithTelemetry(deps, runNode, {
+        slug: CONTENT_GRAPH_AGENTS.copywriting,
+        role: CONTENT_GRAPH_ROLES.copywriting,
+        linkedEntityId: track.id,
+        messages: buildCopyDraftPrompt({ brief, evidence, track: trackCtx }),
+        parse: (t) => parseJsonObject(t, copyDraftSchema),
+        required: true,
+        parseErr: "content-graph: copywriter returned an unparseable draft",
+        summarize: (d) => ({ inputSummary: "draft", outputSummary: d!.hook.slice(0, 200) }),
+        checkpoint: bindNodeCheckpoint(cpCtx, "draft", 2),
+      });
+      if (draftRun.runId) modelRunIds.push(draftRun.runId);
+      const draft = draftParsed!;
 
-    // ---- Node 4: COPYWRITER (self-critique -> revise) ----
-    const { parsed: revision, run: reviseRun } = await runNodeWithTelemetry(deps, runNode, {
-      slug: CONTENT_GRAPH_AGENTS.copywriting,
-      role: CONTENT_GRAPH_ROLES.copywriting,
-      linkedEntityId: track.id,
-      messages: buildCopyRevisePrompt({ draft, brief, track: trackCtx }),
-      parse: (t) => parseJsonObject(t, copyRevisionSchema),
-      required: false, // an unparseable self-critique is tolerated: we keep the draft.
-      parseErr: "",
-      summarize: (rev) => ({ inputSummary: "self-critique", outputSummary: `${rev?.issues.length ?? 0} issues fixed` }),
-      checkpoint: bindNodeCheckpoint(cpCtx, "revise", 3),
+      const { parsed: revision, run: reviseRun } = await runNodeWithTelemetry(deps, runNode, {
+        slug: CONTENT_GRAPH_AGENTS.copywriting,
+        role: CONTENT_GRAPH_ROLES.copywriting,
+        linkedEntityId: track.id,
+        messages: buildCopyRevisePrompt({ draft, brief, track: trackCtx }),
+        parse: (t) => parseJsonObject(t, copyRevisionSchema),
+        required: false, // an unparseable self-critique is tolerated: we keep the draft.
+        parseErr: "",
+        summarize: (rev) => ({ inputSummary: "self-critique", outputSummary: `${rev?.issues.length ?? 0} issues fixed` }),
+        checkpoint: bindNodeCheckpoint(cpCtx, "revise", 3),
+      });
+      if (reviseRun.runId) modelRunIds.push(reviseRun.runId);
+      return revision?.revised ?? draft;
     });
-    if (reviseRun.runId) modelRunIds.push(reviseRun.runId);
-    const finalCopy = revision?.revised ?? draft;
-    await emitHandoff(CONTENT_GRAPH_AGENTS.copywriting, CONTENT_GRAPH_AGENTS.scoring, "score", "score + gate the pack", { finalCopy });
+    await advance(CONTENT_GRAPH_AGENTS.copywriting, CONTENT_GRAPH_AGENTS.scoring, "score", "score + gate the pack", { finalCopy });
 
     // ---- Node 5: SCORING / QA ----
-    const { parsed: scoreParsed, run: scoreRun } = await runNodeWithTelemetry(deps, runNode, {
-      slug: CONTENT_GRAPH_AGENTS.scoring,
-      role: CONTENT_GRAPH_ROLES.scoring,
-      linkedEntityId: track.id,
-      messages: buildScorePrompt({ copy: finalCopy, brief, hasEvidence: provenance.sourceIds.length > 0 }),
-      parse: (t) => parseJsonObject(t, contentScoreSchema),
-      required: true,
-      parseErr: "content-graph: scoring agent returned an unparseable score",
-      // qualityScore = the scorer's own average verdict mapped from 0..100 to the 0..10 telemetry scale.
-      summarize: (sc) => ({ inputSummary: "score", outputSummary: `impact ${sc!.predictedImpact} / brand ${sc!.brandFit}`, qualityScore: Math.max(0, Math.min(10, (sc!.predictedImpact + sc!.brandFit + sc!.platformFit) / 30)) }),
-      checkpoint: bindNodeCheckpoint(cpCtx, "scoring", 4),
+    const score: ContentScore = await consumeAgent(async () => {
+      const { parsed: scoreParsed, run: scoreRun } = await runNodeWithTelemetry(deps, runNode, {
+        slug: CONTENT_GRAPH_AGENTS.scoring,
+        role: CONTENT_GRAPH_ROLES.scoring,
+        linkedEntityId: track.id,
+        messages: buildScorePrompt({ copy: finalCopy, brief, hasEvidence: provenance.sourceIds.length > 0 }),
+        parse: (t) => parseJsonObject(t, contentScoreSchema),
+        required: true,
+        parseErr: "content-graph: scoring agent returned an unparseable score",
+        // qualityScore = the scorer's own average verdict mapped from 0..100 to the 0..10 telemetry scale.
+        summarize: (sc) => ({ inputSummary: "score", outputSummary: `impact ${sc!.predictedImpact} / brand ${sc!.brandFit}`, qualityScore: Math.max(0, Math.min(10, (sc!.predictedImpact + sc!.brandFit + sc!.platformFit) / 30)) }),
+        checkpoint: bindNodeCheckpoint(cpCtx, "scoring", 4),
+      });
+      if (scoreRun.runId) modelRunIds.push(scoreRun.runId);
+      return scoreParsed!;
     });
-    if (scoreRun.runId) modelRunIds.push(scoreRun.runId);
-    const score: ContentScore = scoreParsed!;
 
     // ---- Assemble the PACK ----
     const packetInput = assembleContentPacketInput({ contentTrackId: track.id, brief, copy: finalCopy, evidence, score, provenance, createdBy: actor });

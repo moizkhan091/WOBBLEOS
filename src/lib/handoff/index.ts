@@ -91,6 +91,23 @@ export async function claimNextHandoff(destinationAgent: string, leaseOwner: str
   return claimed;
 }
 
+/**
+ * Claim a SPECIFIC handoff by id under a fresh lease (delivered → processing, atomically). This is what
+ * a synchronous in-process transport uses: it dispatched a known handoff and now claims exactly that row,
+ * rather than "the next due for this agent" (which could grab a concurrent workflow's handoff). Returns
+ * null if the row is no longer `delivered` (already claimed by a worker, reclaimed, completed, or gone).
+ */
+export async function claimHandoffById(id: string, leaseOwner: string, deps: HandoffDeps = {}): Promise<HandoffRow | null> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const expiresAt = new Date(now.getTime() + HANDOFF_LEASE_MS);
+  const ok = await store.transition(id, "delivered", { deliveryState: "processing", leaseOwner, leaseExpiresAt: expiresAt, updatedAt: now });
+  if (!ok) return null;
+  const row = await store.getById(id);
+  if (row) await audit(deps, { eventType: "handoff.claimed", module: "handoff", entityType: "handoff", entityId: id, actor: leaseOwner, metadata: auditMeta(row) });
+  return row;
+}
+
 export async function acknowledgeHandoff(id: string, deps: HandoffDeps = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();

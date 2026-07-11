@@ -10,7 +10,8 @@ import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
 import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { buildHandoffEnvelope, nextHandoff, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
-import { dispatchHandoff, completeHandoff, type HandoffStore } from "@/lib/handoff";
+import { type HandoffStore } from "@/lib/handoff";
+import { runHandoffHop, HandoffAlreadyProcessedError, type HandoffTransportContext } from "@/lib/handoff-transport";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { newId } from "@/lib/ids";
 import {
@@ -167,6 +168,8 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
         requestedAction: "produce discovery map",
         expectedOutputSchema: "current_state_map",
         confidence: 0.7,
+        // Stable per-node dedup key: a retry re-dispatching node 1 dedups to the existing handoff.
+        idempotencyKey: `${input.graphRunId ?? entityId}:${PAID_AUDIT_AGENTS.discovery}`,
       },
       { now },
     );
@@ -174,24 +177,41 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     if (!entryCheck.ok) throw new Error(`paid-audit: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
 
     const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
-    const emitHandoff = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
-      envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs }, { now });
+    const transportCtx: HandoffTransportContext | null = handoffStore
+      ? { store: handoffStore, clientWorkspaceId: envelope.clientWorkspaceId, grantedMemoryScopes: AUDIT_MEMORY_SCOPES, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now, consumer: "paid_audit" }
+      : null;
+
+    // Address the envelope to the NEXT node (fresh causation lineage, stable per-node dedup key so a graph
+    // RETRY re-dispatching the same step dedups to the existing handoff instead of churning a new row).
+    const advance = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
+      envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs, idempotencyKey: `${envelope.workflowId}:${toAgent}` }, { now });
       await recordAudit({ eventType: "agent.handoff", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, taskId: envelope.taskId, causationId: envelope.causationId, from: fromAgent, to: toAgent, department: "paid_audit", clientWorkspaceId: envelope.clientWorkspaceId } });
-      // Durable backbone: persist the handoff (tenant-isolation + memory-auth enforced) and mark it
-      // consumed (this graph processes the next node synchronously). Best-effort — never breaks the graph.
-      if (handoffStore) {
-        try {
-          const hdeps = { store: handoffStore, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now };
-          const { handoff, deduped } = await dispatchHandoff(envelope, { clientWorkspaceId: envelope.clientWorkspaceId, grantedMemoryScopes: AUDIT_MEMORY_SCOPES }, hdeps);
-          if (!deduped) await completeHandoff(handoff.id, {}, hdeps);
-        } catch (error) {
-          console.error("handoff persist failed (non-fatal):", error instanceof Error ? error.message : error);
-        }
+    };
+
+    // Run a node THROUGH the durable handoff: dispatch → claim (lease) → validate → execute → ack →
+    // complete. The node body executes only after a valid claim, so no agent runs off an unclaimed
+    // handoff. With no handoff store (dev/test without DB) it runs directly. On a retry whose step was
+    // already delivered, the handoff dedups and we resume from the node checkpoint (no re-dispatch).
+    const consume = async <T>(spec: Omit<GraphNodeSpec<T>, "module">): Promise<{ parsed: T | null; run: NodeRunResult }> => {
+      if (!transportCtx) return runAuditNode(deps, runNode, spec);
+      try {
+        const { result } = await runHandoffHop<{ parsed: T | null; run: NodeRunResult }>(
+          envelope,
+          async () => {
+            const r = await runAuditNode(deps, runNode, spec);
+            return { value: r, telemetry: { costEstimate: r.run.cost } };
+          },
+          transportCtx,
+        );
+        return result;
+      } catch (error) {
+        if (error instanceof HandoffAlreadyProcessedError) return runAuditNode(deps, runNode, spec); // resume from checkpoint
+        throw error;
       }
     };
 
-    // Node 1 — Discovery / current-state map
-    const { parsed: discoveryParsed, run: dRun } = await runAuditNode(deps, runNode, {
+    // Node 1 — Discovery / current-state map (driven by the entry handoff orchestrator→discovery).
+    const { parsed: discoveryParsed, run: dRun } = await consume({
       slug: PAID_AUDIT_AGENTS.discovery, role: PAID_AUDIT_ROLES.discovery, linkedEntityId: entityId,
       messages: buildDiscoveryPrompt(ctx), parse: (t) => parseJsonObject(t, discoverySchema),
       required: true, parseErr: "paid-audit: discovery node returned unparseable output",
@@ -200,10 +220,10 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     });
     if (dRun.runId) modelRunIds.push(dRun.runId);
     const discovery = discoveryParsed!;
-    await emitHandoff(PAID_AUDIT_AGENTS.discovery, PAID_AUDIT_AGENTS.opportunity, "opportunity_set", "identify AI/automation opportunities", { discovery });
+    await advance(PAID_AUDIT_AGENTS.discovery, PAID_AUDIT_AGENTS.opportunity, "opportunity_set", "identify AI/automation opportunities", { discovery });
 
     // Node 2 — Opportunity identification (grounded in the Wobble service menu)
-    const { parsed: oppParsed, run: oRun } = await runAuditNode(deps, runNode, {
+    const { parsed: oppParsed, run: oRun } = await consume({
       slug: PAID_AUDIT_AGENTS.opportunity, role: PAID_AUDIT_ROLES.opportunity, linkedEntityId: entityId,
       messages: buildOpportunityPrompt(ctx, discovery), parse: (t) => parseJsonObject(t, opportunitySchema),
       required: true, parseErr: "paid-audit: opportunity node returned unparseable output",
@@ -212,10 +232,10 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     });
     if (oRun.runId) modelRunIds.push(oRun.runId);
     const opportunities = oppParsed!;
-    await emitHandoff(PAID_AUDIT_AGENTS.opportunity, PAID_AUDIT_AGENTS.prioritization, "prioritization", "rank opportunities by impact/difficulty", { opportunities });
+    await advance(PAID_AUDIT_AGENTS.opportunity, PAID_AUDIT_AGENTS.prioritization, "prioritization", "rank opportunities by impact/difficulty", { opportunities });
 
     // Node 3 — Prioritization (impact / difficulty matrix). Soft: an unparseable result falls back to empty.
-    const { parsed: prioParsed, run: prRun } = await runAuditNode(deps, runNode, {
+    const { parsed: prioParsed, run: prRun } = await consume({
       slug: PAID_AUDIT_AGENTS.prioritization, role: PAID_AUDIT_ROLES.prioritization, linkedEntityId: entityId,
       messages: buildPrioritizationPrompt(opportunities), parse: (t) => parseJsonObject(t, prioritizationSchema),
       required: false, parseErr: "",
@@ -224,10 +244,10 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     });
     if (prRun.runId) modelRunIds.push(prRun.runId);
     const prioritization = prioParsed ?? { quickWins: [], bigSwings: [], rationale: "" };
-    await emitHandoff(PAID_AUDIT_AGENTS.prioritization, PAID_AUDIT_AGENTS.roadmap, "roadmap", "sequence a 12-month roadmap", { prioritization });
+    await advance(PAID_AUDIT_AGENTS.prioritization, PAID_AUDIT_AGENTS.roadmap, "roadmap", "sequence a 12-month roadmap", { prioritization });
 
     // Node 4 — 12-month roadmap. Soft: an unparseable result falls back to no phases.
-    const { parsed: roadmapParsed, run: rmRun } = await runAuditNode(deps, runNode, {
+    const { parsed: roadmapParsed, run: rmRun } = await consume({
       slug: PAID_AUDIT_AGENTS.roadmap, role: PAID_AUDIT_ROLES.roadmap, linkedEntityId: entityId,
       messages: buildRoadmapPrompt(opportunities, prioritization), parse: (t) => parseJsonObject(t, roadmapSchema),
       required: false, parseErr: "",
@@ -236,10 +256,10 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     });
     if (rmRun.runId) modelRunIds.push(rmRun.runId);
     const roadmap = roadmapParsed ?? { phases: [] };
-    await emitHandoff(PAID_AUDIT_AGENTS.roadmap, PAID_AUDIT_AGENTS.report, "audit_report", "write the executive report + ROI", { roadmap });
+    await advance(PAID_AUDIT_AGENTS.roadmap, PAID_AUDIT_AGENTS.report, "audit_report", "write the executive report + ROI", { roadmap });
 
     // Node 5 — Executive report + ROI
-    const { parsed: reportParsed, run: rpRun } = await runAuditNode(deps, runNode, {
+    const { parsed: reportParsed, run: rpRun } = await consume({
       slug: PAID_AUDIT_AGENTS.report, role: PAID_AUDIT_ROLES.report, linkedEntityId: entityId,
       messages: buildReportPrompt(ctx, discovery, opportunities, roadmap), parse: (t) => parseJsonObject(t, reportSchema),
       required: true, parseErr: "paid-audit: report node returned unparseable output",

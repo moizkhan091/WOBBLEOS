@@ -145,8 +145,8 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     );
 
     const states = [...byId.values()];
-    expect(states).toHaveLength(4); // one durable handoff per hop
-    expect(states.every((s) => s.deliveryState === "completed")).toBe(true); // delivered → completed
+    expect(states).toHaveLength(5); // one durable handoff DRIVES each node (entry hop drives discovery too)
+    expect(states.every((s) => s.deliveryState === "completed")).toBe(true); // delivered → claimed → completed
     expect(states.every((s) => s.clientWorkspaceId === "clientA")).toBe(true); // client-scoped in the store
   });
 

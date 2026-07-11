@@ -215,6 +215,9 @@ export function nextHandoff(
     requiredInputs?: string[];
     confidence?: number;
     sourceAgent: string;
+    /** Override the dedup key. Stable per logical step (e.g. `${workflowId}:${node}`) so a graph RETRY
+     *  re-dispatching the same step dedups to the existing handoff instead of churning a fresh row. */
+    idempotencyKey?: string;
   },
   opts: { now: Date; taskId?: string },
 ): HandoffEnvelope {
@@ -222,6 +225,7 @@ export function nextHandoff(
     {
       workflowId: prev.workflowId,
       correlationId: prev.correlationId,
+      idempotencyKey: input.idempotencyKey,
       parentTaskId: prev.taskId,
       causationId: prev.taskId,
       department: prev.department,

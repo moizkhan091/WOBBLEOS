@@ -167,6 +167,27 @@ describe("runContentGraph", () => {
     expect(new Set(handoffs.map((h) => meta(h).correlationId)).size).toBe(1);
   });
 
+  it("DRIVES each agent through the durable handoff backbone (delivered → claimed → completed)", async () => {
+    const { deps } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    // Minimal in-memory HandoffStore exercising insert + conditional (claim/complete) transitions.
+    const byId = new Map<string, { id: string; workflowId: string; idempotencyKey: string; deliveryState: string }>();
+    const byKey = new Map<string, string>();
+    const handoffStore = {
+      findByIdempotency: async (wf: string, key: string) => { const id = byKey.get(`${wf}::${key}`); return id ? byId.get(id) : null; },
+      insert: async (row: { id: string; workflowId: string; idempotencyKey: string; deliveryState: string }) => { byId.set(row.id, { ...row }); byKey.set(`${row.workflowId}::${row.idempotencyKey}`, row.id); },
+      getById: async (id: string) => byId.get(id) ?? null,
+      transition: async (id: string, from: string, fields: { deliveryState?: string }) => { const r = byId.get(id); if (!r || r.deliveryState !== from) return false; Object.assign(r, fields); return true; },
+      claimNext: async () => null, reclaimExpiredLeases: async () => 0, list: async () => [], countByState: async () => ({}), deleteExpired: async () => 0,
+    } as unknown as import("@/lib/handoff").HandoffStore;
+
+    await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" }, { ...deps, handoffStore });
+
+    const states = [...byId.values()];
+    // One durable handoff DRIVES each of the 4 distinct agents (strategy entry + research + copywriting + scoring).
+    expect(states).toHaveLength(4);
+    expect(states.every((s) => s.deliveryState === "completed")).toBe(true);
+  });
+
   it("runs a 5-agent grounded graph and assembles an approvable pack", async () => {
     const { deps, agentRuns, getPacket } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
     const result = await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" }, deps);
