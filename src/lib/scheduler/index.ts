@@ -6,6 +6,8 @@ import { harvestPendingConversations } from "@/lib/memory-harvester";
 import { purgeExpiredArchivedMemory } from "@/lib/memory";
 import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/lib/graph-checkpoint";
 import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS } from "@/lib/handoff";
+import { reconcileApprovalEffects } from "@/lib/approval-effects";
+import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
@@ -78,6 +80,13 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await reclaimExpiredHandoffLeases({ now });
   } catch (e) {
     result.errors.push(`handoff-reclaim: ${e instanceof Error ? e.message : e}`);
+  }
+  // Approval-effects outbox reconciliation: apply any pending downstream effect whose inline apply
+  // never completed (process crashed between the atomic flip+record and the effect). Converges.
+  try {
+    await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { now });
+  } catch (e) {
+    result.errors.push(`approval-effects: ${e instanceof Error ? e.message : e}`);
   }
 
   // 1. Schedule-triggered automation rules (cron).

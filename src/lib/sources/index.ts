@@ -70,7 +70,36 @@ export interface SourceDeps {
   store?: SourceLibraryStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
+  claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
   now?: Date;
+}
+
+/**
+ * Idempotent source activation — the DOWNSTREAM effect of approving a source. Safe to run more than
+ * once (activate an already-active source = no-op change; intake enqueue is idempotent). Called inline
+ * by approveSource AND by the approval-effects reconciler (crash safety net), so a crash after the
+ * atomic approval-flip still converges to an active, compiling source without manual repair.
+ */
+export async function activateApprovedSource(
+  sourceId: string,
+  opts: { trustLevel: string; approvedBy: string },
+  deps: SourceDeps = {},
+): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const source = await store.getSourceById(sourceId);
+  if (!source) return; // source gone — nothing to activate
+  await store.updateSource(sourceId, { approvalStatus: "approved", trustLevel: opts.trustLevel, status: "active", processingStatus: "ready", approvedBy: opts.approvedBy, approvedAt: now, updatedAt: now });
+  if (store.updateFilesForSource) await store.updateFilesForSource(sourceId, { approvalState: "approved", updatedAt: now });
+  if (process.env.DATABASE_URL) {
+    try {
+      const { enqueueJob } = await import("@/lib/jobs");
+      await enqueueJob({ queue: "general", type: "source.intake", payload: { sourceId, triggeredBy: opts.approvedBy }, linkedModule: "source_library", idempotencyKey: `source.intake:${sourceId}` });
+    } catch {
+      try { await enqueueKnowledgeCompileJob({ sourceId, triggeredBy: opts.approvedBy }); } catch { /* never block */ }
+    }
+  }
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -176,36 +205,31 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     throw new Error("blocked source trust level cannot be approved");
   }
 
-  // Re-drivable ordering: activate the source FIRST, then flip the approval LAST. These live in two
-  // different stores (no shared transaction), so if the second step fails we want a state that
-  // self-heals on re-approve rather than a consumed approval with an inactive source. Activating first
-  // means: a failure before the flip leaves the approval PENDING (re-approving works); a failure of the
-  // flip leaves the source active + approval pending (re-approving is idempotent on the source).
-  const fields: Partial<SourceRow> = {
-    approvalStatus: "approved",
-    trustLevel: trust.slug,
-    status: "active",
-    processingStatus: "ready",
+  // Transactional outbox: atomically flip the approval AND record the source-activation effect (one DB
+  // transaction). If this call didn't win the claim (already approved), it's a no-op — idempotent.
+  const claimFn = deps.claimAndRecordEffect ?? (async (i: Parameters<NonNullable<SourceDeps["claimAndRecordEffect"]>>[0]) => (await import("@/lib/approval-effects")).claimApprovalAndRecordEffect(i, { now }));
+  const { claimed, effectId } = await claimFn({
+    approvalId: input.approvalId,
     approvedBy: input.approvedBy,
-    approvedAt: now,
-    updatedAt: now,
-  };
-  await store.updateSource(source.id, fields);
-  if (store.updateFilesForSource) {
-    await store.updateFilesForSource(source.id, { approvalState: "approved", updatedAt: now });
+    effect: { approvalId: input.approvalId, effectType: "source.activate", entityType: "source", entityId: source.id, payload: { trustLevel: trust.slug }, actor: input.approvedBy },
+  });
+  if (!claimed) return { source: await getExistingSource(store, input.sourceId) };
+
+  await recordAudit({ eventType: "approval.approve", module: "approvals", entityType: "approval", entityId: input.approvalId, actor: input.approvedBy, metadata: { approvalType: "source", toStatus: "approved" } });
+
+  // Inline fast-path: apply the activation now (idempotent). If we crash before this, the pending
+  // effect is applied by the scheduler's reconciler — the state converges either way (no manual repair).
+  await activateApprovedSource(source.id, { trustLevel: trust.slug, approvedBy: input.approvedBy }, { store, now });
+  // Mark the effect applied so the reconciler doesn't redundantly re-apply it (real-DB path only).
+  if (effectId && !deps.claimAndRecordEffect) {
+    try {
+      const { reconcileApprovalEffects } = await import("@/lib/approval-effects");
+      const { APPROVAL_EFFECT_APPLIERS } = await import("@/lib/approval-effects/appliers");
+      await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { onlyId: effectId, now });
+    } catch { /* the scheduler reconciler is the safety net */ }
   }
 
-  await applyApprovalAction(
-    {
-      approvalId: input.approvalId,
-      action: "approve",
-      approvedBy: input.approvedBy,
-      notes: input.notes,
-    },
-    { store: deps.approvalStore, recordAudit, now },
-  );
-
-  const approvedSource: SourceRow = { ...source, ...fields };
+  const approvedSource: SourceRow = { ...source, approvalStatus: "approved", trustLevel: trust.slug, status: "active", processingStatus: "ready", approvedBy: input.approvedBy, approvedAt: now };
   await recordAudit({
     eventType: "source.approved",
     module: "source_library",
@@ -214,18 +238,6 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     actor: input.approvedBy,
     metadata: { trustLevel: trust.slug, canUpdateBrain: trust.canUpdateBrain, approvalId: input.approvalId },
   });
-
-  // On approval: run intake (scrape → chunk → embed) FIRST; the intake worker then chains to the
-  // knowledge compiler once chunks exist. Best-effort + env-gated so it never blocks approval.
-  if (process.env.DATABASE_URL) {
-    try {
-      const { enqueueJob } = await import("@/lib/jobs");
-      await enqueueJob({ queue: "general", type: "source.intake", payload: { sourceId: source.id, triggeredBy: input.approvedBy }, linkedModule: "source_library", idempotencyKey: `source.intake:${source.id}` });
-    } catch {
-      // Fallback: if intake couldn't be queued, still try to compile whatever chunks exist.
-      try { await enqueueKnowledgeCompileJob({ sourceId: source.id, triggeredBy: input.approvedBy }); } catch { /* never block approval */ }
-    }
-  }
 
   return { source: approvedSource };
 }

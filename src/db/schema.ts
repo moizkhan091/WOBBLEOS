@@ -1615,3 +1615,31 @@ export const handoffs = pgTable("handoffs", {
   index("handoffs_destination_idx").on(table.destinationAgent),
   index("handoffs_created_at_idx").on(table.createdAt),
 ]);
+
+// ---- Approval effects OUTBOX (transactional-outbox pattern): when an approval is resolved, the flip
+// AND the intent to run its downstream effect (activate source + compile, create memory, import
+// content) are recorded in ONE transaction. A reconciliation worker then APPLIES each pending effect
+// idempotently and marks it applied — so a crash between the flip and the effect converges without
+// manual repair, and duplicate delivery applies the effect exactly once. ----
+export const approvalEffects = pgTable("approval_effects", {
+  id: id(),
+  approvalId: text("approval_id").notNull(),
+  effectType: varchar("effect_type", { length: 64 }).notNull(),
+  entityType: varchar("entity_type", { length: 64 }).notNull(),
+  entityId: text("entity_id").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  state: varchar("state", { length: 32 }).notNull().default("pending"), // pending | applied | failed
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(8),
+  runAfter: timestamp("run_after", { withTimezone: true }),
+  lastError: text("last_error"),
+  actor: varchar("actor", { length: 120 }),
+  createdAt: createdAt(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // At most one effect per (approval, type) — the dedup guarantee that makes it exactly-once.
+  uniqueIndex("approval_effects_approval_type_uidx").on(table.approvalId, table.effectType),
+  index("approval_effects_state_idx").on(table.state),
+  index("approval_effects_created_at_idx").on(table.createdAt),
+]);

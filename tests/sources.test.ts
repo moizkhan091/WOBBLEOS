@@ -276,6 +276,9 @@ describe("source library service", () => {
     const approval = fakeApprovalStore("pending");
     const audit: AuditEventInput[] = [];
 
+    // Transactional-outbox seam: the atomic flip+record is injected; assert the effect intent + the
+    // inline idempotent activation both run.
+    let recordedEffect: { effectType: string; entityId: string; payload?: Record<string, unknown> } | null = null;
     const result = await approveSource(
       {
         sourceId: "source_1",
@@ -287,6 +290,7 @@ describe("source library service", () => {
       {
         store,
         approvalStore: approval.store,
+        claimAndRecordEffect: async (i) => { recordedEffect = i.effect; return { claimed: true, effectId: "eff_1" }; },
         recordAudit: async (input) => {
           audit.push(input);
         },
@@ -296,6 +300,9 @@ describe("source library service", () => {
 
     expect(result.source.approvalStatus).toBe("approved");
     expect(result.source.trustLevel).toBe("tier_2_approved_expert");
+    // The activation effect intent was recorded atomically with the flip.
+    expect(recordedEffect).toMatchObject({ effectType: "source.activate", entityId: "source_1", payload: { trustLevel: "tier_2_approved_expert" } });
+    // The inline idempotent activation ran (updateSource).
     expect(calls.updateSource[0].fields).toMatchObject({
       approvalStatus: "approved",
       trustLevel: "tier_2_approved_expert",
@@ -304,6 +311,17 @@ describe("source library service", () => {
     });
     expect(audit.some((event) => event.eventType === "approval.approve")).toBe(true);
     expect(audit.some((event) => event.eventType === "source.approved")).toBe(true);
+  });
+
+  it("approving an already-actioned source is a no-op (lost the atomic claim)", async () => {
+    const existing = buildSourceRow({ title: "Pending source", sourceType: "url", addedBy: "Moiz" }, { id: "source_1", now });
+    const { store, calls } = makeSourceStore([existing]);
+    const result = await approveSource(
+      { sourceId: "source_1", approvalId: "approval_1", approvedBy: "Haad", trustLevel: "tier_2_approved_expert", trustLevels },
+      { store, recordAudit: async () => {}, claimAndRecordEffect: async () => ({ claimed: false, effectId: null }), now },
+    );
+    expect(result.source.id).toBe("source_1");
+    expect(calls.updateSource).toHaveLength(0); // did not re-activate — idempotent
   });
 
   it("rejects a source through the approval system", async () => {
