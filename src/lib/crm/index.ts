@@ -178,7 +178,7 @@ export async function addOpportunity(input: CreateOpportunityInput, deps: CrmDep
 
 export async function listOpportunities(query: { stage?: string; status?: string; includeArchived?: boolean; limit?: number } = {}, deps: CrmDeps = {}): Promise<OpportunityRow[]> {
   const store = deps.store ?? defaultStore();
-  return store.listOpportunities({ stage: query.stage, status: query.status, includeArchived: query.includeArchived, limit: Math.min(Math.max(query.limit ?? 300, 1), 1000) });
+  return store.listOpportunities({ stage: query.stage, status: query.status, includeArchived: query.includeArchived, limit: Math.min(Math.max(query.limit ?? 300, 1), 5000) });
 }
 
 export async function getOpportunity(id: string, deps: CrmDeps = {}): Promise<OpportunityRow | null> {

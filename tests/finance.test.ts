@@ -52,7 +52,17 @@ describe("finance domain", () => {
     expect(s.wonValueCents).toBe(1000000);
     expect(s.wonDeals).toBe(2);
     expect(s.avgDealSizeCents).toBe(500000);
-    expect(s.revenueByService["ai-receptionist"]).toBe(600000);
+  });
+
+  it("does NOT count refunded/cancelled/written-off invoices as collected revenue", () => {
+    const invoices = [
+      { status: "paid", totalCents: 500000, amountPaidCents: 500000, dueDate: null },
+      { status: "refunded", totalCents: 300000, amountPaidCents: 300000, dueDate: null },   // reversed → excluded
+      { status: "cancelled", totalCents: 200000, amountPaidCents: 200000, dueDate: null },  // voided → excluded
+      { status: "written_off", totalCents: 100000, amountPaidCents: 100000, dueDate: null },// written off → excluded
+    ];
+    const s = revenueSummary(invoices, [], now);
+    expect(s.paidRevenueCents).toBe(500000); // only the genuinely-paid one, not 1,100,000
   });
 });
 

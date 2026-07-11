@@ -146,13 +146,15 @@ export function revenueSummary(
   opportunities: Array<{ status: string; stage: string; valueCents: number; probability: number; serviceInterest: string[] }>,
   now: Date,
 ): RevenueSummary {
+  // Money that was collected then reversed (or never real) is NOT revenue.
+  const REVERSED_OR_VOID = new Set(["cancelled", "refunded", "written_off", "draft", "needs_approval"]);
   const invoiceCounts: Record<string, number> = {};
   let paidRevenueCents = 0;
   let outstandingCents = 0;
   let overdueCents = 0;
   for (const inv of invoices) {
     invoiceCounts[inv.status] = (invoiceCounts[inv.status] ?? 0) + 1;
-    paidRevenueCents += inv.amountPaidCents;
+    if (!REVERSED_OR_VOID.has(inv.status)) paidRevenueCents += inv.amountPaidCents;
     const openBalance = Math.max(0, inv.totalCents - inv.amountPaidCents);
     if (["sent", "viewed", "partially_paid", "overdue"].includes(inv.status)) {
       outstandingCents += openBalance;

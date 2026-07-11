@@ -55,7 +55,7 @@ export async function createInvoice(input: CreateInvoiceInput, deps: FinanceDeps
 
 export async function listInvoices(query: { status?: string; limit?: number } = {}, deps: FinanceDeps = {}): Promise<InvoiceRow[]> {
   const store = deps.store ?? defaultStore();
-  return store.listInvoices({ status: query.status, limit: Math.min(Math.max(query.limit ?? 200, 1), 500) });
+  return store.listInvoices({ status: query.status, limit: Math.min(Math.max(query.limit ?? 200, 1), 5000) });
 }
 
 export async function getInvoice(id: string, deps: FinanceDeps = {}): Promise<InvoiceRow | null> {
@@ -94,8 +94,10 @@ export async function invoiceAction(id: string, action: InvoiceAction, input: { 
 
 /** Dashboard rollups: pulls invoices + open/won opportunities and computes revenue KPIs. */
 export async function getRevenueSummary(deps: FinanceDeps = {}): Promise<RevenueSummary> {
-  const invoices = await listInvoices({ limit: 500 }, deps);
-  const opportunities = await listOpportunities({ limit: 1000 });
+  // Sum up to 5000 invoices/opportunities (years of runway for an agency; add SQL-side aggregation
+  // if ever exceeded). Prevents the old silent undercount that capped revenue at 500 invoices.
+  const invoices = await listInvoices({ limit: 5000 }, deps);
+  const opportunities = await listOpportunities({ limit: 5000 });
   return revenueSummary(
     invoices.map((i) => ({ status: i.status, totalCents: i.totalCents, amountPaidCents: i.amountPaidCents, dueDate: i.dueDate })),
     opportunities.map((o) => ({ status: o.status, stage: o.stage, valueCents: o.valueCents, probability: o.probability, serviceInterest: o.serviceInterest })),
