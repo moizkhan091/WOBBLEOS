@@ -86,6 +86,39 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     expect(rep.roi?.estimatedMonthlyUpsideCents).toBe(1800000);
   });
 
+  it("threads a validated structured handoff between every node (client-scoped, with lineage)", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "x", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "T", service: "missed-call-text-back-system", description: "d", impact: "high", difficulty: "low", kpis: ["k"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: ["T"], bigSwings: [], rationale: "r" }),
+      audit_roadmap: JSON.stringify({ phases: [{ title: "P1", months: "1-3", focus: "f", objectives: ["o"], deliverables: ["d"], items: ["T"], expectedOutcome: "e" }] }),
+      audit_report: JSON.stringify({ executiveSummary: "E", situationSummary: "s", roi: { estimatedMonthlyUpsideCents: 1, estimatedImplementationCents: 1, paybackMonths: 1 }, risks: [{ risk: "r", mitigation: "m" }], successMetrics: ["s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["n"] }),
+    };
+    const events: Array<Record<string, unknown>> = [];
+    await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "clientA" },
+      {
+        retrieveBrain: async () => [],
+        runNode: async (i) => ({ text: canned[i.role], runId: `r_${i.role}` }),
+        recordAudit: async (e) => { events.push(e as unknown as Record<string, unknown>); },
+        persistAudit: async () => {},
+        now,
+      },
+    );
+    const handoffs = events.filter((e) => e.eventType === "agent.handoff");
+    // 4 hops between the 5 nodes, each carrying correlation lineage + the client workspace scope.
+    expect(handoffs).toHaveLength(4);
+    const meta = (h: Record<string, unknown>) => h.metadata as Record<string, unknown>;
+    expect(handoffs.every((h) => meta(h).clientWorkspaceId === "clientA")).toBe(true); // client-scoped
+    expect(new Set(handoffs.map((h) => meta(h).correlationId)).size).toBe(1); // one workflow correlation
+    expect(handoffs.map((h) => `${meta(h).from}->${meta(h).to}`)).toEqual([
+      "audit_discovery_mapper->audit_opportunity_finder",
+      "audit_opportunity_finder->audit_prioritizer",
+      "audit_prioritizer->audit_roadmap_architect",
+      "audit_roadmap_architect->audit_report_writer",
+    ]);
+  });
+
   it("fails loudly when a node returns unparseable output", async () => {
     await expect(
       runPaidAuditGraph(

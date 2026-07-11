@@ -42,7 +42,22 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | markAssetPostedOnPlatform duplicate published rows (partial unique index) | fixed-verified | 83750e8 |
 | Concurrency hardening (memory tx, CRM race, invoice retry, reinforceNote, reclaim) | fixed-verified | cc97fc0 |
 
-**Pre-deployment release-candidate gate → see [RELEASE_CANDIDATE_GATE.md](RELEASE_CANDIDATE_GATE.md).** Verdict: DO NOT DEPLOY YET (green build/test/migration gate, but remaining open defects + architecture gap). Real-provider (OpenRouter) smoke PASS. RC tagged `rc-pre-deploy-83750e8`.
+**Pre-deployment release-candidate gate → see [RELEASE_CANDIDATE_GATE.md](RELEASE_CANDIDATE_GATE.md).** Real-provider (OpenRouter) smoke PASS. RC tagged `rc-pre-deploy-83750e8`.
+
+### Full-architecture build (governing mandate — 11 phases). Priority order, autonomous.
+**Phase 1 — release-blocking defects: COMPLETE ✅** (FIX #21 `bf5..`, FIX #22 `4a71655`).
+| # | Item | Fix |
+|---|------|-----|
+| 1-4 | Payment idempotency / reference dedup / concurrent partials / lost-update | Payments ledger (table + partial unique index, migration 0029; amount from ledger SUM under FOR UPDATE, capped at total). DB-proven. |
+| 5 | Approval flip↔downstream atomicity | Source approval reordered (activate → then flip) = re-drivable; cross-store tx residual noted |
+| 6 | Duplicate approval prevention | `claimTransition` (UPDATE WHERE status=fromStatus) atomic claim |
+| 7 | Identical behaviour across approval routes | `/action` approve/reject now routes through `resolveApproval` (same downstream as `/resolve`) |
+| 8 | Proposal accept → advance CRM opportunity | accept moves the linked opp to won (→ delivery), not just an invoice |
+| 9 | Won → delivery from every path | `moveOpportunityStage` fires a domain won-hook (idempotent project + kickoff milestones/tasks) from every caller |
+| 10 | Scout → analyze auto-chain | scout job enqueues `intelligence.analyze` (deduped per scope/day) when it ingests |
+| 11-12 | Real provider health checks / real states | `checkConnectionHealth` makes a real timeout-bounded probe → healthy/failed/unavailable/blocked/unverified; revoked key ≠ healthy |
+
+**Phases 2-10 — IN PROGRESS / QUEUED** (structured handoff envelopes → departments → QA boards → full Research & Intelligence dept → founder taste learning → selective artifact revision → org self-improvement → real Free Audit → real Media Studio). Migration order per mandate: PaidAudit → FreeAudit → Proposal → Research → Content → CRM/Sales/Finance/Delivery → Ask → rest. Each vertical: verified, tested, gated, committed before the next.
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
