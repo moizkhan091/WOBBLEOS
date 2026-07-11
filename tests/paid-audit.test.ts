@@ -108,6 +108,7 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     const handoffs = events.filter((e) => e.eventType === "agent.handoff");
     // 4 hops between the 5 nodes, each carrying correlation lineage + the client workspace scope.
     expect(handoffs).toHaveLength(4);
+    // Durably persisted through the real handoff backbone (not just audit lines): inject a store below.
     const meta = (h: Record<string, unknown>) => h.metadata as Record<string, unknown>;
     expect(handoffs.every((h) => meta(h).clientWorkspaceId === "clientA")).toBe(true); // client-scoped
     expect(new Set(handoffs.map((h) => meta(h).correlationId)).size).toBe(1); // one workflow correlation
@@ -117,6 +118,36 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
       "audit_prioritizer->audit_roadmap_architect",
       "audit_roadmap_architect->audit_report_writer",
     ]);
+  });
+
+  it("persists each hop through the durable handoff backbone (delivered → completed), not just audit lines", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "x", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "T", service: "missed-call-text-back-system", description: "d", impact: "high", difficulty: "low", kpis: ["k"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: [], bigSwings: [], rationale: "r" }),
+      audit_roadmap: JSON.stringify({ phases: [] }),
+      audit_report: JSON.stringify({ executiveSummary: "E", situationSummary: "s", roi: { estimatedMonthlyUpsideCents: 1, estimatedImplementationCents: 1, paybackMonths: 1 }, risks: [], successMetrics: ["s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["n"] }),
+    };
+    // Minimal in-memory HandoffStore: insert + conditional transition are all the graph path needs.
+    const byId = new Map<string, { id: string; workflowId: string; idempotencyKey: string; clientWorkspaceId: string | null; deliveryState: string }>();
+    const byKey = new Map<string, string>();
+    const handoffStore = {
+      findByIdempotency: async (wf: string, key: string) => { const id = byKey.get(`${wf}::${key}`); return id ? byId.get(id) : null; },
+      insert: async (row: { id: string; workflowId: string; idempotencyKey: string; clientWorkspaceId: string | null; deliveryState: string }) => { byId.set(row.id, { ...row }); byKey.set(`${row.workflowId}::${row.idempotencyKey}`, row.id); },
+      getById: async (id: string) => byId.get(id) ?? null,
+      transition: async (id: string, from: string, fields: { deliveryState?: string }) => { const r = byId.get(id); if (!r || r.deliveryState !== from) return false; Object.assign(r, fields); return true; },
+      claimNext: async () => null, reclaimExpiredLeases: async () => 0, list: async () => [], countByState: async () => ({}), deleteExpired: async () => 0,
+    } as unknown as import("@/lib/handoff").HandoffStore;
+
+    await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "clientA" },
+      { retrieveBrain: async () => [], runNode: async (i) => ({ text: canned[i.role], runId: `r_${i.role}` }), recordAudit: async () => {}, persistAudit: async () => {}, handoffStore, now },
+    );
+
+    const states = [...byId.values()];
+    expect(states).toHaveLength(4); // one durable handoff per hop
+    expect(states.every((s) => s.deliveryState === "completed")).toBe(true); // delivered → completed
+    expect(states.every((s) => s.clientWorkspaceId === "clientA")).toBe(true); // client-scoped in the store
   });
 
   it("fails loudly when a node returns unparseable output", async () => {

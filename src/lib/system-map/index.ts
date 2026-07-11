@@ -33,6 +33,8 @@ export interface SystemSnapshot {
   modules: { total: number; wired: number; planned: number; backendReady: number; list: ModuleSummary[] };
   approvals: { pending: number; byType: Record<string, number> };
   models: { roles: ModelRoleMap; catalogCount: number; catalog: ModelCatalog };
+  /** Live inter-agent handoff backbone: how many handoffs sit in each delivery state right now. */
+  handoffs: Record<string, number>;
 }
 
 export interface SystemMapDeps {
@@ -40,6 +42,7 @@ export interface SystemMapDeps {
   countPendingApprovalsByType?: () => Promise<Record<string, number>>;
   getModelRoleMap?: () => Promise<ModelRoleMap>;
   getModelCatalog?: () => Promise<ModelCatalog>;
+  getHandoffCounts?: () => Promise<Record<string, number>>;
   modules?: ModuleSummary[];
 }
 
@@ -53,8 +56,10 @@ export async function getSystemSnapshot(deps: SystemMapDeps = {}): Promise<Syste
   const roleMapFn = deps.getModelRoleMap ?? (() => getModelRoleMap());
   const catalogFn = deps.getModelCatalog ?? (() => getModelCatalog());
   const modules = deps.modules ?? defaultModules();
+  // Env-gated default so this stays DB-free in tests that don't inject the dep.
+  const getHandoffCounts = deps.getHandoffCounts ?? (async () => (process.env.DATABASE_URL ? (await import("@/lib/handoff")).handoffStateCounts() : {}));
 
-  const [agents, byType, roles, catalog] = await Promise.all([listAgents(), countPending(), roleMapFn(), catalogFn()]);
+  const [agents, byType, roles, catalog, handoffs] = await Promise.all([listAgents(), countPending(), roleMapFn(), catalogFn(), getHandoffCounts()]);
 
   const byTeam: Record<string, number> = {};
   let active = 0;
@@ -77,6 +82,7 @@ export async function getSystemSnapshot(deps: SystemMapDeps = {}): Promise<Syste
     },
     approvals: { pending, byType },
     models: { roles, catalogCount: catalog.length, catalog },
+    handoffs,
   };
 }
 
@@ -107,11 +113,16 @@ export function formatSystemSnapshot(snapshot: SystemSnapshot, opts: { maxAgents
     .map((m) => m.id)
     .join(", ");
 
+  const handoffStr = Object.keys(snapshot.handoffs).length
+    ? Object.entries(snapshot.handoffs).map(([state, n]) => `${state} ${n}`).join(", ")
+    : "none";
+
   return [
     `AGENTS: ${snapshot.agents.total} total (${snapshot.agents.active} active). By team: ${teamStr}.`,
     `${agentLines}${overflow}`,
     `MODULES: ${snapshot.modules.total} total — ${snapshot.modules.wired} wired, ${snapshot.modules.backendReady} backend-ready, ${snapshot.modules.planned} planned. Wired: ${moduleWired}.`,
     `APPROVALS PENDING: ${snapshot.approvals.pending} (${approvalStr}).`,
+    `INTER-AGENT HANDOFFS (live backbone): ${handoffStr}.`,
     `MODEL ROLES: ${roleStr}. Model catalog: ${snapshot.models.catalogCount} models.`,
   ].join("\n");
 }

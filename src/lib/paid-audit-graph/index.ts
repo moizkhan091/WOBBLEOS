@@ -10,6 +10,7 @@ import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
 import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { buildHandoffEnvelope, nextHandoff, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
+import { dispatchHandoff, completeHandoff, type HandoffStore } from "@/lib/handoff";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { newId } from "@/lib/ids";
 import {
@@ -54,6 +55,8 @@ export interface PaidAuditDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   persistAudit?: (row: PaidAuditRow) => Promise<void>;
   checkpointStore?: GraphCheckpointStore;
+  /** Durable handoff backbone. Injected in tests; in prod the default DB store is used when DATABASE_URL is set. */
+  handoffStore?: HandoffStore;
   now?: Date;
 }
 
@@ -170,9 +173,21 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     const entryCheck = validateHandoff(envelope, { clientWorkspaceId: input.companyId ?? null, grantedMemoryScopes: AUDIT_MEMORY_SCOPES });
     if (!entryCheck.ok) throw new Error(`paid-audit: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
 
+    const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
     const emitHandoff = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
       envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs }, { now });
       await recordAudit({ eventType: "agent.handoff", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, taskId: envelope.taskId, causationId: envelope.causationId, from: fromAgent, to: toAgent, department: "paid_audit", clientWorkspaceId: envelope.clientWorkspaceId } });
+      // Durable backbone: persist the handoff (tenant-isolation + memory-auth enforced) and mark it
+      // consumed (this graph processes the next node synchronously). Best-effort — never breaks the graph.
+      if (handoffStore) {
+        try {
+          const hdeps = { store: handoffStore, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now };
+          const { handoff, deduped } = await dispatchHandoff(envelope, { clientWorkspaceId: envelope.clientWorkspaceId, grantedMemoryScopes: AUDIT_MEMORY_SCOPES }, hdeps);
+          if (!deduped) await completeHandoff(handoff.id, {}, hdeps);
+        } catch (error) {
+          console.error("handoff persist failed (non-fatal):", error instanceof Error ? error.message : error);
+        }
+      }
     };
 
     // Node 1 — Discovery / current-state map

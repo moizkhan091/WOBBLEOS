@@ -5,6 +5,7 @@ import { dispatchDuePosts } from "@/lib/library";
 import { harvestPendingConversations } from "@/lib/memory-harvester";
 import { purgeExpiredArchivedMemory } from "@/lib/memory";
 import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/lib/graph-checkpoint";
+import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS } from "@/lib/handoff";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
@@ -72,6 +73,12 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   } catch (e) {
     result.errors.push(`reclaim: ${e instanceof Error ? e.message : e}`);
   }
+  // Crash recovery for the handoff backbone: reclaim leases whose consumer died mid-processing.
+  try {
+    await reclaimExpiredHandoffLeases({ now });
+  } catch (e) {
+    result.errors.push(`handoff-reclaim: ${e instanceof Error ? e.message : e}`);
+  }
 
   // 1. Schedule-triggered automation rules (cron).
   try {
@@ -114,6 +121,8 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       await purgeExpiredArchivedMemory({ limit: 100 }).catch((e) => result.errors.push(`purge: ${e?.message ?? e}`));
       // Retention sweep for abandoned graph checkpoints (runs that never completed or were cancelled).
       await purgeExpiredGraphCheckpoints(new Date(now.getTime() - GRAPH_CHECKPOINT_RETENTION_MS)).catch((e) => result.errors.push(`ckpt-purge: ${e?.message ?? e}`));
+      // Retention sweep for terminal handoffs (completed/cancelled/dead-lettered past the cutoff).
+      await purgeExpiredHandoffs(new Date(now.getTime() - HANDOFF_RETENTION_MS)).catch((e) => result.errors.push(`handoff-purge: ${e?.message ?? e}`));
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }

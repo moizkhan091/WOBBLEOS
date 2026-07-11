@@ -1562,3 +1562,56 @@ export const graphCheckpoints = pgTable("graph_checkpoints", {
   index("graph_checkpoints_run_idx").on(table.graphRunId),
   index("graph_checkpoints_created_at_idx").on(table.createdAt),
 ]);
+
+// ---- Durable handoff runtime (Phase 2): the persistent inter-agent communication backbone. One row
+// per structured handoff, with a delivery state machine (created→delivered→processing→acknowledged→
+// completed | failed→retry/dead_lettered | cancelled), a processing lease for crash recovery, bounded
+// retries with backoff (run_after), dead-letter + manual redrive, idempotent consumption (unique
+// workflow+key), full envelope payload, telemetry, and terminal-state retention. ----
+export const handoffs = pgTable("handoffs", {
+  id: id(),
+  workflowId: varchar("workflow_id", { length: 200 }).notNull(),
+  taskId: varchar("task_id", { length: 120 }).notNull(),
+  parentTaskId: varchar("parent_task_id", { length: 120 }),
+  correlationId: varchar("correlation_id", { length: 200 }).notNull(),
+  causationId: varchar("causation_id", { length: 120 }),
+  department: varchar("department", { length: 64 }).notNull(),
+  sourceAgent: varchar("source_agent", { length: 120 }).notNull(),
+  destinationAgent: varchar("destination_agent", { length: 120 }),
+  destinationCapability: varchar("destination_capability", { length: 120 }),
+  companyId: text("company_id"),
+  clientWorkspaceId: text("client_workspace_id"),
+  projectId: text("project_id"),
+  leadId: text("lead_id"),
+  actor: varchar("actor", { length: 120 }).notNull(),
+  dataClassification: varchar("data_classification", { length: 40 }).notNull().default("internal"),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  envelope: jsonb("envelope").$type<Record<string, unknown>>().notNull(),
+  deliveryState: varchar("delivery_state", { length: 32 }).notNull().default("delivered"),
+  idempotencyKey: varchar("idempotency_key", { length: 200 }).notNull(),
+  leaseOwner: varchar("lease_owner", { length: 120 }),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(5),
+  runAfter: timestamp("run_after", { withTimezone: true }),
+  failureReason: text("failure_reason"),
+  costEstimate: numeric("cost_estimate", { precision: 12, scale: 6 }),
+  latencyMs: integer("latency_ms"),
+  qualityScore: numeric("quality_score", { precision: 5, scale: 2 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  failedAt: timestamp("failed_at", { withTimezone: true }),
+  deadLetteredAt: timestamp("dead_lettered_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("handoffs_workflow_key_uidx").on(table.workflowId, table.idempotencyKey),
+  index("handoffs_workflow_idx").on(table.workflowId),
+  index("handoffs_correlation_idx").on(table.correlationId),
+  index("handoffs_state_idx").on(table.deliveryState),
+  index("handoffs_destination_idx").on(table.destinationAgent),
+  index("handoffs_created_at_idx").on(table.createdAt),
+]);

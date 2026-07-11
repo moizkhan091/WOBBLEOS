@@ -14,6 +14,7 @@ import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
 import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { buildHandoffEnvelope, nextHandoff, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
+import { dispatchHandoff, completeHandoff, type HandoffStore } from "@/lib/handoff";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import {
   CONTENT_GRAPH_AGENTS,
@@ -74,6 +75,7 @@ export interface ContentGraphDeps {
   createPacket?: (input: CreateContentPacketServiceInput) => Promise<ContentPacketCreationResult>;
   enqueueJob?: (input: EnqueueJobInput) => Promise<unknown>;
   checkpointStore?: GraphCheckpointStore;
+  handoffStore?: HandoffStore;
   now?: Date;
 }
 
@@ -206,9 +208,20 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     );
     const entryCheck = validateHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES });
     if (!entryCheck.ok) throw new Error(`content-graph: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
+    const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
     const emitHandoff = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
       envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs }, { now: deps.now ?? new Date() });
       await recordAudit({ eventType: "agent.handoff", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, taskId: envelope.taskId, causationId: envelope.causationId, from: fromAgent, to: toAgent, department: "content" } });
+      // Durable backbone: persist + mark consumed (synchronous graph). Best-effort — never breaks the graph.
+      if (handoffStore) {
+        try {
+          const hdeps = { store: handoffStore, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now: deps.now ?? new Date() };
+          const { handoff, deduped } = await dispatchHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES }, hdeps);
+          if (!deduped) await completeHandoff(handoff.id, {}, hdeps);
+        } catch (error) {
+          console.error("handoff persist failed (non-fatal):", error instanceof Error ? error.message : error);
+        }
+      }
     };
 
     // ---- Node 1: STRATEGY (creative brief) ----
