@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApprovalEffectRow, decideEffectRetry, type ApprovalEffectRow, type ApprovalEffectState } from "@/lib/domain/approval-effect";
 import { reconcileApprovalEffects, type ApprovalEffectStore, type ApprovalEffectApplier } from "@/lib/approval-effects";
+import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 
 const now = new Date("2026-07-11T12:00:00Z");
 
@@ -24,6 +25,14 @@ function makeStore(seed: ApprovalEffectRow[] = []) {
 function effect(overrides: Partial<ApprovalEffectRow> = {}): ApprovalEffectRow {
   return { ...buildApprovalEffectRow({ approvalId: "ap_1", effectType: "source.activate", entityType: "source", entityId: "src_1", actor: "Moiz" }, { now, id: "eff_1" }), ...overrides };
 }
+
+describe("approval-effect applier coverage", () => {
+  it("every migrated approval effect type has a registered idempotent applier", () => {
+    // source, content_packet, skill, model_upgrade are migrated to the outbox; each has an applier.
+    expect(Object.keys(APPROVAL_EFFECT_APPLIERS).sort()).toEqual(["content.import", "model.apply", "skill.activate", "source.activate"]);
+    for (const fn of Object.values(APPROVAL_EFFECT_APPLIERS)) expect(typeof fn).toBe("function");
+  });
+});
 
 describe("approval-effect domain", () => {
   it("retries with backoff until out of attempts, then fails", () => {

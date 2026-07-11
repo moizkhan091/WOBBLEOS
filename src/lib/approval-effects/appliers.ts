@@ -10,4 +10,16 @@ export const APPROVAL_EFFECT_APPLIERS: Record<string, ApprovalEffectApplier> = {
     const { activateApprovedSource } = await import("@/lib/sources");
     await activateApprovedSource(effect.entityId, { trustLevel: String(effect.payload.trustLevel ?? "tier_3_monitored"), approvedBy: effect.actor ?? "system" });
   },
+  "content.import": async (effect) => {
+    const { activateApprovedContentPacket } = await import("@/lib/content");
+    await activateApprovedContentPacket(effect.entityId, { approvedBy: effect.actor ?? "system" });
+  },
+  "skill.activate": async (effect) => {
+    const { activateApprovedSkillVersion } = await import("@/lib/prompt-skills");
+    await activateApprovedSkillVersion(effect.entityId, { approvedBy: effect.actor ?? "system" });
+  },
+  "model.apply": async (effect) => {
+    const { applyApprovedModelRole } = await import("@/lib/model-registry");
+    await applyApprovedModelRole(effect.entityId, { modelId: String(effect.payload.modelId ?? ""), approvedBy: effect.actor ?? "system" });
+  },
 };

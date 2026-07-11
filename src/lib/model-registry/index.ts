@@ -32,7 +32,14 @@ export interface ModelRegistryDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   /** Load the full approval row for validation (injectable for tests). */
   loadApproval?: (id: string) => Promise<{ approvalType: string; entityId: string; status: string; metadata: Record<string, unknown> } | null>;
+  /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
+  claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
   now?: Date;
+}
+
+/** Idempotent downstream of approving a model upgrade: set the role→model mapping. Reconciler-safe. */
+export async function applyApprovedModelRole(role: string, opts: { modelId: string; approvedBy: string }, deps: ModelRegistryDeps = {}): Promise<SetModelForRoleResult> {
+  return setModelForRole({ role, modelId: opts.modelId, changedBy: opts.approvedBy, reason: `Approved model upgrade` }, deps);
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -183,15 +190,22 @@ export async function applyModelSwapApproval(input: ApplyModelSwapApprovalInput,
   const validation = validateModelSwap({ role: input.role, modelId: input.toModelId, catalog });
   if (!validation.ok) throw new Error(validation.reason);
 
-  await applyApprovalAction(
-    { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
-    { store: deps.approvalStore, recordAudit, now },
-  );
-
-  return setModelForRole(
-    { role: input.role, modelId: input.toModelId, changedBy: input.approvedBy, reason: `Approved model upgrade (approval ${input.approvalId})` },
-    deps,
-  );
+  // Transactional outbox: atomically flip the approval + record the model-apply effect (validation
+  // already ran above, so a bad swap never records an effect). Then apply inline (idempotent).
+  const claimFn = deps.claimAndRecordEffect ?? (async (i: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => (await import("@/lib/approval-effects")).claimApprovalAndRecordEffect(i, { now }));
+  const { claimed, effectId } = await claimFn({ approvalId: input.approvalId, approvedBy: input.approvedBy, effect: { approvalId: input.approvalId, effectType: "model.apply", entityType: "model_role", entityId: input.role, payload: { modelId: input.toModelId }, actor: input.approvedBy } });
+  // Idempotent either way: apply the role mapping (a re-run just re-sets the same model). If we lost
+  // the claim, the winner already flipped the approval — the mapping is still (re-)applied safely.
+  await recordAudit({ eventType: "approval.approve", module: "approvals", entityType: "approval", entityId: input.approvalId, actor: input.approvedBy, metadata: { approvalType: "model_upgrade", toStatus: "approved", claimed } });
+  const result = await applyApprovedModelRole(input.role, { modelId: input.toModelId, approvedBy: input.approvedBy }, deps);
+  if (claimed && effectId && !deps.claimAndRecordEffect) {
+    try {
+      const { reconcileApprovalEffects } = await import("@/lib/approval-effects");
+      const { APPROVAL_EFFECT_APPLIERS } = await import("@/lib/approval-effects/appliers");
+      await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { onlyId: effectId, now });
+    } catch { /* safety net */ }
+  }
+  return result;
 }
 
 function catalogFromValue(value: unknown): ModelCatalog {

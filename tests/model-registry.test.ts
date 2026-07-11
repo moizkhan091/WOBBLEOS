@@ -133,16 +133,20 @@ describe("model registry service", () => {
 
   it("applies the model swap only after approval", async () => {
     const { store, current } = makeStore({ ask_wobble: { provider: "openrouter", model: "openai/gpt-4o-mini" } });
+    let recordedEffect: { effectType: string; entityId: string; payload?: Record<string, unknown> } | null = null;
     await applyModelSwapApproval(
       { approvalId: "approval_1", role: "ask_wobble", toModelId: "openai/gpt-4o", approvedBy: "Moiz" },
       {
         store,
         approvalStore: fakeApprovalStore().store,
         loadApproval: async () => ({ approvalType: "model_upgrade", entityId: "ask_wobble", status: "pending", metadata: { toModel: "openai/gpt-4o" } }),
+        claimAndRecordEffect: async (i) => { recordedEffect = i.effect; return { claimed: true, effectId: "eff_1" }; },
         recordAudit: async () => {},
         now,
       },
     );
     expect(current().ask_wobble.model).toBe("openai/gpt-4o");
+    // The model-apply effect was recorded atomically with the flip (role + target model in the payload).
+    expect(recordedEffect).toMatchObject({ effectType: "model.apply", entityId: "ask_wobble", payload: { modelId: "openai/gpt-4o" } });
   });
 });

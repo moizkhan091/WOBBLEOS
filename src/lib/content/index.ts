@@ -73,7 +73,27 @@ export interface ContentDeps {
   store?: ContentCommandStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
+  claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
   now?: Date;
+}
+
+/**
+ * Idempotent downstream of approving a content packet: mark it approved + enqueue the (idempotent)
+ * library import. Safe to run more than once — called inline by approveContentPacket AND by the
+ * approval-effects reconciler (crash safety net), so a crash after the atomic flip still converges.
+ */
+export async function activateApprovedContentPacket(packetId: string, opts: { approvedBy: string }, deps: ContentDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const packet = await store.getPacketById(packetId);
+  if (!packet) return;
+  await store.updatePacket(packetId, { approvalStatus: "approved" as ContentApprovalStatus, updatedAt: now });
+  if (process.env.DATABASE_URL) {
+    try {
+      await enqueueJob({ queue: "general", type: "library.import", payload: { packetId }, priority: 6, maxAttempts: 1, linkedModule: "library", linkedEntityType: "content_packet", linkedEntityId: packetId, idempotencyKey: `library.import:${packetId}` });
+    } catch { /* library import is best-effort + idempotent */ }
+  }
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -430,40 +450,23 @@ export async function approveContentPacket(input: ContentPacketActionInput, deps
   const now = deps.now ?? new Date();
   const packet = await store.getPacketById(input.packetId);
   if (!packet) throw new Error(`content packet '${input.packetId}' not found`);
-  await applyApprovalAction(
-    { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
-    { store: deps.approvalStore, recordAudit: (e) => contentRecordAudit(deps, e), now },
-  );
-  const fields: Partial<ContentPacketRow> = { approvalStatus: "approved" as ContentApprovalStatus, updatedAt: now };
-  await store.updatePacket(packet.id, fields);
-  await contentRecordAudit(deps, {
-    eventType: "content_packet.approved",
-    module: "content_command",
-    entityType: "content_packet",
-    entityId: packet.id,
-    actor: input.approvedBy,
-    metadata: { approvalId: input.approvalId },
-  });
-  // Approved packs flow into the Content Library. Enqueue (not a direct import) to avoid a
-  // content<->library import cycle; the worker imports it. Best-effort: never block approval.
-  if (process.env.DATABASE_URL) {
+  // Transactional outbox: atomically flip the approval + record the content-import effect.
+  const claimFn = deps.claimAndRecordEffect ?? (async (i: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => (await import("@/lib/approval-effects")).claimApprovalAndRecordEffect(i, { now }));
+  const { claimed, effectId } = await claimFn({ approvalId: input.approvalId, approvedBy: input.approvedBy, effect: { approvalId: input.approvalId, effectType: "content.import", entityType: "content_packet", entityId: packet.id, actor: input.approvedBy } });
+  if (!claimed) return { ...packet, approvalStatus: (await store.getPacketById(input.packetId))?.approvalStatus ?? packet.approvalStatus };
+
+  await contentRecordAudit(deps, { eventType: "approval.approve", module: "approvals", entityType: "approval", entityId: input.approvalId, actor: input.approvedBy, metadata: { approvalType: "content_packet", toStatus: "approved" } });
+  // Inline fast-path (idempotent); scheduler reconciler is the crash safety net.
+  await activateApprovedContentPacket(packet.id, { approvedBy: input.approvedBy }, { store, now });
+  if (effectId && !deps.claimAndRecordEffect) {
     try {
-      await enqueueJob({
-        queue: "general",
-        type: "library.import",
-        payload: { packetId: packet.id },
-        priority: 6,
-        maxAttempts: 1,
-        linkedModule: "library",
-        linkedEntityType: "content_packet",
-        linkedEntityId: packet.id,
-        idempotencyKey: `library.import:${packet.id}`,
-      });
-    } catch {
-      /* library import is best-effort */
-    }
+      const { reconcileApprovalEffects } = await import("@/lib/approval-effects");
+      const { APPROVAL_EFFECT_APPLIERS } = await import("@/lib/approval-effects/appliers");
+      await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { onlyId: effectId, now });
+    } catch { /* safety net */ }
   }
-  return { ...packet, ...fields };
+  await contentRecordAudit(deps, { eventType: "content_packet.approved", module: "content_command", entityType: "content_packet", entityId: packet.id, actor: input.approvedBy, metadata: { approvalId: input.approvalId } });
+  return { ...packet, approvalStatus: "approved" as ContentApprovalStatus, updatedAt: now };
 }
 
 /** Reject a content packet: transition the approval AND mark the packet rejected. */

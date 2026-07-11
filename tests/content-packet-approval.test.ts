@@ -116,11 +116,14 @@ describe("content packet approval actions", () => {
     const approvalStore = makeApprovalStore();
     const audit: AuditEventInput[] = [];
 
+    // Transactional-outbox seam: the atomic flip+record is injected; assert the effect + inline apply.
+    let recordedEffect: { effectType: string; entityId: string } | null = null;
     const result = await approveContentPacket(
       { packetId: packet.id, approvalId: "approval_1", approvedBy: "Moiz", notes: "Strong enough" },
       {
         store,
         approvalStore: approvalStore.store,
+        claimAndRecordEffect: async (i) => { recordedEffect = i.effect; return { claimed: true, effectId: "eff_1" }; },
         recordAudit: async (event) => {
           audit.push(event);
         },
@@ -131,10 +134,8 @@ describe("content packet approval actions", () => {
     expect(result.approvalStatus).toBe("approved");
     expect(packets.get(packet.id)?.approvalStatus).toBe("approved");
     expect(updates).toEqual([{ id: packet.id, fields: { approvalStatus: "approved", updatedAt: now } }]);
-    expect(approvalStore.updates[0]).toMatchObject({
-      id: "approval_1",
-      fields: { status: "approved", approvedBy: "Moiz", approvedAt: now, approvalAction: "approve" },
-    });
+    // The content-import effect was recorded atomically with the flip (the flip lives in the outbox tx).
+    expect(recordedEffect).toMatchObject({ effectType: "content.import", entityId: packet.id });
     expect(audit.map((event) => event.eventType)).toEqual(["approval.approve", "content_packet.approved"]);
   });
 

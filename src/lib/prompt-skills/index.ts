@@ -45,7 +45,27 @@ export interface PromptSkillDeps {
   store?: PromptSkillStore;
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
+  claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
   now?: Date;
+}
+
+/**
+ * Idempotent downstream of approving a skill version: archive older approved siblings + activate this
+ * one. Safe to run more than once — called inline by approveSkillVersion AND by the reconciler.
+ */
+export async function activateApprovedSkillVersion(skillId: string, opts: { approvedBy: string }, deps: PromptSkillDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const skill = await store.getById(skillId);
+  if (!skill) return;
+  const siblings = await store.listBySlug(skill.slug);
+  for (const s of siblings) {
+    if (s.id !== skill.id && s.status === "approved") {
+      await store.updateFields(s.id, { status: "archived", archivedAt: now, updatedAt: now });
+    }
+  }
+  await store.updateFields(skill.id, { status: "approved", approvedBy: opts.approvedBy, approvedAt: now, archivedAt: null, updatedAt: now });
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -180,27 +200,21 @@ export async function approveSkillVersion(input: SkillActionInput, deps: PromptS
 
   const skill = await getExisting(store, input.skillId);
 
-  await applyApprovalAction(
-    { approvalId: input.approvalId, action: "approve", approvedBy: input.approvedBy, notes: input.notes },
-    { store: deps.approvalStore, recordAudit, now },
-  );
+  // Transactional outbox: atomically flip the approval + record the skill-activation effect.
+  const claimFn = deps.claimAndRecordEffect ?? (async (i: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => (await import("@/lib/approval-effects")).claimApprovalAndRecordEffect(i, { now }));
+  const { claimed, effectId } = await claimFn({ approvalId: input.approvalId, approvedBy: input.approvedBy, effect: { approvalId: input.approvalId, effectType: "skill.activate", entityType: "prompt_skill", entityId: skill.id, actor: input.approvedBy } });
+  if (!claimed) return (await store.getById(skill.id)) ?? skill;
 
-  // Archive older approved versions of the same slug.
-  const siblings = await store.listBySlug(skill.slug);
-  for (const s of siblings) {
-    if (s.id !== skill.id && s.status === "approved") {
-      await store.updateFields(s.id, { status: "archived", archivedAt: now, updatedAt: now });
-    }
+  await recordAudit({ eventType: "approval.approve", module: "approvals", entityType: "approval", entityId: input.approvalId, actor: input.approvedBy, metadata: { approvalType: "skill", toStatus: "approved" } });
+  // Inline fast-path (idempotent); scheduler reconciler is the crash safety net.
+  await activateApprovedSkillVersion(skill.id, { approvedBy: input.approvedBy }, { store, now });
+  if (effectId && !deps.claimAndRecordEffect) {
+    try {
+      const { reconcileApprovalEffects } = await import("@/lib/approval-effects");
+      const { APPROVAL_EFFECT_APPLIERS } = await import("@/lib/approval-effects/appliers");
+      await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { onlyId: effectId, now });
+    } catch { /* safety net */ }
   }
-
-  const fields: Partial<PromptSkillRow> = {
-    status: "approved",
-    approvedBy: input.approvedBy,
-    approvedAt: now,
-    archivedAt: null,
-    updatedAt: now,
-  };
-  await store.updateFields(skill.id, fields);
 
   await recordAudit({
     eventType: "skill.approved",
@@ -211,7 +225,7 @@ export async function approveSkillVersion(input: SkillActionInput, deps: PromptS
     metadata: { slug: skill.slug, version: skill.version, approvalId: input.approvalId },
   });
 
-  return { ...skill, ...fields };
+  return { ...skill, status: "approved", approvedBy: input.approvedBy, approvedAt: now, archivedAt: null, updatedAt: now };
 }
 
 export async function rejectSkillVersion(input: SkillActionInput, deps: PromptSkillDeps = {}): Promise<PromptSkillRow> {

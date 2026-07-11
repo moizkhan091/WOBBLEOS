@@ -36,6 +36,7 @@ function toolCtx() {
       store: modelStore,
       approvalStore,
       loadApproval: async () => ({ approvalType: "model_upgrade", entityId: "ask_wobble", status: "pending", metadata: { toModel: "openai/gpt-4o" } }),
+      claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), // outbox seam
       recordAudit: async () => {},
     },
     current: () => current,

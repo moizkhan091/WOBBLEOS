@@ -132,13 +132,15 @@ describe("prompt-skill service", () => {
     const approvalStore = fakeApprovalStore();
     const { recordAudit, events } = auditSink();
 
+    let recordedEffect: { effectType: string } | null = null;
     const approved = await approveSkillVersion(
       { skillId: "skill_v2", approvalId: "appr_1", approvedBy: "Moiz" },
-      { store, approvalStore, recordAudit, now },
+      { store, approvalStore, recordAudit, now, claimAndRecordEffect: async (i) => { recordedEffect = i.effect; return { claimed: true, effectId: "eff_1" }; } },
     );
 
     expect(approved.status).toBe("approved");
     expect(approved.approvedBy).toBe("Moiz");
+    expect(recordedEffect).toMatchObject({ effectType: "skill.activate" }); // outbox effect recorded atomically
     expect(rows.get("skill_v1")?.status).toBe("archived");
     expect(events.map((e) => e.eventType)).toContain("skill.approved");
 

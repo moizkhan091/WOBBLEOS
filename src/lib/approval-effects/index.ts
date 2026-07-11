@@ -110,6 +110,38 @@ export async function reconcileApprovalEffects(
   return result;
 }
 
+/**
+ * One-call approval resolution via the outbox: atomically flip the approval + record its effect, then
+ * apply it inline (idempotent, fast-path). The scheduler reconciler is the crash safety net. Returns
+ * whether THIS call won the claim (false = already actioned = idempotent no-op for the caller).
+ * Injectable `claim` for tests; `appliers` defaults to the registry.
+ */
+export async function resolveApprovalEffect(
+  input: { approvalId: string; approvedBy: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown> },
+  deps: {
+    now?: Date;
+    claim?: (i: { approvalId: string; approvedBy: string; effect: BuildApprovalEffectInput }) => Promise<{ claimed: boolean; effectId: string | null }>;
+    appliers?: Record<string, ApprovalEffectApplier>;
+    store?: ApprovalEffectStore;
+  } = {},
+): Promise<{ claimed: boolean; effectId: string | null }> {
+  const now = deps.now ?? new Date();
+  const claimFn = deps.claim ?? ((i) => claimApprovalAndRecordEffect(i, { now }));
+  const claim = await claimFn({
+    approvalId: input.approvalId,
+    approvedBy: input.approvedBy,
+    effect: { approvalId: input.approvalId, effectType: input.effectType, entityType: input.entityType, entityId: input.entityId, payload: input.payload, actor: input.approvedBy },
+  });
+  // Inline fast-path only when we used the REAL claim (tests inject `claim` and drive apply themselves).
+  if (claim.claimed && claim.effectId && !deps.claim) {
+    try {
+      const appliers = deps.appliers ?? (await import("@/lib/approval-effects/appliers")).APPROVAL_EFFECT_APPLIERS;
+      await reconcileApprovalEffects(appliers, { onlyId: claim.effectId, now, store: deps.store });
+    } catch { /* the scheduler reconciler is the safety net */ }
+  }
+  return claim;
+}
+
 // ---------------------------------------------------------------- default store (DB)
 
 export function defaultStore(db: Db = getDb()): ApprovalEffectStore {
