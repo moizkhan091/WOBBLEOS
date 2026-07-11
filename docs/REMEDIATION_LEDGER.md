@@ -39,7 +39,10 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | d351b13 |
 | Graph checkpointing + resumability (content + paid-audit) | fixed-verified | 857c0dd |
 | Hardening: content-graph idempotency + automation validation + Plausible host | fixed-verified | f050eae |
-| markAssetPostedOnPlatform duplicate published rows (partial unique index) | fixed-verified | (this commit) |
+| markAssetPostedOnPlatform duplicate published rows (partial unique index) | fixed-verified | 83750e8 |
+| Concurrency hardening (memory tx, CRM race, invoice retry, reinforceNote, reclaim) | fixed-verified | cc97fc0 |
+
+**Pre-deployment release-candidate gate → see [RELEASE_CANDIDATE_GATE.md](RELEASE_CANDIDATE_GATE.md).** Verdict: DO NOT DEPLOY YET (green build/test/migration gate, but remaining open defects + architecture gap). Real-provider (OpenRouter) smoke PASS. RC tagged `rc-pre-deploy-83750e8`.
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
