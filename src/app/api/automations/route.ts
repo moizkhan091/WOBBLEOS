@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addAutomation, listAutomations } from "@/lib/automations";
-import { createAutomationSchema } from "@/lib/domain/automation";
+import { createAutomationSchema, RUNNABLE_AUTOMATION_QUEUES } from "@/lib/domain/automation";
+import { generalRegistry, knownJobTypes } from "@/lib/workers/registry";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
@@ -27,9 +28,16 @@ export async function POST(request: Request) {
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
-    const rule = await addAutomation({ ...parsed.data, createdBy: auth });
+    // Gate at creation: reject an action that could never run (no handler / unconsumed queue).
+    const rule = await addAutomation(
+      { ...parsed.data, createdBy: auth },
+      { validActionTypes: knownJobTypes(generalRegistry), runnableQueues: RUNNABLE_AUTOMATION_QUEUES },
+    );
     return NextResponse.json({ ok: true, rule }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "unknown error";
+    // A rejected action is a client error (bad rule), not a server fault.
+    const status = msg.startsWith("invalid automation:") ? 422 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }

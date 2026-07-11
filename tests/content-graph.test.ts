@@ -7,12 +7,13 @@ import {
   coercePlatform,
   parseJsonObject,
   creativeBriefSchema,
+  contentGraphIdempotencyKey,
   type ContentScore,
   type CopyDraft,
   type CreativeBrief,
   type EvidencePack,
 } from "@/lib/domain/content-graph";
-import { runContentGraph, type ContentGraphDeps, type ContentPacketCreationResult } from "@/lib/content-graph";
+import { runContentGraph, enqueueContentGraphJob, type ContentGraphDeps, type ContentPacketCreationResult } from "@/lib/content-graph";
 
 // ---------------------------------------------------------------- domain
 
@@ -113,6 +114,42 @@ function makeDeps(nodeResponses: string[]) {
   };
   return { deps, agentRuns, getPacket: () => capturedPacket };
 }
+
+describe("content-graph idempotency (double-click spend guard)", () => {
+  const base = { contentTrackId: "ct1", objective: "book more calls" };
+
+  it("same objective within the debounce window -> same key (deduped, no double spend)", () => {
+    const t1 = new Date("2026-07-11T12:00:00Z");
+    const t2 = new Date("2026-07-11T12:00:30Z"); // 30s later, same 2-min bucket
+    expect(contentGraphIdempotencyKey(base, t1)).toBe(contentGraphIdempotencyKey(base, t2));
+  });
+
+  it("different objective -> different key; a later time bucket -> different key", () => {
+    const t = new Date("2026-07-11T12:00:00Z");
+    expect(contentGraphIdempotencyKey(base, t)).not.toBe(contentGraphIdempotencyKey({ ...base, objective: "grow followers" }, t));
+    const later = new Date("2026-07-11T12:05:00Z"); // new bucket -> deliberate re-run allowed
+    expect(contentGraphIdempotencyKey(base, t)).not.toBe(contentGraphIdempotencyKey(base, later));
+  });
+
+  it("enqueueContentGraphJob injects the default key when the caller omits one", async () => {
+    const enqueued: Array<Record<string, unknown>> = [];
+    const now = new Date("2026-07-11T12:00:00Z");
+    await enqueueContentGraphJob(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "book more calls" },
+      { enqueueJob: async (i) => { enqueued.push(i as Record<string, unknown>); return {}; }, now },
+    );
+    expect(enqueued[0].idempotencyKey).toBe(contentGraphIdempotencyKey({ contentTrackId: "ct1", objective: "book more calls" }, now));
+  });
+
+  it("an explicit caller-provided key still wins", async () => {
+    const enqueued: Array<Record<string, unknown>> = [];
+    await enqueueContentGraphJob(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "x", idempotencyKey: "explicit-123" },
+      { enqueueJob: async (i) => { enqueued.push(i as Record<string, unknown>); return {}; } },
+    );
+    expect(enqueued[0].idempotencyKey).toBe("explicit-123");
+  });
+});
 
 describe("runContentGraph", () => {
   it("runs a 5-agent grounded graph and assembles an approvable pack", async () => {

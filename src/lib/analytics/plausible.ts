@@ -8,11 +8,37 @@ export interface PlausibleConfig {
   host?: string;
 }
 
+const DEFAULT_PLAUSIBLE_HOST = "https://plausible.io";
+
+/**
+ * Validate PLAUSIBLE_HOST before it becomes the base of every request URL. Parse it, require https
+ * (http allowed only for localhost self-host), and reduce it to a clean origin so a stray path/query
+ * or a non-http(s) scheme can't be smuggled into the outbound URL. Falls back to the default on junk.
+ */
+export function normalizePlausibleHost(raw: string | undefined): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return DEFAULT_PLAUSIBLE_HOST;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    console.error(`PLAUSIBLE_HOST is not a valid URL ('${trimmed}') — falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
+    return DEFAULT_PLAUSIBLE_HOST;
+  }
+  const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  const schemeOk = url.protocol === "https:" || (url.protocol === "http:" && isLocalhost);
+  if (!schemeOk) {
+    console.error(`PLAUSIBLE_HOST must be https (http only for localhost); got '${url.protocol}' — falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
+    return DEFAULT_PLAUSIBLE_HOST;
+  }
+  return url.origin; // scheme + host(+port) only — drops any path/query/fragment
+}
+
 export function readPlausibleConfig(env: Record<string, string | undefined> = process.env): PlausibleConfig {
   return {
     apiKey: env.PLAUSIBLE_API_KEY?.trim() || undefined,
     siteId: env.PLAUSIBLE_SITE_ID?.trim() || undefined,
-    host: env.PLAUSIBLE_HOST?.trim() || "https://plausible.io",
+    host: normalizePlausibleHost(env.PLAUSIBLE_HOST),
   };
 }
 

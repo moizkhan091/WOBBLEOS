@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { plausibleConfigured, readPlausibleConfig, getWebstats, normalizePlausiblePeriod } from "@/lib/analytics/plausible";
+import { plausibleConfigured, readPlausibleConfig, getWebstats, normalizePlausiblePeriod, normalizePlausibleHost } from "@/lib/analytics/plausible";
 
 describe("plausible config", () => {
   it("is unconfigured without keys", () => {
@@ -10,6 +10,15 @@ describe("plausible config", () => {
     const cfg = readPlausibleConfig({ PLAUSIBLE_API_KEY: "k", PLAUSIBLE_SITE_ID: "s" });
     expect(cfg.apiKey).toBe("k");
     expect(cfg.host).toBe("https://plausible.io");
+  });
+  it("validates PLAUSIBLE_HOST: https only (localhost may be http), origin-only, junk falls back", () => {
+    expect(normalizePlausibleHost(undefined)).toBe("https://plausible.io");
+    expect(normalizePlausibleHost("https://analytics.acme.com")).toBe("https://analytics.acme.com");
+    expect(normalizePlausibleHost("https://analytics.acme.com/evil/path?x=1")).toBe("https://analytics.acme.com"); // path/query stripped
+    expect(normalizePlausibleHost("http://localhost:8000")).toBe("http://localhost:8000"); // self-host allowed
+    expect(normalizePlausibleHost("http://evil.com")).toBe("https://plausible.io"); // non-localhost http rejected
+    expect(normalizePlausibleHost("file:///etc/passwd")).toBe("https://plausible.io"); // bad scheme rejected
+    expect(normalizePlausibleHost("not a url")).toBe("https://plausible.io"); // unparseable rejected
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAutomationRow, matchingRules, createAutomationSchema, type AutomationRow } from "@/lib/domain/automation";
+import { buildAutomationRow, matchingRules, createAutomationSchema, validateAutomationAction, type AutomationRow } from "@/lib/domain/automation";
 import { addAutomation, toggleAutomation, runAutomation, fireEventRules, type AutomationStore } from "@/lib/automations";
 
 const now = new Date("2026-07-10T12:00:00Z");
@@ -12,6 +12,12 @@ describe("automation domain", () => {
   it("requires an event name for event triggers", () => {
     expect(createAutomationSchema.safeParse({ name: "x", triggerType: "event", actionType: "y" }).success).toBe(false);
     expect(createAutomationSchema.safeParse({ name: "x", triggerType: "event", triggerEvent: "crm.opportunity_stage_moved", actionType: "y" }).success).toBe(true);
+  });
+  it("validateAutomationAction flags dead handlers and unconsumed queues", () => {
+    const known = ["content.generate", "knowledge.compile"];
+    expect(validateAutomationAction({ actionType: "content.generate", actionQueue: "general" }, { knownJobTypes: known })).toBeNull();
+    expect(validateAutomationAction({ actionType: "nope", actionQueue: "general" }, { knownJobTypes: known })).toMatch(/no registered job handler/);
+    expect(validateAutomationAction({ actionType: "content.generate", actionQueue: "research" }, { knownJobTypes: known })).toMatch(/not consumed by any worker/);
   });
   it("matches enabled event rules", () => {
     const rules: AutomationRow[] = [
@@ -47,6 +53,18 @@ describe("automation service", () => {
     const off = await toggleAutomation(r.id, false, {}, deps);
     expect(off?.enabled).toBe(false);
   });
+  it("rejects an automation whose action could never run (validation opt-in)", async () => {
+    const s = store();
+    const deps = { store: s, now, recordAudit: async () => {}, validActionTypes: ["content.generate", "knowledge.compile"], runnableQueues: ["general"] as const };
+    // Unknown actionType -> no handler.
+    await expect(addAutomation({ name: "bad type", actionType: "project.bootstrap" }, deps)).rejects.toThrow(/no registered job handler/);
+    // Unconsumed queue -> stranded job.
+    await expect(addAutomation({ name: "bad queue", actionQueue: "content", actionType: "content.generate" }, deps)).rejects.toThrow(/not consumed by any worker/);
+    // Valid action passes.
+    const ok = await addAutomation({ name: "good", actionQueue: "general", actionType: "content.generate" }, deps);
+    expect(ok.actionType).toBe("content.generate");
+  });
+
   it("fires matching event rules", async () => {
     const s = store();
     const enqueued: string[] = [];

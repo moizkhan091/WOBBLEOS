@@ -17,6 +17,26 @@ export const CONTENT_GRAPH_MODULE = "content";
 export const CONTENT_GRAPH_JOB_TYPE = "content.graph";
 export const CONTENT_GRAPH_QUEUE = "general";
 
+// Debounce window for the default idempotency key: rapid double-submits of the SAME objective within
+// this window are deduped by the queue (one graph run, no duplicate LLM spend / duplicate packet); a
+// deliberate re-run of the same objective later falls in a new bucket and is allowed.
+export const CONTENT_GRAPH_DEBOUNCE_MS = 2 * 60_000;
+
+/**
+ * Deterministic default idempotency key for a content-graph run. Keyed by track + objective + focus
+ * within a time bucket so a double-click can't spend twice, while genuine re-runs still go through.
+ */
+export function contentGraphIdempotencyKey(
+  input: { contentTrackId: string; objective: string; platformFocus?: string[]; formatFocus?: string[] },
+  now: Date,
+): string {
+  const bucket = Math.floor(now.getTime() / CONTENT_GRAPH_DEBOUNCE_MS);
+  const basis = `${input.contentTrackId}|${input.objective}|${(input.platformFocus ?? []).join(",")}|${(input.formatFocus ?? []).join(",")}`;
+  let h = 5381; // djb2 — a short, stable hash so the key stays bounded regardless of objective length
+  for (let i = 0; i < basis.length; i += 1) h = ((h << 5) + h + basis.charCodeAt(i)) >>> 0;
+  return `content.graph:${input.contentTrackId}:${h.toString(36)}:${bucket}`;
+}
+
 // Per-node model roles (routed via settings model_roles; fall back to the default model when
 // unmapped). Cheap for extraction/scoring, strong for strategy/copy — see the vision's tiering.
 export const CONTENT_GRAPH_ROLES = {

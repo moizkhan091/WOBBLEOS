@@ -20,6 +20,7 @@ import {
   CONTENT_GRAPH_MODULE,
   CONTENT_GRAPH_QUEUE,
   CONTENT_GRAPH_ROLES,
+  contentGraphIdempotencyKey,
   assembleContentPacketInput,
   buildCopyDraftPrompt,
   buildCopyRevisePrompt,
@@ -336,6 +337,8 @@ export async function enqueueContentGraphJob(
   deps: ContentGraphDeps = {},
 ): Promise<unknown> {
   const enqueue = deps.enqueueJob ?? enqueueJob;
+  // Default to a debounced idempotency key so a double-click can't spend on two full graph runs.
+  const idempotencyKey = input.idempotencyKey ?? contentGraphIdempotencyKey(input, deps.now ?? new Date());
   return enqueue({
     queue: CONTENT_GRAPH_QUEUE,
     type: CONTENT_GRAPH_JOB_TYPE,
@@ -348,7 +351,7 @@ export async function enqueueContentGraphJob(
     },
     priority: 5,
     maxAttempts: 2,
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey,
     linkedModule: CONTENT_GRAPH_MODULE,
     linkedEntityType: "content_track",
     linkedEntityId: input.contentTrackId,

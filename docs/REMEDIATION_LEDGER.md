@@ -37,15 +37,24 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | 95afa58 |
 | Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | 0469dd0 |
 | Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | d351b13 |
-| Graph checkpointing + resumability (content + paid-audit) | fixed-verified | (this commit) |
+| Graph checkpointing + resumability (content + paid-audit) | fixed-verified | 857c0dd |
+| Hardening: content-graph idempotency + automation validation + Plausible host | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
-2. **VPS deployment** — BLOCKED on external access (no VPS host/SSH/credentials in the local dev environment). See "VPS status" below.
+1. **Taste learning is a write-only loop** (product) — `recordFeedbackEvent` updates `taste_profiles` but no generation worker reads them back. Wire `getTasteContextForGeneration` into content-worker/graph. (Bigger — a real feature.)
+2. **markAssetPostedOnPlatform find-or-create** — read-then-write with no unique key → concurrent duplicate published rows.
+3. **Connections health check is shallow** — a revoked/rotated API key still shows "healthy" (no live provider ping).
+4. Remaining mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+5. **VPS deployment** — BLOCKED on external access (no VPS host/SSH/credentials in the local dev environment). See "VPS status" below.
+
+## Notes on FIX #18 (three concrete hardening fixes)
+- **Content-graph idempotency** (cost): the graph route accepted an optional idempotencyKey but the UI never sent one, so a double-click ran the full 5-agent graph twice (duplicate LLM spend + duplicate packet). `enqueueContentGraphJob` now derives a debounced default key (`contentGraphIdempotencyKey`: track+objective+focus within a 2-min bucket) — double-clicks dedupe, deliberate re-runs later still go through. Explicit caller key still wins.
+- **Automation action validation** (reliability): `addAutomation`/the API now reject a rule whose `actionType` has no registered job handler (dead job) or whose `actionQueue` no worker consumes (stranded job) — `validateAutomationAction` against `knownJobTypes(generalRegistry)` + `RUNNABLE_AUTOMATION_QUEUES` (["general"]). Decoupled: the domain validator is pure; the registry is injected by the route (no import cycle). Returns 422 on a bad rule.
+- **Plausible host validation** (security): `PLAUSIBLE_HOST` was used as a raw URL base. `normalizePlausibleHost` now parses it, requires https (http only for localhost self-host), and reduces to origin-only (drops any smuggled path/query), falling back to the default on junk.
 
 ## Notes on graph checkpointing (open item closed — full production-grade)
 **What**: durable per-node output persistence so the content graph and paid-audit graph RESUME after a late-node failure / retry / restart instead of re-running (and re-charging) completed nodes.

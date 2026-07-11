@@ -4,7 +4,7 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { enqueueJob } from "@/lib/jobs";
-import { AUTOMATION_MODULE, buildAutomationRow, matchingRules, type AutomationRow, type CreateAutomationInput } from "@/lib/domain/automation";
+import { AUTOMATION_MODULE, buildAutomationRow, matchingRules, validateAutomationAction, type AutomationRow, type CreateAutomationInput } from "@/lib/domain/automation";
 
 /** Automations service. Create/list/toggle rules; run a rule (enqueues a REAL job); fire event-matched rules. */
 
@@ -18,6 +18,9 @@ export interface AutomationDeps {
   store?: AutomationStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   enqueue?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
+  /** When provided (the API route does), reject rules whose action could never run (no handler / dead queue). */
+  validActionTypes?: string[];
+  runnableQueues?: readonly string[];
   now?: Date;
 }
 async function audit(deps: AutomationDeps, input: AuditEventInput): Promise<void> {
@@ -32,6 +35,10 @@ async function doEnqueue(deps: AutomationDeps, input: { queue: string; type: str
 export async function addAutomation(input: CreateAutomationInput, deps: AutomationDeps = {}): Promise<AutomationRow> {
   const store = deps.store ?? defaultStore();
   const row = buildAutomationRow(input, { now: deps.now });
+  if (deps.validActionTypes) {
+    const err = validateAutomationAction(row, { knownJobTypes: deps.validActionTypes, runnableQueues: deps.runnableQueues });
+    if (err) throw new Error(`invalid automation: ${err}`);
+  }
   await store.insertRule(row);
   await audit(deps, { eventType: "automation.created", module: AUTOMATION_MODULE, entityType: "automation_rule", entityId: row.id, actor: row.createdBy ?? "system", metadata: { name: row.name, triggerType: row.triggerType, actionType: row.actionType } });
   invalidateEventRuleCache();

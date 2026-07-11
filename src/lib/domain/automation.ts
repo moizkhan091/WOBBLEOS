@@ -40,6 +40,28 @@ export const createAutomationSchema = z.object({
 }).refine((v) => v.triggerType !== "event" || !!v.triggerEvent, { message: "event triggers need a triggerEvent", path: ["triggerEvent"] });
 export type CreateAutomationInput = z.input<typeof createAutomationSchema>;
 
+/** Queues a worker actually polls today. An action on any other queue would enqueue a job nothing runs. */
+export const RUNNABLE_AUTOMATION_QUEUES = ["general"] as const;
+
+/**
+ * Reject an automation whose action could never succeed: an actionType with no registered job handler
+ * (dead job) or an actionQueue no worker consumes (stranded job). Returns an error string or null.
+ * Pure — the caller supplies the current handler/queue sets so this stays decoupled from the registry.
+ */
+export function validateAutomationAction(
+  action: { actionType: string; actionQueue: string },
+  ctx: { knownJobTypes: string[]; runnableQueues?: readonly string[] },
+): string | null {
+  const queues = ctx.runnableQueues ?? RUNNABLE_AUTOMATION_QUEUES;
+  if (!ctx.knownJobTypes.includes(action.actionType)) {
+    return `actionType '${action.actionType}' has no registered job handler (valid: ${ctx.knownJobTypes.join(", ")})`;
+  }
+  if (!queues.includes(action.actionQueue)) {
+    return `actionQueue '${action.actionQueue}' is not consumed by any worker (valid: ${queues.join(", ")})`;
+  }
+  return null;
+}
+
 export function buildAutomationRow(input: CreateAutomationInput, opts: { now?: Date; id?: string } = {}): AutomationRow {
   const now = opts.now ?? new Date();
   return {
