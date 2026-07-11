@@ -111,6 +111,11 @@ function truncate(value: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
+/** Length cap that PRESERVES internal newlines/formatting (unlike truncate, which flattens whitespace). */
+function clampChars(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 /** Pull the do-not-say rule text out of the loaded core Brain, if present. */
 export function extractDoNotSay(brain: AskBrainRecord[]): string | undefined {
   const rec = brain.find((b) => b.slug === "do-not-say" || b.area === "do-not-say");
@@ -173,7 +178,28 @@ export interface BuildAskContextInput {
   doNotSay?: string;
   /** Live OS state (agents, modules, pending approvals, models) — authoritative for operational questions. */
   systemSnapshot?: string;
+  /** Caps on assembled input so a growing Brain/evidence set can't drive unbounded LLM input cost. */
+  budget?: AskContextBudget;
 }
+
+/**
+ * Input-token budget for the Ask prompt. The output is already capped (maxTokens); this bounds the
+ * INPUT so Ask cost stays flat as the Brain, evidence, and snapshot grow. Char-based (≈ 4 chars/token)
+ * for deterministic, testable truncation. Defaults cap total input at ~10k tokens.
+ */
+export interface AskContextBudget {
+  maxBrainItems: number;
+  maxBrainCharsPerItem: number;
+  maxEvidenceChars: number;
+  maxSnapshotChars: number;
+}
+
+export const DEFAULT_ASK_CONTEXT_BUDGET: AskContextBudget = {
+  maxBrainItems: 24,
+  maxBrainCharsPerItem: 700,
+  maxEvidenceChars: 16000,
+  maxSnapshotChars: 4000,
+};
 
 export interface AskContext {
   systemPrompt: string;
@@ -191,16 +217,24 @@ export function buildAskContext(input: BuildAskContextInput): AskContext {
     input.memory.some((m) => HIGH_TRUST.has(m.trustLevel)) ||
     input.sources.some((s) => sourceHasChunkEvidence(s) && HIGH_TRUST.has(s.trustLevel));
   const citations = buildCitations(input.memory, input.sources);
+  const budget = input.budget ?? DEFAULT_ASK_CONTEXT_BUDGET;
 
   const brainBlock =
-    input.brain.map((b) => `- ${b.title} (${b.area}): ${b.content}`).join("\n") || "(no core WOBBLE Brain loaded)";
-  const evidenceBlock = citations.length ? buildEvidenceBlock(input.memory, input.sources) : "(no approved evidence retrieved)";
+    input.brain
+      .slice(0, budget.maxBrainItems)
+      .map((b) => `- ${b.title} (${b.area}): ${truncate(b.content, budget.maxBrainCharsPerItem)}`)
+      .join("\n") || "(no core WOBBLE Brain loaded)";
+  // Per-chunk truncation happens in buildEvidenceBlock; this caps the TOTAL so many chunks can't blow the budget.
+  const evidenceBlock = citations.length
+    ? clampChars(buildEvidenceBlock(input.memory, input.sources), budget.maxEvidenceChars)
+    : "(no approved evidence retrieved)";
+  const snapshotBlock = input.systemSnapshot ? clampChars(input.systemSnapshot, budget.maxSnapshotChars) : "";
 
   const systemPrompt = [
     "You are WOBBLE OS answering for the founders. Use ONLY the WOBBLE Brain and the approved evidence below. Do not invent sources or facts.",
     input.doNotSay ? `Do-not-say rules (must follow): ${input.doNotSay}` : "",
-    input.systemSnapshot
-      ? `Live OS system state (AUTHORITATIVE for operational questions about the OS itself — number of agents, what each agent is, modules and their status, what is waiting on approval, which model each role uses. Answer such questions directly from this; no [n] citation needed):\n${input.systemSnapshot}`
+    snapshotBlock
+      ? `Live OS system state (AUTHORITATIVE for operational questions about the OS itself — number of agents, what each agent is, modules and their status, what is waiting on approval, which model each role uses. Answer such questions directly from this; no [n] citation needed):\n${snapshotBlock}`
       : "",
     `WOBBLE Brain:\n${brainBlock}`,
     `Approved evidence (cite by [n]):\n${evidenceBlock}`,

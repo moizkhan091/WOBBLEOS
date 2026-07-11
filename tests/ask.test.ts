@@ -69,6 +69,51 @@ describe("buildAskContext", () => {
 
     expect(ctx.systemPrompt).toContain("A serious AI OS is built from context, data, skills, routines, permissions, APIs, and cadence.");
   });
+
+  it("caps input cost: bounds Brain items, per-item length, evidence, and snapshot", () => {
+    const bigBrain: AskBrainRecord[] = Array.from({ length: 100 }, (_, i) => ({
+      slug: `b${i}`,
+      title: `Rec ${i}`,
+      area: "brand",
+      content: "X".repeat(5000),
+    }));
+    const ctx = buildAskContext({
+      question: "q",
+      brain: bigBrain,
+      memory: [],
+      sources: [],
+      systemSnapshot: "S".repeat(20000),
+      budget: { maxBrainItems: 5, maxBrainCharsPerItem: 100, maxEvidenceChars: 500, maxSnapshotChars: 300 },
+    });
+
+    // Only 5 brain records survive, each capped at ~100 chars.
+    expect((ctx.systemPrompt.match(/- Rec \d+ \(brand\)/g) ?? []).length).toBe(5);
+    expect(ctx.systemPrompt).toContain("Rec 0");
+    expect(ctx.systemPrompt).not.toContain("Rec 6");
+    // Snapshot is truncated well below its 20k raw length.
+    const snapMatch = ctx.systemPrompt.match(/S{50,}/);
+    expect(snapMatch && snapMatch[0].length).toBeLessThanOrEqual(300);
+    // Sanity: total prompt is a small multiple of the budget, not the 500k+ raw input.
+    expect(ctx.systemPrompt.length).toBeLessThan(4000);
+  });
+
+  it("truncating the evidence block preserves its newline structure (citations stay on separate lines)", () => {
+    const manyChunks: AskSourceRef[] = [
+      {
+        id: "src_big",
+        title: "Big source",
+        sourceType: "transcript",
+        trustLevel: "tier_2_approved_expert",
+        chunks: Array.from({ length: 30 }, (_, i) => ({ id: `sc_${i}`, content: `Chunk ${i} ${"y".repeat(1000)}` })),
+      },
+    ];
+    const ctx = buildAskContext({ question: "q", brain: [], memory: [], sources: manyChunks, budget: { maxBrainItems: 24, maxBrainCharsPerItem: 700, maxEvidenceChars: 800, maxSnapshotChars: 4000 } });
+    // Evidence is capped but still multi-line (newlines preserved, not flattened into one line).
+    const evidenceStart = ctx.systemPrompt.indexOf("Approved evidence");
+    const evidenceRegion = ctx.systemPrompt.slice(evidenceStart);
+    expect(evidenceRegion).toContain("\n");
+    expect(evidenceRegion).toContain("…");
+  });
 });
 
 describe("computeConfidence", () => {

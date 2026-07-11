@@ -11,6 +11,7 @@ import { formatSystemSnapshot, getSystemSnapshot } from "@/lib/system-map";
 import {
   buildAskAnswer,
   buildAskContext,
+  DEFAULT_ASK_CONTEXT_BUDGET,
   classifyIntent,
   DEFAULT_CAPABILITIES,
   extractDoNotSay,
@@ -173,7 +174,8 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
 // ---- default wiring to the real Chunk 08/09/10 + queue modules ----
 
 async function defaultRetrieveBrain(): Promise<AskBrainRecord[]> {
-  const records = await listMemoryRecords({ memoryTier: "core", status: "active" });
+  // Bound at the source too: buildAskContext caps to maxBrainItems, but don't fetch far more than needed.
+  const records = await listMemoryRecords({ memoryTier: "core", status: "active", limit: DEFAULT_ASK_CONTEXT_BUDGET.maxBrainItems });
   return records.map((r) => ({ slug: r.slug, title: r.title, area: r.area, content: r.content }));
 }
 

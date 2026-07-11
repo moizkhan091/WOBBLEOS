@@ -33,18 +33,22 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | 1f0e1ba |
 | Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | 35e85b3 |
 | website-analytics period param injection (Plausible URL) | fixed-verified | 84d0954 |
-| Registry integrity test + 2 agent-status honesty bugs | fixed-verified | (this commit) |
+| Registry integrity test + 2 agent-status honesty bugs | fixed-verified | 07bdb4b |
+| Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
-2. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
-3. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-4. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-5. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
+2. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
+3. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+4. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the Ask input-token budget (open item closed)
+- Verified: output was capped (maxTokens 500) but INPUT was not. `buildAskContext` mapped the ENTIRE Brain (`brain.map`, up to the 50-record default with untruncated content) plus per-chunk-truncated evidence (no total cap) plus the full system snapshot. Input tokens grew unbounded as the Brain/evidence/snapshot grew → unbounded per-call cost.
+- Fix: `AskContextBudget` + `DEFAULT_ASK_CONTEXT_BUDGET` (brain 24 items × 700 chars, evidence 16k chars, snapshot 4k chars; ~10k-token ceiling). Applied in `buildAskContext`; brain retrieval also bounded at the source (`limit: maxBrainItems`). Added `clampChars` (newline-preserving) so evidence/snapshot truncation doesn't flatten citation structure the way `truncate` would.
 
 ## Notes on the registry integrity test (mandate item closed)
 - Added `tests/registry-integrity.test.ts`, derived entirely from the real sources of truth (imported graph/agent/job-type constants + the worker `generalRegistry` + Ask `DEFAULT_CAPABILITIES`). It fails if: an ACTIVE agent has no declared execution path (job/graph/route/subroutine); a provably-running agent is left paused/absent; a job type the code enqueues (constants + intelligence/library/source literals + every `available` Ask route) has no handler.
