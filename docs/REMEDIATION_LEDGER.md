@@ -35,16 +35,22 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | website-analytics period param injection (Plausible URL) | fixed-verified | 84d0954 |
 | Registry integrity test + 2 agent-status honesty bugs | fixed-verified | 07bdb4b |
 | Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | 95afa58 |
-| Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | (this commit) |
+| Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | 0469dd0 |
+| Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Content-graph / paid-audit no checkpointing** (reliability/cost) — a late node failing discards all prior (paid) node work. Persist node outputs; resume from failed node. (Telemetry now records WHERE it failed — checkpointing is the natural follow-up.)
-2. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-3. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **Content-graph / paid-audit no checkpointing** (reliability/cost) — a late node failing discards all prior (paid) node work. Persist node outputs; resume from failed node. (Telemetry now records WHERE it failed — checkpointing is the natural follow-up.) NOTE: needs a schema migration + live-DB verification (per founder's memory-first/test-live preference).
+2. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the library scheduling fix (open item closed)
+- Verified THREE things: (a) scheduler→dispatch IS wired (FIX #1 calls `dispatchDuePosts` on the tick) ✓ — that sub-item was already resolved; (b) a real **double-post** bug; (c) an **orphan** risk.
+- Double-post: with Zernio configured, `schedulePost` → `zernioSchedule` creates a Zernio post with `scheduledFor` (Zernio publishes at time T), and then at time T `dispatchDuePosts` → `zernioPublish` creates ANOTHER Zernio post with `publishNow:true`. Every scheduled post would have gone out TWICE on the live instance.
+- Orphan: `scheduleRemote` ran BEFORE the local insert, so an insert failure left a live Zernio post with no local record (uncancelable, webhook can't reconcile).
+- Fix: (1) `schedulePost` is now local-first — insert the row, then best-effort push to the provider and persist the ref; a failed remote push keeps the local row (dispatched locally at due time) so nothing is orphaned or lost. (2) `dispatchDuePosts` SKIPS any post that already has a `publisherRef` (provider owns it; the webhook reconciles status) — this is the double-post guard. Tests cover local-first ordering, remote-failure fallback, and the no-double-post guarantee.
 
 ## Notes on agent telemetry (open item closed)
 - Verified: both graph runners (content-graph, paid-audit-graph) called `recordAgentRun` only with `status: "succeeded"` and never forwarded cost/latency/quality. A node throwing (e.g. unparseable output) aborted the graph with NO failed agent_run — so `failureCount` never moved and failures were invisible in telemetry.

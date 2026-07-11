@@ -175,14 +175,27 @@ export async function schedulePost(input: SchedulePostInput, deps: LibraryDeps &
   if (!asset) throw new Error(`content asset '${input.assetId}' not found`);
   if (asset.status === "archived") throw new Error("cannot schedule an archived asset");
   const row = buildScheduledPostRow(input, { now: deps.now });
-  // Non-manual publishers (Zernio) hold the schedule on their side — push it and store the ref, so
-  // the provider posts even if our server is down and cancel can reach it later.
-  if (row.publisher !== "manual" && deps.scheduleRemote) {
-    const r = await deps.scheduleRemote({ post: row, asset });
-    if (r?.publisherRef) row.publisherRef = r.publisherRef;
-  }
+  const now = deps.now ?? new Date();
+  // Local-first: always persist the schedule before touching the provider, so we ALWAYS have a
+  // cancelable record and never orphan a post on Zernio that we can't see. Then best-effort hand it to
+  // the provider's own scheduler (so it posts even if our server is down at the due time) and store the
+  // ref. If the remote push fails, we keep the local row — dispatchDuePosts publishes it at due time as
+  // a fallback. A post with a publisherRef is owned by the provider and is NOT re-dispatched locally
+  // (that would double-post).
   await store.insertScheduledPost(row);
-  await store.updateAsset(asset.id, { status: "scheduled", updatedAt: deps.now ?? new Date() });
+  await store.updateAsset(asset.id, { status: "scheduled", updatedAt: now });
+  if (row.publisher !== "manual" && deps.scheduleRemote) {
+    try {
+      const r = await deps.scheduleRemote({ post: row, asset });
+      if (r?.publisherRef) {
+        row.publisherRef = r.publisherRef;
+        await store.updateScheduledPost(row.id, { publisherRef: r.publisherRef, updatedAt: now });
+      }
+    } catch (error) {
+      // Best-effort: keep the local schedule; it will be dispatched locally at due time.
+      console.error("zernio pre-schedule failed; will dispatch locally at due time:", error instanceof Error ? error.message : error);
+    }
+  }
   await (deps.recordAudit ?? defaultRecordAudit)({
     eventType: "library.post_scheduled",
     module: LIBRARY_MODULE,
@@ -330,6 +343,13 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
     const publisher = resolvePublisher(post.publisher, registry);
     if (publisher.slug === "manual") {
       deferred += 1; // leave scheduled; the founder posts + marks done
+      continue;
+    }
+    if (post.publisherRef) {
+      // Already handed to the provider's own scheduler at schedule time (has a publisherRef). The
+      // provider owns the timing and the webhook reconciles status — re-publishing here would
+      // DOUBLE-POST. Leave it scheduled; the Zernio webhook moves it to published/failed.
+      deferred += 1;
       continue;
     }
     try {

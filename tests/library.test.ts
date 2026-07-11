@@ -191,6 +191,49 @@ describe("library service", () => {
     expect((await listScheduledPosts({ status: "canceled" }, { store }))).toHaveLength(1);
   });
 
+  it("remote-scheduling persists locally FIRST, then stores the provider ref (no orphan)", async () => {
+    const { store, posts } = makeStore();
+    const insertOrder: string[] = [];
+    const origInsert = store.insertScheduledPost;
+    store.insertScheduledPost = async (r) => { insertOrder.push("insert"); return origInsert(r); };
+    const scheduleRemote = async () => { insertOrder.push("remote"); return { publisherRef: "zpost_created" }; };
+
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-12T09:00:00Z", publisher: "zernio" }, { store, now, recordAudit: async () => {}, scheduleRemote });
+
+    expect(insertOrder).toEqual(["insert", "remote"]); // local record exists before we ever touch Zernio
+    expect(posts.get(post.id)!.publisherRef).toBe("zpost_created");
+  });
+
+  it("a failed remote pre-schedule keeps the local post (dispatched locally at due time, not lost)", async () => {
+    const { store, posts } = makeStore();
+    const scheduleRemote = async () => { throw new Error("zernio 500"); };
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-12T09:00:00Z", publisher: "zernio" }, { store, now, recordAudit: async () => {}, scheduleRemote });
+    expect(posts.get(post.id)!.status).toBe("scheduled");
+    expect(posts.get(post.id)!.publisherRef ?? null).toBeNull(); // no ref -> dispatch WILL publish it
+  });
+
+  it("dispatch NEVER re-publishes a post already handed to the provider (no double-post)", async () => {
+    const { store, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const past = "2026-07-09T11:00:00Z"; // due
+    // Simulate a post already remote-scheduled on Zernio at schedule time (has a publisherRef).
+    const scheduleRemote = async () => ({ publisherRef: "zpost_live" });
+    const post = await schedulePost({ assetId: asset.id, platform: "linkedin", scheduledAt: past, publisher: "zernio" }, { store, now, recordAudit: async () => {}, scheduleRemote });
+    expect(posts.get(post.id)!.publisherRef).toBe("zpost_live");
+
+    let published = 0;
+    const fakeZernio: PublisherAdapter = { slug: "zernio", publish: async () => { published += 1; return { publisherRef: "SECOND_POST" }; } };
+    const result = await dispatchDuePosts({ store, now, publishers: { zernio: fakeZernio } });
+
+    expect(published).toBe(0); // the provider owns it; the webhook reconciles — we do NOT publish again
+    expect(result.dispatched).toBe(0);
+    expect(result.deferred).toBe(1);
+    expect(posts.get(post.id)!.status).toBe("scheduled"); // untouched, awaiting the webhook
+    expect(posts.get(post.id)!.publisherRef).toBe("zpost_live"); // still the ORIGINAL ref
+  });
+
   it("removes a post record and recomputes the asset status", async () => {
     const { store, assets, posts } = makeStore();
     const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
