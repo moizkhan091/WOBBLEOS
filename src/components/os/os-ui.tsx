@@ -162,6 +162,45 @@ function Sidebar({ activeId }: { activeId: string }) {
   );
 }
 
+function ProfileMenu() {
+  const s = useApi<{ authenticated: boolean; founder?: string }>("/api/auth/session");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const founder = s.data?.founder ?? (s.loading ? "…" : "Guest");
+  const initial = founder && founder !== "…" && founder !== "Guest" ? founder[0].toUpperCase() : "?";
+  async function logout() {
+    setBusy(true);
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* proceed to login anyway */ }
+    window.location.href = "/login";
+  }
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={() => setOpen((o) => !o)} title="Account" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 9px 4px 4px", borderRadius: 30, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", color: C.white, cursor: "pointer" }}>
+        <span style={{ width: 27, height: 27, borderRadius: "50%", background: C.lime, color: "#0A0A0A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 700 }}>{initial}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{founder}</span>
+        <span style={{ color: faint, display: "inline-flex" }}><Icon name="ChevronDown" size={14} /></span>
+      </button>
+      {open ? (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 230, zIndex: 50, borderRadius: 13, border: "1px solid rgba(255,255,255,0.12)", background: "#0d0e11", boxShadow: "0 18px 55px rgba(0,0,0,0.55)", overflow: "hidden" }}>
+            <div style={{ padding: "13px 15px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 11 }}>
+              <span style={{ width: 34, height: 34, borderRadius: "50%", background: C.lime, color: "#0A0A0A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>{initial}</span>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>{founder}</div>
+                <div style={{ fontSize: 11, color: faint, marginTop: 1 }}>{s.data?.authenticated ? "Signed in · WOBBLE founder" : "Not signed in"}</div>
+              </div>
+            </div>
+            <button onClick={logout} disabled={busy} style={{ width: "100%", textAlign: "left", padding: "12px 15px", border: "none", background: "transparent", color: C.orange, fontSize: 12.5, fontWeight: 600, cursor: busy ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 9 }}>
+              <Icon name="LogOut" size={15} /> {busy ? "Logging out…" : "Log out"}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function Topbar() {
   return (
     <header style={{ flex: "none", height: 62, padding: "0 22px", display: "flex", alignItems: "center", gap: 16, borderBottom: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.008))", backdropFilter: "blur(22px) saturate(130%)" }}>
@@ -174,6 +213,7 @@ function Topbar() {
         <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="Activity" size={13} /></span>
         <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(242,244,241,0.8)" }}>live data</span>
       </div>
+      <ProfileMenu />
     </header>
   );
 }
