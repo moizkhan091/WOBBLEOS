@@ -1,4 +1,5 @@
 import type { ContentAssetRow, ScheduledPostRow } from "@/lib/domain/library";
+import { signMediaToken } from "@/lib/library/media-token";
 
 /**
  * Zernio publisher client (https://docs.zernio.com). Provider for the Library's publisher layer.
@@ -110,12 +111,13 @@ function publicBaseUrl(): string {
   return (process.env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
 }
 
-/** Build the public media URLs Zernio will fetch. Requires PUBLIC_BASE_URL (Zernio can't reach localhost). */
+/** Build the public media URLs Zernio will fetch. Local media uses a SIGNED public URL (Zernio has
+ * no session cookie, so the in-app /api/library route would 401). Requires PUBLIC_BASE_URL. */
 export function zernioMediaItems(asset: ContentAssetRow, baseUrl = publicBaseUrl()): ZernioMediaItem[] {
   const isVideo = asset.kind === "reel" || asset.kind === "video";
   return (asset.mediaRefs ?? []).map((m, i) => ({
     type: m.kind === "video" || isVideo ? "video" : "image",
-    url: m.url && /^https?:\/\//.test(m.url) ? m.url : `${baseUrl}/api/library/assets/${asset.id}/media?i=${i}`,
+    url: m.url && /^https?:\/\//.test(m.url) ? m.url : `${baseUrl}/api/public/media/${asset.id}?i=${i}&t=${signMediaToken(asset.id, i)}`,
   }));
 }
 

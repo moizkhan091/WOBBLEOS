@@ -10,7 +10,7 @@ import { readCookie, SESSION_COOKIE, verifyJwtOnly } from "@/lib/auth/edge";
 
 // /api/webhooks + /api/n8n are HMAC-verified inside their handlers — external callers have no
 // session cookie, so they must be public at the gate (they enforce their own signatures).
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/webhooks", "/api/n8n", "/_next", "/favicon", "/robots", "/manifest", "/icon"];
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/webhooks", "/api/n8n", "/api/public/media", "/_next", "/favicon", "/robots", "/manifest", "/icon"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p));
