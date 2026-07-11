@@ -1,6 +1,14 @@
 # WOBBLE OS — Pre-Deployment Release-Candidate Gate
 
-**Release candidate:** `main` @ `cc97fc0` (frozen point tagged `rc-pre-deploy-83750e8`; candidate advanced by audit fixes since the freeze).
+> ⚠️ **HISTORICAL SNAPSHOT — captured at `cc97fc0` (pre-Phase-1, pre-Phase-2).** Its "open defects"
+> section is now PARTLY OUTDATED: the payment-integrity cluster, provider health checks, approval
+> route consistency, proposal→CRM, won→delivery, scout→analyze (all its items 1-12) were CLOSED in
+> Phase 1 (`2bb2230`, `4a71655`), and structured handoff envelopes now exist and are used
+> (`ba58dff`, `d797b6f`). For the authoritative current state, read the ⭐ block at the top of
+> `REMEDIATION_LEDGER.md`. This file is kept as the evidence trail of the original 4-agent audit.
+> The release gate is STILL NOT passed (Phases 3-10 not built; VPS blocked).
+
+**Release candidate (at capture):** `main` @ `cc97fc0` (frozen point tagged `rc-pre-deploy-83750e8`; candidate advanced by audit fixes since the freeze).
 **Migrations:** `0028` latest, 30 applied to the local dev DB, **zero drift** (`drizzle-kit generate` → "nothing to migrate").
 **Gate result on this pass:** `typecheck 0 · vitest 535 (74 files) · build 0`.
 **Verdict: DO NOT DEPLOY YET.** The build/test/migration gate is green, but the release-candidate audit found remaining **open defects** and a material **architecture gap** between what is advertised and what is built. Details below, split exactly as the gate requires.

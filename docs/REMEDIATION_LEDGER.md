@@ -4,7 +4,18 @@ Durable state for the deep-audit remediation. A resumed session continues from h
 Source audits: `MODULE_DEEP_AUDIT.md`, `MODULE_DEEP_AUDIT_SUPPLEMENT.md`.
 **Rule:** a finding is `fixed-verified` only when the real behaviour was demonstrated (not just edited). Verify every finding against current code before fixing — the audit had ≥1 false positive (vector indexes).
 
-Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test → build` (485 tests).
+CI = Node 22 `typecheck → test → build`.
+
+## ⭐ CURRENT STATE (authoritative — resumed sessions start HERE)
+_Reconciled against the real repo, not stale headers._
+- **Branch:** `main` · **HEAD:** `5f90e2a` (approval-effects outbox)
+- **Latest migration:** `0031_approval_effects` (33 applied to the local dev DB; zero drift). 0027 graph_checkpoints · 0028 published-post unique · 0029 payments ledger · 0030 handoff runtime · 0031 approval effects.
+- **Gate at HEAD:** typecheck 0 · **570 tests (77 files)** · build 0. Real-OpenRouter smoke PASS; real-DB proofs PASS for checkpoints, payments ledger, **handoff runtime**, and **approval-effects outbox**.
+- **Phase 1 (release-blocking defects): COMPLETE** — `2bb2230` (FIX #21 payments), `4a71655` (FIX #22 approvals/workflow/health). **Approval cross-store atomicity: now fixed-verified** via the transactional-outbox (`5f90e2a`) — crash-resume/exactly-once/retry tests + real-DB proof.
+- **Phase 2 (structured handoff): FOUNDATION + DURABLE RUNTIME + paid-audit + content DONE.** `ba58dff`/`d797b6f` (envelope + graph handoffs), `47459ae` (durable runtime: `handoffs` table, delivery state machine, lease/reclaim/dead-letter/redrive, dispatch/claim/complete, scheduler self-heal, command-centre visibility). **Remaining Phase 2:** migrate the other verticals (Proposal, Research, CRM/Sales/Finance/Delivery, Ask) onto envelopes; FreeAudit adopts it when built (Phase 9).
+- **Phases 3-10: QUEUED** (departments → QA boards → continuous Research & Intelligence → taste learning → selective revision → self-improvement → real Free Audit → real Media Studio).
+- **Release gate:** NOT passed (Phases 3-10 not built; VPS blocked). `RELEASE_CANDIDATE_GATE.md` = historical snapshot (banner).
+- **RC tag:** `rc-pre-deploy-83750e8` (pre-Phase-1 rollback point).
 
 ## CRITICALS — all 6 closed ✅
 | # | Finding | Status | Commit | Proof |
@@ -45,11 +56,11 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 **Pre-deployment release-candidate gate → see [RELEASE_CANDIDATE_GATE.md](RELEASE_CANDIDATE_GATE.md).** Real-provider (OpenRouter) smoke PASS. RC tagged `rc-pre-deploy-83750e8`.
 
 ### Full-architecture build (governing mandate — 11 phases). Priority order, autonomous.
-**Phase 1 — release-blocking defects: COMPLETE ✅** (FIX #21 `bf5..`, FIX #22 `4a71655`).
+**Phase 1 — release-blocking defects: COMPLETE ✅** (FIX #21 `2bb2230`, FIX #22 `4a71655`).
 | # | Item | Fix |
 |---|------|-----|
 | 1-4 | Payment idempotency / reference dedup / concurrent partials / lost-update | Payments ledger (table + partial unique index, migration 0029; amount from ledger SUM under FOR UPDATE, capped at total). DB-proven. |
-| 5 | Approval flip↔downstream atomicity | Source approval reordered (activate → then flip) = re-drivable; cross-store tx residual noted |
+| 5 | Approval flip↔downstream atomicity | **fixed-verified** (`5f90e2a`) — transactional-outbox: `claimApprovalAndRecordEffect` flips + records the effect in ONE tx; `reconcileApprovalEffects` applies it idempotently (inline fast-path + scheduler safety net). Crash-resume/exactly-once/retry tests + real-DB proof. Source path migrated; other approval paths adopt it next. |
 | 6 | Duplicate approval prevention | `claimTransition` (UPDATE WHERE status=fromStatus) atomic claim |
 | 7 | Identical behaviour across approval routes | `/action` approve/reject now routes through `resolveApproval` (same downstream as `/resolve`) |
 | 8 | Proposal accept → advance CRM opportunity | accept moves the linked opp to won (→ delivery), not just an invoice |
@@ -68,11 +79,12 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
-## OPEN — verified/likely, prioritized (next)
-1. **Taste learning is a write-only loop** (product) — `recordFeedbackEvent` updates `taste_profiles` but no generation worker reads them back. Wire `getTasteContextForGeneration` into content-worker/graph. (Bigger — a real feature.)
-2. **Connections health check is shallow** — a revoked/rotated API key still shows "healthy" (no live provider ping).
-4. Remaining mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
-5. **VPS deployment** — BLOCKED on external access (no VPS host/SSH/credentials in the local dev environment). See "VPS status" below.
+## OPEN — reclassified into the phase program (the loose "open list" is superseded)
+- **Connections health check shallow** → FIXED (FIX #22, items 11-12) — real timeout-bounded probe; revoked key = `failed`.
+- **Taste learning write-only loop** → Phase 6 (founder taste + feedback learning) — a mandate phase, not a loose item.
+- **Approval cross-store atomicity** → REOPENED (see the ⭐ current-state block + Phase-1 table row 5) — being fixed via an effect-ledger + reconciliation.
+- Remaining mediums/lows → tracked in `MODULE_DEEP_AUDIT.md`; folded into the relevant phase as each vertical is built.
+- **VPS deployment** → BLOCKED on external access (no VPS host/SSH/credentials). Deploy only after the full gate passes.
 
 ## Notes on FIX #18 (three concrete hardening fixes)
 - **Content-graph idempotency** (cost): the graph route accepted an optional idempotencyKey but the UI never sent one, so a double-click ran the full 5-agent graph twice (duplicate LLM spend + duplicate packet). `enqueueContentGraphJob` now derives a debounced default key (`contentGraphIdempotencyKey`: track+objective+focus within a 2-min bucket) — double-clicks dedupe, deliberate re-runs later still go through. Explicit caller key still wins.
