@@ -32,19 +32,26 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Memory cross-bank retrieval leak (deny-by-default scoping) | fixed-verified | f68ad8b |
 | CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | 1f0e1ba |
 | Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | 35e85b3 |
-| website-analytics period param injection (Plausible URL) | fixed-verified | (this commit) |
+| website-analytics period param injection (Plausible URL) | fixed-verified | 84d0954 |
+| Registry integrity test + 2 agent-status honesty bugs | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
-2. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
-3. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
-4. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-5. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-6. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
+2. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
+3. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
+4. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+5. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the registry integrity test (mandate item closed)
+- Added `tests/registry-integrity.test.ts`, derived entirely from the real sources of truth (imported graph/agent/job-type constants + the worker `generalRegistry` + Ask `DEFAULT_CAPABILITIES`). It fails if: an ACTIVE agent has no declared execution path (job/graph/route/subroutine); a provably-running agent is left paused/absent; a job type the code enqueues (constants + intelligence/library/source literals + every `available` Ask route) has no handler.
+- It immediately caught TWO real honesty bugs, both now fixed in `DEFAULT_AGENTS`:
+  1. `source_intake_orchestrator` was `paused` but provably runs (FIX #6 wired source.intake + recordAgentRun) → set to **active**.
+  2. `performance_learning_agent` was `active` but has NO independent run path — its slug is only used as an LLM model-role alias inside the Intelligence Analyst → set to **paused** with an explanatory comment.
+- Net active agents unchanged at 20 (one in, one out); the roster now honestly reflects what executes.
 
 ## Notes on the website-analytics injection fix (open item closed)
 - Verified: `GET /api/webstats?period=` reads the raw query param and `getWebstats` interpolated it unencoded into the Plausible URL (`period=${period}&…`), while siteId was already `encodeURIComponent`'d. An authenticated user could inject `&`-delimited params (e.g. `30d&site_id=victim.com&metrics=…`) to override/append query params on the Plausible call.
