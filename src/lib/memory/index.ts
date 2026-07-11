@@ -28,6 +28,9 @@ import {
   type MemoryBankRoutingInput,
   type MemoryBankRoutingSuggestion,
   rankMemoryChunks,
+  resolveDeniedBankSlugs,
+  isChunkVisibleForAccess,
+  type MemoryAccessContext,
   type MemoryChunkRow,
   type MemoryProposalStatus,
   type MemoryRecordRow,
@@ -40,7 +43,7 @@ import {
   type TrustLevel,
 } from "@/lib/domain/memory";
 
-export type { MemoryBankLinkRow, MemoryBankRow, MemoryChunkRow, MemoryRecordRow, MemoryUpdateProposalRow, RetrievalMemoryChunk };
+export type { MemoryAccessContext, MemoryBankLinkRow, MemoryBankRow, MemoryChunkRow, MemoryRecordRow, MemoryUpdateProposalRow, RetrievalMemoryChunk };
 
 export interface ListMemoryRecordsQuery {
   memoryTier?: MemoryTier;
@@ -64,6 +67,12 @@ export interface RetrieveMemoryQuery {
   trustLevels?: TrustLevel[];
   bankSlugs?: string[];
   limit?: number;
+  /**
+   * Authorization for owner-scoped private banks. Omit for the safe default (shared banks only —
+   * founder-private and client/project-private banks are excluded). Ignored when `bankSlugs` names
+   * banks explicitly (an explicit request is itself the opt-in).
+   */
+  access?: MemoryAccessContext;
 }
 
 export interface ListMemoryBanksQuery {
@@ -480,8 +489,21 @@ export async function retrieveMemoryContext(
   }
 
   const candidates = await store.retrieveMemoryCandidates({ ...input, queryEmbedding, queryMode, limit: MAX_MEMORY_LIMIT });
+
+  // Deny-by-default bank scoping. When the caller did NOT name banks explicitly, exclude any chunk
+  // that lives exclusively in owner-scoped private banks (a founder's personal taste, a specific
+  // client's/project's confidential context) it isn't authorized for. Explicit `bankSlugs` is the
+  // opt-in and bypasses this. Filtering happens over the fetched MAX_MEMORY_LIMIT (200) window and
+  // the result is sliced to `limit` (typically 6–8), so recall has ample headroom.
+  let scoped = candidates;
+  if (!input.bankSlugs?.length && !input.access?.allowOwnerScoped && typeof store.listMemoryBanks === "function") {
+    const banks = await store.listMemoryBanks({ limit: MAX_MEMORY_LIMIT });
+    const denied = new Set(resolveDeniedBankSlugs(banks, input.access ?? {}));
+    if (denied.size) scoped = candidates.filter((chunk) => isChunkVisibleForAccess(chunk.bankSlugs, denied));
+  }
+
   const activeCandidates =
-    queryMode === "include_archived" ? candidates : candidates.filter((chunk) => chunk.status === "active");
+    queryMode === "include_archived" ? scoped : scoped.filter((chunk) => chunk.status === "active");
   const ranked = rankMemoryChunks({ chunks: activeCandidates, now, queryMode });
   return ranked.slice(0, limit);
 }

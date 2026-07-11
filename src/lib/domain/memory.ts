@@ -747,6 +747,70 @@ export interface RetrievalMemoryChunk extends MemoryChunkCandidate {
 
 export type RankedRetrievalMemoryChunk = RetrievalMemoryChunk & { score: number };
 
+// ---- Deny-by-default memory-bank scoping ----------------------------------------------------------
+// Semantic retrieval must never silently span every bank. Owner-scoped private banks (a founder's
+// personal taste, or a specific client's/project's confidential context) are visible ONLY when the
+// caller proves it is authorized for that owner, or names the bank explicitly. Everything with no
+// owner (global, company, competitor, generic client/project staging, etc.) is shared team knowledge
+// and stays visible.
+
+/** Authorization a retrieval carries. Empty context = shared banks only (the safe default). */
+export interface MemoryAccessContext {
+  /** Client owner ids the caller may read — grants those clients' owner-scoped banks. */
+  clientIds?: string[];
+  /** Project owner ids the caller may read. */
+  projectIds?: string[];
+  /** Founder owner ids the caller may read — grants those founders' private banks. */
+  founderIds?: string[];
+  /** Escape hatch for direct bank management / founder self-view: deny nothing. */
+  allowOwnerScoped?: boolean;
+}
+
+/** Minimal bank shape needed to decide owner-scoping (subset of the bank row). */
+export interface OwnerScopedBankInfo {
+  slug: string;
+  ownerScope: string | null;
+  ownerId: string | null;
+}
+
+/**
+ * Deny-by-default: the slugs of owner-scoped private banks the access context does NOT grant.
+ * A bank is owner-scoped iff it carries a non-empty ownerId; such a bank is granted only when the
+ * matching owner id is present for its scope. Banks with no ownerId are shared and never denied.
+ */
+export function resolveDeniedBankSlugs(
+  banks: OwnerScopedBankInfo[],
+  access: MemoryAccessContext = {},
+): string[] {
+  if (access.allowOwnerScoped) return [];
+  const clientIds = new Set((access.clientIds ?? []).map((v) => v.trim()).filter(Boolean));
+  const projectIds = new Set((access.projectIds ?? []).map((v) => v.trim()).filter(Boolean));
+  const founderIds = new Set((access.founderIds ?? []).map((v) => v.trim()).filter(Boolean));
+  const denied: string[] = [];
+  for (const bank of banks) {
+    const ownerId = bank.ownerId?.trim();
+    if (!ownerId) continue; // shared bank — always visible
+    const scope = bank.ownerScope?.trim();
+    const granted =
+      (scope === "founder" && founderIds.has(ownerId)) ||
+      (scope === "client" && clientIds.has(ownerId)) ||
+      (scope === "project" && projectIds.has(ownerId));
+    if (!granted) denied.push(bank.slug);
+  }
+  return denied;
+}
+
+/**
+ * A chunk stays visible unless it lives EXCLUSIVELY in denied banks. Shared membership wins: a chunk
+ * linked to at least one non-denied bank is visible. Unlinked chunks (no bankSlugs) are treated as
+ * shared and remain visible — they were never assigned to a private bank.
+ */
+export function isChunkVisibleForAccess(chunkBankSlugs: string[], deniedBankSlugs: Set<string>): boolean {
+  if (!deniedBankSlugs.size) return true;
+  if (!chunkBankSlugs.length) return true;
+  return chunkBankSlugs.some((slug) => !deniedBankSlugs.has(slug));
+}
+
 export const memoryBankRoutingInputSchema = z.object({
   content: z.string().trim().min(1),
   affectedArea: z.string().trim().min(1).optional(),

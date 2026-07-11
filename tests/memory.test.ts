@@ -5,6 +5,8 @@ import {
   buildMemoryRecordRow,
   buildMemoryUpdateProposalRow,
   rankMemoryChunks,
+  resolveDeniedBankSlugs,
+  isChunkVisibleForAccess,
   DEFAULT_MEMORY_BANKS,
   suggestMemoryBanks,
   type MemoryBankLinkRow,
@@ -467,5 +469,78 @@ describe("memory service", () => {
     const result = await retrieveMemoryContext({ query: "brand", bankSlugs: ["brand"], limit: 10 }, { store, now });
 
     expect(result.map((chunk) => chunk.id)).toEqual(["brand"]);
+  });
+
+  it("deny-by-default: unscoped retrieval excludes founder-private banks unless authorized", async () => {
+    const makeCandidate = (id: string, bankSlugs: string[]): RetrievalMemoryChunk => ({
+      id,
+      memoryRecordId: `memory_${id}`,
+      content: `content ${id}`,
+      similarity: 0.8,
+      tier: "working",
+      trustLevel: "approved_expert",
+      sourceId: null,
+      parentEntityId: `memory_${id}`,
+      entityType: "memory_record",
+      status: "active",
+      archived: false,
+      tags: [],
+      bankSlugs,
+      createdAt: "2026-06-28T00:00:00.000Z",
+    });
+    const candidates: RetrievalMemoryChunk[] = [
+      makeCandidate("private", ["founder_moiz"]),          // Moiz-only → denied by default
+      makeCandidate("shared", ["company"]),                // shared → always visible
+      makeCandidate("mixed", ["founder_ali", "company"]),  // shared membership wins → visible
+    ];
+    const { store } = makeMemoryStore([], candidates);
+
+    // No access context → founder-private bank is excluded, shared + mixed survive.
+    const unscoped = await retrieveMemoryContext({ query: "x", limit: 10 }, { store, now });
+    expect(unscoped.map((c) => c.id).sort()).toEqual(["mixed", "shared"]);
+
+    // Authorized for Moiz → his private bank becomes visible.
+    const authorized = await retrieveMemoryContext(
+      { query: "x", limit: 10, access: { founderIds: ["moiz"] } },
+      { store, now },
+    );
+    expect(authorized.map((c) => c.id).sort()).toEqual(["mixed", "private", "shared"]);
+
+    // Explicit bankSlugs is the opt-in and bypasses deny-by-default entirely.
+    const explicit = await retrieveMemoryContext(
+      { query: "x", limit: 10, bankSlugs: ["founder_moiz"] },
+      { store, now },
+    );
+    expect(explicit.map((c) => c.id)).toEqual(["private"]);
+  });
+});
+
+describe("resolveDeniedBankSlugs / isChunkVisibleForAccess", () => {
+  const banks = [
+    { slug: "company", ownerScope: "company", ownerId: null },
+    { slug: "founder_moiz", ownerScope: "founder", ownerId: "moiz" },
+    { slug: "founder_ali", ownerScope: "founder", ownerId: "ali" },
+    { slug: "client_acme", ownerScope: "client", ownerId: "acme" },
+  ];
+
+  it("denies every owner-scoped bank when access is empty", () => {
+    expect(resolveDeniedBankSlugs(banks, {}).sort()).toEqual(["client_acme", "founder_ali", "founder_moiz"]);
+  });
+
+  it("grants only the owner ids the caller proves", () => {
+    expect(resolveDeniedBankSlugs(banks, { founderIds: ["moiz"], clientIds: ["acme"] }).sort()).toEqual(["founder_ali"]);
+  });
+
+  it("allowOwnerScoped denies nothing", () => {
+    expect(resolveDeniedBankSlugs(banks, { allowOwnerScoped: true })).toEqual([]);
+  });
+
+  it("a chunk is hidden only when every one of its banks is denied", () => {
+    const denied = new Set(["founder_moiz", "founder_ali"]);
+    expect(isChunkVisibleForAccess(["founder_moiz"], denied)).toBe(false);
+    expect(isChunkVisibleForAccess(["founder_moiz", "company"], denied)).toBe(true); // shared wins
+    expect(isChunkVisibleForAccess([], denied)).toBe(true); // unlinked = shared
+    expect(isChunkVisibleForAccess(["company"], denied)).toBe(true);
+    expect(isChunkVisibleForAccess(["founder_moiz"], new Set())).toBe(true); // nothing denied
   });
 });
