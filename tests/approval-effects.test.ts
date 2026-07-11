@@ -28,8 +28,8 @@ function effect(overrides: Partial<ApprovalEffectRow> = {}): ApprovalEffectRow {
 
 describe("approval-effect applier coverage", () => {
   it("every migrated approval effect type has a registered idempotent applier", () => {
-    // source, content_packet, skill, model_upgrade are migrated to the outbox; each has an applier.
-    expect(Object.keys(APPROVAL_EFFECT_APPLIERS).sort()).toEqual(["content.import", "model.apply", "skill.activate", "source.activate"]);
+    // source, content_packet, skill, model_upgrade, memory_update are migrated to the outbox; each has an applier.
+    expect(Object.keys(APPROVAL_EFFECT_APPLIERS).sort()).toEqual(["content.import", "memory.apply", "model.apply", "skill.activate", "source.activate"]);
     for (const fn of Object.values(APPROVAL_EFFECT_APPLIERS)) expect(typeof fn).toBe("function");
   });
 });

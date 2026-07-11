@@ -151,7 +151,7 @@ async function approve(store: MemoryStore, id: string, content: string, bankSlug
       trustLevel: "approved_expert",
       bankSlugs,
     },
-    { store, approvalStore: fakeApprovalStore(), recordAudit: async () => {}, embedder, now },
+    { store, approvalStore: fakeApprovalStore(), claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), recordAudit: async () => {}, embedder, now },
   );
 }
 

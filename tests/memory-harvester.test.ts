@@ -100,7 +100,7 @@ describe("harvestConversation", () => {
         ],
       }),
       conversationDeps: { store: cs.store },
-      memoryDeps: { store: ms.store, approvalStore: fakeApprovalStore(), recordAudit: async () => {}, embedder: null, now },
+      memoryDeps: { store: ms.store, approvalStore: fakeApprovalStore(), claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), recordAudit: async () => {}, embedder: null, now },
       recordAudit: async () => {},
       now,
     };
@@ -121,7 +121,7 @@ describe("harvestConversation", () => {
     const deps: HarvestDeps = {
       extract: async () => ({ candidates: [{ content: "Moiz prefers punchy hooks.", scope: "founder", area: "content", confidence: 0.9 }] }),
       conversationDeps: { store: cs.store },
-      memoryDeps: { store: ms.store, approvalStore: fakeApprovalStore(), recordAudit: async () => {}, embedder: null, now },
+      memoryDeps: { store: ms.store, approvalStore: fakeApprovalStore(), claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), recordAudit: async () => {}, embedder: null, now },
       recordAudit: async () => {},
       now,
     };

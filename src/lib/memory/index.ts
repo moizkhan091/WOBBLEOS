@@ -144,6 +144,8 @@ export interface MemoryDeps {
   approvalStore?: ApprovalStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   embedder?: Embedder | null;
+  /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
+  claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
   now?: Date;
 }
 
@@ -314,40 +316,53 @@ export interface ApproveMemoryUpdateResult {
   memoryChunks: MemoryChunkRow[];
 }
 
-export async function approveMemoryUpdate(
-  input: ApproveMemoryUpdateInput,
+/** Founder-supplied fields the memory-apply effect carries in its payload (so the reconciler can rebuild
+ *  the memory write independently after a crash). */
+export interface ActivateApprovedMemoryUpdateOpts {
+  slug: string;
+  title: string;
+  memoryTier: MemoryTier;
+  trustLevel: TrustLevel;
+  bankSlugs?: string[];
+  tags?: string[];
+  approvedBy: string;
+}
+
+/**
+ * Idempotent downstream of approving a memory update: write the memory record + chunks + bank links and
+ * flip the proposal to `approved` — all in ONE memory transaction. Reconciler-safe: re-fetches the
+ * proposal and returns `null` if it is no longer pending (the flip commits inside the same tx, so
+ * status==="approved" ⟺ the memory was already fully written). This is the applier for the `memory.apply`
+ * approval effect and the inline fast-path for {@link approveMemoryUpdate}.
+ */
+export async function activateApprovedMemoryUpdate(
+  proposalId: string,
+  opts: ActivateApprovedMemoryUpdateOpts,
   deps: MemoryDeps = {},
-): Promise<ApproveMemoryUpdateResult> {
+): Promise<ApproveMemoryUpdateResult | null> {
   const store = deps.store ?? defaultStore();
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
   const now = deps.now ?? new Date();
 
-  const proposal = await getPendingProposal(store, input.proposalId);
-  const approvedBankSlugs = await resolveApprovedBankSlugs(
-    input.bankSlugs?.length ? input.bankSlugs : proposal.suggestedBankSlugs.length ? proposal.suggestedBankSlugs : [proposal.affectedArea],
-    store,
-  );
+  const proposal = await store.getProposalById(proposalId);
+  if (!proposal) throw new Error(`memory update proposal '${proposalId}' not found`);
+  if (proposal.status !== "pending") return null; // already applied — idempotent no-op
 
-  await applyApprovalAction(
-    {
-      approvalId: input.approvalId,
-      action: "approve",
-      approvedBy: input.approvedBy,
-      notes: input.notes,
-    },
-    { store: deps.approvalStore, recordAudit, now },
+  const approvedBankSlugs = await resolveApprovedBankSlugs(
+    opts.bankSlugs?.length ? opts.bankSlugs : proposal.suggestedBankSlugs.length ? proposal.suggestedBankSlugs : [proposal.affectedArea],
+    store,
   );
 
   const memoryRecord = buildMemoryRecordRow(
     {
-      slug: input.slug,
-      title: input.title,
-      memoryTier: input.memoryTier,
+      slug: opts.slug,
+      title: opts.title,
+      memoryTier: opts.memoryTier,
       area: proposal.affectedArea,
       content: proposal.proposedMemory,
       sourceId: proposal.sourceId ?? undefined,
       confidence: proposal.confidence !== null ? Number(proposal.confidence) : undefined,
-      approvedBy: input.approvedBy,
+      approvedBy: opts.approvedBy,
       bankSlugs: approvedBankSlugs,
     },
     { now },
@@ -356,12 +371,12 @@ export async function approveMemoryUpdate(
     {
       memoryRecordId: memoryRecord.id,
       content: proposal.proposedMemory,
-      memoryTier: input.memoryTier,
-      trustLevel: input.trustLevel,
+      memoryTier: opts.memoryTier,
+      trustLevel: opts.trustLevel,
       sourceId: proposal.sourceId ?? undefined,
       parentEntityId: memoryRecord.id,
       entityType: "memory_record",
-      tags: input.tags ?? [proposal.affectedArea, ...approvedBankSlugs],
+      tags: opts.tags ?? [proposal.affectedArea, ...approvedBankSlugs],
       bankSlugs: approvedBankSlugs,
     },
     { now },
@@ -372,7 +387,7 @@ export async function approveMemoryUpdate(
   const fields: Partial<MemoryUpdateProposalRow> = {
     status: "approved",
     approvedBankSlugs,
-    approvedBy: input.approvedBy,
+    approvedBy: opts.approvedBy,
     approvedAt: now,
     updatedAt: now,
   };
@@ -391,7 +406,7 @@ export async function approveMemoryUpdate(
               memoryRecordId: memoryRecord.id,
               sourceId: proposal.sourceId ?? undefined,
               proposalId: proposal.id,
-              createdBy: input.approvedBy,
+              createdBy: opts.approvedBy,
             },
             { now },
           ),
@@ -403,7 +418,7 @@ export async function approveMemoryUpdate(
                 memoryChunkId: chunk.id,
                 sourceId: proposal.sourceId ?? undefined,
                 proposalId: proposal.id,
-                createdBy: input.approvedBy,
+                createdBy: opts.approvedBy,
               },
               { now },
             ),
@@ -420,17 +435,78 @@ export async function approveMemoryUpdate(
     module: "memory",
     entityType: "memory_update_proposal",
     entityId: proposal.id,
-    actor: input.approvedBy,
+    actor: opts.approvedBy,
     metadata: {
-      approvalId: input.approvalId,
       memoryRecordId: memoryRecord.id,
-      memoryTier: input.memoryTier,
-      trustLevel: input.trustLevel,
+      memoryTier: opts.memoryTier,
+      trustLevel: opts.trustLevel,
       approvedBankSlugs,
     },
   });
 
   return { proposal: updatedProposal, memoryRecord, memoryChunks: embeddedChunks };
+}
+
+export async function approveMemoryUpdate(
+  input: ApproveMemoryUpdateInput,
+  deps: MemoryDeps = {},
+): Promise<ApproveMemoryUpdateResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  // Validation-first: the proposal must be pending and every target bank must be active BEFORE we
+  // consume the approval — so a bad request never leaves an approved approval with no memory.
+  const proposal = await getPendingProposal(store, input.proposalId);
+  const approvedBankSlugs = await resolveApprovedBankSlugs(
+    input.bankSlugs?.length ? input.bankSlugs : proposal.suggestedBankSlugs.length ? proposal.suggestedBankSlugs : [proposal.affectedArea],
+    store,
+  );
+
+  // Transactional outbox: atomically flip the approval + record the memory-apply effect (one DB tx). The
+  // effect payload carries the founder-supplied fields so the scheduler reconciler can rebuild the memory
+  // write independently if we crash before the inline apply below. Idempotent: a lost claim is a no-op.
+  const claimFn = deps.claimAndRecordEffect ?? (async (i: Parameters<NonNullable<MemoryDeps["claimAndRecordEffect"]>>[0]) => (await import("@/lib/approval-effects")).claimApprovalAndRecordEffect(i, { now }));
+  const { claimed, effectId } = await claimFn({
+    approvalId: input.approvalId,
+    approvedBy: input.approvedBy,
+    effect: {
+      approvalId: input.approvalId,
+      effectType: "memory.apply",
+      entityType: "memory_update_proposal",
+      entityId: proposal.id,
+      payload: { slug: input.slug, title: input.title, memoryTier: input.memoryTier, trustLevel: input.trustLevel, tags: input.tags ?? null, bankSlugs: approvedBankSlugs },
+      actor: input.approvedBy,
+    },
+  });
+
+  await recordAudit({ eventType: "approval.approve", module: "approvals", entityType: "approval", entityId: input.approvalId, actor: input.approvedBy, metadata: { approvalType: "memory_update", toStatus: "approved", claimed } });
+
+  // Inline fast-path (idempotent). If we crash before/inside this, the pending effect is applied by the
+  // scheduler reconciler — the state converges either way (no consumed-approval-without-memory).
+  const applied = await activateApprovedMemoryUpdate(
+    proposal.id,
+    { slug: input.slug, title: input.title, memoryTier: input.memoryTier, trustLevel: input.trustLevel, tags: input.tags, bankSlugs: approvedBankSlugs, approvedBy: input.approvedBy },
+    { store, recordAudit, embedder: deps.embedder, now },
+  );
+
+  if (claimed && effectId && !deps.claimAndRecordEffect) {
+    try {
+      const { reconcileApprovalEffects } = await import("@/lib/approval-effects");
+      const { APPROVAL_EFFECT_APPLIERS } = await import("@/lib/approval-effects/appliers");
+      await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { onlyId: effectId, now });
+    } catch { /* the scheduler reconciler is the safety net */ }
+  }
+
+  if (applied) return applied;
+  // Lost the claim (a concurrent approve won) — the winner wrote the memory. Echo the persisted proposal
+  // plus the freshly-built record shape so the API response is well-formed; nobody consumes the record id.
+  const finalProposal = (await store.getProposalById(proposal.id)) ?? proposal;
+  const echoRecord = buildMemoryRecordRow(
+    { slug: input.slug, title: input.title, memoryTier: input.memoryTier, area: proposal.affectedArea, content: proposal.proposedMemory, sourceId: proposal.sourceId ?? undefined, confidence: proposal.confidence !== null ? Number(proposal.confidence) : undefined, approvedBy: input.approvedBy, bankSlugs: approvedBankSlugs },
+    { now },
+  );
+  return { proposal: finalProposal, memoryRecord: echoRecord, memoryChunks: [] };
 }
 
 export interface RejectMemoryUpdateInput {

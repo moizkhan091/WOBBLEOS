@@ -1,4 +1,5 @@
 import type { ApprovalEffectApplier } from "@/lib/approval-effects";
+import type { MemoryTier, TrustLevel } from "@/lib/domain/memory";
 
 /**
  * The registered, idempotent appliers for each approval effect type. Used by the reconciler (inline
@@ -21,5 +22,18 @@ export const APPROVAL_EFFECT_APPLIERS: Record<string, ApprovalEffectApplier> = {
   "model.apply": async (effect) => {
     const { applyApprovedModelRole } = await import("@/lib/model-registry");
     await applyApprovedModelRole(effect.entityId, { modelId: String(effect.payload.modelId ?? ""), approvedBy: effect.actor ?? "system" });
+  },
+  "memory.apply": async (effect) => {
+    const { activateApprovedMemoryUpdate } = await import("@/lib/memory");
+    const p = effect.payload;
+    await activateApprovedMemoryUpdate(effect.entityId, {
+      slug: String(p.slug ?? ""),
+      title: String(p.title ?? ""),
+      memoryTier: String(p.memoryTier ?? "working") as MemoryTier,
+      trustLevel: String(p.trustLevel ?? "monitored") as TrustLevel,
+      bankSlugs: Array.isArray(p.bankSlugs) ? p.bankSlugs.map(String) : undefined,
+      tags: Array.isArray(p.tags) ? p.tags.map(String) : undefined,
+      approvedBy: effect.actor ?? "system",
+    });
   },
 };

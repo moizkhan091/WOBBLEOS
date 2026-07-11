@@ -17,6 +17,7 @@ import {
   type RetrievalMemoryChunk,
 } from "@/lib/domain/memory";
 import {
+  activateApprovedMemoryUpdate,
   approveMemoryUpdate,
   proposeMemoryUpdate,
   rejectMemoryUpdate,
@@ -319,6 +320,7 @@ describe("memory service", () => {
       {
         store,
         approvalStore: fakeApprovalStore("pending").store,
+        claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), // outbox seam
         recordAudit: async (input) => {
           audit.push(input);
         },
@@ -361,7 +363,7 @@ describe("memory service", () => {
     await expect(
       approveMemoryUpdate(
         { proposalId: "proposal_1", approvalId: "approval_1", approvedBy: "Moiz", slug: "s", title: "T", memoryTier: "core", trustLevel: "founder_core", bankSlugs: ["brand"] },
-        { store, approvalStore: fakeApprovalStore("pending").store, recordAudit: async () => {}, now },
+        { store, approvalStore: fakeApprovalStore("pending").store, claimAndRecordEffect: async () => ({ claimed: true, effectId: "eff_1" }), recordAudit: async () => {}, now },
       ),
     ).rejects.toThrow("db down");
 
@@ -369,6 +371,50 @@ describe("memory service", () => {
     expect(records).toHaveLength(0);
     expect(links).toHaveLength(0);
     expect(calls.updateProposal).toHaveLength(0);
+  });
+
+  it("records a memory.apply effect ATOMICALLY with the flip (transactional outbox)", async () => {
+    const proposal = buildMemoryUpdateProposalRow(
+      { proposedMemory: "Durable fact", reason: "Strong source.", affectedArea: "brand", sourceId: "source_1", confidence: 0.9 },
+      { id: "proposal_1", now },
+    );
+    const { store } = makeMemoryStore([proposal]);
+    let recordedEffect: { effectType: string; entityId: string; payload?: Record<string, unknown> } | null = null;
+    await approveMemoryUpdate(
+      { proposalId: "proposal_1", approvalId: "approval_1", approvedBy: "Moiz", slug: "brand-fact", title: "Brand fact", memoryTier: "core", trustLevel: "founder_core", bankSlugs: ["brand"] },
+      {
+        store,
+        approvalStore: fakeApprovalStore("pending").store,
+        claimAndRecordEffect: async (i) => { recordedEffect = i.effect; return { claimed: true, effectId: "eff_1" }; },
+        recordAudit: async () => {},
+        now,
+      },
+    );
+    // The memory-apply effect is recorded in the SAME tx as the approval flip, carrying the founder fields
+    // the reconciler needs to rebuild the write independently after a crash.
+    expect(recordedEffect).toMatchObject({ effectType: "memory.apply", entityId: "proposal_1", payload: { slug: "brand-fact", memoryTier: "core", trustLevel: "founder_core", bankSlugs: ["brand"] } });
+  });
+
+  it("activateApprovedMemoryUpdate is idempotent: a second apply on an approved proposal is a no-op (exactly-once)", async () => {
+    const proposal = buildMemoryUpdateProposalRow(
+      { proposedMemory: "Durable fact", reason: "Strong source.", affectedArea: "brand", sourceId: "source_1", confidence: 0.9 },
+      { id: "proposal_1", now },
+    );
+    const { store, records, chunks, links } = makeMemoryStore([proposal]);
+    const opts = { slug: "brand-fact", title: "Brand fact", memoryTier: "core" as const, trustLevel: "founder_core" as const, bankSlugs: ["brand"], approvedBy: "Moiz" };
+
+    const first = await activateApprovedMemoryUpdate("proposal_1", opts, { store, recordAudit: async () => {}, now });
+    expect(first).not.toBeNull();
+    expect(records).toHaveLength(1);
+    expect(chunks).toHaveLength(1);
+    const linksAfterFirst = links.length;
+
+    // Simulates the scheduler reconciler re-applying a pending effect after a crash between apply and mark.
+    const second = await activateApprovedMemoryUpdate("proposal_1", opts, { store, recordAudit: async () => {}, now });
+    expect(second).toBeNull(); // proposal no longer pending — nothing re-written
+    expect(records).toHaveLength(1);
+    expect(chunks).toHaveLength(1);
+    expect(links).toHaveLength(linksAfterFirst);
   });
 
   it("rejects a proposal without inserting memory", async () => {
