@@ -31,20 +31,25 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Library: Zernio can't fetch local media | fixed-verified | 7560191/0e8a414 |
 | Memory cross-bank retrieval leak (deny-by-default scoping) | fixed-verified | f68ad8b |
 | CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | 1f0e1ba |
-| Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | (this commit) |
+| Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | 35e85b3 |
+| website-analytics period param injection (Plausible URL) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **website-analytics** — `period` query param interpolated raw into Plausible URL (encode + allowlist).
+1. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
 2. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
 3. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
 4. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-5. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
-6. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-7. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+5. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+6. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the website-analytics injection fix (open item closed)
+- Verified: `GET /api/webstats?period=` reads the raw query param and `getWebstats` interpolated it unencoded into the Plausible URL (`period=${period}&…`), while siteId was already `encodeURIComponent`'d. An authenticated user could inject `&`-delimited params (e.g. `30d&site_id=victim.com&metrics=…`) to override/append query params on the Plausible call.
+- Fix: `normalizePlausiblePeriod` allowlists Plausible's fixed tokens (day/7d/30d/month/6mo/12mo; "custom" excluded — needs a date we don't send) and falls back to `30d`; the value is also `encodeURIComponent`'d before it reaches the URL. Response echoes the normalized period. Tests prove an injected value is neutralized and never reaches the URL.
+- Note: not classic SSRF (host is pinned to Plausible), but param-injection — closed regardless.
 
 ## Notes on the knowledge-compiler injection fix (open item closed)
 - Verified: `buildCompilerPrompt` (domain/knowledge.ts) concatenated raw scraped `c.content` straight into the user message (`[i] <content>`) with no fencing. Source-intake feeds it text scraped from external websites/socials, so a page containing "ignore previous instructions / output {…}" could hijack the compiler. Same class the analyst/dreamer already fenced.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { plausibleConfigured, readPlausibleConfig, getWebstats } from "@/lib/analytics/plausible";
+import { plausibleConfigured, readPlausibleConfig, getWebstats, normalizePlausiblePeriod } from "@/lib/analytics/plausible";
 
 describe("plausible config", () => {
   it("is unconfigured without keys", () => {
@@ -31,5 +31,34 @@ describe("getWebstats", () => {
     expect(r.aggregate?.visitors).toBe(1200);
     expect(r.topPages?.[0].page).toBe("/");
     expect(r.topSources?.[0].source).toBe("Google");
+  });
+
+  it("allowlists the period so an injected value can't smuggle query params into the URL", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(url);
+      // aggregate reads results.<metric>.value; breakdowns map over an array — [] is safe for both.
+      return { ok: true, json: async () => ({ results: [] }) } as Response;
+    }) as unknown as typeof fetch;
+
+    // Attempt to inject an extra `&`-delimited param + override.
+    const evil = "30d&site_id=victim.com&metrics=evil";
+    const r = await getWebstats(evil, { config: { apiKey: "k", siteId: "wobblepk.com", host: "https://plausible.io" }, fetchImpl });
+
+    // Falls back to the safe default; the raw injected string never reaches the URL.
+    expect(r.period).toBe("30d");
+    for (const url of urls) {
+      expect(url).not.toContain("victim.com");
+      expect(url).not.toContain("evil");
+      expect(url).toContain("period=30d&");
+    }
+  });
+
+  it("normalizePlausiblePeriod passes valid tokens and rejects everything else", () => {
+    for (const p of ["day", "7d", "30d", "month", "6mo", "12mo"]) expect(normalizePlausiblePeriod(p)).toBe(p);
+    expect(normalizePlausiblePeriod("custom")).toBe("30d");
+    expect(normalizePlausiblePeriod("30d&foo=bar")).toBe("30d");
+    expect(normalizePlausiblePeriod("")).toBe("30d");
+    expect(normalizePlausiblePeriod(undefined)).toBe("30d");
   });
 });

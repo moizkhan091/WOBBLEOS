@@ -20,6 +20,17 @@ export function plausibleConfigured(cfg: PlausibleConfig = readPlausibleConfig()
   return Boolean(cfg.apiKey && cfg.siteId);
 }
 
+// Plausible's fixed date-range tokens. "custom" is intentionally excluded — it requires a `date`
+// param we don't pass. Anything outside this set is rejected so a user-supplied `period` can't smuggle
+// extra `&`-delimited query params into the Plausible API URL (parameter injection).
+const PLAUSIBLE_PERIODS = new Set(["day", "7d", "30d", "month", "6mo", "12mo"]);
+
+/** Normalize/allowlist a caller-supplied period; unknown values fall back to the safe default. */
+export function normalizePlausiblePeriod(period: string | undefined): string {
+  const p = (period ?? "").trim();
+  return PLAUSIBLE_PERIODS.has(p) ? p : "30d";
+}
+
 export interface WebstatsResult {
   configured: boolean;
   needs?: string[];
@@ -48,13 +59,16 @@ export async function getWebstats(period = "30d", deps: Deps = {}): Promise<Webs
   const fetchImpl = deps.fetchImpl ?? fetch;
   const base = cfg.host ?? "https://plausible.io";
   const headers = { Authorization: `Bearer ${cfg.apiKey}` };
+  // Allowlisted + encoded — never let the raw caller value reach the URL.
+  const normalizedPeriod = normalizePlausiblePeriod(period);
+  const safePeriod = encodeURIComponent(normalizedPeriod);
   const q = (path: string) => `${base}/api/v1/stats/${path}&site_id=${encodeURIComponent(cfg.siteId!)}`;
 
   try {
     const [aggRes, pagesRes, srcRes] = await Promise.all([
-      fetchImpl(q(`aggregate?period=${period}&metrics=visitors,pageviews,bounce_rate,visit_duration`), { headers }),
-      fetchImpl(q(`breakdown?period=${period}&property=event:page&limit=10&metrics=visitors,pageviews`), { headers }),
-      fetchImpl(q(`breakdown?period=${period}&property=visit:source&limit=8&metrics=visitors`), { headers }),
+      fetchImpl(q(`aggregate?period=${safePeriod}&metrics=visitors,pageviews,bounce_rate,visit_duration`), { headers }),
+      fetchImpl(q(`breakdown?period=${safePeriod}&property=event:page&limit=10&metrics=visitors,pageviews`), { headers }),
+      fetchImpl(q(`breakdown?period=${safePeriod}&property=visit:source&limit=8&metrics=visitors`), { headers }),
     ]);
     if (!aggRes.ok) return { configured: true, error: `Plausible ${aggRes.status}: ${await aggRes.text().catch(() => aggRes.statusText)}` };
     const agg = (await aggRes.json()) as { results?: Record<string, { value?: number }> };
@@ -63,7 +77,7 @@ export async function getWebstats(period = "30d", deps: Deps = {}): Promise<Webs
     return {
       configured: true,
       siteId: cfg.siteId,
-      period,
+      period: normalizedPeriod,
       aggregate: {
         visitors: agg.results?.visitors?.value,
         pageviews: agg.results?.pageviews?.value,
