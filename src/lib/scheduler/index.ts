@@ -4,6 +4,7 @@ import { listResearchTargets, markResearchTargetScouted } from "@/lib/intelligen
 import { dispatchDuePosts } from "@/lib/library";
 import { harvestPendingConversations } from "@/lib/memory-harvester";
 import { purgeExpiredArchivedMemory } from "@/lib/memory";
+import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/lib/graph-checkpoint";
 import { enqueueJob } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
@@ -100,6 +101,8 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     try {
       await harvestPendingConversations({ limit: 20 }).catch((e) => result.errors.push(`harvest: ${e?.message ?? e}`));
       await purgeExpiredArchivedMemory({ limit: 100 }).catch((e) => result.errors.push(`purge: ${e?.message ?? e}`));
+      // Retention sweep for abandoned graph checkpoints (runs that never completed or were cancelled).
+      await purgeExpiredGraphCheckpoints(new Date(now.getTime() - GRAPH_CHECKPOINT_RETENTION_MS)).catch((e) => result.errors.push(`ckpt-purge: ${e?.message ?? e}`));
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }

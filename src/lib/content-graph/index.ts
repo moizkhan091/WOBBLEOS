@@ -11,6 +11,8 @@ import { listMemoryRecords } from "@/lib/memory";
 import { retrieveKnowledge } from "@/lib/knowledge";
 import { recordAgentRun } from "@/lib/agents";
 import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
+import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
+import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import {
   CONTENT_GRAPH_AGENTS,
@@ -69,6 +71,7 @@ export interface ContentGraphDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   createPacket?: (input: CreateContentPacketServiceInput) => Promise<ContentPacketCreationResult>;
   enqueueJob?: (input: EnqueueJobInput) => Promise<unknown>;
+  checkpointStore?: GraphCheckpointStore;
   now?: Date;
 }
 
@@ -78,6 +81,8 @@ export interface RunContentGraphInput {
   objective: string;
   platformFocus?: string[];
   formatFocus?: string[];
+  /** Stable id enabling checkpoint resume (the job id). Omit for one-shot runs with no retry. */
+  graphRunId?: string;
 }
 
 export interface ContentGraphResult {
@@ -159,6 +164,15 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
   };
   const modelRunIds: string[] = [];
 
+  // Resume support: if this run has a stable id (the job id), load completed node checkpoints so a
+  // retry reuses them instead of re-charging the model. Undefined => checkpointing off (one-shot run).
+  const cpCtx: CheckpointContext | undefined = input.graphRunId
+    ? await loadCheckpointContext(
+        { graph: "content_graph", graphRunId: input.graphRunId, schemaVersion: GRAPH_CHECKPOINT_SCHEMA_VERSION.content_graph },
+        { store: deps.checkpointStore, now: deps.now },
+      )
+    : undefined;
+
   await recordAudit({
     eventType: "content_graph.started",
     module: CONTENT_GRAPH_MODULE,
@@ -193,6 +207,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       required: true,
       parseErr: "content-graph: strategist returned an unparseable brief",
       summarize: (brief) => ({ inputSummary: input.objective.slice(0, 300), outputSummary: `${brief!.format} on ${brief!.platform}: ${brief!.angle}`.slice(0, 400) }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "strategy", 0),
     });
     if (strategyRun.runId) modelRunIds.push(strategyRun.runId);
     const brief = briefParsed!;
@@ -211,6 +226,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
         const prov = collectProvenance(ev!.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
         return { inputSummary: `${brief.topic} / ${brief.angle}`.slice(0, 300), outputSummary: `${ev!.supportingPoints.length} points, ${prov.sourceIds.length} sources`, sourceIdsUsed: prov.sourceIds, memoryIdsUsed: prov.insightIds };
       },
+      checkpoint: bindNodeCheckpoint(cpCtx, "research", 1),
     });
     if (researchRun.runId) modelRunIds.push(researchRun.runId);
     const evidence = evidenceParsed!;
@@ -226,6 +242,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       required: true,
       parseErr: "content-graph: copywriter returned an unparseable draft",
       summarize: (d) => ({ inputSummary: "draft", outputSummary: d!.hook.slice(0, 200) }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "draft", 2),
     });
     if (draftRun.runId) modelRunIds.push(draftRun.runId);
     const draft = draftParsed!;
@@ -240,6 +257,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       required: false, // an unparseable self-critique is tolerated: we keep the draft.
       parseErr: "",
       summarize: (rev) => ({ inputSummary: "self-critique", outputSummary: `${rev?.issues.length ?? 0} issues fixed` }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "revise", 3),
     });
     if (reviseRun.runId) modelRunIds.push(reviseRun.runId);
     const finalCopy = revision?.revised ?? draft;
@@ -255,6 +273,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       parseErr: "content-graph: scoring agent returned an unparseable score",
       // qualityScore = the scorer's own average verdict mapped from 0..100 to the 0..10 telemetry scale.
       summarize: (sc) => ({ inputSummary: "score", outputSummary: `impact ${sc!.predictedImpact} / brand ${sc!.brandFit}`, qualityScore: Math.max(0, Math.min(10, (sc!.predictedImpact + sc!.brandFit + sc!.platformFit) / 30)) }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "scoring", 4),
     });
     if (scoreRun.runId) modelRunIds.push(scoreRun.runId);
     const score: ContentScore = scoreParsed!;
@@ -282,6 +301,9 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
         modelRunIds,
       },
     });
+
+    // Success: the run is durably finished — drop its checkpoints (a fresh re-run should start clean).
+    if (input.graphRunId) await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
 
     return {
       contentTrackId: track.id,
@@ -344,6 +366,7 @@ export async function runContentGraphJobHandler(job: JobRow): Promise<Record<str
     objective: payload.objective,
     platformFocus: payload.platformFocus,
     formatFocus: payload.formatFocus,
+    graphRunId: job.id, // stable across retries -> completed nodes resume instead of re-charging
   });
   return { ...result };
 }

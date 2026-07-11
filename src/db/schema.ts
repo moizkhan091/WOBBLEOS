@@ -1512,3 +1512,30 @@ export const socialStrategies = pgTable("social_strategies", {
 }, (table) => [
   index("social_strategies_status_idx").on(table.status),
 ]);
+
+// ---- Graph checkpointing: durable per-node outputs so a multi-agent graph (content graph,
+// paid-audit graph) can RESUME after a late-node failure, worker/app restart, or retry WITHOUT
+// re-running (and re-charging) the nodes that already completed. Keyed by a stable graphRunId; one
+// row per node per run (unique) so duplicate workers / duplicate job delivery can't create dupes.
+// schemaVersion invalidates stale/incompatible cached outputs. Cleared on success; retention purge
+// sweeps abandoned runs. ----
+export const graphCheckpoints = pgTable("graph_checkpoints", {
+  id: id(),
+  graphRunId: varchar("graph_run_id", { length: 200 }).notNull(),
+  graph: varchar("graph", { length: 64 }).notNull(),
+  nodeSlug: varchar("node_slug", { length: 120 }).notNull(),
+  nodeIndex: integer("node_index").notNull().default(0),
+  status: varchar("status", { length: 32 }).notNull().default("completed"),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  outputText: text("output_text").notNull().default(""),
+  output: jsonb("output").$type<Record<string, unknown> | null>(),
+  modelRunIds: jsonb("model_run_ids").$type<string[]>().notNull().default([]),
+  error: text("error"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("graph_checkpoints_run_node_uidx").on(table.graphRunId, table.nodeSlug),
+  index("graph_checkpoints_run_idx").on(table.graphRunId),
+  index("graph_checkpoints_created_at_idx").on(table.createdAt),
+]);

@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { assemblePaidAuditReport, discoverySchema, opportunitySchema, prioritizationSchema, roadmapSchema, reportSchema, parseJsonObject } from "@/lib/domain/paid-audit-graph";
 import { runPaidAuditGraph, type PaidAuditRow } from "@/lib/paid-audit-graph";
+import { buildGraphCheckpointRow, type GraphCheckpointRow } from "@/lib/domain/graph-checkpoint";
+import type { GraphCheckpointStore } from "@/lib/graph-checkpoint";
+
+function makeCheckpointStore() {
+  const rows = new Map<string, GraphCheckpointRow>();
+  const store: GraphCheckpointStore = {
+    listCheckpoints: async (rid) => [...rows.values()].filter((r) => r.graphRunId === rid),
+    upsertCheckpoint: async (row) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
+    deleteCheckpoints: async (rid) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+    deleteExpiredCheckpoints: async () => 0,
+  };
+  return { store, rows };
+}
 
 const now = new Date("2026-07-09T12:00:00Z");
 
@@ -110,5 +123,40 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     expect(runs[0].costEstimate).toBe(0.01);
     expect(typeof runs[0].latencyMs).toBe("number");
     expect(runs[1].error).toMatch(/opportunity node returned unparseable/);
+  });
+
+  it("resumes: a late report-node failure preserves the earlier nodes; retry re-runs ONLY the report node", async () => {
+    const good: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "s", acquisition: [], delivery: [], support: [], bottlenecks: [{ area: "front desk", pain: "p", rootCause: "rc", severity: "high", businessImpact: "b" }], keyMetrics: [] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "T", service: "missed-call-text-back-system", description: "d", impact: "high", difficulty: "low", kpis: ["k"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: ["T"], bigSwings: [], rationale: "r" }),
+      audit_roadmap: JSON.stringify({ phases: [{ title: "P1", months: "1-3", focus: "f", objectives: ["o"], deliverables: ["d"], items: ["T"], expectedOutcome: "e" }] }),
+      audit_report: JSON.stringify({ executiveSummary: "E", situationSummary: "s", roi: { estimatedMonthlyUpsideCents: 100, estimatedImplementationCents: 200, paybackMonths: 2 }, risks: [{ risk: "r", mitigation: "m" }], successMetrics: ["s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["n"] }),
+    };
+    const { store, rows } = makeCheckpointStore();
+    const runId = "audit_job_1";
+
+    // Round 1 — report node returns junk and fails; the four prior nodes checkpoint.
+    const calls1: string[] = [];
+    await expect(
+      runPaidAuditGraph(
+        { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", graphRunId: runId },
+        { retrieveBrain: async () => [], runNode: async (i) => { calls1.push(i.role); return { text: i.role === "audit_report" ? "garbage" : good[i.role], runId: `r_${i.role}` }; }, recordAudit: async () => {}, persistAudit: async () => {}, checkpointStore: store, now },
+      ),
+    ).rejects.toThrow(/report node returned unparseable/);
+    expect(calls1).toHaveLength(5);
+    expect([...rows.values()].map((r) => r.nodeSlug).sort()).toEqual(["discovery", "opportunity", "prioritization", "roadmap"]);
+
+    // Round 2 — same job id; only the report node should call the model.
+    const calls2: string[] = [];
+    const persisted: PaidAuditRow[] = [];
+    const result = await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", graphRunId: runId },
+      { retrieveBrain: async () => [], runNode: async (i) => { calls2.push(i.role); return { text: good[i.role], runId: `r2_${i.role}` }; }, recordAudit: async () => {}, persistAudit: async (row) => { persisted.push(row); }, checkpointStore: store, now },
+    );
+    expect(calls2).toEqual(["audit_report"]); // ONLY the report node re-ran; discovery/opportunity/prioritization/roadmap resumed
+    expect(persisted).toHaveLength(1);
+    expect(rows.size).toBe(0); // success cleared the checkpoints
+    expect(result.auditId).toBeTruthy();
   });
 });

@@ -36,15 +36,42 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Registry integrity test + 2 agent-status honesty bugs | fixed-verified | 07bdb4b |
 | Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | 95afa58 |
 | Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | 0469dd0 |
-| Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | (this commit) |
+| Library double-post + orphan on scheduled posts (Zernio) | fixed-verified | d351b13 |
+| Graph checkpointing + resumability (content + paid-audit) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Content-graph / paid-audit no checkpointing** (reliability/cost) — a late node failing discards all prior (paid) node work. Persist node outputs; resume from failed node. (Telemetry now records WHERE it failed — checkpointing is the natural follow-up.) NOTE: needs a schema migration + live-DB verification (per founder's memory-first/test-live preference).
-2. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+2. **VPS deployment** — BLOCKED on external access (no VPS host/SSH/credentials in the local dev environment). See "VPS status" below.
+
+## Notes on graph checkpointing (open item closed — full production-grade)
+**What**: durable per-node output persistence so the content graph and paid-audit graph RESUME after a late-node failure / retry / restart instead of re-running (and re-charging) completed nodes.
+
+**Schema/migration**: new `graph_checkpoints` table (migration `0027_cute_romulus.sql`). Unique index `(graph_run_id, node_slug)` = the concurrency/dedup boundary; indexes on `graph_run_id` and `created_at` (retention). **Rollback**: `DROP TABLE graph_checkpoints;` (additive migration, no data dependency — safe to drop).
+
+**Architecture** (all injectable/DI, fully unit-testable):
+- `src/lib/domain/graph-checkpoint.ts` — pure: row builder, `isCheckpointReusable` (completed + schema-version match), `graphRunIdFrom` (job id wins; deterministic fallback; never random).
+- `src/lib/graph-checkpoint/index.ts` — `GraphCheckpointStore` interface + DB `defaultCheckpointStore` (upsert = ON CONFLICT DO UPDATE), `loadCheckpointContext` (graceful-degrade on read failure), `bindNodeCheckpoint` (keys by NODE KEY not agent slug — content graph's draft+revise share the copywriter slug and would otherwise collide), `clearGraphCheckpoints`, `purgeExpiredGraphCheckpoints` (3-day retention, wired into the scheduler's daily maintenance).
+- `src/lib/agents/node-telemetry.ts` — `runGraphNode` gains an optional per-node checkpoint binding: on a cache hit it reuses the parsed output (no model call, cost 0, telemetry marked `[resumed]`); on success it persists; a save failure is best-effort (node just re-runs). Both graphs thread `graphRunId = job.id`.
+
+**Verification evidence**:
+- Migration applied to the live dev DB; `drizzle-kit generate` reports **zero drift**; table + 4 indexes confirmed via `pg_indexes`.
+- Raw-SQL proof: unique index rejects a raw duplicate; `ON CONFLICT` upserts in place (dupe workers/delivery → one row).
+- Real-DB integration through the ACTUAL store code (`src/scripts/verify-checkpoint-db.ts`, run against Postgres): persist, upsert-no-dupe, update-in-place, **survival across a fresh store instance (process/worker restart)**, jsonb durability, **concurrent same-node upserts → exactly one row**, clear, retention purge — all ✓.
+- 13 new tests (12 in `tests/graph-checkpoint.test.ts` + 1 paid-audit resume): late-node failure preserves completed nodes; **retry re-runs ONLY the failed node (paid nodes not re-charged)**; corrupted checkpoint → re-run; schema-version mismatch → re-run; success clears; no-graphRunId → checkpointing off; read/write failures degrade gracefully.
+- Full gate: `typecheck 0`, **523 vitest pass (74 files)**, `build 0`.
+
+**Mandate scenario coverage**: late-node failure ✓, interruption/termination ✓ (durable DB + fresh-store read), retry/resume ✓, app restart ✓, worker restart ✓, duplicate workers ✓, duplicate job delivery ✓, concurrent execution ✓, malformed/corrupted checkpoints ✓, partial DB writes ✓ (best-effort save), schema-version mismatch ✓, idempotency ✓, retention/cleanup ✓, cancellation ✓ (clear), recovery after temporary DB failure ✓ (graceful degrade).
+
+## VPS status — BLOCKED on external access (recorded, not faked)
+Actual controlled VPS deployment is **not possible from this environment** and has NOT been performed (no fake completion). Concrete blockers, each requiring founder-provided access:
+- **No VPS reachable**: this is a local Windows dev box (`C:\Wobble OS`). No SSH host/IP, no SSH key or login, no configured deploy target. `scripts/deploy.sh` is explicitly designed to run *on* the VPS and still has no restart command wired.
+- **Missing to proceed**: (1) VPS hostname/IP + SSH access; (2) domain + DNS for TLS; (3) production secrets (`DATABASE_URL`, `SESSION_SECRET`, `SHARED_LOGIN_PASSWORD_HASH_B64`, `OPENROUTER_API_KEY`, `ZERNIO_*`, `APIFY_*`, `PUBLIC_BASE_URL`, webhook secrets). Secret *values* must be entered by the founder in the password manager / server, never by me.
+- **What IS ready for the VPS step**: verified green `main` (CI-equivalent gate passes locally), the additive `0027` migration + rollback (`DROP TABLE graph_checkpoints`), `docs/VPS_DEPLOYMENT.md`, and `scripts/deploy.sh` (needs its RESTART section filled for the chosen process manager).
+Everything independent of VPS access continues; the deployment itself resumes once the above is provided.
 
 ## Notes on the library scheduling fix (open item closed)
 - Verified THREE things: (a) scheduler→dispatch IS wired (FIX #1 calls `dispatchDuePosts` on the tick) ✓ — that sub-item was already resolved; (b) a real **double-post** bug; (c) an **orphan** risk.

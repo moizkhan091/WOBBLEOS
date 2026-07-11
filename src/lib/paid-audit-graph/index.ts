@@ -7,6 +7,8 @@ import { getDb } from "@/db";
 import { listMemoryRecords } from "@/lib/memory";
 import { recordAgentRun } from "@/lib/agents";
 import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
+import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
+import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { newId } from "@/lib/ids";
 import {
@@ -50,6 +52,7 @@ export interface PaidAuditDeps {
   recordAgentRun?: (input: Record<string, unknown>) => Promise<unknown>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   persistAudit?: (row: PaidAuditRow) => Promise<void>;
+  checkpointStore?: GraphCheckpointStore;
   now?: Date;
 }
 
@@ -61,6 +64,8 @@ export interface RunPaidAuditInput {
   companyId?: string;
   opportunityId?: string;
   requestedBy: string;
+  /** Stable id enabling checkpoint resume (the job id). Omit for one-shot runs with no retry. */
+  graphRunId?: string;
 }
 
 export interface PaidAuditRow {
@@ -126,6 +131,14 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
 
   await recordAudit({ eventType: "audit.paid_started", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { businessName: input.businessName } });
 
+  // Resume support: with a stable run id (the job id), reuse completed node checkpoints on retry.
+  const cpCtx: CheckpointContext | undefined = input.graphRunId
+    ? await loadCheckpointContext(
+        { graph: "paid_audit", graphRunId: input.graphRunId, schemaVersion: GRAPH_CHECKPOINT_SCHEMA_VERSION.paid_audit },
+        { store: deps.checkpointStore, now: deps.now },
+      )
+    : undefined;
+
   try {
     const brain = await (deps.retrieveBrain ?? defaultRetrieveBrain)();
     const ctx: AuditContext = { businessName: input.businessName, industry: input.industry, intakeNotes: input.intakeNotes, freeAuditSummary: input.freeAuditSummary, brain };
@@ -136,6 +149,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       messages: buildDiscoveryPrompt(ctx), parse: (t) => parseJsonObject(t, discoverySchema),
       required: true, parseErr: "paid-audit: discovery node returned unparseable output",
       summarize: (dsc) => ({ inputSummary: input.businessName, outputSummary: `${dsc!.bottlenecks.length} bottlenecks` }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "discovery", 0),
     });
     if (dRun.runId) modelRunIds.push(dRun.runId);
     const discovery = discoveryParsed!;
@@ -146,6 +160,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       messages: buildOpportunityPrompt(ctx, discovery), parse: (t) => parseJsonObject(t, opportunitySchema),
       required: true, parseErr: "paid-audit: opportunity node returned unparseable output",
       summarize: (op) => ({ inputSummary: "opportunities", outputSummary: `${op!.opportunities.length} opportunities` }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "opportunity", 1),
     });
     if (oRun.runId) modelRunIds.push(oRun.runId);
     const opportunities = oppParsed!;
@@ -156,6 +171,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       messages: buildPrioritizationPrompt(opportunities), parse: (t) => parseJsonObject(t, prioritizationSchema),
       required: false, parseErr: "",
       summarize: (p) => ({ inputSummary: "prioritize", outputSummary: `${p?.quickWins.length ?? 0} quick wins` }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "prioritization", 2),
     });
     if (prRun.runId) modelRunIds.push(prRun.runId);
     const prioritization = prioParsed ?? { quickWins: [], bigSwings: [], rationale: "" };
@@ -166,6 +182,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       messages: buildRoadmapPrompt(opportunities, prioritization), parse: (t) => parseJsonObject(t, roadmapSchema),
       required: false, parseErr: "",
       summarize: (r) => ({ inputSummary: "roadmap", outputSummary: `${r?.phases.length ?? 0} phases` }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "roadmap", 3),
     });
     if (rmRun.runId) modelRunIds.push(rmRun.runId);
     const roadmap = roadmapParsed ?? { phases: [] };
@@ -176,6 +193,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       messages: buildReportPrompt(ctx, discovery, opportunities, roadmap), parse: (t) => parseJsonObject(t, reportSchema),
       required: true, parseErr: "paid-audit: report node returned unparseable output",
       summarize: (rep) => ({ inputSummary: "report", outputSummary: rep!.executiveSummary.slice(0, 160) }),
+      checkpoint: bindNodeCheckpoint(cpCtx, "report", 4),
     });
     if (rpRun.runId) modelRunIds.push(rpRun.runId);
     const report = reportParsed!;
@@ -198,6 +216,9 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
 
     await recordAudit({ eventType: "audit.paid_completed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { agentRunCount: 5, opportunities: fullReport.opportunities.length, phases: fullReport.roadmap.length, modelRunIds } });
 
+    // Success: durably finished — drop this run's checkpoints.
+    if (input.graphRunId) await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
+
     return { auditId: row.id, agentRunCount: 5, modelRunIds, report: fullReport };
   } catch (error) {
     await recordAudit({ eventType: "audit.paid_failed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { reason: error instanceof Error ? error.message : String(error) } });
@@ -213,6 +234,6 @@ export async function enqueuePaidAuditJob(input: RunPaidAuditInput & { idempoten
 export async function runPaidAuditJobHandler(job: JobRow): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Partial<RunPaidAuditInput>;
   if (!p.businessName || !p.intakeNotes || !p.requestedBy) throw new Error("audit.paid job requires businessName, intakeNotes, requestedBy");
-  const result = await runPaidAuditGraph({ businessName: p.businessName, industry: p.industry, intakeNotes: p.intakeNotes, freeAuditSummary: p.freeAuditSummary, companyId: p.companyId, opportunityId: p.opportunityId, requestedBy: p.requestedBy });
+  const result = await runPaidAuditGraph({ businessName: p.businessName, industry: p.industry, intakeNotes: p.intakeNotes, freeAuditSummary: p.freeAuditSummary, companyId: p.companyId, opportunityId: p.opportunityId, requestedBy: p.requestedBy, graphRunId: job.id });
   return { auditId: result.auditId, agentRunCount: result.agentRunCount };
 }
