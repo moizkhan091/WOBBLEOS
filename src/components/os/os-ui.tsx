@@ -4781,7 +4781,7 @@ function BackupPage() {
 }
 
 function MediaStudioPage() {
-  const state = useApi<{ configured: boolean; needs: string[]; capabilities: { key: string; label: string; note: string }[]; worker: string }>("/api/media");
+  const state = useApi<{ generationBuilt: boolean; keySet: boolean; roadmap: { key: string; label: string; note: string }[]; note: string }>("/api/media");
   const guard = offlineIf(state);
   if (guard) return guard;
   const d = state.data;
@@ -4789,27 +4789,16 @@ function MediaStudioPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
       <Panel>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: d?.configured ? C.lime : C.orange, background: d?.configured ? "rgba(184,255,44,0.1)" : "rgba(255,104,0,0.1)" }}><Icon name="Clapperboard" size={16} /></span>
+          <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#F5C542", background: "rgba(245,197,66,0.12)" }}><Icon name="Clapperboard" size={16} /></span>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Media Studio</div>
           <div style={{ flex: 1 }} />
-          <Tag text={d?.configured ? "connected" : "needs key"} color={d?.configured ? C.lime : C.orange} />
+          <Tag text="roadmap · not built yet" color="#F5C542" />
         </div>
-        <div style={{ fontSize: 12.5, color: faint, lineHeight: 1.55, marginBottom: 12 }}>Video + image generation runs on fal.ai, compute-isolated in the dedicated video worker so renders never block the web/API. It stays inert until connected — WOBBLE never fabricates media.</div>
-        {!d?.configured ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-            {(d?.needs ?? ["FAL_KEY"]).map((n) => (
-              <div key={n} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.orange }} />
-                <span style={{ fontSize: 12.5, fontFamily: "monospace" }}>{n}</span>
-                <span style={{ fontSize: 11, color: faint, marginLeft: "auto" }}>set in .env, then run <code>npm run {d?.worker ?? "worker:video"}</code></span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Capabilities</div>
+        <div style={{ fontSize: 12.5, color: faint, lineHeight: 1.55, marginBottom: 12 }}>{d?.note ?? "Media generation is on the roadmap — the pipeline isn't built yet, so no media is produced."}</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Planned capabilities</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(d?.capabilities ?? []).map((c) => (
-            <div key={c.key} style={{ ...card, padding: "10px 12px" }}>
+          {(d?.roadmap ?? []).map((c) => (
+            <div key={c.key} style={{ ...card, padding: "10px 12px", opacity: 0.75 }}>
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
               <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{c.note}</div>
             </div>

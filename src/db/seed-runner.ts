@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sql } from "drizzle-orm";
 import { closeDb, getDb, schema } from "@/db";
 import {
   initialApprovalActions,
@@ -289,7 +290,18 @@ export async function seedDatabase() {
   await db
     .insert(schema.agents)
     .values(DEFAULT_AGENTS.map((a) => buildAgentRow(a, { id: `agent_${a.slug}` })))
-    .onConflictDoNothing();
+    // Correct roster metadata on re-seed (status/purpose/cadence) so honesty fixes reach existing DBs,
+    // WITHOUT clobbering live run stats (run_count/quality/last_run stay).
+    .onConflictDoUpdate({
+      target: schema.agents.id,
+      set: {
+        status: sql`excluded.status`,
+        purpose: sql`excluded.purpose`,
+        cadence: sql`excluded.cadence`,
+        modelRole: sql`excluded.model_role`,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
