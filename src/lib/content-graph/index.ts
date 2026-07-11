@@ -13,6 +13,7 @@ import { recordAgentRun } from "@/lib/agents";
 import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { loadCheckpointContext, clearGraphCheckpoints, bindNodeCheckpoint, type CheckpointContext, type GraphCheckpointStore } from "@/lib/graph-checkpoint";
 import { GRAPH_CHECKPOINT_SCHEMA_VERSION } from "@/lib/domain/graph-checkpoint";
+import { buildHandoffEnvelope, nextHandoff, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import {
   CONTENT_GRAPH_AGENTS,
@@ -184,6 +185,32 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
   });
 
   try {
+    // ---- Structured inter-agent handoff (Phase 2): validated envelope threads the creative graph,
+    // emitting an auditable agent.handoff with lineage at each hop. ----
+    const CONTENT_MEMORY_SCOPES = ["content", "brand", "research", "founder_taste"];
+    let envelope: HandoffEnvelope = buildHandoffEnvelope(
+      {
+        workflowId: input.graphRunId ?? track.id,
+        department: "content",
+        sourceAgent: "content_orchestrator",
+        destinationAgent: CONTENT_GRAPH_AGENTS.strategy,
+        actor,
+        dataClassification: "internal",
+        authorizedMemoryScopes: CONTENT_MEMORY_SCOPES,
+        objective: input.objective,
+        requestedAction: "decide topic/angle/format/platform",
+        expectedOutputSchema: "creative_brief",
+        confidence: 0.7,
+      },
+      { now: deps.now ?? new Date() },
+    );
+    const entryCheck = validateHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES });
+    if (!entryCheck.ok) throw new Error(`content-graph: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
+    const emitHandoff = async (fromAgent: string, toAgent: string, expectedOutputSchema: string, objective: string, addOutputs: Record<string, unknown>) => {
+      envelope = nextHandoff(envelope, { sourceAgent: fromAgent, destinationAgent: toAgent, objective, requestedAction: objective, expectedOutputSchema, addOutputs }, { now: deps.now ?? new Date() });
+      await recordAudit({ eventType: "agent.handoff", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, taskId: envelope.taskId, causationId: envelope.causationId, from: fromAgent, to: toAgent, department: "content" } });
+    };
+
     // ---- Node 1: STRATEGY (creative brief) ----
     const [brain, stratKnowledge, intel] = await Promise.all([
       (deps.retrieveBrain ?? defaultRetrieveBrain)(),
@@ -212,6 +239,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     });
     if (strategyRun.runId) modelRunIds.push(strategyRun.runId);
     const brief = briefParsed!;
+    await emitHandoff(CONTENT_GRAPH_AGENTS.strategy, CONTENT_GRAPH_AGENTS.research, "evidence_pack", "gather grounded evidence for the angle", { brief });
 
     // ---- Node 2: RESEARCH (grounded evidence for the chosen angle) ----
     const evidenceContext = await retrieve(`${brief.topic} ${brief.angle}`);
@@ -232,6 +260,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     if (researchRun.runId) modelRunIds.push(researchRun.runId);
     const evidence = evidenceParsed!;
     const provenance = collectProvenance(evidence.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
+    await emitHandoff(CONTENT_GRAPH_AGENTS.research, CONTENT_GRAPH_AGENTS.copywriting, "content_copy", "write in-brand copy", { evidence });
 
     // ---- Node 3: COPYWRITER (draft) ----
     const { parsed: draftParsed, run: draftRun } = await runNodeWithTelemetry(deps, runNode, {
@@ -262,6 +291,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     });
     if (reviseRun.runId) modelRunIds.push(reviseRun.runId);
     const finalCopy = revision?.revised ?? draft;
+    await emitHandoff(CONTENT_GRAPH_AGENTS.copywriting, CONTENT_GRAPH_AGENTS.scoring, "score", "score + gate the pack", { finalCopy });
 
     // ---- Node 5: SCORING / QA ----
     const { parsed: scoreParsed, run: scoreRun } = await runNodeWithTelemetry(deps, runNode, {

@@ -95,6 +95,7 @@ const SCORE = JSON.stringify({ selfReview: { usefulness: 8, originality: 8, bran
 function makeDeps(nodeResponses: string[]) {
   let call = 0;
   const agentRuns: Record<string, unknown>[] = [];
+  const audits: Record<string, unknown>[] = [];
   let capturedPacket: Record<string, unknown> | null = null;
   const deps: ContentGraphDeps = {
     getTrack: async () => track,
@@ -105,14 +106,14 @@ function makeDeps(nodeResponses: string[]) {
     }),
     runNode: async () => ({ text: nodeResponses[call++], runId: `mr_${call}` }),
     recordAgentRun: async (i) => void agentRuns.push(i),
-    recordAudit: async () => {},
+    recordAudit: async (e) => void audits.push(e as unknown as Record<string, unknown>),
     createPacket: async (input): Promise<ContentPacketCreationResult> => {
       capturedPacket = input as unknown as Record<string, unknown>;
       const passed = (input as { requestApproval?: boolean }).requestApproval === true;
       return { packet: { id: "pk_1", qualityStatus: passed ? "passed" : "failed" }, approval: passed ? { id: "ap_1" } : null };
     },
   };
-  return { deps, agentRuns, getPacket: () => capturedPacket };
+  return { deps, agentRuns, audits, getPacket: () => capturedPacket };
 }
 
 describe("content-graph idempotency (double-click spend guard)", () => {
@@ -152,6 +153,20 @@ describe("content-graph idempotency (double-click spend guard)", () => {
 });
 
 describe("runContentGraph", () => {
+  it("emits a validated structured handoff between the distinct-agent hops (with lineage)", async () => {
+    const { deps, audits } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" }, deps);
+    const handoffs = audits.filter((e) => e.eventType === "agent.handoff");
+    const meta = (h: Record<string, unknown>) => h.metadata as Record<string, unknown>;
+    // strategy→research→copywriting→scoring (draft+revise are the same copywriter agent = no hop).
+    expect(handoffs.map((h) => `${meta(h).from}->${meta(h).to}`)).toEqual([
+      "content_strategist->content_researcher",
+      "content_researcher->content_copywriter",
+      "content_copywriter->content_scorer",
+    ]);
+    expect(new Set(handoffs.map((h) => meta(h).correlationId)).size).toBe(1);
+  });
+
   it("runs a 5-agent grounded graph and assembles an approvable pack", async () => {
     const { deps, agentRuns, getPacket } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
     const result = await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" }, deps);
