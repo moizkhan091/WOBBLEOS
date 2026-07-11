@@ -8,10 +8,10 @@ CI = Node 22 `typecheck → test → build`.
 
 ## ⭐ CURRENT STATE (authoritative — resumed sessions start HERE)
 _Reconciled against the real repo, not stale headers._
-- **Branch:** `main` · **HEAD:** `b8d35a1` (docs reconcile, atop `5f90e2a` approval-effects outbox)
+- **Branch:** `main` · **HEAD:** `54ced1e` (memory_update → outbox; approval-effect coverage COMPLETE) · atop `d5a1d41` (content/skill/model → outbox), `5f90e2a` (outbox foundation + source).
 - **Latest migration:** `0031_approval_effects` (33 applied to the local dev DB; zero drift). 0027 graph_checkpoints · 0028 published-post unique · 0029 payments ledger · 0030 handoff runtime · 0031 approval effects.
-- **Gate at HEAD:** typecheck 0 · **570 tests (77 files)** · build 0. Real-OpenRouter smoke PASS; real-DB proofs PASS for checkpoints, payments ledger, **handoff runtime**, and **approval-effects outbox**.
-- **Phase 1 (release-blocking defects): COMPLETE** — `2bb2230` (FIX #21 payments), `4a71655` (FIX #22 approvals/workflow/health). **Approval cross-store atomicity: now fixed-verified** via the transactional-outbox (`5f90e2a`) — crash-resume/exactly-once/retry tests + real-DB proof.
+- **Gate at HEAD:** typecheck 0 · **573 tests (77 files)** · build 0. Real-OpenRouter smoke PASS; real-DB proofs PASS for checkpoints, payments ledger, **handoff runtime**, **approval-effects outbox**, and **memory-update outbox**.
+- **Phase 1 (release-blocking defects): COMPLETE** — `2bb2230` (FIX #21 payments), `4a71655` (FIX #22 approvals/workflow/health). **Approval cross-store atomicity: fixed-verified AND fully covered** — the transactional-outbox now spans every approval path with a cross-store downstream (source, content_packet, skill/skill_update, model_upgrade, memory_update); intelligence_suggestion/research_target/budget are flip-only (no residual). Crash-resume/exactly-once/retry tests + real-DB proofs.
 - **Phase 2 (structured handoff): FOUNDATION + DURABLE RUNTIME + paid-audit + content DONE.** `ba58dff`/`d797b6f` (envelope + graph handoffs), `47459ae` (durable runtime: `handoffs` table, delivery state machine, lease/reclaim/dead-letter/redrive, dispatch/claim/complete, scheduler self-heal, command-centre visibility). **Remaining Phase 2:** migrate the other verticals (Proposal, Research, CRM/Sales/Finance/Delivery, Ask) onto envelopes; FreeAudit adopts it when built (Phase 9).
 - **Phases 3-10: QUEUED** (departments → QA boards → continuous Research & Intelligence → taste learning → selective revision → self-improvement → real Free Audit → real Media Studio).
 - **Release gate:** NOT passed (Phases 3-10 not built; VPS blocked). `RELEASE_CANDIDATE_GATE.md` = historical snapshot (banner).
@@ -60,7 +60,7 @@ _Reconciled against the real repo, not stale headers._
 | # | Item | Fix |
 |---|------|-----|
 | 1-4 | Payment idempotency / reference dedup / concurrent partials / lost-update | Payments ledger (table + partial unique index, migration 0029; amount from ledger SUM under FOR UPDATE, capped at total). DB-proven. |
-| 5 | Approval flip↔downstream atomicity | **fixed-verified** (`5f90e2a`) — transactional-outbox: `claimApprovalAndRecordEffect` flips + records the effect in ONE tx; `reconcileApprovalEffects` applies it idempotently (inline fast-path + scheduler safety net). Crash-resume/exactly-once/retry tests + real-DB proof. Source path migrated; other approval paths adopt it next. |
+| 5 | Approval flip↔downstream atomicity | **fixed-verified + fully covered** (`5f90e2a`→`54ced1e`) — transactional-outbox: `claimApprovalAndRecordEffect` flips + records the effect in ONE tx; `reconcileApprovalEffects` applies it idempotently (inline fast-path + scheduler safety net). Migrated appliers: `source.activate`, `content.import`, `skill.activate`, `model.apply`, `memory.apply`. intelligence_suggestion/research_target/budget = flip-only (no cross-store downstream). Crash-resume/exactly-once/retry tests + real-DB proofs (source + memory). |
 | 6 | Duplicate approval prevention | `claimTransition` (UPDATE WHERE status=fromStatus) atomic claim |
 | 7 | Identical behaviour across approval routes | `/action` approve/reject now routes through `resolveApproval` (same downstream as `/resolve`) |
 | 8 | Proposal accept → advance CRM opportunity | accept moves the linked opp to won (→ delivery), not just an invoice |
