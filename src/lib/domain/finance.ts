@@ -107,6 +107,38 @@ export function buildInvoiceRow(input: CreateInvoiceInput, opts: { now?: Date; i
   };
 }
 
+// ---- Payments ledger: one row per received payment. amountPaidCents on the invoice is the SUM of
+// these (recomputed under a row lock), never a mutated running total — so concurrent partials can't
+// lost-update and a duplicate paymentReference (idempotency key) is rejected by a unique index. ----
+export interface PaymentRow {
+  id: string;
+  invoiceId: string;
+  amountCents: number;
+  paymentReference: string | null;
+  method: string;
+  note: string | null;
+  recordedBy: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export function buildPaymentRow(
+  input: { invoiceId: string; amountCents: number; paymentReference?: string | null; method?: string; note?: string | null; recordedBy?: string | null },
+  opts: { now?: Date; id?: string } = {},
+): PaymentRow {
+  return {
+    id: opts.id ?? newId("pay"),
+    invoiceId: input.invoiceId,
+    amountCents: Math.round(input.amountCents),
+    paymentReference: input.paymentReference?.trim() || null,
+    method: input.method ?? "manual",
+    note: input.note ?? null,
+    recordedBy: input.recordedBy ?? null,
+    metadata: {},
+    createdAt: opts.now ?? new Date(),
+  };
+}
+
 const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
   draft: ["needs_approval", "approved", "cancelled"],
   needs_approval: ["approved", "draft", "cancelled"],

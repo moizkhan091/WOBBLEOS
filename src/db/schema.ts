@@ -1233,6 +1233,25 @@ export const invoices = pgTable("invoices", {
   index("invoices_opportunity_idx").on(table.opportunityId),
 ]);
 
+// ---- Payments ledger: one row per received payment. invoices.amount_paid_cents is the SUM of these,
+// recomputed under a row lock — never a mutated running total. The partial unique index makes a
+// paymentReference (the idempotency key) applicable at most once per invoice, so a duplicate submit
+// (double-click / webhook retry) cannot double-count. Reference-less payments are each distinct. ----
+export const payments = pgTable("payments", {
+  id: id(),
+  invoiceId: text("invoice_id").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  paymentReference: varchar("payment_reference", { length: 200 }),
+  method: varchar("method", { length: 40 }).notNull().default("manual"),
+  note: text("note"),
+  recordedBy: varchar("recorded_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("payments_invoice_id_idx").on(table.invoiceId),
+  uniqueIndex("payments_invoice_ref_uidx").on(table.invoiceId, table.paymentReference).where(sql`payment_reference IS NOT NULL`),
+]);
+
 // ---------------------------------------------------------------- Audits (Free / Paid AI audits)
 // A prospect audit attached to a company/opportunity. v1 free audit = deterministic diagnosis over
 // the Wobble service catalog; the LLM agent team + paid McKinsey-depth audit layer on later.

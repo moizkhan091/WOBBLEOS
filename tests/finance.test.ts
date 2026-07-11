@@ -5,6 +5,7 @@ import {
   lineItemsSubtotalCents,
   revenueSummary,
   type InvoiceRow,
+  type PaymentRow,
 } from "@/lib/domain/finance";
 
 const now = new Date("2026-07-09T12:00:00Z");
@@ -72,14 +73,25 @@ import { createInvoice, invoiceAction, type FinanceStore } from "@/lib/finance";
 
 function makeStore() {
   const invoices = new Map<string, InvoiceRow>();
+  const payments: PaymentRow[] = [];
   const store: FinanceStore = {
     insertInvoice: async (r) => void invoices.set(r.id, r),
     listInvoices: async (q) => [...invoices.values()].filter((i) => !q.status || i.status === q.status).slice(0, q.limit),
     getInvoice: async (id) => invoices.get(id) ?? null,
     updateInvoice: async (id, f) => { const i = invoices.get(id); if (i) invoices.set(id, { ...i, ...f }); },
     countInvoices: async () => invoices.size,
+    // Models the DB ledger: dedup by (invoiceId, paymentReference); amount = SUM of the ledger.
+    recordPayment: async ({ payment }) => {
+      const inv = invoices.get(payment.invoiceId);
+      if (!inv) return null;
+      const dup = payment.paymentReference && payments.some((p) => p.invoiceId === payment.invoiceId && p.paymentReference === payment.paymentReference);
+      const applied = !dup;
+      if (applied) payments.push(payment);
+      const amountPaidCents = payments.filter((p) => p.invoiceId === payment.invoiceId).reduce((s, p) => s + p.amountCents, 0);
+      return { applied, amountPaidCents, totalCents: inv.totalCents };
+    },
   };
-  return { store, invoices };
+  return { store, invoices, payments };
 }
 
 describe("finance service", () => {
@@ -121,5 +133,27 @@ describe("finance service", () => {
     expect(paid?.amountPaidCents).toBe(600000);
     // cannot pay a paid invoice again via send
     expect(await invoiceAction(inv.id, "send", { actor: "Moiz" }, { store, now, recordAudit: async () => {} })).toBeNull();
+  });
+
+  it("partial payments are ledger-based, additive, and idempotent on paymentReference", async () => {
+    const { store, payments } = makeStore();
+    const inv = await createInvoice({ lineItems: [{ description: "Retainer", quantity: 1, unitPriceCents: 1000 }] }, { store, now, recordAudit: async () => {} });
+    await invoiceAction(inv.id, "approve", { actor: "Moiz" }, { store, now, recordAudit: async () => {} });
+    await invoiceAction(inv.id, "send", { actor: "Moiz" }, { store, now, recordAudit: async () => {} });
+
+    // First partial: 400 of 1000.
+    const p1 = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 400, paymentReference: "wire-A" }, { store, now, recordAudit: async () => {} });
+    expect(p1?.status).toBe("partially_paid");
+    expect(p1?.amountPaidCents).toBe(400);
+
+    // Duplicate of wire-A (double-click / webhook retry): must NOT double-count.
+    const dup = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 400, paymentReference: "wire-A" }, { store, now, recordAudit: async () => {} });
+    expect(dup?.amountPaidCents).toBe(400); // unchanged — idempotent
+    expect(payments.filter((p) => p.paymentReference === "wire-A")).toHaveLength(1);
+
+    // Second DISTINCT partial: 600 -> fully paid (both summed, no lost update).
+    const p2 = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 600, paymentReference: "wire-B" }, { store, now, recordAudit: async () => {} });
+    expect(p2?.amountPaidCents).toBe(1000);
+    expect(p2?.status).toBe("paid");
   });
 });

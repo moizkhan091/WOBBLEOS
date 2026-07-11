@@ -3,15 +3,21 @@ import { invoiceAction, type FinanceStore } from "@/lib/finance";
 import type { InvoiceRow } from "@/lib/domain/finance";
 import { selectApprovedIntelligenceForTask, buildIntelligenceContextPlan } from "@/lib/domain/intelligence";
 
-// Regression: partial payments must ACCUMULATE, not overwrite (audit money-flow finding).
+// Regression: partial payments ACCUMULATE via the payments ledger (SUM), never overwrite, and the
+// cached invoice amount is capped at the total (audit money-flow finding).
 describe("finance mark_paid accumulation", () => {
-  function store(inv: InvoiceRow): { store: FinanceStore; get: () => InvoiceRow } {
+  function store(inv: InvoiceRow, seedPaidCents = 0): { store: FinanceStore; get: () => InvoiceRow } {
     let row = inv;
+    let ledger = seedPaidCents; // models SUM(payments) for this invoice
     return {
       get: () => row,
       store: {
         getInvoice: async () => row,
         updateInvoice: async (_id: string, fields: Partial<InvoiceRow>) => { row = { ...row, ...fields } as InvoiceRow; },
+        recordPayment: async ({ payment }: { payment: { amountCents: number } }) => {
+          ledger += payment.amountCents;
+          return { applied: true, amountPaidCents: ledger, totalCents: row.totalCents };
+        },
       } as unknown as FinanceStore,
     };
   }
@@ -23,14 +29,15 @@ describe("finance mark_paid accumulation", () => {
     expect(get().amountPaidCents).toBe(4000);
     expect(get().status).toBe("partially_paid");
     await invoiceAction("inv_1", "mark_paid", { actor: "Moiz", amountPaidCents: 6000 }, { store: s, recordAudit: async () => {} });
-    expect(get().amountPaidCents).toBe(10000); // 4000 + 6000, not overwritten to 6000
+    expect(get().amountPaidCents).toBe(10000); // 4000 + 6000 from the ledger, not overwritten to 6000
     expect(get().status).toBe("paid");
   });
 
-  it("never records more than the total", async () => {
-    const { store: s, get } = store({ ...base, amountPaidCents: 9000, status: "partially_paid" } as InvoiceRow);
+  it("caps the cached invoice amount at the total (overpayment can't inflate revenue)", async () => {
+    const { store: s, get } = store({ ...base, amountPaidCents: 9000, status: "partially_paid" } as InvoiceRow, 9000);
     await invoiceAction("inv_1", "mark_paid", { actor: "Moiz", amountPaidCents: 5000 }, { store: s, recordAudit: async () => {} });
-    expect(get().amountPaidCents).toBe(10000); // capped at total
+    expect(get().amountPaidCents).toBe(10000); // ledger sum 14000 capped to total for the cached field
+    expect(get().status).toBe("paid");
   });
 });
 

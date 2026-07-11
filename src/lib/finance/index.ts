@@ -1,16 +1,18 @@
-import { desc, eq } from "drizzle-orm";
-import { invoices as invoicesTable } from "@/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+import { invoices as invoicesTable, payments as paymentsTable } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   FINANCE_MODULE,
   buildInvoiceRow,
+  buildPaymentRow,
   canTransitionInvoice,
   revenueSummary,
   type CreateInvoiceInput,
   type InvoiceRow,
   type InvoiceStatus,
+  type PaymentRow,
   type RevenueSummary,
 } from "@/lib/domain/finance";
 import { listOpportunities } from "@/lib/crm";
@@ -26,6 +28,12 @@ export interface FinanceStore {
   getInvoice(id: string): Promise<InvoiceRow | null>;
   updateInvoice(id: string, fields: Partial<InvoiceRow>): Promise<void>;
   countInvoices(): Promise<number>;
+  /**
+   * Atomically record a payment against an invoice: locks the invoice row (FOR UPDATE), inserts the
+   * payment (idempotent on paymentReference), and returns the ledger SUM. `applied=false` means the
+   * paymentReference was already recorded (duplicate) — the sum is unchanged, no double-count.
+   */
+  recordPayment(input: { payment: PaymentRow }): Promise<{ applied: boolean; amountPaidCents: number; totalCents: number } | null>;
 }
 
 export interface FinanceDeps {
@@ -100,15 +108,23 @@ export async function invoiceAction(id: string, action: InvoiceAction, input: { 
   if (action === "approve") fields.approvedBy = input.actor;
   if (action === "send") fields.sentAt = now;
   if (action === "mark_paid") {
-    // Accumulate against the outstanding balance — a second partial payment must ADD to the
-    // amount already recorded, not overwrite it (previously lost the earlier payment).
-    const remaining = Math.max(0, inv.totalCents - inv.amountPaidCents);
-    const applied = input.amountPaidCents ?? remaining;
-    const paid = Math.min(inv.amountPaidCents + applied, inv.totalCents);
-    fields.amountPaidCents = paid;
+    // Ledger-based, idempotent, concurrency-safe. Record the payment (deduped by paymentReference) and
+    // set amount_paid from the recomputed ledger SUM under a row lock — never a read-modify-write of the
+    // running total. A duplicate paymentReference is a no-op (applied=false), so a double-submit / webhook
+    // retry cannot double-count. Distinct concurrent partials each land and both are summed.
+    const amount = input.amountPaidCents ?? Math.max(0, inv.totalCents - inv.amountPaidCents); // default: pay the remainder
+    const payment = buildPaymentRow(
+      { invoiceId: id, amountCents: amount, paymentReference: input.paymentReference ?? null, recordedBy: input.actor },
+      { now },
+    );
+    const result = await store.recordPayment({ payment });
+    if (!result) return null;
+    // The invoice's cached amount_paid is the ledger SUM, CAPPED at the total so an overpayment can't
+    // inflate revenue (revenueSummary reads this field). The ledger keeps the true, uncapped record.
+    fields.amountPaidCents = Math.min(result.amountPaidCents, result.totalCents);
     fields.paymentReference = input.paymentReference ?? inv.paymentReference;
     fields.paidAt = now;
-    if (paid < inv.totalCents) fields.status = "partially_paid";
+    fields.status = result.amountPaidCents >= result.totalCents ? "paid" : "partially_paid";
   }
   await store.updateInvoice(id, fields);
   await audit(deps, { eventType: `finance.invoice_${action}`, module: FINANCE_MODULE, entityType: "invoice", entityId: id, actor: input.actor, metadata: { number: inv.invoiceNumber, from: inv.status, to: fields.status } });
@@ -139,5 +155,20 @@ export function defaultStore(db: Db = getDb()): FinanceStore {
     async getInvoice(id) { const r = await db.select().from(invoicesTable).where(eq(invoicesTable.id, id)).limit(1); return (r[0] as InvoiceRow) ?? null; },
     async updateInvoice(id, fields) { await db.update(invoicesTable).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() }).where(eq(invoicesTable.id, id)); },
     async countInvoices() { const r = await db.select().from(invoicesTable); return r.length; },
+    async recordPayment({ payment }) {
+      return db.transaction(async (tx) => {
+        const invRows = await tx.select({ totalCents: invoicesTable.totalCents }).from(invoicesTable).where(eq(invoicesTable.id, payment.invoiceId)).limit(1).for("update");
+        if (!invRows[0]) return null;
+        let applied = true;
+        try {
+          await tx.insert(paymentsTable).values(payment);
+        } catch (error) {
+          if (isUniqueViolation(error)) applied = false; // duplicate paymentReference — already recorded (idempotent)
+          else throw error;
+        }
+        const sumRows = await tx.select({ sum: sql<number>`coalesce(sum(${paymentsTable.amountCents}), 0)` }).from(paymentsTable).where(eq(paymentsTable.invoiceId, payment.invoiceId));
+        return { applied, amountPaidCents: Number(sumRows[0]?.sum ?? 0), totalCents: invRows[0].totalCents };
+      });
+    },
   };
 }
