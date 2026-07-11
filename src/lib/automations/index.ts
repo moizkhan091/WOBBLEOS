@@ -34,6 +34,7 @@ export async function addAutomation(input: CreateAutomationInput, deps: Automati
   const row = buildAutomationRow(input, { now: deps.now });
   await store.insertRule(row);
   await audit(deps, { eventType: "automation.created", module: AUTOMATION_MODULE, entityType: "automation_rule", entityId: row.id, actor: row.createdBy ?? "system", metadata: { name: row.name, triggerType: row.triggerType, actionType: row.actionType } });
+  invalidateEventRuleCache();
   return row;
 }
 
@@ -49,6 +50,7 @@ export async function toggleAutomation(id: string, enabled: boolean, input: { ac
   const now = deps.now ?? new Date();
   await store.updateRule(id, { enabled, updatedAt: now });
   await audit(deps, { eventType: enabled ? "automation.enabled" : "automation.disabled", module: AUTOMATION_MODULE, entityType: "automation_rule", entityId: id, actor: input.actor ?? "system", metadata: { name: rule.name } });
+  invalidateEventRuleCache();
   return { ...rule, enabled };
 }
 
@@ -70,6 +72,31 @@ export async function fireEventRules(eventType: string, payload: Record<string, 
   const store = deps.store ?? defaultStore();
   const rules = await store.listRules({ enabled: true, limit: 1000 });
   const matched = matchingRules(rules, eventType);
+  const jobIds: string[] = [];
+  for (const rule of matched) {
+    const result = await runAutomation(rule.id, { actor: "event", extraPayload: { ...payload, _triggerEvent: eventType } }, deps);
+    if (result) jobIds.push(result.jobId);
+  }
+  return jobIds;
+}
+
+// The event bus caches the enabled event-rule set so writeAuditEvent (called constantly) does NOT
+// hit the DB on every event — at most one listRules per TTL window. Fires only on an actual match.
+let _eventRuleCache: { at: number; rules: AutomationRow[] } | null = null;
+const EVENT_RULE_TTL_MS = 30_000;
+
+export function invalidateEventRuleCache(): void { _eventRuleCache = null; }
+
+/** Efficient event dispatch for the audit-event bus. Returns enqueued job ids (empty if no rule matched). */
+export async function dispatchEvent(eventType: string, payload: Record<string, unknown>, deps: AutomationDeps = {}): Promise<string[]> {
+  const store = deps.store ?? defaultStore();
+  const nowMs = (deps.now ?? new Date()).getTime();
+  if (!_eventRuleCache || nowMs - _eventRuleCache.at > EVENT_RULE_TTL_MS) {
+    const rules = (await store.listRules({ enabled: true, limit: 1000 })).filter((r) => r.triggerType === "event");
+    _eventRuleCache = { at: nowMs, rules };
+  }
+  const matched = _eventRuleCache.rules.filter((r) => r.enabled && r.triggerEvent === eventType);
+  if (!matched.length) return [];
   const jobIds: string[] = [];
   for (const rule of matched) {
     const result = await runAutomation(rule.id, { actor: "event", extraPayload: { ...payload, _triggerEvent: eventType } }, deps);

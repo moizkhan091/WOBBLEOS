@@ -131,6 +131,7 @@ async function updateIntelligenceRecord(
 export interface IntelligenceStore {
   insertResearchTarget(row: ResearchTargetRow): Promise<void>;
   listResearchTargets(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<ResearchTargetRow[]>;
+  updateResearchTarget?(id: string, fields: Partial<ResearchTargetRow>): Promise<void>;
   insertIntelligenceItem(row: IntelligenceItemRow): Promise<void>;
   listIntelligenceItems(query: Required<Pick<ListIntelligenceQuery, "limit">> & Omit<ListIntelligenceQuery, "limit">): Promise<IntelligenceItemRow[]>;
   getIntelligenceItemById?(id: string): Promise<IntelligenceItemRow | null>;
@@ -202,6 +203,13 @@ export async function createResearchTarget(
 export async function listResearchTargets(query: ListIntelligenceQuery = {}, deps: IntelligenceDeps = {}): Promise<ResearchTargetRow[]> {
   const store = deps.store ?? defaultStore();
   return store.listResearchTargets({ ...query, limit: clampIntelligenceLimit(query.limit) });
+}
+
+/** Record that a research target was just scouted and schedule its next run (used by the scheduler). */
+export async function markResearchTargetScouted(id: string, fields: { lastCheckedAt: Date; nextRunAt: Date | null }, deps: IntelligenceDeps = {}): Promise<void> {
+  const store = deps.store ?? defaultStore();
+  if (!store.updateResearchTarget) return;
+  await store.updateResearchTarget(id, fields);
 }
 
 export interface RecordIntelligenceItemResult {
@@ -576,6 +584,9 @@ export function defaultStore(db: Db = getDb()): IntelligenceStore {
   return {
     async insertResearchTarget(row) {
       await db.insert(researchTargets).values(row);
+    },
+    async updateResearchTarget(id, fields) {
+      await db.update(researchTargets).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() } as Partial<typeof researchTargets.$inferInsert>).where(eq(researchTargets.id, id));
     },
     async listResearchTargets(query) {
       const conditions = [];

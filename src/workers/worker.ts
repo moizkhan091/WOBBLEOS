@@ -1,6 +1,7 @@
 import { runWorker } from "@/lib/workers/runtime";
 import { generalRegistry } from "@/lib/workers/registry";
 import { writeHeartbeat, writeHeartbeatFile } from "@/lib/workers/heartbeat";
+import { runScheduledTick } from "@/lib/scheduler";
 import { closeDb } from "@/db";
 
 /**
@@ -41,6 +42,21 @@ async function main(): Promise<void> {
   }
 
   console.log(`[worker:${WORKER_NAME}] starting`);
+
+  // THE SCHEDULER — fires all due cadence work (automations, research scouts, scheduled posts,
+  // daily maintenance) every 60s. Without this, every "runs on its own" feature is inert.
+  let lastMaintenance = 0;
+  const SCHEDULE_INTERVAL_MS = 60_000;
+  const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60_000;
+  const scheduleTimer = setInterval(() => {
+    const runMaintenance = Date.now() - lastMaintenance >= MAINTENANCE_INTERVAL_MS;
+    if (runMaintenance) lastMaintenance = Date.now();
+    runScheduledTick({ runMaintenance })
+      .then((r) => { if (r.automationsFired || r.scoutsEnqueued || r.postsDispatched || r.maintenanceRan) console.log(`[scheduler] fired`, r); })
+      .catch((e) => console.error("[scheduler] tick failed:", e instanceof Error ? e.message : e));
+  }, SCHEDULE_INTERVAL_MS);
+  scheduleTimer.unref?.();
+
   const { processedCount } = await runWorker({
     queue: WORKER_NAME,
     registry: generalRegistry,
@@ -48,6 +64,7 @@ async function main(): Promise<void> {
     heartbeat,
   });
 
+  clearInterval(scheduleTimer);
   await closeDb();
   console.log(`[worker:${WORKER_NAME}] stopped after processing ${processedCount} job(s)`);
   process.exit(0);

@@ -23,6 +23,8 @@ export interface AuditWriter {
 export interface WriteAuditEventDeps {
   writer?: AuditWriter;
   now?: Date;
+  /** Skip the event bus for this write (used internally to prevent recursion). */
+  skipEventBus?: boolean;
 }
 
 function defaultWriter(db: Db = getDb()): AuditWriter {
@@ -46,6 +48,9 @@ function defaultWriter(db: Db = getDb()): AuditWriter {
   };
 }
 
+// Modules whose own events must NEVER trigger automations (prevents recursion + noise storms).
+const EVENT_BUS_SKIP = new Set(["automations", "scheduler", "jobs", "audit"]);
+
 export async function writeAuditEvent(
   input: AuditEventInput,
   deps: WriteAuditEventDeps = {},
@@ -53,6 +58,14 @@ export async function writeAuditEvent(
   const row = buildAuditEvent(input, { now: deps.now });
   const writer = deps.writer ?? defaultWriter();
   await writer.insertAudit(row);
+  // Event bus: fire event-triggered automation rules for this event. Fire-and-forget (never blocks
+  // or breaks the audit write) + dynamic import (avoids an audit↔automations import cycle) +
+  // cached rule lookup (dispatchEvent hits the DB at most once per TTL, not per event).
+  if (!deps.skipEventBus && !EVENT_BUS_SKIP.has(input.module)) {
+    void import("@/lib/automations")
+      .then(({ dispatchEvent }) => dispatchEvent(input.eventType, (input.metadata ?? {}) as Record<string, unknown>))
+      .catch(() => {});
+  }
   return row;
 }
 
