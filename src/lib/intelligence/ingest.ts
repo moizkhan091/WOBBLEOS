@@ -19,16 +19,16 @@ export const ingestRecordSchema = z.object({
   platform: z.string().trim().min(1).optional(),
   account: z.string().trim().min(1).optional(),      // -> actorName
   url: z.string().trim().min(1).optional(),           // -> sourceUrl
-  title: z.string().trim().min(1).optional(),
-  caption: z.string().trim().optional(),              // -> summary (fallback)
-  summary: z.string().trim().optional(),
-  transcript: z.string().trim().optional(),           // -> rawText
-  hook: z.string().trim().optional(),
-  format: z.string().trim().optional(),
-  cta: z.string().trim().optional(),
-  offerAngle: z.string().trim().optional(),
-  category: z.string().trim().optional(),
-  notes: z.string().trim().optional(),
+  title: z.string().trim().min(1).max(300).optional(),
+  caption: z.string().trim().max(4000).optional(),    // -> summary (fallback)
+  summary: z.string().trim().max(4000).optional(),
+  transcript: z.string().trim().max(50000).optional(),// -> rawText (bounded so one item can't blow a prompt)
+  hook: z.string().trim().max(500).optional(),
+  format: z.string().trim().max(200).optional(),
+  cta: z.string().trim().max(500).optional(),
+  offerAngle: z.string().trim().max(500).optional(),
+  category: z.string().trim().max(200).optional(),
+  notes: z.string().trim().max(2000).optional(),
   metrics: z.record(z.string(), z.unknown()).optional(),
   tags: z.array(z.string().trim().min(1)).optional(),
   postedAt: z.string().trim().optional(),             // -> observedAt

@@ -345,11 +345,17 @@ export async function buildApprovedIntelligenceContext(
   const store = deps.store ?? defaultStore();
   const plan = buildIntelligenceContextPlan({ task: input.task, scope: input.scope, clientId: input.clientId });
   const limit = clampIntelligenceLimit(input.limit);
-  const [items, insights] = await Promise.all([
-    store.listIntelligenceItems({ scope: plan.scope, clientId: plan.clientId ?? undefined, approvalStatus: "approved", limit }),
-    store.listIntelligenceInsights({ scope: plan.scope, clientId: plan.clientId ?? undefined, approvalStatus: "approved", limit }),
+  // Fetch the task scope PLUS global (org-wide brand rules/insights must reach every generator) PLUS
+  // this client's own data when a clientId is set. scopeMatches then filters precisely (no cross-client leak).
+  const scopes: Array<{ scope: IntelligenceScope; clientId?: string }> = [{ scope: plan.scope, clientId: plan.clientId ?? undefined }];
+  if (plan.scope !== "global") scopes.push({ scope: "global" });
+  if (plan.clientId && plan.scope !== "client") scopes.push({ scope: "client", clientId: plan.clientId });
+  const [itemArrays, insightArrays] = await Promise.all([
+    Promise.all(scopes.map((s) => store.listIntelligenceItems({ scope: s.scope, clientId: s.clientId, approvalStatus: "approved", limit }))),
+    Promise.all(scopes.map((s) => store.listIntelligenceInsights({ scope: s.scope, clientId: s.clientId, approvalStatus: "approved", limit }))),
   ]);
-  return selectApprovedIntelligenceForTask({ plan, items, insights, limit, now: deps.now });
+  const dedupe = <T extends { id: string }>(arrs: T[][]): T[] => { const m = new Map<string, T>(); for (const r of arrs.flat()) m.set(r.id, r); return [...m.values()]; };
+  return selectApprovedIntelligenceForTask({ plan, items: dedupe(itemArrays), insights: dedupe(insightArrays), limit, now: deps.now });
 }
 
 export interface IntelligenceInboxResult {

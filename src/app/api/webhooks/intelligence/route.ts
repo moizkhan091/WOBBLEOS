@@ -24,6 +24,7 @@ function verify(rawBody: string, signature: string | null, secret: string): bool
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const raw = await request.text();
+  if (raw.length > 4_000_000) return NextResponse.json({ ok: false, error: "payload too large (max 4MB)" }, { status: 413 });
   const secret = process.env.INTELLIGENCE_WEBHOOK_SECRET;
   // Fail CLOSED: this is a public route, so with no secret set anyone could inject intelligence.
   if (!secret) return NextResponse.json({ ok: false, error: "ingestion webhook disabled — set INTELLIGENCE_WEBHOOK_SECRET" }, { status: 503 });
