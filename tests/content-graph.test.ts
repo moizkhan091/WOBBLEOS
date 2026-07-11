@@ -157,4 +157,45 @@ describe("runContentGraph", () => {
     const { deps } = makeDeps(["garbage brief", EVIDENCE, DRAFT, REVISE, SCORE]);
     await expect(runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, deps)).rejects.toThrow(/unparseable brief/);
   });
+
+  it("telemetry: records a FAILED agent_run for the node that broke (not just successes)", async () => {
+    const { deps, agentRuns } = makeDeps([STRATEGY, EVIDENCE, "the model rambled again", REVISE, SCORE]);
+    await expect(runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, deps)).rejects.toThrow(/unparseable draft/);
+
+    // strategy + research succeeded, then the copywriter draft node is recorded as FAILED.
+    expect(agentRuns.map((r) => `${r.agentSlug}:${r.status}`)).toEqual([
+      "content_strategist:succeeded",
+      "content_researcher:succeeded",
+      "content_copywriter:failed",
+    ]);
+    const failed = agentRuns[2];
+    expect(failed.error).toMatch(/unparseable draft/);
+  });
+
+  it("telemetry: successful nodes carry cost + latency", async () => {
+    const agentRuns: Record<string, unknown>[] = [];
+    let call = 0;
+    const nodeResponses = [STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE];
+    const deps: ContentGraphDeps = {
+      getTrack: async () => track,
+      retrieveBrain: async () => [{ title: "Brand", content: "premium" }],
+      retrieve: async () => ({ notes: [], chunks: [] }),
+      runNode: async () => ({ text: nodeResponses[call++], runId: `mr_${call}`, cost: 0.002 }),
+      recordAgentRun: async (i) => void agentRuns.push(i),
+      recordAudit: async () => {},
+      createPacket: async (input): Promise<ContentPacketCreationResult> => ({ packet: { id: "pk_1", qualityStatus: "passed" }, approval: { id: "ap_1" } }),
+    };
+    await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, deps);
+
+    expect(agentRuns).toHaveLength(5);
+    for (const run of agentRuns) {
+      expect(run.status).toBe("succeeded");
+      expect(run.costEstimate).toBe(0.002);
+      expect(typeof run.latencyMs).toBe("number");
+      expect(run.latencyMs as number).toBeGreaterThanOrEqual(0);
+    }
+    // The scoring node also carries a 0..10 quality score derived from its own verdict.
+    const scorer = agentRuns.find((r) => r.agentSlug === "content_scorer")!;
+    expect(scorer.qualityScore).toBeCloseTo((82 + 88 + 75) / 30, 5);
+  });
 });

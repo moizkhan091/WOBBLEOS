@@ -6,6 +6,7 @@ import { audits as auditsTable } from "@/db/schema";
 import { getDb } from "@/db";
 import { listMemoryRecords } from "@/lib/memory";
 import { recordAgentRun } from "@/lib/agents";
+import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { newId } from "@/lib/ids";
 import {
@@ -40,6 +41,7 @@ import {
 export interface NodeRunResult {
   text: string;
   runId?: string;
+  cost?: number;
 }
 
 export interface PaidAuditDeps {
@@ -84,7 +86,7 @@ export interface PaidAuditResult {
 
 async function defaultRunNode(input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }): Promise<NodeRunResult> {
   const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 6000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId });
-  return { text: result.text, runId: result.run?.id };
+  return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
 }
 
 async function defaultRetrieveBrain(): Promise<Array<{ title: string; content: string }>> {
@@ -104,6 +106,15 @@ async function safeRecordAgentRun(deps: PaidAuditDeps, input: Record<string, unk
   }
 }
 
+/** Thin adapter: bind this graph's deps + module to the shared node-telemetry runner. */
+function runAuditNode<T>(
+  deps: PaidAuditDeps,
+  runNode: NonNullable<PaidAuditDeps["runNode"]>,
+  spec: Omit<GraphNodeSpec<T>, "module">,
+): Promise<{ parsed: T | null; run: NodeRunResult }> {
+  return runGraphNode(runNode, (i) => safeRecordAgentRun(deps, i), { ...spec, module: PAID_AUDIT_MODULE });
+}
+
 /** Run the full paid-audit graph → a persisted McKinsey-depth audit. */
 export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAuditDeps = {}): Promise<PaidAuditResult> {
   const actor = input.requestedBy;
@@ -120,37 +131,54 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     const ctx: AuditContext = { businessName: input.businessName, industry: input.industry, intakeNotes: input.intakeNotes, freeAuditSummary: input.freeAuditSummary, brain };
 
     // Node 1 — Discovery / current-state map
-    const d = await runNode({ role: PAID_AUDIT_ROLES.discovery, module: PAID_AUDIT_MODULE, messages: buildDiscoveryPrompt(ctx), linkedEntityId: entityId });
-    if (d.runId) modelRunIds.push(d.runId);
-    const discovery = parseJsonObject(d.text, discoverySchema);
-    if (!discovery) throw new Error("paid-audit: discovery node returned unparseable output");
-    await safeRecordAgentRun(deps, { agentSlug: PAID_AUDIT_AGENTS.discovery, status: "succeeded", inputSummary: input.businessName, outputSummary: `${discovery.bottlenecks.length} bottlenecks`, modelRunIds: d.runId ? [d.runId] : [] });
+    const { parsed: discoveryParsed, run: dRun } = await runAuditNode(deps, runNode, {
+      slug: PAID_AUDIT_AGENTS.discovery, role: PAID_AUDIT_ROLES.discovery, linkedEntityId: entityId,
+      messages: buildDiscoveryPrompt(ctx), parse: (t) => parseJsonObject(t, discoverySchema),
+      required: true, parseErr: "paid-audit: discovery node returned unparseable output",
+      summarize: (dsc) => ({ inputSummary: input.businessName, outputSummary: `${dsc!.bottlenecks.length} bottlenecks` }),
+    });
+    if (dRun.runId) modelRunIds.push(dRun.runId);
+    const discovery = discoveryParsed!;
 
     // Node 2 — Opportunity identification (grounded in the Wobble service menu)
-    const o = await runNode({ role: PAID_AUDIT_ROLES.opportunity, module: PAID_AUDIT_MODULE, messages: buildOpportunityPrompt(ctx, discovery), linkedEntityId: entityId });
-    if (o.runId) modelRunIds.push(o.runId);
-    const opportunities = parseJsonObject(o.text, opportunitySchema);
-    if (!opportunities) throw new Error("paid-audit: opportunity node returned unparseable output");
-    await safeRecordAgentRun(deps, { agentSlug: PAID_AUDIT_AGENTS.opportunity, status: "succeeded", inputSummary: "opportunities", outputSummary: `${opportunities.opportunities.length} opportunities`, modelRunIds: o.runId ? [o.runId] : [] });
+    const { parsed: oppParsed, run: oRun } = await runAuditNode(deps, runNode, {
+      slug: PAID_AUDIT_AGENTS.opportunity, role: PAID_AUDIT_ROLES.opportunity, linkedEntityId: entityId,
+      messages: buildOpportunityPrompt(ctx, discovery), parse: (t) => parseJsonObject(t, opportunitySchema),
+      required: true, parseErr: "paid-audit: opportunity node returned unparseable output",
+      summarize: (op) => ({ inputSummary: "opportunities", outputSummary: `${op!.opportunities.length} opportunities` }),
+    });
+    if (oRun.runId) modelRunIds.push(oRun.runId);
+    const opportunities = oppParsed!;
 
-    // Node 3 — Prioritization (impact / difficulty matrix)
-    const pr = await runNode({ role: PAID_AUDIT_ROLES.prioritization, module: PAID_AUDIT_MODULE, messages: buildPrioritizationPrompt(opportunities), linkedEntityId: entityId });
-    if (pr.runId) modelRunIds.push(pr.runId);
-    const prioritization = parseJsonObject(pr.text, prioritizationSchema) ?? { quickWins: [], bigSwings: [], rationale: "" };
-    await safeRecordAgentRun(deps, { agentSlug: PAID_AUDIT_AGENTS.prioritization, status: "succeeded", inputSummary: "prioritize", outputSummary: `${prioritization.quickWins.length} quick wins`, modelRunIds: pr.runId ? [pr.runId] : [] });
+    // Node 3 — Prioritization (impact / difficulty matrix). Soft: an unparseable result falls back to empty.
+    const { parsed: prioParsed, run: prRun } = await runAuditNode(deps, runNode, {
+      slug: PAID_AUDIT_AGENTS.prioritization, role: PAID_AUDIT_ROLES.prioritization, linkedEntityId: entityId,
+      messages: buildPrioritizationPrompt(opportunities), parse: (t) => parseJsonObject(t, prioritizationSchema),
+      required: false, parseErr: "",
+      summarize: (p) => ({ inputSummary: "prioritize", outputSummary: `${p?.quickWins.length ?? 0} quick wins` }),
+    });
+    if (prRun.runId) modelRunIds.push(prRun.runId);
+    const prioritization = prioParsed ?? { quickWins: [], bigSwings: [], rationale: "" };
 
-    // Node 4 — 12-month roadmap
-    const rm = await runNode({ role: PAID_AUDIT_ROLES.roadmap, module: PAID_AUDIT_MODULE, messages: buildRoadmapPrompt(opportunities, prioritization), linkedEntityId: entityId });
-    if (rm.runId) modelRunIds.push(rm.runId);
-    const roadmap = parseJsonObject(rm.text, roadmapSchema) ?? { phases: [] };
-    await safeRecordAgentRun(deps, { agentSlug: PAID_AUDIT_AGENTS.roadmap, status: "succeeded", inputSummary: "roadmap", outputSummary: `${roadmap.phases.length} phases`, modelRunIds: rm.runId ? [rm.runId] : [] });
+    // Node 4 — 12-month roadmap. Soft: an unparseable result falls back to no phases.
+    const { parsed: roadmapParsed, run: rmRun } = await runAuditNode(deps, runNode, {
+      slug: PAID_AUDIT_AGENTS.roadmap, role: PAID_AUDIT_ROLES.roadmap, linkedEntityId: entityId,
+      messages: buildRoadmapPrompt(opportunities, prioritization), parse: (t) => parseJsonObject(t, roadmapSchema),
+      required: false, parseErr: "",
+      summarize: (r) => ({ inputSummary: "roadmap", outputSummary: `${r?.phases.length ?? 0} phases` }),
+    });
+    if (rmRun.runId) modelRunIds.push(rmRun.runId);
+    const roadmap = roadmapParsed ?? { phases: [] };
 
     // Node 5 — Executive report + ROI
-    const rp = await runNode({ role: PAID_AUDIT_ROLES.report, module: PAID_AUDIT_MODULE, messages: buildReportPrompt(ctx, discovery, opportunities, roadmap), linkedEntityId: entityId });
-    if (rp.runId) modelRunIds.push(rp.runId);
-    const report = parseJsonObject(rp.text, reportSchema);
-    if (!report) throw new Error("paid-audit: report node returned unparseable output");
-    await safeRecordAgentRun(deps, { agentSlug: PAID_AUDIT_AGENTS.report, status: "succeeded", inputSummary: "report", outputSummary: report.executiveSummary.slice(0, 160), modelRunIds: rp.runId ? [rp.runId] : [] });
+    const { parsed: reportParsed, run: rpRun } = await runAuditNode(deps, runNode, {
+      slug: PAID_AUDIT_AGENTS.report, role: PAID_AUDIT_ROLES.report, linkedEntityId: entityId,
+      messages: buildReportPrompt(ctx, discovery, opportunities, roadmap), parse: (t) => parseJsonObject(t, reportSchema),
+      required: true, parseErr: "paid-audit: report node returned unparseable output",
+      summarize: (rep) => ({ inputSummary: "report", outputSummary: rep!.executiveSummary.slice(0, 160) }),
+    });
+    if (rpRun.runId) modelRunIds.push(rpRun.runId);
+    const report = reportParsed!;
 
     const fullReport = assemblePaidAuditReport({ businessName: input.businessName, industry: input.industry, discovery, opportunities, prioritization, roadmap, report });
     const row: PaidAuditRow = {

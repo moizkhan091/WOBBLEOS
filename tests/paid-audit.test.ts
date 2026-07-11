@@ -81,4 +81,34 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
       ),
     ).rejects.toThrow(/discovery node returned unparseable/);
   });
+
+  it("telemetry: records a FAILED agent_run (with cost + latency on the successful node)", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "x", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] }),
+      // no audit_opportunity -> that required node gets "garbage" and fails
+    };
+    const runs: Record<string, unknown>[] = [];
+    await expect(
+      runPaidAuditGraph(
+        { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz" },
+        {
+          retrieveBrain: async () => [],
+          runNode: async (input) => ({ text: canned[input.role] ?? "garbage", runId: `run_${input.role}`, cost: 0.01 }),
+          recordAgentRun: async (i) => void runs.push(i),
+          recordAudit: async () => {},
+          persistAudit: async () => {},
+          now,
+        },
+      ),
+    ).rejects.toThrow(/opportunity node returned unparseable/);
+
+    // discovery succeeded, opportunity is recorded as FAILED (not silently swallowed).
+    expect(runs.map((r) => `${r.agentSlug}:${r.status}`)).toEqual([
+      "audit_discovery_mapper:succeeded",
+      "audit_opportunity_finder:failed",
+    ]);
+    expect(runs[0].costEstimate).toBe(0.01);
+    expect(typeof runs[0].latencyMs).toBe("number");
+    expect(runs[1].error).toMatch(/opportunity node returned unparseable/);
+  });
 });

@@ -10,6 +10,7 @@ import { passesQualityGate } from "@/lib/domain/content-packet";
 import { listMemoryRecords } from "@/lib/memory";
 import { retrieveKnowledge } from "@/lib/knowledge";
 import { recordAgentRun } from "@/lib/agents";
+import { runGraphNode, type GraphNodeSpec } from "@/lib/agents/node-telemetry";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import {
   CONTENT_GRAPH_AGENTS,
@@ -136,6 +137,15 @@ async function safeRecordAgentRun(deps: ContentGraphDeps, input: Record<string, 
   }
 }
 
+/** Thin adapter: bind this graph's deps + module to the shared node-telemetry runner. */
+function runNodeWithTelemetry<T>(
+  deps: ContentGraphDeps,
+  runNode: NonNullable<ContentGraphDeps["runNode"]>,
+  spec: Omit<GraphNodeSpec<T>, "module">,
+): Promise<{ parsed: T | null; run: NodeRunResult }> {
+  return runGraphNode(runNode, (i) => safeRecordAgentRun(deps, i), { ...spec, module: CONTENT_GRAPH_MODULE });
+}
+
 /** Run the full content graph and produce ONE grounded, scored, gated content pack. */
 export async function runContentGraph(input: RunContentGraphInput, deps: ContentGraphDeps = {}): Promise<ContentGraphResult> {
   const actor = input.requestedBy;
@@ -174,74 +184,80 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       knowledgeTopics: [...new Set(stratKnowledge.notes.map((n) => n.title))],
     });
     // Fold live approved intelligence (competitor patterns, winning/failed hooks, trends) into the brief.
-    const strategyText = await runNode({
+    const { parsed: briefParsed, run: strategyRun } = await runNodeWithTelemetry(deps, runNode, {
+      slug: CONTENT_GRAPH_AGENTS.strategy,
       role: CONTENT_GRAPH_ROLES.strategy,
-      module: CONTENT_GRAPH_MODULE,
-      messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
       linkedEntityId: track.id,
+      messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
+      parse: (t) => parseJsonObject(t, creativeBriefSchema),
+      required: true,
+      parseErr: "content-graph: strategist returned an unparseable brief",
+      summarize: (brief) => ({ inputSummary: input.objective.slice(0, 300), outputSummary: `${brief!.format} on ${brief!.platform}: ${brief!.angle}`.slice(0, 400) }),
     });
-    if (strategyText.runId) modelRunIds.push(strategyText.runId);
-    const brief = parseJsonObject(strategyText.text, creativeBriefSchema);
-    if (!brief) throw new Error("content-graph: strategist returned an unparseable brief");
-    await safeRecordAgentRun(deps, { agentSlug: CONTENT_GRAPH_AGENTS.strategy, status: "succeeded", inputSummary: input.objective.slice(0, 300), outputSummary: `${brief.format} on ${brief.platform}: ${brief.angle}`.slice(0, 400), modelRunIds: strategyText.runId ? [strategyText.runId] : [] });
+    if (strategyRun.runId) modelRunIds.push(strategyRun.runId);
+    const brief = briefParsed!;
 
     // ---- Node 2: RESEARCH (grounded evidence for the chosen angle) ----
     const evidenceContext = await retrieve(`${brief.topic} ${brief.angle}`);
-    const researchText = await runNode({
+    const { parsed: evidenceParsed, run: researchRun } = await runNodeWithTelemetry(deps, runNode, {
+      slug: CONTENT_GRAPH_AGENTS.research,
       role: CONTENT_GRAPH_ROLES.research,
-      module: CONTENT_GRAPH_MODULE,
-      messages: buildEvidencePrompt({ brief, notes: evidenceContext.notes, chunks: evidenceContext.chunks }),
       linkedEntityId: track.id,
+      messages: buildEvidencePrompt({ brief, notes: evidenceContext.notes, chunks: evidenceContext.chunks }),
+      parse: (t) => parseJsonObject(t, evidencePackSchema),
+      required: true,
+      parseErr: "content-graph: researcher returned an unparseable evidence pack",
+      summarize: (ev) => {
+        const prov = collectProvenance(ev!.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
+        return { inputSummary: `${brief.topic} / ${brief.angle}`.slice(0, 300), outputSummary: `${ev!.supportingPoints.length} points, ${prov.sourceIds.length} sources`, sourceIdsUsed: prov.sourceIds, memoryIdsUsed: prov.insightIds };
+      },
     });
-    if (researchText.runId) modelRunIds.push(researchText.runId);
-    const evidence = parseJsonObject(researchText.text, evidencePackSchema);
-    if (!evidence) throw new Error("content-graph: researcher returned an unparseable evidence pack");
+    if (researchRun.runId) modelRunIds.push(researchRun.runId);
+    const evidence = evidenceParsed!;
     const provenance = collectProvenance(evidence.supportingPoints, evidenceContext.notes, evidenceContext.chunks);
-    await safeRecordAgentRun(deps, {
-      agentSlug: CONTENT_GRAPH_AGENTS.research,
-      status: "succeeded",
-      inputSummary: `${brief.topic} / ${brief.angle}`.slice(0, 300),
-      outputSummary: `${evidence.supportingPoints.length} points, ${provenance.sourceIds.length} sources`,
-      modelRunIds: researchText.runId ? [researchText.runId] : [],
-      sourceIdsUsed: provenance.sourceIds,
-      memoryIdsUsed: provenance.insightIds,
-    });
 
     // ---- Node 3: COPYWRITER (draft) ----
-    const draftText = await runNode({
+    const { parsed: draftParsed, run: draftRun } = await runNodeWithTelemetry(deps, runNode, {
+      slug: CONTENT_GRAPH_AGENTS.copywriting,
       role: CONTENT_GRAPH_ROLES.copywriting,
-      module: CONTENT_GRAPH_MODULE,
-      messages: buildCopyDraftPrompt({ brief, evidence, track: trackCtx }),
       linkedEntityId: track.id,
+      messages: buildCopyDraftPrompt({ brief, evidence, track: trackCtx }),
+      parse: (t) => parseJsonObject(t, copyDraftSchema),
+      required: true,
+      parseErr: "content-graph: copywriter returned an unparseable draft",
+      summarize: (d) => ({ inputSummary: "draft", outputSummary: d!.hook.slice(0, 200) }),
     });
-    if (draftText.runId) modelRunIds.push(draftText.runId);
-    const draft = parseJsonObject(draftText.text, copyDraftSchema);
-    if (!draft) throw new Error("content-graph: copywriter returned an unparseable draft");
-    await safeRecordAgentRun(deps, { agentSlug: CONTENT_GRAPH_AGENTS.copywriting, status: "succeeded", inputSummary: "draft", outputSummary: draft.hook.slice(0, 200), modelRunIds: draftText.runId ? [draftText.runId] : [] });
+    if (draftRun.runId) modelRunIds.push(draftRun.runId);
+    const draft = draftParsed!;
 
     // ---- Node 4: COPYWRITER (self-critique -> revise) ----
-    const reviseText = await runNode({
+    const { parsed: revision, run: reviseRun } = await runNodeWithTelemetry(deps, runNode, {
+      slug: CONTENT_GRAPH_AGENTS.copywriting,
       role: CONTENT_GRAPH_ROLES.copywriting,
-      module: CONTENT_GRAPH_MODULE,
-      messages: buildCopyRevisePrompt({ draft, brief, track: trackCtx }),
       linkedEntityId: track.id,
+      messages: buildCopyRevisePrompt({ draft, brief, track: trackCtx }),
+      parse: (t) => parseJsonObject(t, copyRevisionSchema),
+      required: false, // an unparseable self-critique is tolerated: we keep the draft.
+      parseErr: "",
+      summarize: (rev) => ({ inputSummary: "self-critique", outputSummary: `${rev?.issues.length ?? 0} issues fixed` }),
     });
-    if (reviseText.runId) modelRunIds.push(reviseText.runId);
-    const revision = parseJsonObject(reviseText.text, copyRevisionSchema);
+    if (reviseRun.runId) modelRunIds.push(reviseRun.runId);
     const finalCopy = revision?.revised ?? draft;
-    await safeRecordAgentRun(deps, { agentSlug: CONTENT_GRAPH_AGENTS.copywriting, status: "succeeded", inputSummary: "self-critique", outputSummary: `${revision?.issues.length ?? 0} issues fixed`, modelRunIds: reviseText.runId ? [reviseText.runId] : [] });
 
     // ---- Node 5: SCORING / QA ----
-    const scoreText = await runNode({
+    const { parsed: scoreParsed, run: scoreRun } = await runNodeWithTelemetry(deps, runNode, {
+      slug: CONTENT_GRAPH_AGENTS.scoring,
       role: CONTENT_GRAPH_ROLES.scoring,
-      module: CONTENT_GRAPH_MODULE,
-      messages: buildScorePrompt({ copy: finalCopy, brief, hasEvidence: provenance.sourceIds.length > 0 }),
       linkedEntityId: track.id,
+      messages: buildScorePrompt({ copy: finalCopy, brief, hasEvidence: provenance.sourceIds.length > 0 }),
+      parse: (t) => parseJsonObject(t, contentScoreSchema),
+      required: true,
+      parseErr: "content-graph: scoring agent returned an unparseable score",
+      // qualityScore = the scorer's own average verdict mapped from 0..100 to the 0..10 telemetry scale.
+      summarize: (sc) => ({ inputSummary: "score", outputSummary: `impact ${sc!.predictedImpact} / brand ${sc!.brandFit}`, qualityScore: Math.max(0, Math.min(10, (sc!.predictedImpact + sc!.brandFit + sc!.platformFit) / 30)) }),
     });
-    if (scoreText.runId) modelRunIds.push(scoreText.runId);
-    const score: ContentScore | null = parseJsonObject(scoreText.text, contentScoreSchema);
-    if (!score) throw new Error("content-graph: scoring agent returned an unparseable score");
-    await safeRecordAgentRun(deps, { agentSlug: CONTENT_GRAPH_AGENTS.scoring, status: "succeeded", inputSummary: "score", outputSummary: `impact ${score.predictedImpact} / brand ${score.brandFit}`, modelRunIds: scoreText.runId ? [scoreText.runId] : [] });
+    if (scoreRun.runId) modelRunIds.push(scoreRun.runId);
+    const score: ContentScore = scoreParsed!;
 
     // ---- Assemble the PACK ----
     const packetInput = assembleContentPacketInput({ contentTrackId: track.id, brief, copy: finalCopy, evidence, score, provenance, createdBy: actor });

@@ -34,17 +34,21 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Knowledge compiler prompt-injection (unfenced scraped text) | fixed-verified | 35e85b3 |
 | website-analytics period param injection (Plausible URL) | fixed-verified | 84d0954 |
 | Registry integrity test + 2 agent-status honesty bugs | fixed-verified | 07bdb4b |
-| Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | (this commit) |
+| Ask WOBBLE input-token budget (bounded LLM cost) | fixed-verified | 95afa58 |
+| Real agent telemetry on graph nodes (failure + cost + latency + quality) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
-2. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-3. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-4. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **Content-graph / paid-audit no checkpointing** (reliability/cost) — a late node failing discards all prior (paid) node work. Persist node outputs; resume from failed node. (Telemetry now records WHERE it failed — checkpointing is the natural follow-up.)
+2. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+3. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on agent telemetry (open item closed)
+- Verified: both graph runners (content-graph, paid-audit-graph) called `recordAgentRun` only with `status: "succeeded"` and never forwarded cost/latency/quality. A node throwing (e.g. unparseable output) aborted the graph with NO failed agent_run — so `failureCount` never moved and failures were invisible in telemetry.
+- Fix: extracted one shared `runGraphNode` helper (`src/lib/agents/node-telemetry.ts`) — records cost + latency (+ a 0..10 quality score from the content scorer's own verdict) on success, and a FAILED agent_run (slug + error + latency) on any node error/required-parse-failure, then rethrows. Both graphs delegate via a thin deps+module-binding adapter (no duplication). paid-audit's node result now also carries cost. Tests prove the failing node is recorded as `failed` and successful nodes carry cost/latency/quality.
 
 ## Notes on the Ask input-token budget (open item closed)
 - Verified: output was capped (maxTokens 500) but INPUT was not. `buildAskContext` mapped the ENTIRE Brain (`brain.map`, up to the 50-record default with untruncated content) plus per-chunk-truncated evidence (no total cap) plus the full system snapshot. Input tokens grew unbounded as the Brain/evidence/snapshot grew → unbounded per-call cost.
