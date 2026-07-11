@@ -32,7 +32,21 @@ export interface ProposalDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   getAuditRow?: (id: string) => Promise<{ id: string; businessName: string; companyId: string | null; opportunityId: string | null; report: Record<string, unknown> } | null>;
   draftInvoice?: (input: { companyId?: string; opportunityId?: string; proposalId: string; totalCents: number; description: string; createdBy?: string }) => Promise<{ id: string } | null>;
+  /** Advance the linked CRM opportunity to 'won' when a proposal is accepted (which creates delivery).
+   *  Injectable for tests; the default is DB-backed + env-gated. */
+  advanceOpportunityToWon?: (opportunityId: string, actor: string) => Promise<void>;
   now?: Date;
+}
+
+/** Default: move the linked opportunity to 'won' (idempotent — moveOpportunityStage no-ops if already won). */
+async function defaultAdvanceOpportunityToWon(opportunityId: string, actor: string): Promise<void> {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const { moveOpportunityStage } = await import("@/lib/crm");
+    await moveOpportunityStage(opportunityId, "won", { actor, reason: "proposal accepted" });
+  } catch (error) {
+    console.error("proposal-accept -> opportunity-won failed:", error instanceof Error ? error.message : error);
+  }
 }
 
 async function audit(deps: ProposalDeps, input: AuditEventInput): Promise<void> {
@@ -94,6 +108,12 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
     });
     const inv = await draft({ companyId: prop.companyId ?? undefined, opportunityId: prop.opportunityId ?? undefined, proposalId: prop.id, totalCents: prop.pricingCents, description: prop.title, createdBy: input.actor });
     invoiceId = inv?.id;
+  }
+
+  // Accepting a proposal advances the deal: move the linked opportunity to 'won' (which creates the
+  // delivery project + kickoff tasks via the CRM won-hook). Idempotent and best-effort.
+  if (action === "accept" && prop.opportunityId) {
+    await (deps.advanceOpportunityToWon ?? defaultAdvanceOpportunityToWon)(prop.opportunityId, input.actor);
   }
 
   await audit(deps, { eventType: `proposal.${action}`, module: PROPOSAL_MODULE, entityType: "proposal", entityId: id, actor: input.actor, metadata: { from: prop.status, to: target, invoiceId } });

@@ -75,7 +75,12 @@ describe("proposal service", () => {
     });
     // approve -> send -> accept
     let invoiced: { totalCents: number; proposalId: string } | null = null;
-    const deps = { store, now, recordAudit: async () => {}, draftInvoice: async (i: { totalCents: number; proposalId: string }) => { invoiced = { totalCents: i.totalCents, proposalId: i.proposalId }; return { id: "inv_1" }; } };
+    const advanced: string[] = [];
+    const deps = {
+      store, now, recordAudit: async () => {},
+      draftInvoice: async (i: { totalCents: number; proposalId: string }) => { invoiced = { totalCents: i.totalCents, proposalId: i.proposalId }; return { id: "inv_1" }; },
+      advanceOpportunityToWon: async (oppId: string) => { advanced.push(oppId); },
+    };
     await proposalAction(prop!.id, "approve", { actor: "Moiz" }, deps);
     await proposalAction(prop!.id, "send", { actor: "Moiz" }, deps);
     const res = await proposalAction(prop!.id, "accept", { actor: "Moiz" }, deps);
@@ -83,5 +88,7 @@ describe("proposal service", () => {
     expect(res?.invoiceId).toBe("inv_1");
     expect(invoiced!.totalCents).toBe(600000);
     expect(invoiced!.proposalId).toBe(prop!.id);
+    // Accepting the proposal advances the linked deal to won (→ delivery), not just an invoice.
+    expect(advanced).toEqual(["opp_1"]);
   });
 });

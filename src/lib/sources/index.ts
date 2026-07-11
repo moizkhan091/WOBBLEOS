@@ -176,16 +176,11 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
     throw new Error("blocked source trust level cannot be approved");
   }
 
-  await applyApprovalAction(
-    {
-      approvalId: input.approvalId,
-      action: "approve",
-      approvedBy: input.approvedBy,
-      notes: input.notes,
-    },
-    { store: deps.approvalStore, recordAudit, now },
-  );
-
+  // Re-drivable ordering: activate the source FIRST, then flip the approval LAST. These live in two
+  // different stores (no shared transaction), so if the second step fails we want a state that
+  // self-heals on re-approve rather than a consumed approval with an inactive source. Activating first
+  // means: a failure before the flip leaves the approval PENDING (re-approving works); a failure of the
+  // flip leaves the source active + approval pending (re-approving is idempotent on the source).
   const fields: Partial<SourceRow> = {
     approvalStatus: "approved",
     trustLevel: trust.slug,
@@ -199,6 +194,16 @@ export async function approveSource(input: ApproveSourceInput, deps: SourceDeps 
   if (store.updateFilesForSource) {
     await store.updateFilesForSource(source.id, { approvalState: "approved", updatedAt: now });
   }
+
+  await applyApprovalAction(
+    {
+      approvalId: input.approvalId,
+      action: "approve",
+      approvedBy: input.approvedBy,
+      notes: input.notes,
+    },
+    { store: deps.approvalStore, recordAudit, now },
+  );
 
   const approvedSource: SourceRow = { ...source, ...fields };
   await recordAudit({

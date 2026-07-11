@@ -142,6 +142,29 @@ describe("applyApprovalAction", () => {
       applyApprovalAction({ approvalId: "missing", action: "approve", approvedBy: "Moiz" }, { store }),
     ).rejects.toThrowError(/not found/);
   });
+
+  it("prevents a concurrent double-approve via the atomic claim", async () => {
+    let status = "pending";
+    const store: ApprovalStore = {
+      insert: vi.fn(async () => undefined),
+      getById: vi.fn(async () => ({ status: status as never, approvalType: "source" })),
+      update: vi.fn(async () => undefined),
+      // Atomic claim: succeeds only if the row is still at fromStatus, then flips it.
+      claimTransition: vi.fn(async (_id, fromStatus, fields) => {
+        if (status !== fromStatus) return false; // another resolve already actioned it
+        status = fields.status as string;
+        return true;
+      }),
+    };
+    // First approve wins.
+    const first = await applyApprovalAction({ approvalId: "a1", action: "approve", approvedBy: "Moiz" }, { store, recordAudit: async () => {}, now });
+    expect(first.status).toBe("approved");
+    // Second approve reads a STALE 'pending' (race) but the atomic claim fails → rejected, no double-effect.
+    store.getById = vi.fn(async () => ({ status: "pending" as never, approvalType: "source" }));
+    await expect(
+      applyApprovalAction({ approvalId: "a1", action: "approve", approvedBy: "Ali" }, { store, recordAudit: async () => {}, now }),
+    ).rejects.toThrowError(/already actioned concurrently/);
+  });
 });
 
 describe("clampApprovalLimit", () => {

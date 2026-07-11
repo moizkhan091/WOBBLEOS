@@ -111,16 +111,34 @@ describe("connections service", () => {
     expect(events.map((event) => event.eventType)).toContain("connection.disabled");
   });
 
-  it("health check marks missing credentials without calling external APIs", async () => {
+  it("health check reports 'blocked' for missing credentials without calling external APIs", async () => {
     const seed = buildConnectionRow(base, { id: "conn_openrouter", now });
     const { store } = makeStore([seed], { OPENROUTER_API_KEY: null });
     const { events, recordAudit } = audit();
 
     const result = await checkConnectionHealth("openrouter", { store, recordAudit, now });
 
-    expect(result.connection.healthStatus).toBe("missing_credential");
+    expect(result.connection.healthStatus).toBe("blocked");
     expect(result.credentialConfigured).toBe(false);
     expect(events.map((event) => event.eventType)).toContain("connection.health_checked");
+  });
+
+  it("a present credential is VERIFIED by a real probe — not assumed healthy from env-var presence", async () => {
+    const seed = buildConnectionRow(base, { id: "conn_openrouter", now });
+    const { store } = makeStore([seed], { OPENROUTER_API_KEY: "sk-test" });
+    const { recordAudit } = audit();
+
+    // Probe says the key is live -> healthy.
+    const ok = await checkConnectionHealth("openrouter", { store, recordAudit, now, probe: async () => ({ status: "healthy" }) });
+    expect(ok.connection.healthStatus).toBe("healthy");
+
+    // Probe rejects the key (revoked/rotated) -> failed, NOT healthy (the false-confidence bug).
+    const bad = await checkConnectionHealth("openrouter", { store, recordAudit, now, probe: async () => ({ status: "failed", detail: "auth rejected" }) });
+    expect(bad.connection.healthStatus).toBe("failed");
+
+    // No probe wired for a provider -> unverified (credential present but unconfirmed), never healthy.
+    const unknown = await checkConnectionHealth("openrouter", { store, recordAudit, now, probe: async () => undefined });
+    expect(unknown.connection.healthStatus).toBe("unverified");
   });
 
   it("guard blocks disabled connections with an audit event", async () => {

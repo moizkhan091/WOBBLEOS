@@ -105,15 +105,26 @@ describe("crm service", () => {
     expect(hist[0]).toMatchObject({ oldStage: null, newStage: "qualified" });
   });
 
-  it("moving a deal to won records history, audits, and resolves status", async () => {
+  it("moving a deal to won records history, audits, resolves status, and fires the delivery hook", async () => {
     const { store } = makeStore();
+    const wonHookCalls: string[] = [];
     const opp = await addOpportunity({ name: "Deal", companyId: "co_1", stage: "proposal_sent" }, { store, now, recordAudit: async () => {} });
-    const moved = await moveOpportunityStage(opp.id, "won", { actor: "Moiz", reason: "signed" }, { store, now, recordAudit: async () => {} });
+    const moved = await moveOpportunityStage(opp.id, "won", { actor: "Moiz", reason: "signed" }, { store, now, recordAudit: async () => {}, onOpportunityWon: async (o) => { wonHookCalls.push(o.id); } });
     expect(moved?.stage).toBe("won");
     expect(moved?.status).toBe("won");
     expect(moved?.probability).toBe(100);
     const hist = await getStageHistory(opp.id, { store });
     expect(hist.some((h) => h.oldStage === "proposal_sent" && h.newStage === "won")).toBe(true);
+    // Won → delivery hook fires from the domain (every caller), exactly once for the won transition.
+    expect(wonHookCalls).toEqual([opp.id]);
+  });
+
+  it("the delivery hook does NOT fire for a non-won stage move", async () => {
+    const { store } = makeStore();
+    let fired = false;
+    const opp = await addOpportunity({ name: "Deal", companyId: "co_1", stage: "qualified" }, { store, now, recordAudit: async () => {} });
+    await moveOpportunityStage(opp.id, "proposal_sent", { actor: "Moiz" }, { store, now, recordAudit: async () => {}, onOpportunityWon: async () => { fired = true; } });
+    expect(fired).toBe(false);
   });
 
   it("converting a lead builds the whole connected chain", async () => {

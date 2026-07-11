@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyApprovalAction, applyActionSchema } from "@/lib/approvals";
+import { resolveApproval } from "@/lib/approval-router";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
@@ -39,14 +40,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (isAuthError(auth)) return auth;
 
   try {
+    // approve/reject must run the SAME downstream effect as /resolve (source compile, content import,
+    // memory create, …) — route them through resolveApproval so both approval routes are identical.
+    // Other actions (archive, send_to_n8n, retry_handoff, clip/final gates, …) stay on applyApprovalAction.
+    const action = parsed.data.action;
+    if (action === "approve" || action === "reject") {
+      const result = await resolveApproval({ approvalId: id, action, approvedBy: auth, notes: parsed.data.notes });
+      return NextResponse.json({ ok: true, result });
+    }
     const result = await applyApprovalAction({ approvalId: id, ...parsed.data, approvedBy: auth });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    // Not-found vs invalid-transition/confirmation are client-correctable -> 409; unknown -> 500.
+    // Not-found vs invalid-transition/confirmation/missing-reason are client-correctable -> 409; unknown -> 500.
     const status = message.includes("not found")
       ? 404
-      : message.includes("not allowed") || message.includes("requires explicit confirmation")
+      : message.includes("not allowed") || message.includes("requires explicit confirmation") || message.includes("reason is required") || message.includes("already actioned")
         ? 409
         : 500;
     return NextResponse.json({ ok: false, error: message }, { status });

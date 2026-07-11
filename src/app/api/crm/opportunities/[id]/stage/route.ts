@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { moveOpportunityStage } from "@/lib/crm";
 import { PIPELINE_STAGES } from "@/lib/domain/crm";
-import { addProject, listProjects } from "@/lib/projects";
+import { listProjects } from "@/lib/projects";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
@@ -23,14 +23,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   try {
     const opp = await moveOpportunityStage(id, parsed.data.stage, { actor: auth, reason: parsed.data.reason });
     if (!opp) return NextResponse.json({ ok: false, error: "opportunity not found" }, { status: 404 });
-    // Won deals become client-delivery projects — no orphan records. Idempotent: one project per deal.
-    let project = null;
-    if (opp.stage === "won") {
-      const existing = await listProjects({ opportunityId: id, limit: 1 });
-      if (existing.length === 0) {
-        project = await addProject({ name: opp.name, companyId: opp.companyId, opportunityId: id, proposalId: opp.proposalId ?? undefined, servicesIncluded: opp.serviceInterest ?? [], owner: opp.assignedOwner ?? undefined, status: "onboarding", createdBy: auth });
-      }
-    }
+    // Won → delivery is now created by moveOpportunityStage itself (from every caller). Read it back for the response.
+    const project = opp.stage === "won" ? (await listProjects({ opportunityId: id, limit: 1 }))[0] ?? null : null;
     return NextResponse.json({ ok: true, opportunity: opp, project });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

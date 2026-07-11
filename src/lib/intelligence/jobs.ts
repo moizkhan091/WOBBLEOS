@@ -13,15 +13,36 @@ export async function runScoutJobHandler(job: JobRow): Promise<Record<string, un
   const p = job.payload ?? {};
   const handleOrUrl = typeof p.handleOrUrl === "string" ? p.handleOrUrl : undefined;
   if (!handleOrUrl) return { skipped: "no handleOrUrl in payload" };
+  const scope = asScope(p.scope);
+  const clientId = typeof p.clientId === "string" ? p.clientId : undefined;
   const result = await runCompetitorScout({
     handleOrUrl,
     platform: typeof p.platform === "string" ? p.platform : undefined,
     limit: typeof p.limit === "number" ? p.limit : undefined,
     targetId: typeof p.targetId === "string" ? p.targetId : undefined,
-    scope: asScope(p.scope),
-    clientId: typeof p.clientId === "string" ? p.clientId : undefined,
+    scope,
+    clientId,
   });
-  return { ...result };
+
+  // Auto-chain scouting → analysis: fresh observations should become insight PROPOSALS without a
+  // manual trigger. Enqueue an analyze job (deduped per scope/day) when the scout ingested anything.
+  const created = Array.isArray(result.created) ? result.created.length : 0;
+  if (created > 0 && process.env.DATABASE_URL) {
+    try {
+      const { enqueueJob } = await import("@/lib/jobs");
+      const day = job.createdAt instanceof Date ? job.createdAt.toISOString().slice(0, 10) : "";
+      await enqueueJob({
+        queue: "general",
+        type: "intelligence.analyze",
+        payload: { scope, clientId },
+        linkedModule: "intelligence",
+        idempotencyKey: `intelligence.analyze:${scope ?? "wobble"}:${clientId ?? "all"}:${day}`,
+      });
+    } catch (error) {
+      console.error("scout -> analyze chaining failed:", error instanceof Error ? error.message : error);
+    }
+  }
+  return { ...result, analyzeChained: created > 0 };
 }
 
 export async function runAnalyzeJobHandler(job: JobRow): Promise<Record<string, unknown>> {

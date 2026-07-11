@@ -77,7 +77,40 @@ const LEAD_ALREADY_CONVERTED = Symbol("lead-already-converted");
 export interface CrmDeps {
   store?: CrmStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Runs when an opportunity reaches 'won' — creates the delivery project + kickoff tasks (idempotent).
+   *  Injectable for tests; the default is DB-backed + env-gated. This is what makes won→delivery fire
+   *  from EVERY caller of moveOpportunityStage, not just the HTTP route. */
+  onOpportunityWon?: (opp: OpportunityRow, actor: string) => Promise<void>;
   now?: Date;
+}
+
+/** Default won→delivery hook: idempotently create the project (one per deal) + seed kickoff work. */
+async function defaultOnOpportunityWon(opp: OpportunityRow, actor: string): Promise<void> {
+  if (!process.env.DATABASE_URL) return; // best-effort, env-gated (like source intake)
+  try {
+    const { addProject, listProjects } = await import("@/lib/projects");
+    const existing = await listProjects({ opportunityId: opp.id, limit: 1 });
+    if (existing.length > 0) return; // idempotent — one delivery project per won opportunity
+    await addProject({
+      name: opp.name,
+      companyId: opp.companyId ?? undefined,
+      opportunityId: opp.id,
+      proposalId: opp.proposalId ?? undefined,
+      servicesIncluded: opp.serviceInterest ?? [],
+      owner: opp.assignedOwner ?? undefined,
+      teamMembers: opp.assignedOwner ? [opp.assignedOwner] : [],
+      status: "onboarding",
+      milestones: [{ title: "Kickoff call" }, { title: "Onboarding complete" }],
+      createdBy: actor,
+    });
+    const { addTask } = await import("@/lib/tasks");
+    await addTask(
+      { title: `Kick off delivery: ${opp.name}`, companyId: opp.companyId ?? undefined, opportunityId: opp.id, assignedTo: opp.assignedOwner ?? undefined, createdBy: actor },
+      {},
+    ).catch(() => {}); // task seeding is best-effort
+  } catch (error) {
+    console.error("won->delivery creation failed (re-drivable on next stage move):", error instanceof Error ? error.message : error);
+  }
 }
 
 async function audit(deps: CrmDeps, input: AuditEventInput): Promise<void> {
@@ -236,7 +269,12 @@ export async function moveOpportunityStage(id: string, newStage: PipelineStage, 
     await tx.insertStageHistory({ id: newId("hist"), opportunityId: id, oldStage: opp.stage, newStage, movedBy: input.actor ?? "system", reason: input.reason ?? null, createdAt: now });
   });
   await audit(deps, { eventType: "crm.opportunity_stage_moved", module: CRM_MODULE, entityType: "crm_opportunity", entityId: id, actor: input.actor ?? "system", metadata: { from: opp.stage, to: newStage, status } });
-  return { ...opp, ...fields };
+  const moved: OpportunityRow = { ...opp, ...fields };
+  // Won → delivery, from EVERY caller (route, job, automation, Ask, proposal-accept) — not just the route.
+  if (newStage === "won") {
+    await (deps.onOpportunityWon ?? defaultOnOpportunityWon)(moved, input.actor ?? "system");
+  }
+  return moved;
 }
 
 export async function updateOpportunity(id: string, fields: Partial<OpportunityRow>, deps: CrmDeps = {}): Promise<boolean> {

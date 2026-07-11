@@ -42,11 +42,62 @@ export interface ConnectionStore {
   getCredential(credentialKeyName: string): Promise<string | null>;
 }
 
+/** Real health states — never "healthy" merely because an env var exists. */
+export type ConnectionHealth = "healthy" | "degraded" | "failed" | "unavailable" | "unverified" | "blocked" | "disabled";
+
+export interface HealthProbeResult {
+  status: ConnectionHealth;
+  detail?: string;
+}
+
+/** Probe a provider with a cheap authenticated call. Returns a real state; undefined = no probe wired. */
+export type HealthProbe = (row: { slug: string }, credential: string) => Promise<HealthProbeResult | undefined>;
+
 export interface ConnectionDeps {
   store?: ConnectionStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Injectable for tests; the default makes a real, timeout-bounded provider call. */
+  probe?: HealthProbe;
   now?: Date;
 }
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Real provider health probe. A present credential is verified with a cheap authenticated request:
+ * auth rejection (401/403) => `failed` (revoked/invalid key — the exact false-"healthy" case), other
+ * non-2xx / network / timeout => `unavailable`, success => `healthy`. Providers with no probe wired
+ * return `unverified` (credential present but NOT confirmed) — never a false "healthy".
+ */
+export const defaultHealthProbe: HealthProbe = async (row, credential) => {
+  const classify = (res: Response): HealthProbeResult =>
+    res.status === 401 || res.status === 403
+      ? { status: "failed", detail: `auth rejected (HTTP ${res.status}) — key revoked or invalid` }
+      : res.ok
+        ? { status: "healthy" }
+        : { status: "unavailable", detail: `HTTP ${res.status}` };
+  try {
+    if (row.slug === "openrouter") {
+      const res = await fetchWithTimeout("https://openrouter.ai/api/v1/key", { headers: { Authorization: `Bearer ${credential}` } }, 8000);
+      return classify(res);
+    }
+    if (row.slug === "search_api" || row.slug === "tavily") {
+      const res = await fetchWithTimeout("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: credential, query: "ping", max_results: 1 }) }, 8000);
+      return classify(res);
+    }
+    return { status: "unverified", detail: "no health probe wired for this provider — credential present but unconfirmed" };
+  } catch {
+    return { status: "unavailable", detail: "network error or timeout" };
+  }
+};
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
   await writeAuditEvent(input);
@@ -145,7 +196,22 @@ export async function checkConnectionHealth(idOrSlug: string, deps: ConnectionDe
   if (!row) throw new Error(`connection '${idOrSlug}' not found`);
 
   const hasCredential = await credentialConfigured(row, store);
-  const healthStatus = !row.enabled ? "disabled" : hasCredential ? "healthy" : "missing_credential";
+  // Real health: disabled > blocked (no credential) > actual provider probe (never "healthy" for a
+  // mere env-var presence). A revoked/rotated key now surfaces as "failed", not "healthy".
+  let healthStatus: ConnectionHealth = "unverified";
+  let healthDetail: string | undefined;
+  if (!row.enabled) {
+    healthStatus = "disabled";
+  } else if (!hasCredential) {
+    healthStatus = "blocked";
+    healthDetail = "credential not configured";
+  } else {
+    const credential = await store.getCredential(row.credentialKeyName);
+    const probe = deps.probe ?? defaultHealthProbe;
+    const result = credential ? await probe({ slug: row.slug }, credential) : undefined;
+    healthStatus = result?.status ?? "unverified";
+    healthDetail = result?.detail;
+  }
   await store.updateConnection(row.id, { healthStatus, updatedAt: now });
   const updated = { ...row, healthStatus, updatedAt: now };
   await recordAudit({
@@ -153,7 +219,7 @@ export async function checkConnectionHealth(idOrSlug: string, deps: ConnectionDe
     module: "connections",
     entityType: "provider_connection",
     entityId: row.id,
-    metadata: { slug: row.slug, healthStatus, credentialConfigured: hasCredential },
+    metadata: { slug: row.slug, healthStatus, healthDetail, credentialConfigured: hasCredential },
   });
   return { connection: sanitizeConnection(updated, { credentialConfigured: hasCredential }), credentialConfigured: hasCredential };
 }

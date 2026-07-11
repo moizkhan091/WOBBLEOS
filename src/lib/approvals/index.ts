@@ -64,6 +64,13 @@ export interface ApprovalStore {
   insert(row: ApprovalRow): Promise<void>;
   getById(id: string): Promise<{ status: ApprovalStatus; approvalType: string } | null>;
   update(id: string, fields: Record<string, unknown>): Promise<void>;
+  /**
+   * Conditional claim: apply `fields` only if the row is STILL at `fromStatus` (a single atomic
+   * `UPDATE … WHERE status = fromStatus`). Returns true if THIS call won. Prevents two concurrent
+   * resolves from both actioning the same approval (double-approve / double-effect). Optional so test
+   * fakes can omit it — callers fall back to the non-atomic `update`.
+   */
+  claimTransition?(id: string, fromStatus: ApprovalStatus, fields: Record<string, unknown>): Promise<boolean>;
 }
 
 export interface ApprovalDeps {
@@ -88,6 +95,14 @@ function defaultStore(db: Db = getDb()): ApprovalStore {
     },
     async update(id, fields) {
       await db.update(approvals).set(fields).where(eq(approvals.id, id));
+    },
+    async claimTransition(id, fromStatus, fields) {
+      const claimed = await db
+        .update(approvals)
+        .set(fields)
+        .where(and(eq(approvals.id, id), eq(approvals.status, fromStatus)))
+        .returning({ id: approvals.id });
+      return claimed.length > 0;
     },
   };
 }
@@ -193,7 +208,14 @@ export async function applyApprovalAction(input: ApplyActionInput, deps: Approva
     fields.notes = parsed.notes;
   }
 
-  await store.update(approvalId, fields);
+  // Atomic claim guards against a concurrent double-approve: only ONE resolve can transition the row
+  // out of `current.status`. Falls back to a plain update for stores that don't implement the claim.
+  if (store.claimTransition) {
+    const claimed = await store.claimTransition(approvalId, current.status, fields);
+    if (!claimed) throw new Error(`approval '${approvalId}' was already actioned concurrently`);
+  } else {
+    await store.update(approvalId, fields);
+  }
   await recordAudit({
     eventType: `approval.${parsed.action}`,
     module: "approvals",
