@@ -278,10 +278,19 @@ describe("library service", () => {
     expect(posts.get(post.id)!.status).toBe("published");
   });
 
-  it("builds Zernio media items from an asset's public URLs", () => {
+  it("builds signed public Zernio media URLs for local media (so cookie-less providers can fetch)", () => {
     const asset = { id: "asset_1", kind: "image", mediaRefs: [{ path: "media/library/asset_1/x.png", kind: "image", order: 0 }] } as never;
     const items = zernioMediaItems(asset, "https://os.wobble.com");
-    expect(items).toEqual([{ type: "image", url: "https://os.wobble.com/api/library/assets/asset_1/media?i=0" }]);
+    expect(items).toHaveLength(1);
+    expect(items[0].type).toBe("image");
+    // signed public endpoint (NOT the session-gated /api/library route) with an HMAC token bound to assetId+index
+    expect(items[0].url).toMatch(/^https:\/\/os\.wobble\.com\/api\/public\/media\/asset_1\?i=0&t=[a-f0-9]{64}$/);
+  });
+
+  it("passes through already-remote media URLs unchanged", () => {
+    const asset = { id: "asset_2", kind: "image", mediaRefs: [{ url: "https://cdn.example.com/a.png", kind: "image", order: 0 }] } as never;
+    const items = zernioMediaItems(asset, "https://os.wobble.com");
+    expect(items[0].url).toBe("https://cdn.example.com/a.png");
   });
 
   it("createZernioPost posts to the API with an injected fetch", async () => {

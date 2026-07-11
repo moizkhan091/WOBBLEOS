@@ -856,6 +856,8 @@ function AskPage() {
   const greet = useApi<{ greeting: string; subline: string; dayPart: string }>("/api/ai/greeting");
   const modelState = useApi<{ models: { id: string; label: string; description: string }[] }>("/api/ai/models");
   const [model, setModel] = useState("");
+  const [agentMode, setAgentMode] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{ question: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const models = modelState.data?.models ?? [];
 
@@ -879,7 +881,18 @@ function AskPage() {
     const sendFiles = files;
     setQ(""); setFiles([]); setBusy(true);
     try {
-      if (sendFiles.length > 0 || model) {
+      if (agentMode && sendFiles.length === 0) {
+        // Agent mode: the orchestrator can inspect + operate the OS (destructive actions need confirm).
+        const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, confirmActions: false }) });
+        const j = (await r.json()) as Record<string, unknown>;
+        if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) }]);
+        else {
+          const res = (j.result ?? {}) as Record<string, unknown>;
+          const pc = res.pendingConfirmation as { message?: string } | undefined;
+          if (pc) { setPendingConfirm({ question, message: String(pc.message ?? "This action needs your confirmation.") }); setTurns((t) => [...t, { role: "wob", text: String(res.answer || pc.message || ""), meta: "⚠ needs your confirmation" }]); }
+          else { const trace = Array.isArray(res.toolTrace) ? res.toolTrace.length : 0; setTurns((t) => [...t, { role: "wob", text: String(res.answer ?? ""), meta: [trace ? `${trace} tool call${trace === 1 ? "" : "s"}` : null, res.iterations ? `${res.iterations} step${res.iterations === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") }]); }
+        }
+      } else if (sendFiles.length > 0 || model) {
         // Attachments or an explicit model pick -> universal multimodal chat (images/PDFs/text).
         const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, useMemory: true, model: model || undefined, attachments: sendFiles.map((f) => ({ filename: f.name, mimeType: f.mimeType, dataBase64: f.dataBase64 })) }) });
         const j = (await r.json()) as Record<string, unknown>;
@@ -904,6 +917,22 @@ function AskPage() {
           }
         }
       }
+    } catch (e) { setTurns((t) => [...t, { role: "wob", text: "Error: " + String(e) }]); }
+    setBusy(false);
+  }
+
+  async function confirmAgent(approve: boolean) {
+    const pc = pendingConfirm;
+    setPendingConfirm(null);
+    if (!pc || !approve) { if (pc) setTurns((t) => [...t, { role: "wob", text: "Cancelled — nothing was applied." }]); return; }
+    setBusy(true);
+    setTurns((t) => [...t, { role: "you", text: "✓ Confirmed" }]);
+    try {
+      const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: pc.question, confirmActions: true }) });
+      const j = (await r.json()) as Record<string, unknown>;
+      const res = (j.result ?? {}) as Record<string, unknown>;
+      if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) }]);
+      else setTurns((t) => [...t, { role: "wob", text: String(res.answer ?? "Applied."), meta: "applied" }]);
     } catch (e) { setTurns((t) => [...t, { role: "wob", text: "Error: " + String(e) }]); }
     setBusy(false);
   }
@@ -935,6 +964,17 @@ function AskPage() {
         </div>
       )}
 
+      {pendingConfirm ? (
+        <div style={{ ...card, padding: "12px 14px", border: "1px solid rgba(245,197,66,0.4)", background: "rgba(245,197,66,0.06)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4, color: "#F5C542" }}>⚠ Confirm this action</div>
+          <div style={{ fontSize: 12.5, color: C.white, marginBottom: 10 }}>{pendingConfirm.message}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => confirmAgent(true)} disabled={busy} style={{ ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>Confirm & apply</button>
+            <button onClick={() => confirmAgent(false)} disabled={busy} style={{ ...selectStyle, cursor: "pointer", padding: "7px 13px" }}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Composer */}
       <div style={{ position: "relative", ...glass, padding: 12, border: drag ? "1px dashed rgba(184,255,44,0.6)" : glass.border }}>
         {files.length > 0 ? (
@@ -961,7 +1001,8 @@ function AskPage() {
               {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           ) : null}
-          <span style={{ fontSize: 10.5, color: faint }}>Images → vision · PDFs & docs → parsed · Shift+Enter for newline</span>
+          <button onClick={() => setAgentMode((a) => !a)} title="Agent mode — let WOBBLE inspect + operate the OS (actions need your confirmation)" style={{ padding: "6px 11px", borderRadius: 9, fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (agentMode ? "rgba(184,255,44,0.5)" : "rgba(255,255,255,0.12)"), background: agentMode ? "rgba(184,255,44,0.14)" : "rgba(255,255,255,0.03)", color: agentMode ? C.lime : muted }}>⚡ Agent{agentMode ? " · ON" : ""}</button>
+          <span style={{ fontSize: 10.5, color: faint }}>{agentMode ? "Agent can inspect + operate the OS · changes ask first" : "Images → vision · PDFs & docs → parsed · Shift+Enter for newline"}</span>
           <div style={{ flex: 1 }} />
           <button onClick={send} disabled={!hasContent || busy} style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: hasContent && !busy ? C.lime : "rgba(184,255,44,0.3)", color: "#0A0A0A", cursor: hasContent && !busy ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>{busy ? <Icon name="Loader2" size={17} /> : <Icon name="ArrowUp" size={18} />}</button>
         </div>
