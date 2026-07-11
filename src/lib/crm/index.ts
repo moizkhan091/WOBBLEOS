@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { crmCompanies, crmContacts, crmLeads, crmOpportunities, crmStageHistory } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
@@ -42,6 +42,12 @@ export interface CrmStore {
   listLeads(q: { status?: string; limit: number }): Promise<LeadRow[]>;
   getLead(id: string): Promise<LeadRow | null>;
   updateLead(id: string, fields: Partial<LeadRow>): Promise<void>;
+  /**
+   * Atomically claim a lead for conversion: flip to 'converted' only if NOT already converted, in a
+   * single conditional UPDATE. Returns true if THIS call won the claim. The row lock serializes
+   * concurrent converters so only one can win — the real guard against duplicate deals.
+   */
+  markLeadConverted(leadId: string, opportunityId: string, now: Date): Promise<boolean>;
 
   insertOpportunity(row: OpportunityRow): Promise<void>;
   listOpportunities(q: { stage?: string; status?: string; includeArchived?: boolean; limit: number }): Promise<OpportunityRow[]>;
@@ -64,6 +70,9 @@ export interface CrmStore {
 async function withTransaction<T>(store: CrmStore, fn: (s: CrmStore) => Promise<T>): Promise<T> {
   return store.transaction ? store.transaction(fn) : fn(store);
 }
+
+/** Thrown inside convertLead's tx to roll it back cleanly when the lead was claimed by a concurrent converter. */
+const LEAD_ALREADY_CONVERTED = Symbol("lead-already-converted");
 
 export interface CrmDeps {
   store?: CrmStore;
@@ -167,16 +176,23 @@ export async function convertLead(
     { now },
   );
 
-  // Atomic: company + contact + opportunity + stage history + lead flip commit together or not at
-  // all. A failure mid-chain used to orphan a company and leave the lead unconverted (re-running
-  // then created a duplicate company). Audit only after the transaction commits.
-  await withTransaction(store, async (tx) => {
-    await tx.insertCompany(company);
-    if (contact) await tx.insertContact(contact);
-    await tx.insertOpportunity(opportunity);
-    await tx.insertStageHistory({ id: newId("hist"), opportunityId: opportunity.id, oldStage: null, newStage: opportunity.stage, movedBy: input.actor ?? "system", reason: "converted from lead", createdAt: now });
-    await tx.updateLead(leadId, { status: "converted", convertedOpportunityId: opportunity.id, updatedAt: now });
-  });
+  // Atomic + race-safe: company + contact + opportunity + stage history + lead claim commit together
+  // or not at all. The lead is claimed by a CONDITIONAL update (markLeadConverted) as the last step —
+  // if a concurrent converter already claimed it, this transaction rolls back (no orphaned company/
+  // opportunity) and we return null. Audit only after the transaction commits.
+  try {
+    await withTransaction(store, async (tx) => {
+      await tx.insertCompany(company);
+      if (contact) await tx.insertContact(contact);
+      await tx.insertOpportunity(opportunity);
+      await tx.insertStageHistory({ id: newId("hist"), opportunityId: opportunity.id, oldStage: null, newStage: opportunity.stage, movedBy: input.actor ?? "system", reason: "converted from lead", createdAt: now });
+      const claimed = await tx.markLeadConverted(leadId, opportunity.id, now);
+      if (!claimed) throw LEAD_ALREADY_CONVERTED;
+    });
+  } catch (error) {
+    if (error === LEAD_ALREADY_CONVERTED) return null; // lost the race — a concurrent converter won
+    throw error;
+  }
 
   await audit(deps, { eventType: "crm.lead_converted", module: CRM_MODULE, entityType: "crm_lead", entityId: leadId, actor: input.actor ?? "system", metadata: { companyId: company.id, opportunityId: opportunity.id } });
   return { company, contact, opportunity };
@@ -266,6 +282,14 @@ export function defaultStore(db: Db = getDb()): CrmStore {
     },
     async getLead(id) { const r = await db.select().from(crmLeads).where(eq(crmLeads.id, id)).limit(1); return (r[0] as LeadRow) ?? null; },
     async updateLead(id, fields) { await db.update(crmLeads).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() }).where(eq(crmLeads.id, id)); },
+    async markLeadConverted(leadId, opportunityId, now) {
+      const claimed = await db
+        .update(crmLeads)
+        .set({ status: "converted", convertedOpportunityId: opportunityId, updatedAt: now })
+        .where(and(eq(crmLeads.id, leadId), ne(crmLeads.status, "converted")))
+        .returning({ id: crmLeads.id });
+      return claimed.length > 0;
+    },
 
     async insertOpportunity(row) { await db.insert(crmOpportunities).values(row); },
     async listOpportunities(q) {

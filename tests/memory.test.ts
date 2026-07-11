@@ -238,6 +238,19 @@ function makeMemoryStore(seedProposals: MemoryUpdateProposalRow[] = [], seedCand
     countRecordVersions: async () => 0,
     listExpiredArchivedRecords: async () => [],
     deleteRecordCascade: async () => {},
+    // Model real transaction semantics: snapshot the arrays/map, run the chain, restore on any throw.
+    transaction: async (fn) => {
+      const snap = { records: [...records], chunks: [...chunks], links: [...links], proposals: new Map(proposals) };
+      try {
+        return await fn(store);
+      } catch (e) {
+        records.length = 0; records.push(...snap.records);
+        chunks.length = 0; chunks.push(...snap.chunks);
+        links.length = 0; links.push(...snap.links);
+        proposals.clear(); snap.proposals.forEach((v, k) => proposals.set(k, v));
+        throw e;
+      }
+    },
   };
 
   return { store, proposals, records, chunks, links, calls };
@@ -334,6 +347,28 @@ describe("memory service", () => {
     });
     expect(audit.some((event) => event.eventType === "approval.approve")).toBe(true);
     expect(audit.some((event) => event.eventType === "memory_update.approved")).toBe(true);
+  });
+
+  it("approveMemoryUpdate is atomic: a mid-chain failure rolls back record/chunks/links AND the proposal flip", async () => {
+    const proposal = buildMemoryUpdateProposalRow(
+      { proposedMemory: "Durable fact", reason: "Strong source.", affectedArea: "brand", sourceId: "source_1", confidence: 0.9 },
+      { id: "proposal_1", now },
+    );
+    const { store, records, chunks, links, calls } = makeMemoryStore([proposal]);
+    // The chunk insert blows up partway through the write chain.
+    store.insertMemoryChunks = async () => { throw new Error("db down"); };
+
+    await expect(
+      approveMemoryUpdate(
+        { proposalId: "proposal_1", approvalId: "approval_1", approvedBy: "Moiz", slug: "s", title: "T", memoryTier: "core", trustLevel: "founder_core", bankSlugs: ["brand"] },
+        { store, approvalStore: fakeApprovalStore("pending").store, recordAudit: async () => {}, now },
+      ),
+    ).rejects.toThrow("db down");
+
+    // Nothing partial survived: no orphaned record/links, and the proposal was NOT marked approved.
+    expect(records).toHaveLength(0);
+    expect(links).toHaveLength(0);
+    expect(calls.updateProposal).toHaveLength(0);
   });
 
   it("rejects a proposal without inserting memory", async () => {

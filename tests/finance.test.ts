@@ -91,6 +91,26 @@ describe("finance service", () => {
     expect(inv.totalCents).toBe(600000);
   });
 
+  it("retries on a concurrent numbering collision instead of 500ing (unique-violation recovery)", async () => {
+    const { store, invoices } = makeStore();
+    const realInsert = store.insertInvoice;
+    let collided = false;
+    store.insertInvoice = async (r) => {
+      if (!collided && r.invoiceNumber === "INV-2026-0001") {
+        collided = true;
+        // A concurrent create grabbed 0001: reflect it in the count, then reject THIS insert.
+        invoices.set("concurrent", { ...r, id: "concurrent" });
+        const e = new Error('duplicate key value violates unique constraint "invoices_number_idx"') as Error & { code?: string };
+        e.code = "23505";
+        throw e;
+      }
+      return realInsert(r);
+    };
+
+    const inv = await createInvoice({ lineItems: [{ description: "Audit", quantity: 1, unitPriceCents: 100 }] }, { store, now, recordAudit: async () => {} });
+    expect(inv.invoiceNumber).toBe("INV-2026-0002"); // recounted + retried the next number, no throw
+  });
+
   it("walks the founder-gated lifecycle and records payment", async () => {
     const { store } = makeStore();
     const inv = await createInvoice({ lineItems: [{ description: "Audit", quantity: 1, unitPriceCents: 600000 }] }, { store, now, recordAudit: async () => {} });

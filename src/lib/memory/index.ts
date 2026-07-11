@@ -103,6 +103,9 @@ export interface MemoryStore {
   countRecordVersions(recordId: string): Promise<number>;
   listExpiredArchivedRecords(before: Date, limit: number): Promise<MemoryRecordRow[]>;
   deleteRecordCascade(recordId: string): Promise<void>;
+  /** Run a multi-row write chain (record + chunks + bank links + proposal) atomically. Optional so
+   *  lightweight test stores can omit it — callers fall back to a sequential run. */
+  transaction?<T>(fn: (txStore: MemoryStore) => Promise<T>): Promise<T>;
   // Optional (capability-based): conflict detection + staleness review. defaultStore implements all.
   insertConflict?(row: MemoryConflictRow): Promise<void>;
   getConflict?(id: string): Promise<MemoryConflictRow | null>;
@@ -142,6 +145,11 @@ export interface MemoryDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   embedder?: Embedder | null;
   now?: Date;
+}
+
+/** Run `fn` inside the store's transaction when it supports one, else sequentially. */
+async function withMemoryTransaction<T>(store: MemoryStore, fn: (s: MemoryStore) => Promise<T>): Promise<T> {
+  return store.transaction ? store.transaction(fn) : fn(store);
 }
 
 /**
@@ -359,39 +367,7 @@ export async function approveMemoryUpdate(
     { now },
   );
 
-  const embeddedChunks = await attachEmbeddings(memoryChunks, deps);
-
-  await store.insertMemoryRecord(memoryRecord);
-  await store.insertMemoryChunks(embeddedChunks);
-  if (store.insertMemoryBankLinks) {
-    await store.insertMemoryBankLinks(
-      approvedBankSlugs.flatMap((bankSlug) => [
-        buildMemoryBankLinkRow(
-          {
-            memoryBankSlug: bankSlug,
-            memoryRecordId: memoryRecord.id,
-            sourceId: proposal.sourceId ?? undefined,
-            proposalId: proposal.id,
-            createdBy: input.approvedBy,
-          },
-          { now },
-        ),
-        ...memoryChunks.map((chunk) =>
-          buildMemoryBankLinkRow(
-            {
-              memoryBankSlug: bankSlug,
-              memoryRecordId: memoryRecord.id,
-              memoryChunkId: chunk.id,
-              sourceId: proposal.sourceId ?? undefined,
-              proposalId: proposal.id,
-              createdBy: input.approvedBy,
-            },
-            { now },
-          ),
-        ),
-      ]),
-    );
-  }
+  const embeddedChunks = await attachEmbeddings(memoryChunks, deps); // network call — OUTSIDE the tx
 
   const fields: Partial<MemoryUpdateProposalRow> = {
     status: "approved",
@@ -400,7 +376,43 @@ export async function approveMemoryUpdate(
     approvedAt: now,
     updatedAt: now,
   };
-  await store.updateProposal(proposal.id, fields);
+
+  // Atomic: record + chunks + bank links + proposal flip commit together or roll back — no orphaned
+  // record-without-chunks/links (invisible to bank-scoped retrieval) and no consumed-proposal-no-memory.
+  await withMemoryTransaction(store, async (tx) => {
+    await tx.insertMemoryRecord(memoryRecord);
+    await tx.insertMemoryChunks(embeddedChunks);
+    if (tx.insertMemoryBankLinks) {
+      await tx.insertMemoryBankLinks(
+        approvedBankSlugs.flatMap((bankSlug) => [
+          buildMemoryBankLinkRow(
+            {
+              memoryBankSlug: bankSlug,
+              memoryRecordId: memoryRecord.id,
+              sourceId: proposal.sourceId ?? undefined,
+              proposalId: proposal.id,
+              createdBy: input.approvedBy,
+            },
+            { now },
+          ),
+          ...memoryChunks.map((chunk) =>
+            buildMemoryBankLinkRow(
+              {
+                memoryBankSlug: bankSlug,
+                memoryRecordId: memoryRecord.id,
+                memoryChunkId: chunk.id,
+                sourceId: proposal.sourceId ?? undefined,
+                proposalId: proposal.id,
+                createdBy: input.approvedBy,
+              },
+              { now },
+            ),
+          ),
+        ]),
+      );
+    }
+    await tx.updateProposal(proposal.id, fields);
+  });
 
   const updatedProposal = { ...proposal, ...fields };
   await recordAudit({
@@ -597,16 +609,19 @@ export async function createMemoryRecord(input: CreateMemoryRecordInput, deps: M
     { now },
   ).map((chunk) => ({ ...chunk, embedding }));
 
-  await store.insertMemoryRecord(record);
-  await store.insertMemoryChunks(chunks);
-  if (store.insertMemoryBankLinks) {
-    await store.insertMemoryBankLinks(
-      bankSlugs.flatMap((bankSlug) => [
-        buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, createdBy: input.createdBy }, { now }),
-        ...chunks.map((chunk) => buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, memoryChunkId: chunk.id, createdBy: input.createdBy }, { now })),
-      ]),
-    );
-  }
+  // Atomic: record + chunks + bank links commit together (no orphaned record invisible to retrieval).
+  await withMemoryTransaction(store, async (tx) => {
+    await tx.insertMemoryRecord(record);
+    await tx.insertMemoryChunks(chunks);
+    if (tx.insertMemoryBankLinks) {
+      await tx.insertMemoryBankLinks(
+        bankSlugs.flatMap((bankSlug) => [
+          buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, createdBy: input.createdBy }, { now }),
+          ...chunks.map((chunk) => buildMemoryBankLinkRow({ memoryBankSlug: bankSlug, memoryRecordId: record.id, memoryChunkId: chunk.id, createdBy: input.createdBy }, { now })),
+        ]),
+      );
+    }
+  });
 
   await recordAudit({
     eventType: "memory_record.created",
@@ -1254,10 +1269,16 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         .limit(limit) as Promise<MemoryRecordRow[]>;
     },
     async deleteRecordCascade(recordId) {
-      await db.delete(memoryRecordVersions).where(eq(memoryRecordVersions.memoryRecordId, recordId));
-      await db.delete(memoryBankLinks).where(eq(memoryBankLinks.memoryRecordId, recordId));
-      await db.delete(memoryChunksTable).where(eq(memoryChunksTable.memoryRecordId, recordId));
-      await db.delete(memoryRecords).where(eq(memoryRecords.id, recordId));
+      // Atomic cascade: versions + links + chunks + record delete together (no partial delete leaving orphans).
+      await db.transaction(async (tx) => {
+        await tx.delete(memoryRecordVersions).where(eq(memoryRecordVersions.memoryRecordId, recordId));
+        await tx.delete(memoryBankLinks).where(eq(memoryBankLinks.memoryRecordId, recordId));
+        await tx.delete(memoryChunksTable).where(eq(memoryChunksTable.memoryRecordId, recordId));
+        await tx.delete(memoryRecords).where(eq(memoryRecords.id, recordId));
+      });
+    },
+    async transaction(fn) {
+      return db.transaction((tx) => fn(defaultStore(tx as unknown as Db)));
     },
     async insertConflict(row) {
       await db.insert(memoryConflicts).values(row);

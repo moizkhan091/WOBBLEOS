@@ -63,6 +63,12 @@ function makeStore() {
     listLeads: async (q) => [...leads.values()].filter((l) => !q.status || l.status === q.status).slice(0, q.limit),
     getLead: async (id) => leads.get(id) ?? null,
     updateLead: async (id, f) => { const l = leads.get(id); if (l) leads.set(id, { ...l, ...f }); },
+    markLeadConverted: async (leadId, opportunityId, now) => {
+      const l = leads.get(leadId);
+      if (!l || l.status === "converted") return false; // already claimed by a concurrent converter
+      leads.set(leadId, { ...l, status: "converted", convertedOpportunityId: opportunityId, updatedAt: now });
+      return true;
+    },
     insertOpportunity: async (r) => void opps.set(r.id, r),
     listOpportunities: async (q) => [...opps.values()].filter((o) => (!q.stage || o.stage === q.stage) && (!q.status || o.status === q.status) && (q.includeArchived || !o.archivedAt)).slice(0, q.limit),
     getOpportunity: async (id) => opps.get(id) ?? null,
@@ -147,5 +153,18 @@ describe("crm service", () => {
     const stillOpen = (await store.getLead(lead.id))!;
     expect(stillOpen.status).not.toBe("converted");
     expect(stillOpen.convertedOpportunityId ?? null).toBeNull();
+  });
+
+  it("convertLead loses a conversion race safely: rolls back and returns null (no duplicate deal)", async () => {
+    const { store, companies, opps } = makeStore();
+    const lead = await addLead({ name: "Inbound", source: "referral", intentLevel: "high", serviceInterest: ["ai-receptionist"] }, { store, now, recordAudit: async () => {} });
+    // Simulate a concurrent converter that claimed the lead between our pre-tx read and our claim.
+    store.markLeadConverted = async () => false;
+
+    const result = await convertLead(lead.id, { companyName: "Acme", contactName: "Dr. Smith", actor: "Ali" }, { store, now, recordAudit: async () => {} });
+
+    expect(result).toBeNull(); // we lost the race
+    expect(companies.size).toBe(0); // and rolled back — no orphaned company/opportunity
+    expect(opps.size).toBe(0);
   });
 });

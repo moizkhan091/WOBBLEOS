@@ -441,27 +441,33 @@ export function defaultStore(db: Db = getDb()): KnowledgeStore {
       if (rows.length) await db.insert(knowledgeNoteLinks).values(rows);
     },
     async reinforceNote({ noteId, addSourceId, addChunkIds, now }) {
-      const rows = await db
-        .select({ sourceIds: knowledgeNotes.sourceIds, provenanceChunkIds: knowledgeNotes.provenanceChunkIds, timesReinforced: knowledgeNotes.timesReinforced })
-        .from(knowledgeNotes)
-        .where(eq(knowledgeNotes.id, noteId))
-        .limit(1);
-      const existing = rows[0];
-      if (!existing) return;
-      const sourceIds = new Set(existing.sourceIds ?? []);
-      if (addSourceId) sourceIds.add(addSourceId);
-      const chunkIds = new Set(existing.provenanceChunkIds ?? []);
-      for (const c of addChunkIds) chunkIds.add(c);
-      await db
-        .update(knowledgeNotes)
-        .set({
-          sourceIds: [...sourceIds],
-          provenanceChunkIds: [...chunkIds],
-          timesReinforced: (existing.timesReinforced ?? 0) + 1,
-          lastCompiledAt: now,
-          updatedAt: now,
-        })
-        .where(eq(knowledgeNotes.id, noteId));
+      // Serialize concurrent reinforces of the SAME note with a row lock (SELECT ... FOR UPDATE) inside
+      // a transaction — otherwise two overlapping compile jobs both read timesReinforced=N and both
+      // write N+1 (lost increment), and one job's source/chunk provenance merge is clobbered.
+      await db.transaction(async (tx) => {
+        const rows = await tx
+          .select({ sourceIds: knowledgeNotes.sourceIds, provenanceChunkIds: knowledgeNotes.provenanceChunkIds, timesReinforced: knowledgeNotes.timesReinforced })
+          .from(knowledgeNotes)
+          .where(eq(knowledgeNotes.id, noteId))
+          .limit(1)
+          .for("update");
+        const existing = rows[0];
+        if (!existing) return;
+        const sourceIds = new Set(existing.sourceIds ?? []);
+        if (addSourceId) sourceIds.add(addSourceId);
+        const chunkIds = new Set(existing.provenanceChunkIds ?? []);
+        for (const c of addChunkIds) chunkIds.add(c);
+        await tx
+          .update(knowledgeNotes)
+          .set({
+            sourceIds: [...sourceIds],
+            provenanceChunkIds: [...chunkIds],
+            timesReinforced: (existing.timesReinforced ?? 0) + 1,
+            lastCompiledAt: now,
+            updatedAt: now,
+          })
+          .where(eq(knowledgeNotes.id, noteId));
+      });
     },
     async findSimilarNotes(embedding, limit) {
       const similarity = sql<number>`1 - (${cosineDistance(knowledgeNotes.embedding, embedding)})`;

@@ -20,7 +20,7 @@ async function main() {
   });
   const ms = Date.now() - started;
 
-  const run = res.run as Record<string, unknown>;
+  const run = res.run as unknown as Record<string, unknown>;
   console.log("text:", JSON.stringify(res.text).slice(0, 160));
   console.log("model_run:", JSON.stringify({
     id: run.id, model: run.model, provider: run.provider, status: run.status,

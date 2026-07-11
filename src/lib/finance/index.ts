@@ -42,13 +42,36 @@ function invoiceNumber(seq: number, now: Date): string {
   return `INV-${now.getFullYear()}-${String(seq).padStart(4, "0")}`;
 }
 
+/** True for a Postgres unique-constraint violation (code 23505) — used to retry invoice numbering. */
+function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  if (code === "23505") return true;
+  const msg = error instanceof Error ? error.message.toLowerCase() : "";
+  return msg.includes("unique") || msg.includes("duplicate key");
+}
+
 /** Draft an invoice (from an opportunity/proposal or standalone). Starts in draft — needs approval to send. */
 export async function createInvoice(input: CreateInvoiceInput, deps: FinanceDeps = {}): Promise<InvoiceRow> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
-  const seq = (await store.countInvoices()) + 1;
-  const row = buildInvoiceRow(input, { now, invoiceNumber: invoiceNumber(seq, now) });
-  await store.insertInvoice(row);
+  // Concurrency-safe numbering: count → mint → insert, guarded by the unique index on invoice_number.
+  // If a concurrent create grabbed the same number (unique violation), recount and retry the next one
+  // instead of 500ing. Bounded attempts so a persistent failure still surfaces.
+  const MAX_ATTEMPTS = 6;
+  let row: InvoiceRow | undefined;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const seq = (await store.countInvoices()) + 1;
+    const candidate = buildInvoiceRow(input, { now, invoiceNumber: invoiceNumber(seq, now) });
+    try {
+      await store.insertInvoice(candidate);
+      row = candidate;
+      break;
+    } catch (error) {
+      if (attempt < MAX_ATTEMPTS - 1 && isUniqueViolation(error)) continue; // number taken concurrently — retry
+      throw error;
+    }
+  }
+  if (!row) throw new Error("could not allocate a unique invoice number after retries");
   await audit(deps, { eventType: "finance.invoice_created", module: FINANCE_MODULE, entityType: "invoice", entityId: row.id, actor: row.createdBy ?? "system", metadata: { number: row.invoiceNumber, totalCents: row.totalCents, opportunityId: row.opportunityId } });
   return row;
 }

@@ -5,7 +5,7 @@ import { dispatchDuePosts } from "@/lib/library";
 import { harvestPendingConversations } from "@/lib/memory-harvester";
 import { purgeExpiredArchivedMemory } from "@/lib/memory";
 import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/lib/graph-checkpoint";
-import { enqueueJob } from "@/lib/jobs";
+import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
 
@@ -33,6 +33,8 @@ export interface SchedulerDeps {
   now?: Date;
   enqueue?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
   recordAudit?: (input: Parameters<typeof writeAuditEvent>[0]) => Promise<void>;
+  /** Reclaim jobs stuck 'active' from a crashed worker. Injectable for tests; defaults to the DB store. */
+  reclaimStalled?: (now: Date) => Promise<number>;
   /** run daily-maintenance this tick (the worker gates this to ~once/day) */
   runMaintenance?: boolean;
 }
@@ -41,6 +43,7 @@ export interface SchedulerResult {
   automationsFired: number;
   scoutsEnqueued: number;
   postsDispatched: number;
+  stalledReclaimed: number;
   maintenanceRan: boolean;
   errors: string[];
 }
@@ -60,7 +63,15 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, maintenanceRan: false, errors: [] };
+
+  // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
+  // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
+  try {
+    result.stalledReclaimed = await (deps.reclaimStalled ?? ((n: Date) => reclaimStalledJobs({ now: n })))(now);
+  } catch (e) {
+    result.errors.push(`reclaim: ${e instanceof Error ? e.message : e}`);
+  }
 
   // 1. Schedule-triggered automation rules (cron).
   try {
@@ -107,7 +118,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;

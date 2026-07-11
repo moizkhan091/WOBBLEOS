@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cronDue } from "@/lib/scheduler";
+import { cronDue, runScheduledTick } from "@/lib/scheduler";
 import { dispatchEvent, invalidateEventRuleCache, type AutomationStore } from "@/lib/automations";
 import { buildAutomationRow, type AutomationRow } from "@/lib/domain/automation";
 
@@ -16,6 +16,21 @@ describe("cronDue", () => {
   });
   it("never throws on a bad cron", () => {
     expect(cronDue("not a cron", new Date("2026-07-10T00:00:00Z"), now)).toBe(false);
+  });
+});
+
+describe("runScheduledTick crash-recovery", () => {
+  it("reclaims stalled jobs every tick (wired, not dormant)", async () => {
+    let reclaimCalled = false;
+    const result = await runScheduledTick({
+      now,
+      enqueue: async () => ({ job: { id: "j" } }),
+      recordAudit: async () => {},
+      reclaimStalled: async () => { reclaimCalled = true; return 3; },
+    });
+    expect(reclaimCalled).toBe(true); // wired into the tick, not dormant
+    expect(result.stalledReclaimed).toBe(3);
+    expect(result.errors.some((e) => e.startsWith("reclaim:"))).toBe(false); // reclaim itself did not error
   });
 });
 
