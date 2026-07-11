@@ -50,6 +50,19 @@ export interface CrmStore {
 
   insertStageHistory(row: StageHistoryRow): Promise<void>;
   listStageHistory(opportunityId: string): Promise<StageHistoryRow[]>;
+
+  /**
+   * Run a multi-row write chain atomically. The default (DB) store maps this to a real Postgres
+   * transaction so a partial failure rolls back — no orphaned company/opportunity, no half-converted
+   * lead. Optional so lightweight test/in-memory stores can omit it; callers fall back to a plain
+   * sequential run when it is absent.
+   */
+  transaction?<T>(fn: (txStore: CrmStore) => Promise<T>): Promise<T>;
+}
+
+/** Run `fn` inside the store's transaction when it supports one, else sequentially. */
+async function withTransaction<T>(store: CrmStore, fn: (s: CrmStore) => Promise<T>): Promise<T> {
+  return store.transaction ? store.transaction(fn) : fn(store);
 }
 
 export interface CrmDeps {
@@ -143,23 +156,28 @@ export async function convertLead(
 
   const companyName = input.companyName || lead.companyName || lead.name;
   const company = buildCompanyRow({ name: companyName, website: lead.website ?? undefined, industry: lead.industry ?? undefined, leadSource: lead.source ?? undefined, status: "qualified_prospect", createdBy: input.actor, metadata: { fromLeadId: leadId } }, { now });
-  await store.insertCompany(company);
 
   const contactName = input.contactName || lead.contactName;
-  let contact: ContactRow | null = null;
-  if (contactName) {
-    contact = buildContactRow({ companyId: company.id, fullName: contactName, email: lead.email ?? undefined, phone: lead.phone ?? undefined, whatsapp: lead.whatsapp ?? undefined, leadSource: lead.source ?? undefined }, { now });
-    await store.insertContact(contact);
-  }
+  const contact: ContactRow | null = contactName
+    ? buildContactRow({ companyId: company.id, fullName: contactName, email: lead.email ?? undefined, phone: lead.phone ?? undefined, whatsapp: lead.whatsapp ?? undefined, leadSource: lead.source ?? undefined }, { now })
+    : null;
 
   const opportunity = buildOpportunityRow(
     { name: `${companyName} — ${(lead.serviceInterest[0] ?? "AI OS")}`, companyId: company.id, contactId: contact?.id, stage: input.stage ?? "qualified", valueCents: input.valueCents ?? 0, serviceInterest: lead.serviceInterest, painPoints: lead.problemStated ?? undefined, source: lead.source ?? undefined, createdBy: input.actor },
     { now },
   );
-  await store.insertOpportunity(opportunity);
-  await store.insertStageHistory({ id: newId("hist"), opportunityId: opportunity.id, oldStage: null, newStage: opportunity.stage, movedBy: input.actor ?? "system", reason: "converted from lead", createdAt: now });
 
-  await store.updateLead(leadId, { status: "converted", convertedOpportunityId: opportunity.id, updatedAt: now });
+  // Atomic: company + contact + opportunity + stage history + lead flip commit together or not at
+  // all. A failure mid-chain used to orphan a company and leave the lead unconverted (re-running
+  // then created a duplicate company). Audit only after the transaction commits.
+  await withTransaction(store, async (tx) => {
+    await tx.insertCompany(company);
+    if (contact) await tx.insertContact(contact);
+    await tx.insertOpportunity(opportunity);
+    await tx.insertStageHistory({ id: newId("hist"), opportunityId: opportunity.id, oldStage: null, newStage: opportunity.stage, movedBy: input.actor ?? "system", reason: "converted from lead", createdAt: now });
+    await tx.updateLead(leadId, { status: "converted", convertedOpportunityId: opportunity.id, updatedAt: now });
+  });
+
   await audit(deps, { eventType: "crm.lead_converted", module: CRM_MODULE, entityType: "crm_lead", entityId: leadId, actor: input.actor ?? "system", metadata: { companyId: company.id, opportunityId: opportunity.id } });
   return { company, contact, opportunity };
 }
@@ -170,8 +188,10 @@ export async function addOpportunity(input: CreateOpportunityInput, deps: CrmDep
   const store = deps.store ?? defaultStore();
   const row = buildOpportunityRow(input, { now: deps.now });
   row.status = statusForStage(row.stage as PipelineStage);
-  await store.insertOpportunity(row);
-  await store.insertStageHistory({ id: newId("hist"), opportunityId: row.id, oldStage: null, newStage: row.stage, movedBy: row.createdBy ?? "system", reason: "created", createdAt: deps.now ?? new Date() });
+  await withTransaction(store, async (tx) => {
+    await tx.insertOpportunity(row);
+    await tx.insertStageHistory({ id: newId("hist"), opportunityId: row.id, oldStage: null, newStage: row.stage, movedBy: row.createdBy ?? "system", reason: "created", createdAt: deps.now ?? new Date() });
+  });
   await audit(deps, { eventType: "crm.opportunity_created", module: CRM_MODULE, entityType: "crm_opportunity", entityId: row.id, actor: row.createdBy ?? "system", metadata: { stage: row.stage, valueCents: row.valueCents } });
   return row;
 }
@@ -195,8 +215,10 @@ export async function moveOpportunityStage(id: string, newStage: PipelineStage, 
   const status = statusForStage(newStage);
   const fields: Partial<OpportunityRow> = { stage: newStage, status, updatedAt: now };
   if (newStage === "won") fields.probability = 100;
-  await store.updateOpportunity(id, fields);
-  await store.insertStageHistory({ id: newId("hist"), opportunityId: id, oldStage: opp.stage, newStage, movedBy: input.actor ?? "system", reason: input.reason ?? null, createdAt: now });
+  await withTransaction(store, async (tx) => {
+    await tx.updateOpportunity(id, fields);
+    await tx.insertStageHistory({ id: newId("hist"), opportunityId: id, oldStage: opp.stage, newStage, movedBy: input.actor ?? "system", reason: input.reason ?? null, createdAt: now });
+  });
   await audit(deps, { eventType: "crm.opportunity_stage_moved", module: CRM_MODULE, entityType: "crm_opportunity", entityId: id, actor: input.actor ?? "system", metadata: { from: opp.stage, to: newStage, status } });
   return { ...opp, ...fields };
 }
@@ -260,5 +282,11 @@ export function defaultStore(db: Db = getDb()): CrmStore {
 
     async insertStageHistory(row) { await db.insert(crmStageHistory).values(row); },
     async listStageHistory(opportunityId) { const rows = await db.select().from(crmStageHistory).where(eq(crmStageHistory.opportunityId, opportunityId)).orderBy(desc(crmStageHistory.createdAt)); return rows as StageHistoryRow[]; },
+
+    // Real Postgres transaction: build a store bound to the tx handle so every write in `fn` commits
+    // atomically (or rolls back together on any throw).
+    async transaction(fn) {
+      return db.transaction((tx) => fn(defaultStore(tx as unknown as Db)));
+    },
   };
 }

@@ -29,22 +29,27 @@ Branch: `main` · Last green HEAD: `0e8a414` · CI = Node 22 `typecheck → test
 | Agent roster: 11 decoration agents shown "active" | fixed-verified | 68f6b9c |
 | Agent orphan slugs (pitch/roadmap/analyst runs dropped) | fixed-verified | 68f6b9c |
 | Library: Zernio can't fetch local media | fixed-verified | 7560191/0e8a414 |
-| Memory cross-bank retrieval leak (deny-by-default scoping) | fixed-verified | (this commit) |
+| Memory cross-bank retrieval leak (deny-by-default scoping) | fixed-verified | f68ad8b |
+| CRM convert/opportunity writes non-atomic (orphan rows) | fixed-verified | (this commit) |
 
 ## FALSE POSITIVES (verified against code — do NOT act)
 - **Vector ANN indexes missing** — WRONG. `memory_chunks`/`source_chunks`/`intelligence_items` already have HNSW indexes (`*_embedding_idx`). Verified via pg_indexes.
 - Most "route has no auth" criticals — `proxy.ts` middleware gates all non-public routes; real residual items are narrower (below).
 
 ## OPEN — verified/likely, prioritized (next)
-1. **CRM convertLead not transactional** (data-integrity) — multi-row insert chain with no tx; partial failure orphans rows. Wrap in a transaction.
-2. **Knowledge compiler prompt-injection** — untrusted chunk text concatenated unfenced into the compiler prompt. Fence like analyst/dreamer.
-3. **website-analytics** — `period` query param interpolated raw into Plausible URL (encode + allowlist).
-4. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
-5. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
-6. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
-7. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
-8. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
-9. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+1. **Knowledge compiler prompt-injection** — untrusted chunk text concatenated unfenced into the compiler prompt. Fence like analyst/dreamer.
+2. **website-analytics** — `period` query param interpolated raw into Plausible URL (encode + allowlist).
+3. **Ask WOBBLE unbounded input tokens** (cost) — injects full brain + memory + sources + snapshot + 12 intel items, no total cap. Add an evidence-token budget.
+4. **Content-graph no checkpointing** (reliability/cost) — a node returning bad JSON discards all prior (paid) node work. Persist node outputs; resume from failed node.
+5. **Agent telemetry** — failure/quality/cost not recorded on graph nodes (content/paid-audit only log success; qualityScore/cost null). Wire failed-run + cost/latency + quality.
+6. **Registry integrity test** — add a test that fails if an active agent has no handler/trigger, a job type has no handler, etc. (mandate requirement).
+7. **Library scheduling** — schedulePost pushes to Zernio before local insert (orphan on failure); scheduleRemote chosen by config not publisher; publishing.dispatch handler dead without scheduler (now scheduler exists — verify it dispatches).
+8. Mediums/lows across modules — see MODULE_DEEP_AUDIT.md.
+
+## Notes on the CRM atomicity fix (open item closed)
+- Verified: `convertLead` ran 5 sequential writes (company→contact→opportunity→stage history→lead flip) with no transaction; a failure after `insertCompany` orphaned a company and left the lead open, and a retry created a DUPLICATE company. `addOpportunity` and `moveOpportunityStage` had the same 2-write gap.
+- Fix: added an optional `transaction<T>(fn)` to `CrmStore`; the default store maps it to a real Postgres `db.transaction` (store re-bound to the tx handle). A `withTransaction(store, fn)` helper wraps all three multi-write flows so they commit atomically or roll back together; audit fires only after commit. Test/in-memory stores may omit `transaction` (falls back to sequential). First real DB transaction in the codebase — this is the pattern other multi-write flows should adopt.
+- NOT fixed here (separate concern): concurrent double-submit of the same lead can still race (two readers both see "open" before either commits). Needs `SELECT … FOR UPDATE` on the lead inside the tx — logged as a follow-up, not a partial-write/orphan issue.
 
 ## Notes on the memory-scoping fix (open item #1 closed)
 - Verified the leak was real: `retrieveMemoryCandidates` only filters banks when `bankSlugs` is passed; every unscoped caller (Ask WOBBLE, ai-chat, content-worker, ask-tools, /api/memory/retrieve) passed none → semantic search ranked across ALL banks, incl. the 4 owner-scoped `founder_*` private banks (and any future per-client bank via `client_source`).

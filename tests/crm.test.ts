@@ -69,6 +69,23 @@ function makeStore() {
     updateOpportunity: async (id, f) => { const o = opps.get(id); if (o) opps.set(id, { ...o, ...f }); },
     insertStageHistory: async (r) => void history.push(r),
     listStageHistory: async (oid) => history.filter((h) => h.opportunityId === oid),
+    // Model real transaction semantics: snapshot the maps, run the chain, and on any throw restore
+    // the snapshot so nothing partial survives (mirrors Postgres ROLLBACK).
+    transaction: async (fn) => {
+      const snap = { companies: new Map(companies), contacts: new Map(contacts), leads: new Map(leads), opps: new Map(opps), history: [...history] };
+      try {
+        return await fn(store);
+      } catch (e) {
+        const restore = <K, V>(live: Map<K, V>, saved: Map<K, V>) => { live.clear(); saved.forEach((v, k) => live.set(k, v)); };
+        restore(companies, snap.companies);
+        restore(contacts, snap.contacts);
+        restore(leads, snap.leads);
+        restore(opps, snap.opps);
+        history.length = 0;
+        history.push(...snap.history);
+        throw e;
+      }
+    },
   };
   return { store, companies, contacts, leads, opps, history };
 }
@@ -110,5 +127,25 @@ describe("crm service", () => {
     expect(await convertLead(lead.id, { companyName: "Dup" }, { store, now, recordAudit: async () => {} })).toBeNull();
     expect((await listOpportunities({}, { store }))).toHaveLength(1);
     expect(opps.size).toBe(1);
+  });
+
+  it("convertLead is atomic: a mid-chain failure rolls back with no orphaned company or half-converted lead", async () => {
+    const { store, companies, contacts, opps } = makeStore();
+    const lead = await addLead({ name: "Inbound", source: "referral", intentLevel: "high", serviceInterest: ["ai-receptionist"], problemStated: "missing calls" }, { store, now, recordAudit: async () => {} });
+
+    // The opportunity insert blows up partway through the conversion chain.
+    store.insertOpportunity = async () => { throw new Error("db down"); };
+
+    await expect(
+      convertLead(lead.id, { companyName: "Acme Dental", contactName: "Dr. Smith", valueCents: 600000, actor: "Moiz" }, { store, now, recordAudit: async () => {} }),
+    ).rejects.toThrow("db down");
+
+    // Nothing partial survived: no company, no contact, no opportunity, lead still open.
+    expect(companies.size).toBe(0);
+    expect(contacts.size).toBe(0);
+    expect(opps.size).toBe(0);
+    const stillOpen = (await store.getLead(lead.id))!;
+    expect(stillOpen.status).not.toBe("converted");
+    expect(stillOpen.convertedOpportunityId ?? null).toBeNull();
   });
 });
