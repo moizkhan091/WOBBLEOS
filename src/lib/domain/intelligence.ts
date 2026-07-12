@@ -1316,3 +1316,29 @@ export function detectInsightConflicts(
   }
   return conflicts;
 }
+
+// ---------------------------------------------------------------- change detection + snapshots (Phase 5, D)
+//
+// Each collected observation is an immutable SNAPSHOT of a source at a point in time. A CHANGE is a content
+// diff between two consecutive snapshots of the same source — evidence-backed by the before/after snapshot
+// ids (never an unattributed claim). Deterministic; the caller passes a single source's snapshots.
+
+export interface SourceChange {
+  beforeItemId: string;
+  afterItemId: string;
+  changedAt: Date;
+  summary: string;
+}
+
+export function detectSourceChanges(
+  snapshots: Array<{ id: string; summary: string; collectedAt: Date }>,
+): SourceChange[] {
+  const sorted = [...snapshots].sort((a, b) => a.collectedAt.getTime() - b.collectedAt.getTime());
+  const changes: SourceChange[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    if (_normText(sorted[i - 1].summary) !== _normText(sorted[i].summary)) {
+      changes.push({ beforeItemId: sorted[i - 1].id, afterItemId: sorted[i].id, changedAt: sorted[i].collectedAt, summary: "source content changed vs the prior snapshot" });
+    }
+  }
+  return changes;
+}

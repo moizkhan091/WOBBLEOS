@@ -4239,3 +4239,16 @@ GATE: typecheck 0 · 828 tests / 102 files · build 0 · no schema/migration.
 
 Phase 5 remaining: source registry field enrichment · snapshots + change detection · richer ingestion · a
 continuous-research UI + Playwright. Then Context OS; Phases 6–11.
+
+## cont.32 — Phase 5: change detection + snapshots (built + proven)
+
+Mandate D: each collected observation is an immutable SNAPSHOT; a CHANGE is a content diff between two
+consecutive snapshots of the same source, evidence-backed by before/after snapshot ids (never unattributed).
+`detectSourceChanges(snapshots)` (pure domain) — orders by collectedAt, diffs consecutive (case/whitespace-
+insensitive). Proven: 4 unit tests (`source-changes.test.ts`) — change with before/after ids, no-change on
+identical, ordered series, single-snapshot no-op.
+
+GATE: typecheck 0 · 832 tests / 102 files · build 0 · no schema/migration.
+
+Phase 5 remaining: source registry field enrichment · richer ingestion (transcript/video-frame/visual) ·
+continuous-research UI + Playwright. Then Context OS; Phases 6–11.
