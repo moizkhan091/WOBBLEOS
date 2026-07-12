@@ -3683,3 +3683,20 @@ STATE: Priorities 1, 2, 4 done + the independent-review HIGH/LOW findings fixed 
 safety: invoices are draft-only (founder approves) AND now per-deal idempotent. NEXT: Priority 3 (QA boards
 gate live workflows), Priority 5 (escalation-control proof incl. reroute + duplicate-clicks + unauthorized
 users in required CI), then Phases 5-11. Do NOT deploy to VPS.
+
+## 2026-07-12 (cont. 11) - Claude (Opus 4.8) - Authoritative-state reconciliation (docs) before the AIOS expansion wave
+
+Reconciled the stale top-of-file headers in WAR_ROOM_STATUS.md §1 and REMEDIATION_LEDGER.md ⭐ against the
+real repo/runtime, per the continuation mandate. Corrected: placeholder HEAD → `06ab137` (docs) / `221becc`
+(latest code-bearing CI-green); "0037 latest" → **0038_qa_reviews**; "724 tests (96 files)" → **746 tests
+(97 files)**; Playwright described stale → **required + green in real CI**; MED #5 (atomic proposal-accept)
+and LOW #7 (dispatch-time classification) were listed as OPEN follow-ups → both **DONE + proven**; flagged
+the very stale `HEAD: 090c3ee` ledger line as the historical deep-audit trail, not current.
+
+CURRENT AUTHORITATIVE STATE: main @ `06ab137`, code-bearing `221becc`, migration 0038, 746 tests/97 files,
+typecheck + build + required Playwright CI all green, 8 active departments, autonomous consumer loop +
+atomic accept origination + dispatch-time classification + consumer-reclaim idempotency all complete.
+OPEN war-room priorities: P3 (wire QA to gate live workflows), P5 (real `reroute` execution — currently a
+label; + escalation edge-case Playwright in required CI), the transcript-derived operating layer (Context
+OS / Decision Learning / Daily Founder Brief / AIOS-KPIs / Prime-Brainstorm-Explore / Visual Cockpit /
+Project Intelligence Graph — see docs/AIOS_TRANSCRIPT_DELTA_2026_07_12.md), and Phases 5–11.

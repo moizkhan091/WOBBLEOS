@@ -8,12 +8,14 @@ cd "C:\Wobble OS" && git pull && git rev-parse --short HEAD && ls src/db/migrati
 ```
 Then read this file's §6 (open work) and continue the next unchecked item.
 
-## 1. Verified current state (checked against the repo, not summaries)
-- **Branch:** `main` · **HEAD:** `<commercial-operating-unit + consumer-loop commit>` · working tree clean.
-- **Migrations applied (0037 latest, zero drift):** 0032 departments · 0033 department_members · 0034 budget_reservations · 0035 escalations · 0036 provider_usage · 0037 escalation_links. (The Commercial Operating Unit + consumer loop added NO migration — they consume existing services + the existing handoff runtime.)
-- **Gate:** typecheck 0 · **724 tests (96 files)** · build 0 · real-DB proofs pass (incl. `verify-proposal-vertical-db` + `verify-content-vertical-db` + `verify-research-intelligence-vertical-db` + **`verify-department-consumer-db`** + **`verify-commercial-chain-db`**, each run twice cleanly).
-- **Phases 1–2:** COMPLETE. **Phase 3 RUNTIME:** correctness-complete (see §3). **Phase-3 verticals:** Paid Audit + **Proposal** + **Content** + **Research & Intelligence** + **Commercial Operating Unit (Sales/CRM → Finance → Delivery)** done. **AUTONOMOUS CHAIN NOW WIRED (see §3a).** **Phases 4–10:** open (see §6). **VPS:** not deployed (blocked — see §7).
-- **Active departments (8):** paid_audit, content, proposal, research_intelligence, **sales_crm, finance, delivery**, founder_command_centre.
+## 1. Verified current state (checked against the repo + runtime, not summaries) — CURRENT as of HEAD 06ab137
+- **Branch:** `main` · **HEAD:** `06ab137` (docs) · **latest code-bearing CI-green commit:** `221becc` · working tree clean.
+- **Migrations:** latest = **`0038_qa_reviews`** (39 files 0000–0038; 40 rows on the local dev DB — one historical off-by-one, harmless; a from-scratch apply produces exactly 39 + zero drift — proven this wave when fixing the CI migration). Migration `0026` is idempotent (`CREATE INDEX IF NOT EXISTS`) so it applies clean from scratch.
+- **Gate:** typecheck 0 · **746 tests (97 files)** · build 0 · required GitHub CI green (both jobs) on `221becc` and `06ab137`. Real-DB proofs pass twice each: `verify-{proposal-vertical,content-vertical,research-intelligence-vertical,department-consumer,commercial-chain,proposal-accept-origination,qa-boards,department-*}-db`.
+- **Playwright E2E:** REQUIRED on push/PR (no continue-on-error), **green in real CI** — 10 browser tests proving real DB effects. (Fixed this wave: from-scratch `db:migrate`, and a production Secure-cookie vs APIRequestContext mismatch via a test-only `SESSION_COOKIE_INSECURE`.)
+- **Phases 1–2:** COMPLETE. **Phase 3 RUNTIME + verticals:** COMPLETE (Paid Audit + Proposal + Content + Research & Intelligence + Commercial Operating Unit) with the AUTONOMOUS consumer loop wired + proven. **Phase 4 QA:** framework + `qa_reviews` persistence COMPLETE, but **not yet gating live workflows** (Priority 3). **VPS:** not deployed (blocked — external).
+- **Active departments (8):** paid_audit, content, proposal, research_intelligence, sales_crm, finance, delivery, founder_command_centre. **Draft (5):** free_audit, design_intelligence, media_production, publishing, security_governance.
+- **War-room Priorities DONE this session:** **P1** Playwright required+green in CI · **P2** atomic proposal-accept → Sales/CRM outbox origination (reviewer #5) · **P4** dispatch-time classification gate (reviewer #7) · independent-review loop (HIGH consumer-reclaim idempotency + 2 LOWs fixed). **OPEN:** **P3** wire QA to gate live flows · **P5** real `reroute` execution (currently a label only) + escalation edge-case Playwright · **transcript operating layer** (Context OS / Decision Learning / Daily Brief / AIOS-KPIs / Prime-Brainstorm-Explore / Visual Cockpit / Project Graph — see §10 + `AIOS_TRANSCRIPT_DELTA_2026_07_12.md`) · Phases 5–11.
 
 ## 1a. Independent-reviewer findings this wave — HIGH/ MEDIUM addressed (evidence-backed)
 An independent read-only reviewer audited the merged Phase-3 runtime. Confirmed + fixed this batch:
