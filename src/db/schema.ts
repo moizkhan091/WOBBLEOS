@@ -1752,6 +1752,12 @@ export const escalations = pgTable("escalations", {
   sourceAgent: varchar("source_agent", { length: 120 }),
   reason: varchar("reason", { length: 48 }).notNull(), // reason category
   severity: varchar("severity", { length: 16 }).notNull().default("medium"), // low | medium | high | critical
+  // Links to the real execution so a founder action controls the actual workflow (not just the record).
+  handoffId: text("handoff_id"),
+  budgetReservationId: text("budget_reservation_id"),
+  approvalId: text("approval_id"),
+  jobId: text("job_id"),
+  graphRunId: text("graph_run_id"),
   evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
   attemptedRecoveries: jsonb("attempted_recoveries").$type<string[]>().notNull().default([]),
   requiredDecision: text("required_decision").notNull(),

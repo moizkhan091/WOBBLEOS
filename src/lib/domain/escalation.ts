@@ -51,6 +51,12 @@ export interface EscalationRow {
   sourceAgent: string | null;
   reason: EscalationReason;
   severity: EscalationSeverity;
+  /** Links to the real execution so a founder action controls the actual workflow, not just the record. */
+  handoffId: string | null;
+  budgetReservationId: string | null;
+  approvalId: string | null;
+  jobId: string | null;
+  graphRunId: string | null;
   evidence: Record<string, unknown>;
   attemptedRecoveries: string[];
   requiredDecision: string;
@@ -74,6 +80,11 @@ export const escalationInputSchema = z.object({
   sourceAgent: z.string().trim().min(1).nullable().default(null),
   reason: z.enum(ESCALATION_REASONS),
   severity: z.enum(ESCALATION_SEVERITIES).default("medium"),
+  handoffId: z.string().trim().min(1).nullable().default(null),
+  budgetReservationId: z.string().trim().min(1).nullable().default(null),
+  approvalId: z.string().trim().min(1).nullable().default(null),
+  jobId: z.string().trim().min(1).nullable().default(null),
+  graphRunId: z.string().trim().min(1).nullable().default(null),
   evidence: z.record(z.string(), z.unknown()).default({}),
   attemptedRecoveries: z.array(z.string().trim().min(1)).default([]),
   requiredDecision: z.string().trim().min(1),
@@ -94,6 +105,11 @@ export function buildEscalationRow(input: EscalationInput, opts: { id?: string; 
     sourceAgent: parsed.sourceAgent,
     reason: parsed.reason,
     severity: parsed.severity,
+    handoffId: parsed.handoffId,
+    budgetReservationId: parsed.budgetReservationId,
+    approvalId: parsed.approvalId,
+    jobId: parsed.jobId,
+    graphRunId: parsed.graphRunId,
     evidence: parsed.evidence,
     attemptedRecoveries: parsed.attemptedRecoveries,
     requiredDecision: parsed.requiredDecision,

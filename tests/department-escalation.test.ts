@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildEscalationRow, isEscalationOverdue, type EscalationRow } from "@/lib/domain/escalation";
-import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, listEscalations, escalationStatusCounts, type EscalationStore } from "@/lib/departments/escalation";
+import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, listEscalations, escalationStatusCounts, type EscalationStore } from "@/lib/departments/escalation";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -82,10 +82,61 @@ describe("escalation service", () => {
     expect((await escalationStatusCounts(deps(store))).open).toBe(2);
   });
 
-  it("dismiss closes a non-actionable escalation", async () => {
+  it("dismiss closes a non-actionable escalation (work stays blocked)", async () => {
     const { store, rows } = makeStore();
     const { escalation } = await createEscalation(input(), deps(store));
     expect(await dismissEscalation(escalation.id, "Moiz", "not a real problem", deps(store))).toBe(true);
     expect(rows.get(escalation.id)!.status).toBe("dismissed");
+  });
+});
+
+describe("real escalation action semantics — control the actual workflow", () => {
+  const dlInput = () => ({ departmentSlug: "paid_audit", workflowId: "wf1", taskId: "t1", reason: "dead_lettered" as const, severity: "high" as const, requiredDecision: "resume/terminate", handoffId: "handoff_x" });
+
+  it("RESUME redrives the linked handoff and resolves with action=resume", async () => {
+    const { store, rows } = makeStore();
+    const { escalation } = await createEscalation(dlInput(), deps(store));
+    let redriven: string | null = null;
+    const r = await resumeEscalation(escalation.id, "Moiz", { ...deps(store), getHandoffState: async () => "dead_lettered", redriveHandoff: async (id) => { redriven = id; return true; } });
+    expect(r.ok).toBe(true);
+    expect(redriven).toBe("handoff_x"); // the REAL handoff was redriven
+    expect(rows.get(escalation.id)!.status).toBe("resolved");
+    expect(rows.get(escalation.id)!.resolutionAction).toBe("resume");
+  });
+
+  it("RESUME fails clearly when the handoff is not resumable (completed/cancelled)", async () => {
+    const { store, rows } = makeStore();
+    const { escalation } = await createEscalation(dlInput(), deps(store));
+    const r = await resumeEscalation(escalation.id, "Moiz", { ...deps(store), getHandoffState: async () => "completed", redriveHandoff: async () => true });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/not resumable/);
+    expect(rows.get(escalation.id)!.status).toBe("open"); // unchanged
+  });
+
+  it("RESUME is idempotent — a second resume on a resolved escalation is a no-op success", async () => {
+    const { store } = makeStore();
+    const { escalation } = await createEscalation(dlInput(), deps(store));
+    const seams = { ...deps(store), getHandoffState: async () => "dead_lettered", redriveHandoff: async () => true };
+    await resumeEscalation(escalation.id, "Moiz", seams);
+    const again = await resumeEscalation(escalation.id, "Moiz", seams);
+    expect(again.ok).toBe(true); // idempotent
+  });
+
+  it("TERMINATE cancels every non-terminal handoff of the workflow + releases the reservation", async () => {
+    const { store, rows } = makeStore();
+    const { escalation } = await createEscalation({ ...dlInput(), budgetReservationId: "res_1" }, deps(store));
+    const cancelled: string[] = [];
+    let released: string | null = null;
+    const r = await terminateEscalation(escalation.id, "Moiz", {
+      ...deps(store),
+      listWorkflowHandoffs: async () => [{ id: "h_a", deliveryState: "delivered" }, { id: "h_b", deliveryState: "completed" }, { id: "h_c", deliveryState: "processing" }],
+      cancelHandoff: async (id) => { cancelled.push(id); return true; },
+      releaseReservation: async (id) => { released = id; return true; },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.cancelled).toBe(2); // h_a (delivered) + h_c (processing); h_b already completed → skipped
+    expect(cancelled.sort()).toEqual(["h_a", "h_c"]);
+    expect(released).toBe("res_1"); // budget reservation released
+    expect(rows.get(escalation.id)!.resolutionAction).toBe("terminate");
   });
 });

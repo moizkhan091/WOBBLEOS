@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
-import { getEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation } from "@/lib/departments/escalation";
+import { getEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation } from "@/lib/departments/escalation";
 import { ESCALATION_RESOLUTION_ACTIONS } from "@/lib/domain/escalation";
 
 export const dynamic = "force-dynamic";
@@ -33,11 +33,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!existing) return NextResponse.json({ ok: false, error: `escalation '${id}' not found` }, { status: 404 });
 
     let ok = false;
-    if (parsed.data.action === "acknowledge") ok = await acknowledgeEscalation(id, auth);
-    else if (parsed.data.action === "resolve") ok = await resolveEscalation(id, { action: parsed.data.resolutionAction, resolution: parsed.data.resolution, resolvedBy: auth });
-    else ok = await dismissEscalation(id, auth, parsed.data.reason);
+    let reason: string | undefined;
+    if (parsed.data.action === "acknowledge") {
+      ok = await acknowledgeEscalation(id, auth);
+    } else if (parsed.data.action === "dismiss") {
+      ok = await dismissEscalation(id, auth, parsed.data.reason);
+    } else if (parsed.data.resolutionAction === "resume") {
+      // Resume controls the REAL workflow: redrive the linked handoff, then resolve.
+      const r = await resumeEscalation(id, auth); ok = r.ok; reason = r.error;
+    } else if (parsed.data.resolutionAction === "terminate") {
+      // Terminate cancels the real workflow + releases held budget, then resolves.
+      const r = await terminateEscalation(id, auth); ok = r.ok; reason = r.error;
+    } else {
+      ok = await resolveEscalation(id, { action: parsed.data.resolutionAction, resolution: parsed.data.resolution, resolvedBy: auth });
+    }
 
-    if (!ok) return NextResponse.json({ ok: false, error: `cannot ${parsed.data.action} an escalation in state '${existing.status}'` }, { status: 409 });
+    if (!ok) return NextResponse.json({ ok: false, error: reason ?? `cannot ${parsed.data.action} an escalation in state '${existing.status}'` }, { status: 409 });
     return NextResponse.json({ ok: true, escalation: await getEscalation(id) });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

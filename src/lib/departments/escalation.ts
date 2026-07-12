@@ -87,6 +87,79 @@ export async function resolveEscalation(id: string, input: ResolveEscalationInpu
   return ok;
 }
 
+/** Injectable seams so the real-workflow actions are testable without a DB. Default to the live runtime. */
+export interface EscalationActionDeps extends EscalationDeps {
+  redriveHandoff?: (id: string, actor: string) => Promise<boolean>;
+  cancelHandoff?: (id: string, actor: string) => Promise<boolean>;
+  getHandoffState?: (id: string) => Promise<string | null>;
+  listWorkflowHandoffs?: (workflowId: string) => Promise<Array<{ id: string; deliveryState: string }>>;
+  releaseReservation?: (reservationId: string) => Promise<boolean>;
+}
+
+async function handoffRuntime(deps: EscalationActionDeps) {
+  const h = await import("@/lib/handoff");
+  return {
+    redrive: deps.redriveHandoff ?? ((id: string, actor: string) => h.redriveHandoff(id, actor)),
+    cancel: deps.cancelHandoff ?? ((id: string, actor: string) => h.cancelHandoff(id, actor)),
+    getState: deps.getHandoffState ?? (async (id: string) => (await h.getHandoff(id))?.deliveryState ?? null),
+    listWorkflow: deps.listWorkflowHandoffs ?? (async (wf: string) => (await h.listHandoffs({ workflowId: wf, limit: 200 })).map((r) => ({ id: r.id, deliveryState: r.deliveryState }))),
+  };
+}
+
+/**
+ * RESUME: put the real blocked execution back in flight. Redrives the linked handoff (which validates it
+ * is resumable — a completed/cancelled handoff cannot be resumed), then resolves the escalation with
+ * action=resume. The runtime re-executes from the correct point (handoff + checkpoint dedup preserve
+ * completed stages, lineage and tenant scope). If the block persists, a fresh escalation is raised.
+ * Idempotent: resuming an already-resolved escalation is a no-op success.
+ */
+export async function resumeEscalation(id: string, actor: string, deps: EscalationActionDeps = {}): Promise<{ ok: boolean; error?: string }> {
+  const store = deps.store ?? defaultStore();
+  const row = await store.getById(id);
+  if (!row) return { ok: false, error: "escalation not found" };
+  if (row.status === "resolved") return { ok: true }; // idempotent
+  if (!row.handoffId) return { ok: false, error: "escalation has no linked handoff to resume" };
+  const rt = await handoffRuntime(deps);
+  const state = await rt.getState(row.handoffId);
+  if (state === "completed" || state === "cancelled") return { ok: false, error: `handoff is ${state} — not resumable` };
+  const redriven = await rt.redrive(row.handoffId, actor);
+  if (!redriven) return { ok: false, error: "handoff could not be redriven (not in a resumable state)" };
+  await resolveEscalation(id, { action: "resume", resolution: `Resumed by ${actor}: handoff ${row.handoffId} redriven`, resolvedBy: actor }, deps);
+  await audit(deps, { eventType: "escalation.resumed", module: "departments", entityType: "escalation", entityId: id, actor, metadata: { handoffId: row.handoffId, workflowId: row.workflowId } });
+  return { ok: true };
+}
+
+/**
+ * TERMINATE: stop the real workflow. Cancels the linked handoff AND every other non-terminal handoff for
+ * the workflow (prevents future retry/redrive + child execution), releases any held budget reservation,
+ * preserves completed outputs + evidence + audit, then resolves the escalation with action=terminate.
+ * A terminated workflow will not restart unless a founder explicitly starts a new run.
+ */
+export async function terminateEscalation(id: string, actor: string, deps: EscalationActionDeps = {}): Promise<{ ok: boolean; cancelled: number; error?: string }> {
+  const store = deps.store ?? defaultStore();
+  const row = await store.getById(id);
+  if (!row) return { ok: false, cancelled: 0, error: "escalation not found" };
+  if (row.status === "resolved" && row.resolutionAction === "terminate") return { ok: true, cancelled: 0 }; // idempotent
+  const rt = await handoffRuntime(deps);
+  let cancelled = 0;
+  // Cancel every non-terminal handoff for the workflow (the linked one + siblings/children).
+  if (row.workflowId) {
+    for (const h of await rt.listWorkflow(row.workflowId)) {
+      if (!["completed", "cancelled", "dead_lettered"].includes(h.deliveryState)) { if (await rt.cancel(h.id, actor)) cancelled += 1; }
+    }
+  } else if (row.handoffId) {
+    if (await rt.cancel(row.handoffId, actor)) cancelled += 1;
+  }
+  // Release any held budget reservation.
+  if (row.budgetReservationId) {
+    const releaseFn = deps.releaseReservation ?? (async (rid: string) => (await import("@/lib/departments/budget")).releaseBudget(rid, {}));
+    await releaseFn(row.budgetReservationId).catch(() => false);
+  }
+  await resolveEscalation(id, { action: "terminate", resolution: `Terminated by ${actor}: ${cancelled} handoff(s) cancelled`, resolvedBy: actor }, deps);
+  await audit(deps, { eventType: "escalation.terminated", module: "departments", entityType: "escalation", entityId: id, actor, metadata: { workflowId: row.workflowId, cancelled } });
+  return { ok: true, cancelled };
+}
+
 export async function dismissEscalation(id: string, actor: string, reason: string, deps: EscalationDeps = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
@@ -123,7 +196,7 @@ export async function escalateDeadLetteredHandoffs(deps: EscalationDeps & { list
   let created = 0;
   for (const h of dead) {
     const r = await createEscalation(
-      { departmentSlug: h.department, workflowId: h.workflowId, taskId: h.taskId, clientWorkspaceId: h.clientWorkspaceId, sourceAgent: h.sourceAgent, reason: "dead_lettered", severity: "high", requiredDecision: "Dead-lettered handoff: redrive, reroute, or terminate this workflow step.", evidence: { handoffId: h.id, failureReason: h.failureReason }, attemptedRecoveries: ["automatic retries exhausted → dead-lettered"] },
+      { departmentSlug: h.department, workflowId: h.workflowId, taskId: h.taskId, clientWorkspaceId: h.clientWorkspaceId, sourceAgent: h.sourceAgent, reason: "dead_lettered", severity: "high", handoffId: h.id, requiredDecision: "Dead-lettered handoff: resume (redrive), reroute, or terminate this workflow step.", evidence: { handoffId: h.id, failureReason: h.failureReason }, attemptedRecoveries: ["automatic retries exhausted → dead-lettered"] },
       deps,
     );
     if (!r.deduped) created += 1;
