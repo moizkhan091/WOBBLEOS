@@ -52,4 +52,24 @@ describe("project service", () => {
     const bad = await transitionProject(p.id, "in_progress", {}, { store, now, recordAudit: async () => {} });
     expect(bad).toBeNull();
   });
+  it("fires the Delivery Completion trigger only on transition to completed", async () => {
+    const { store } = makeStore();
+    const fired: Array<{ id: string; status: string; actor: string }> = [];
+    const onProjectCompleted = async (project: { id: string; status: string }, actor: string) => { fired.push({ id: project.id, status: project.status, actor }); };
+    const p = await addProject({ name: "Y" }, { store, now, recordAudit: async () => {} });
+    await transitionProject(p.id, "in_progress", { actor: "moiz" }, { store, now, recordAudit: async () => {}, onProjectCompleted });
+    expect(fired).toHaveLength(0); // non-completed transitions never fire the completion trigger
+    const done = await transitionProject(p.id, "completed", { actor: "moiz" }, { store, now, recordAudit: async () => {}, onProjectCompleted });
+    expect(done?.status).toBe("completed");
+    expect(fired).toEqual([{ id: p.id, status: "completed", actor: "moiz" }]); // fired once, with the completed project + real actor
+  });
+  it("commits the completion transition even when the Delivery Completion trigger throws", async () => {
+    const { store } = makeStore();
+    const onProjectCompleted = async () => { throw new Error("routing unavailable"); };
+    const p = await addProject({ name: "Z" }, { store, now, recordAudit: async () => {} });
+    await transitionProject(p.id, "in_progress", {}, { store, now, recordAudit: async () => {} });
+    const done = await transitionProject(p.id, "completed", {}, { store, now, recordAudit: async () => {}, onProjectCompleted });
+    expect(done?.status).toBe("completed"); // best-effort: a trigger failure never rolls back the committed transition
+    expect((await store.getProject(p.id))?.status).toBe("completed");
+  });
 });

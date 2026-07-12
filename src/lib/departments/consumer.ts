@@ -57,6 +57,33 @@ export interface DepartmentConsumerDeps extends RunDepartmentDeps {
 const out = (env: HandoffEnvelope): Record<string, unknown> => (env.previousAgentOutputs as Record<string, unknown> | undefined) ?? {};
 const str = (v: unknown, fallback = ""): string => (v == null ? fallback : String(v));
 
+/** A minimal completed run result for a lightweight (non-department-graph) consumer handler. */
+function simpleResult(department: string, product: unknown): DepartmentRunResult<unknown> {
+  return { department, accepted: true, product, routedTo: [], escalations: [], telemetry: { costEstimate: 0, latencyMs: null, qualityScore: null, confidence: null } };
+}
+
+/**
+ * Finance consumer of a DELIVERY COMPLETION handoff: DETERMINISTIC revenue recognition — it applies the
+ * carried recognized-revenue / margin / outstanding figures (computed by deterministic code in
+ * completeDelivery) to a durable recognition audit. It NEVER runs the invoice-draft path (that would
+ * fabricate a second invoice + wrongly escalate). The LLM never touches this financial path.
+ */
+async function runFinanceRecognition(env: HandoffEnvelope, deps: DepartmentConsumerDeps): Promise<DepartmentRunResult<unknown>> {
+  const o = out(env);
+  const recordAudit = deps.recordAudit ?? (async (i: AuditEventInput) => { await writeAuditEvent(i); });
+  await recordAudit({ eventType: "finance.revenue_recognized", module: "departments", entityType: "delivery_completion", entityId: str(o.projectId, env.workflowId), actor: "finance_orchestrator", metadata: { workflowId: env.workflowId, opportunityId: o.opportunityId ?? null, recognizedRevenueCents: o.recognizedRevenueCents ?? 0, grossMarginCents: o.grossMarginCents ?? null, outstandingCents: o.outstandingCents ?? null, paymentState: o.paymentState ?? null, invoiceRefs: o.invoiceRefs ?? [] } });
+  return simpleResult("finance", { recognizedRevenueCents: Number(o.recognizedRevenueCents ?? 0), paymentState: o.paymentState ?? null });
+}
+
+/** Research consumer of a DELIVERY COMPLETION handoff: ingest the de-identified reusable lessons + scope
+ *  variance as an internal process-improvement signal (deterministic; approval-gated propagation is Phase 5). */
+async function runResearchLessonsIngest(env: HandoffEnvelope, deps: DepartmentConsumerDeps): Promise<DepartmentRunResult<unknown>> {
+  const o = out(env);
+  const recordAudit = deps.recordAudit ?? (async (i: AuditEventInput) => { await writeAuditEvent(i); });
+  await recordAudit({ eventType: "research.delivery_lessons_ingested", module: "departments", entityType: "delivery_completion", entityId: str(o.projectId, env.workflowId), actor: "research_intelligence_orchestrator", metadata: { workflowId: env.workflowId, reusableLessons: o.reusableLessons ?? [], scopeVariance: o.scopeVariance ?? null, qualityStatus: o.qualityStatus ?? null } });
+  return simpleResult("research_intelligence", { lessons: (o.reusableLessons as unknown[] | undefined)?.length ?? 0 });
+}
+
 /**
  * The consumer registry — one entry per department that has a REAL upstream producer:
  *   paid_audit → (business_audit) → proposal
@@ -89,18 +116,23 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
       { ...deps, ...deps.salesCrm, handoffStore: deps.handoffStore, inboundEnvelope: env },
     ),
   finance: (env, deps) =>
-    runFinanceDepartment(
-      {
-        opportunityId: (out(env).opportunityId as string | null) ?? null,
-        companyId: env.companyId ?? null,
-        proposalId: (out(env).proposalId as string | null) ?? null,
-        businessName: str(out(env).businessName, env.companyId ?? "client"),
-        amountCents: Number(out(env).valueCents ?? 0),
-        requestedBy: env.sourceAgent ?? "sales_crm_orchestrator",
-        workflowId: env.workflowId,
-      },
-      { ...deps, ...deps.finance, handoffStore: deps.handoffStore, inboundEnvelope: env },
-    ),
+    // Branch on the product schema: a delivery_completion → deterministic revenue recognition (no invoice);
+    // a won_deal → the invoice-draft department run.
+    env.expectedOutputSchema === "delivery_completion"
+      ? runFinanceRecognition(env, deps)
+      : runFinanceDepartment(
+          {
+            opportunityId: (out(env).opportunityId as string | null) ?? null,
+            companyId: env.companyId ?? null,
+            proposalId: (out(env).proposalId as string | null) ?? null,
+            businessName: str(out(env).businessName, env.companyId ?? "client"),
+            amountCents: Number(out(env).valueCents ?? 0),
+            requestedBy: env.sourceAgent ?? "sales_crm_orchestrator",
+            workflowId: env.workflowId,
+          },
+          { ...deps, ...deps.finance, handoffStore: deps.handoffStore, inboundEnvelope: env },
+        ),
+  research_intelligence: (env, deps) => runResearchLessonsIngest(env, deps),
   delivery: (env, deps) =>
     runDeliveryDepartment(
       {

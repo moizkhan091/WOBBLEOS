@@ -23,7 +23,7 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     status: "active", // scout→analyst→dreamer now run as a department policy (runResearchIntelligenceDepartment)
     orchestratorAgentSlug: "research_intelligence_orchestrator",
     permissions: { authorizedMemoryScopes: ["research", "competitor", "market", "company"], permittedDataClassifications: ["internal"] },
-    io: { inboundCapabilities: ["scout", "analyse", "dream"], acceptedHandoffSchemas: [], outboundProducts: ["validated_intelligence", "source_recommendations", "trend_reports", "opportunity_recommendations", "change_alerts"], downstreamConsumers: ["content", "proposal", "founder_command_centre"] },
+    io: { inboundCapabilities: ["scout", "analyse", "dream"], acceptedHandoffSchemas: ["delivery_completion"], outboundProducts: ["validated_intelligence", "source_recommendations", "trend_reports", "opportunity_recommendations", "change_alerts"], downstreamConsumers: ["content", "proposal", "founder_command_centre"] },
     governance: { requiredApprovals: ["intelligence_suggestion", "research_target"], escalationRules: [{ condition: "stale_intelligence", escalateTo: "founder_command_centre" }] },
     kpis: [{ key: "approval_rate", target: 0.6, unit: "ratio" }],
     owner: "Moiz",
@@ -131,7 +131,7 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     // client_confidential is permitted: client deals flow Sales/CRM → Finance for invoicing; without it the
     // client won_deal would be rejected at accept-time enforcement (see the dispatch-classification gate).
     permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted", "client_confidential"] },
-    io: { inboundCapabilities: ["invoice", "report_revenue"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["invoices", "payment_state", "revenue_margin_intelligence"], downstreamConsumers: ["founder_command_centre"] },
+    io: { inboundCapabilities: ["invoice", "report_revenue"], acceptedHandoffSchemas: ["won_deal", "delivery_completion"], outboundProducts: ["invoices", "payment_state", "revenue_margin_intelligence", "revenue_recognition"], downstreamConsumers: ["founder_command_centre"] },
     governance: { requiredApprovals: [], escalationRules: [{ condition: "margin_or_overdue_risk", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
   },
@@ -143,10 +143,10 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     orchestratorAgentSlug: "delivery_orchestrator",
     deterministicServices: ["addProject", "addTask"],
     permissions: { authorizedMemoryScopes: ["company", "client"], permittedDataClassifications: ["internal", "client_confidential"] },
-    // Completion routes to the Founder Command Centre (the human visibility hub — no autonomous consumer,
-    // so no mis-consumption). A dedicated Finance/Research completion-feed (revenue recognition) is a scoped
-    // follow-up: it requires Finance to gain a delivery_health consumer distinct from its won_deal path.
-    io: { inboundCapabilities: ["run_project"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["projects", "milestones", "tasks", "risks", "delivery_health"], downstreamConsumers: ["founder_command_centre"] },
+    // On project COMPLETION the Delivery Completion product routes to Finance (deterministic revenue
+    // recognition), Research (de-identified reusable lessons), and the Founder Command Centre (executive
+    // close-out). The kickoff delivery_health product routes to the founder hub only (see the vertical).
+    io: { inboundCapabilities: ["run_project"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["projects", "milestones", "tasks", "risks", "delivery_health", "delivery_completion"], downstreamConsumers: ["finance", "research_intelligence", "founder_command_centre"] },
     governance: { requiredApprovals: [], escalationRules: [{ condition: "delivery_blocked", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
   },

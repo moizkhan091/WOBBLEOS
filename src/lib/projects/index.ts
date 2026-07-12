@@ -17,6 +17,9 @@ export interface ProjectDeps {
   store?: ProjectStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
+  /** Fired (best-effort) when a project transitions to `completed` — the real trigger for the Delivery
+   *  Completion product (routes to Finance/Research/Founder). Injectable/off in tests; the default emits it. */
+  onProjectCompleted?: (project: ProjectRow, actor: string) => Promise<void>;
 }
 async function audit(deps: ProjectDeps, input: AuditEventInput): Promise<void> {
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
@@ -44,7 +47,15 @@ export async function transitionProject(id: string, to: ProjectStatus, input: { 
   const fields: Partial<ProjectRow> = { status: to, updatedAt: now, healthScore: computeHealthScore(next, now) };
   await store.updateProject(id, fields);
   await audit(deps, { eventType: `project.${to}`, module: PROJECT_MODULE, entityType: "project", entityId: id, actor: input.actor ?? "system", metadata: { from: project.status, to } });
-  return { ...project, ...fields };
+  const completed: ProjectRow = { ...project, ...fields };
+  // REAL TRIGGER for the Delivery Completion product: when a project completes, emit the versioned completion
+  // to Finance (deterministic recognition) / Research (lessons) / Founder. Best-effort — a routing failure
+  // (e.g. departments unseeded) never fails the transition. Lazy import avoids a projects↔delivery cycle.
+  if (to === "completed") {
+    const emit = deps.onProjectCompleted ?? (process.env.DATABASE_URL ? async (p: ProjectRow, actor: string) => { const { completeDelivery } = await import("@/lib/delivery-completion"); await completeDelivery({ project: p, requestedBy: actor }, {}); } : undefined);
+    if (emit) await emit(completed, input.actor ?? "system").catch((e) => console.error("[project.completed] delivery-completion emit failed (transition still committed):", e instanceof Error ? e.message : e));
+  }
+  return completed;
 }
 
 /** Toggle a milestone/deliverable done state and recompute health. index into combined list is item-specific. */

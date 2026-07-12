@@ -3801,3 +3801,39 @@ actual (evidence tiers); foundations honestly standalone.
 STATE: QA gates control REAL work on production triggers (paid_audit_qa + proposal technical/commercial).
 NEXT: content-gate production trigger; QA-gate + proposal-accept + escalation browser E2E in required CI;
 Delivery Completion product; Phase 5+.
+
+## cont.16 — Delivery Completion product: real trigger → Finance (recognition) + Research (lessons) + Founder
+
+Built the **Delivery Completion** product end-to-end — the missing terminal event of the commercial chain
+(won deal → project → delivery → **completion**). NOT a decorative product: it has a real trigger, a real
+execution path, deterministic financial writes, durable durable routing, real consumers, tests + real-DB proof.
+
+- **REAL TRIGGER** (`src/lib/projects/index.ts`): `transitionProject` fires an `onProjectCompleted` hook only
+  on transition `to === "completed"`. Default emit (production, when `DATABASE_URL` set) lazy-imports
+  `completeDelivery` (avoids a projects↔delivery cycle). Best-effort: a routing failure is caught + logged
+  and NEVER rolls back the committed transition. Injectable/off in tests (2 new trigger tests: fires once on
+  completed with the real actor; commits the transition even when the trigger throws).
+- **DOMAIN + SERVICE** (`domain/delivery-completion.ts`, `delivery-completion/index.ts`): builds the versioned
+  `delivery_completion` product with a DETERMINISTIC ledger projection (`financeRecognitionOutputs`) —
+  budget/actual/invoiced/recognized/gross-margin/collected/outstanding/overdue — and a de-identified lessons
+  projection for Research. Routes durably to `finance`, `research_intelligence`, `founder_command_centre`.
+- **CONSUMERS** (`departments/consumer.ts`): Finance consumer BRANCHES on `expectedOutputSchema` —
+  `delivery_completion` → `runFinanceRecognition` (deterministic revenue recognition, NO invoice draft, no
+  wrong-schema escalation); everything else → `runFinanceDepartment`. New `research_intelligence` consumer
+  `runResearchLessonsIngest` audits the de-identified lessons. The LLM never touches the financial figures.
+- **SEED topology** (`departments/seed.ts`): delivery `downstreamConsumers += finance/research/founder` +
+  `outboundProducts += delivery_completion`; finance accepts `delivery_completion` (+ `revenue_recognition`
+  out); research accepts `delivery_completion`.
+- **PROOFS**: `verify-delivery-completion-db.ts` (real DB, passes twice) — routes exactly 3 durable handoffs;
+  Finance handoff is `client_confidential` and carries EXACTLY the pure ledger projection (shape + every
+  figure equals the deterministic projection — no LLM-added fields on the financial path); Research handoff
+  is `internal`, de-identified (no client identity / financial cents); Founder gets the close-out summary;
+  idempotent (re-completing dedups every route — still exactly 3). Consumer DB proof re-run green (won_deal
+  path unaffected by the finance branch). `verify:delivery-completion` script added.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 804 tests / 102 files · build 0 · DB proofs
+(delivery-completion ×2, consumer regression) · no schema/migration touched (rides the existing handoffs
+table → no drift).
+
+NEXT: content-gate production trigger; QA-gate + proposal-accept + escalation browser E2E in required CI;
+Phase 5 Continuous Research + Context OS; then Phases 6–11.

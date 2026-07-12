@@ -193,8 +193,10 @@ export async function runDeliveryDepartment(input: RunDeliveryDepartmentInput, d
       },
       telemetry: { qualityScore: project.healthScore },
       confidence: 0.8,
-      // Route to the department's DECLARED downstream consumers (Founder Command Centre + Finance, plus any
-      // future consumer the seed declares) — the seed is the single source of truth for the topology.
+      // The kickoff health snapshot goes to the Founder Command Centre only. Finance + Research are declared
+      // downstream consumers of the DELIVERY COMPLETION product (schema delivery_completion, emitted on
+      // project completion via completeDelivery) — NOT of delivery_health, which they don't accept.
+      routeTo: ["founder_command_centre"],
     };
   };
 
