@@ -4079,3 +4079,42 @@ tests · `verify-proposal-accept-origination-db` re-run green · no schema/migra
 
 NEXT: Phase 4 closure — Research Validation QA live gate + browser proof; then Daily-Brief remaining providers
 + AIOS org-metrics; Phase 5 Continuous Research; Context OS; Phases 6–11.
+
+## cont.25 — Phase 4 QA: Research Validation gate implemented + wired + reviewer registered (+ seed regression fix)
+
+The 5th QA board now has a real evaluator and gates live research output — every declared QA board is now
+implemented. Also fixes a seed regression from cont.16.
+
+- **Research Validation board evaluator** (`qa/gate.ts`): `researchValidationBoardImpl` over a real
+  `validated_intelligence` artifact `{ analyzedItems, proposedInsights, insightsWithEvidence, scouted }`.
+  Required criterion `sourced` (every proposed insight carries ≥1 real evidence item id / source provenance);
+  optional `fresh` (derived from non-stale analyzed observations) + `non_duplicate` (flood guard). No insights
+  → the board cannot assess → `blocked` (never a fake pass).
+- **Gate wiring** (`verticals/research-intelligence.ts`): opt-in `deps.qa`. After the analyst/dreamer run, the
+  vertical loads the just-proposed insights' provenance (real `evidenceItemIds`) and runs the gate. PASS
+  RELEASES the route to the Founder Command Centre; a non-pass BLOCKS propagation (`routeTo: []`) and the gate
+  raises a real founder escalation naming the exact failed stage (`analyse`).
+- **Reviewer identity**: `research_validation_reviewer` activated (was `paused`) + added as an independent
+  `quality_assurance` member (input `validated_intelligence`). The gate enforces reviewer ∉ authors.
+- **SEED REGRESSION FIX**: cont.16 (Delivery Completion) had replaced `research_intelligence.acceptedHandoffSchemas`
+  with `["delivery_completion"]`, dropping `"validated_intelligence"` — which broke the research department's
+  OWN self-trigger inbound (its own `verify-research-intelligence-vertical-db` would reject). Restored to
+  `["validated_intelligence", "delivery_completion"]`. research-vertical DB proof re-run green.
+
+Proven: `verify-research-qa-db` (12 checks, ×2, `verify:research-qa`) on live Postgres — STRONG (sourced
+insights) → released + PASS review by the independent `research_validation_reviewer` (structurally independent)
++ no escalation; WEAK (ungrounded) → BLOCKED (no founder handoff) + non-pass review + failed stage `analyse` +
+real escalation; idempotent (same unit of work reuses the review, no dup escalation). Plus 5 unit tests in
+`qa-gate.test.ts` (self-review rejected / PASS / BLOCK+stage / no-insights-blocked / idempotent).
+
+The gate is opt-in on the department; its production-LIVE enablement rides on Phase 5's research cadence
+(which will run the research department on a schedule) — the same wiring pattern as the content gate. The QA
+FRAMEWORK side of Phase 4 is now complete: all 5 boards (paid_audit, proposal technical+commercial, content
+quality+brand, research validation) have real evaluators + PASS/FAIL/REVISE/BLOCKED effects + reviewer
+identities + no-self-review, each DB-proven.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 816 tests / 102 files · build 0 · DB proofs
+(research-qa ×2 + research-vertical + qa-gate regressions) · no schema/migration touched.
+
+NEXT: Phase 5 Continuous Research (source registry/discovery/granular approval/ingestion/change-detection/
+propagation + the research cadence that enables the research gate live); then Context OS; Phases 6–11.

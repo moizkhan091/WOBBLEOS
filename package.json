@@ -33,6 +33,7 @@
     "verify:delivery-completion": "tsx src/scripts/verify-delivery-completion-db.ts",
     "verify:content-gate": "tsx src/scripts/verify-content-gate-db.ts",
     "verify:content-publishing": "tsx src/scripts/verify-content-publishing-db.ts",
+    "verify:research-qa": "tsx src/scripts/verify-research-qa-db.ts",
     "verify:decision-learning": "tsx src/scripts/verify-decision-learning-db.ts",
     "verify:aios-value": "tsx src/scripts/verify-aios-value-db.ts",
     "verify:daily-brief": "tsx src/scripts/verify-daily-brief-db.ts",

@@ -41,7 +41,7 @@ const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orch
 // Department specialists that run synchronously inside a department policy (not via a graph job) — the
 // Proposal solution architect is the judgment step in runProposalDepartment, attributed for real settlement.
 // The QA reviewers wired into live gates execute via runQaGate (release/block/route real downstream work).
-const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent", "paid_audit_qa_reviewer", "content_quality_reviewer", "content_brand_reviewer", "proposal_technical_reviewer", "proposal_commercial_reviewer"];
+const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent", "paid_audit_qa_reviewer", "content_quality_reviewer", "content_brand_reviewer", "proposal_technical_reviewer", "proposal_commercial_reviewer", "research_validation_reviewer"];
 
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [

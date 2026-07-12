@@ -14,6 +14,9 @@ import {
   proposalTechnicalReviewBoardImpl,
   proposalCommercialReviewBoardImpl,
   buildProposalQaSubmission,
+  RESEARCH_QA_BOARDS,
+  researchValidationBoardImpl,
+  buildResearchQaSubmission,
   type ProposalQaArtifact,
   type QaGateDeps,
 } from "@/lib/qa/gate";
@@ -307,5 +310,48 @@ describe("QaGateBlockedError carries the enforced decision (the proposal vertica
     expect(err).toBeInstanceOf(QaGateBlockedError);
     expect(err.decision.released).toBe(false);
     expect(err.message).toContain("proposal_commercial_review");
+  });
+});
+
+// ================================================================ research validation board
+
+describe("research_validation board gates the intelligence emission", () => {
+  it("REJECTS a self-review (reviewer === author) — never a silent pass", async () => {
+    const { deps } = makeGateDeps();
+    const submission = buildResearchQaSubmission({ analyzedItems: 3, proposedInsights: 2, insightsWithEvidence: 2, scouted: 0 }, { workflowId: "wf_r_self", authorAgentSlug: researchValidationBoardImpl.reviewerAgentSlug });
+    await expect(runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps)).rejects.toBeInstanceOf(QaIndependenceError);
+  });
+
+  it("PASS: fully-sourced insights → released, no escalation", async () => {
+    const { deps, escRows } = makeGateDeps();
+    const submission = buildResearchQaSubmission({ analyzedItems: 3, proposedInsights: 2, insightsWithEvidence: 2, scouted: 3 }, { workflowId: "wf_r_pass", taskId: "t1" });
+    const decision = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps);
+    expect(decision.released).toBe(true);
+    expect(escRows).toHaveLength(0);
+  });
+
+  it("BLOCKS: ungrounded insights (no provenance) → not released + a real escalation, failed stage 'analyse'", async () => {
+    const { deps, escRows } = makeGateDeps();
+    const submission = buildResearchQaSubmission({ analyzedItems: 3, proposedInsights: 2, insightsWithEvidence: 0, scouted: 0 }, { workflowId: "wf_r_block", taskId: "t1" });
+    const decision = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps);
+    expect(decision.released).toBe(false);
+    expect(decision.routingTarget?.failedStages ?? []).toContain("analyse");
+    expect(escRows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("BLOCKED: no proposed insights → the board cannot assess → not released (never a fake pass)", async () => {
+    const { deps } = makeGateDeps();
+    const submission = buildResearchQaSubmission({ analyzedItems: 0, proposedInsights: 0, insightsWithEvidence: 0, scouted: 0 }, { workflowId: "wf_r_empty", taskId: "t1" });
+    const decision = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps);
+    expect(decision.released).toBe(false);
+  });
+
+  it("IDEMPOTENT: the same unit of work reuses the review (no duplicate)", async () => {
+    const { deps } = makeGateDeps();
+    const submission = buildResearchQaSubmission({ analyzedItems: 3, proposedInsights: 2, insightsWithEvidence: 0, scouted: 0 }, { workflowId: "wf_r_idem", taskId: "t1" });
+    const d1 = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps);
+    const d2 = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, deps);
+    expect(d2.reviews[0].id).toBe(d1.reviews[0].id);
+    expect(d2.firstRelease).toBe(false);
   });
 });

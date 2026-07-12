@@ -6,6 +6,21 @@ import { runIntelligenceAnalyst, type AnalystResult } from "@/lib/intelligence/a
 import { runDreamer, type DreamerResult } from "@/lib/intelligence/dreamer";
 import type { IntelligenceDeps } from "@/lib/intelligence";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { runQaGate, RESEARCH_QA_BOARDS, buildResearchQaSubmission, type QaGateDeps } from "@/lib/qa/gate";
+
+/**
+ * OPT-IN independent QA gate for the validated-intelligence emission. When provided, the research_validation
+ * board verifies each PROPOSED insight is backed by real source provenance and derived from non-stale
+ * observations. The intelligence is released to the Founder Command Centre ONLY on PASS; a non-pass verdict
+ * BLOCKS propagation and (via the gate) raises a real founder escalation naming the exact failed stage.
+ * Absent this config the behaviour is unchanged — the gate is opt-in (production supplies it).
+ */
+export interface ResearchQaGate {
+  deps?: QaGateDeps;
+  /** Authoring identity (default `research_intelligence_orchestrator`). Must never equal the reviewer. */
+  authorAgentSlug?: string;
+  enabled?: boolean;
+}
 
 /**
  * Research & Intelligence DEPARTMENT vertical (Phase 3 → the Phase-5 continuous-research foundation).
@@ -45,6 +60,8 @@ export interface RunResearchIntelligenceDeps extends RunDepartmentDeps {
   dream?: (input: { scope?: IntelligenceScope; clientId?: string; limit?: number }, deps: IntelligenceDeps & { usageContext?: ProviderUsageContext }) => Promise<DreamerResult>;
   /** Shared intelligence deps (store, approvalStore, recordAudit) threaded to the three services. */
   intelligenceDeps?: IntelligenceDeps;
+  /** OPT-IN independent QA gate over the validated intelligence (research_validation board). Omitted → off. */
+  qa?: ResearchQaGate;
 }
 
 /**
@@ -113,14 +130,37 @@ export async function runResearchIntelligenceDepartment(
     // stale/insufficient-intelligence escalation, not a silent success.
     if (analysis.proposedInsights === 0 && suggestions.proposed === 0) api.escalate("stale intelligence — no new insights or suggestions produced (ingest more observations)");
 
+    // OPT-IN independent QA GATE: the research_validation board verifies each proposed insight is SOURCED
+    // (real provenance) + FRESH before the intelligence propagates. PASS releases the route to the Founder
+    // Command Centre; a non-pass BLOCKS propagation (routeTo []) and the gate raises a real founder escalation
+    // naming the exact failed stage. Absent deps.qa the route is unchanged (["founder_command_centre"]).
+    let routeTo = ["founder_command_centre"];
+    let qaOutputs: Record<string, unknown> = {};
+    if (deps.qa && deps.qa.enabled !== false) {
+      // Real provenance: how many of the just-proposed insights carry ≥1 evidence item id.
+      let insightsWithEvidence = 0;
+      const getInsight = intel.store?.getIntelligenceInsightById?.bind(intel.store);
+      for (const id of analysis.insightIds) {
+        const row = getInsight ? await getInsight(id) : null;
+        if (row && row.evidenceItemIds.length > 0) insightsWithEvidence += 1;
+      }
+      const submission = buildResearchQaSubmission(
+        { analyzedItems: analysis.analyzedItems, proposedInsights: analysis.proposedInsights, insightsWithEvidence, scouted: scoutResult?.found ?? 0 },
+        { workflowId, taskId: api.envelope.taskId, clientWorkspaceId: clientId ?? null, authorAgentSlug: deps.qa.authorAgentSlug },
+      );
+      const decision = await runQaGate({ boards: RESEARCH_QA_BOARDS, submission }, { now, recordAudit: deps.recordAudit, escalationStore: deps.escalationStore, ...deps.qa.deps });
+      qaOutputs = { qaReleased: decision.released, qaVerdict: decision.verdict, qaFailedStages: decision.routingTarget?.failedStages ?? [], qaBlockingBoard: decision.blockingBoardSlug, qaReviewIds: decision.reviews.map((r) => r.id) };
+      if (!decision.released) routeTo = []; // BLOCK propagation (the gate raised the escalation).
+    }
+
     return {
       product: { scout: scoutResult, analysis, suggestions },
       productSchema: "validated_intelligence",
-      outputs: { insightIds: analysis.insightIds, suggestionIds: suggestions.suggestionIds, scouted: scoutResult?.found ?? 0 },
+      outputs: { insightIds: analysis.insightIds, suggestionIds: suggestions.suggestionIds, scouted: scoutResult?.found ?? 0, ...qaOutputs },
       confidence: 0.75,
       // The validated intelligence is delivered to the Founder Command Centre for review; content/proposal
       // consume APPROVED intelligence via the shared context, not a direct handoff, so they are not routed here.
-      routeTo: ["founder_command_centre"],
+      routeTo,
     };
   };
 

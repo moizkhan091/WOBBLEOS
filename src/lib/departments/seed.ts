@@ -23,7 +23,7 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     status: "active", // scout→analyst→dreamer now run as a department policy (runResearchIntelligenceDepartment)
     orchestratorAgentSlug: "research_intelligence_orchestrator",
     permissions: { authorizedMemoryScopes: ["research", "competitor", "market", "company"], permittedDataClassifications: ["internal"] },
-    io: { inboundCapabilities: ["scout", "analyse", "dream"], acceptedHandoffSchemas: ["delivery_completion"], outboundProducts: ["validated_intelligence", "source_recommendations", "trend_reports", "opportunity_recommendations", "change_alerts"], downstreamConsumers: ["content", "proposal", "founder_command_centre"] },
+    io: { inboundCapabilities: ["scout", "analyse", "dream"], acceptedHandoffSchemas: ["validated_intelligence", "delivery_completion"], outboundProducts: ["validated_intelligence", "source_recommendations", "trend_reports", "opportunity_recommendations", "change_alerts"], downstreamConsumers: ["content", "proposal", "founder_command_centre"] },
     governance: { requiredApprovals: ["intelligence_suggestion", "research_target"], escalationRules: [{ condition: "stale_intelligence", escalateTo: "founder_command_centre" }] },
     kpis: [{ key: "approval_rate", target: 0.6, unit: "ratio" }],
     owner: "Moiz",
@@ -222,6 +222,7 @@ export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
   { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "content_brand_reviewer", role: "qa_reviewer", responsibility: "independently review the content_pack brand fit", priority: 30, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "brand"], allowedInputSchemas: ["content_pack"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
   { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "proposal_technical_reviewer", role: "qa_reviewer", responsibility: "independently review the proposal technical design", priority: 40, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "company"], allowedInputSchemas: ["proposal_artifact"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
   { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "proposal_commercial_reviewer", role: "qa_reviewer", responsibility: "independently review the proposal commercial terms", priority: 50, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "offer"], allowedInputSchemas: ["proposal_artifact"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "research_validation_reviewer", role: "qa_reviewer", responsibility: "independently validate research intelligence (sourced + fresh) before it propagates to the founder / memory", priority: 60, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "research"], allowedInputSchemas: ["validated_intelligence"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
 ];
 
 export interface SeedDepartmentsResult {

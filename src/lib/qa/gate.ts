@@ -362,3 +362,110 @@ export function buildProposalQaSubmission(
     completedStages: [...PROPOSAL_QA_STAGES],
   };
 }
+
+// ================================================================ research validation QA board (evaluator)
+//
+// The research_validation board is DECLARED in src/lib/qa/boards.ts (identity + criteria, no evaluator). To
+// GATE live research output we build its evaluator HERE, over the real validated-intelligence artifact (the
+// analyst's insight set + its provenance), reusing the declared board's identity. The board verifies each
+// proposed insight is backed by real source provenance and derived from non-stale observations BEFORE the
+// intelligence is allowed to propagate (to the Founder Command Centre / memory).
+
+/** The validated-intelligence artifact the board judges: counts derived from the real analyst/dreamer run. */
+export interface ResearchQaArtifact {
+  /** Real observations the analyst considered this run. */
+  analyzedItems: number;
+  /** Insights proposed this run (each PENDING founder approval). */
+  proposedInsights: number;
+  /** How many of the proposed insights carry ≥1 real evidence item id (source provenance). */
+  insightsWithEvidence: number;
+  /** Observations scouted this run (a freshness signal; 0 when no scout ran). */
+  scouted: number;
+}
+
+const RESEARCH_VALIDATION_CRITERIA: QaCriterion[] = [
+  { key: "sourced", stage: "analyse", required: true, weight: 1.5, description: "Every proposed insight carries source provenance (≥1 real evidence item)." },
+  { key: "fresh", stage: "scout", required: false, weight: 1, description: "Insights were derived from real, non-stale analyzed observations." },
+  { key: "non_duplicate", stage: "analyse", required: false, weight: 1, description: "The proposal set is bounded (not a flood of low-evidence duplicates)." },
+];
+
+function evaluateResearchValidation(input: QaBoardEvaluationInput<ResearchQaArtifact>): QaCriterionResult[] {
+  const art = input.submission.artifact;
+  const byKey = Object.fromEntries(RESEARCH_VALIDATION_CRITERIA.map((c) => [c.key, c])) as Record<string, QaCriterion>;
+
+  // No proposed insights → the board cannot assess the required criterion (drives `blocked`, not a fake fail).
+  if (!art || art.proposedInsights === 0) {
+    return RESEARCH_VALIDATION_CRITERIA.map((c) =>
+      criterionResult(c, { assessable: false, passed: false, score: 0, rationale: "no proposed insights to validate", evidence: [{ ref: "proposedInsights", kind: "metric", summary: "proposed insights", value: 0 }] }),
+    );
+  }
+
+  const sourced = art.insightsWithEvidence === art.proposedInsights;
+  const fresh = art.analyzedItems > 0;
+  // Flood guard: an insight set far larger than the observations that back it signals low-evidence duplicates.
+  const bounded = art.proposedInsights <= Math.max(art.analyzedItems, 1) * 3;
+
+  return [
+    criterionResult(byKey.sourced, {
+      passed: sourced,
+      score: Math.max(0, Math.min(1, art.insightsWithEvidence / art.proposedInsights)),
+      rationale: `${art.insightsWithEvidence}/${art.proposedInsights} proposed insights carry source provenance`,
+      evidence: [
+        { ref: "insightsWithEvidence", kind: "provenance", summary: "insights with ≥1 evidence item", value: art.insightsWithEvidence },
+        { ref: "proposedInsights", kind: "metric", summary: "proposed insights", value: art.proposedInsights },
+      ],
+    }),
+    criterionResult(byKey.fresh, {
+      passed: fresh,
+      score: fresh ? 1 : 0,
+      rationale: `${art.analyzedItems} non-stale observation(s) analyzed; ${art.scouted} scouted this run`,
+      evidence: [{ ref: "analyzedItems", kind: "metric", summary: "observations analyzed", value: art.analyzedItems }],
+    }),
+    criterionResult(byKey.non_duplicate, {
+      passed: bounded,
+      score: bounded ? 1 : 0.5,
+      rationale: `${art.proposedInsights} insight(s) from ${art.analyzedItems} observation(s)`,
+      evidence: [{ ref: "ratio", kind: "metric", summary: "insights per observation", value: art.analyzedItems ? Math.round((art.proposedInsights / art.analyzedItems) * 100) / 100 : art.proposedInsights }],
+    }),
+  ];
+}
+
+/** IMPLEMENTED research validation board — the declared identity from boards.ts with a real evaluator. */
+export const researchValidationBoardImpl: QaBoard<ResearchQaArtifact> = {
+  boardSlug: "research_validation",
+  name: "Research Validation Board",
+  reviewerAgentSlug: "research_validation_reviewer",
+  department: "research_intelligence",
+  targetArtifactSchema: "validated_intelligence",
+  systemPolicy: "Independent validation reviewer for research intelligence: verify each proposed insight is backed by real source provenance and derived from non-stale observations before it may propagate to the founder / memory.",
+  memoryScopes: ["qa_rubric", "research"],
+  criteria: RESEARCH_VALIDATION_CRITERIA,
+  thresholds: { passScore: 0.8, reviseFloor: 0.5 },
+  status: "implemented",
+  evaluate: evaluateResearchValidation,
+};
+
+/** The research validation board (the single board the research gate requires to release). */
+export const RESEARCH_QA_BOARDS: QaBoard<ResearchQaArtifact>[] = [researchValidationBoardImpl];
+
+/** The full Research authoring team — a reviewer that is any of these is NOT independent. */
+export const RESEARCH_AUTHORING_AGENTS = ["research_intelligence_orchestrator", "intelligence_analyst", "intelligence_dreamer", "competitor_scout", "runIntelligenceAnalyst", "runDreamer"];
+export const RESEARCH_QA_STAGES = ["scout", "analyse"];
+
+/** Build the QA submission for a real validated-intelligence product (what runResearchIntelligenceDepartment produces). */
+export function buildResearchQaSubmission(
+  artifact: ResearchQaArtifact,
+  ctx: { workflowId: string; taskId?: string | null; clientWorkspaceId?: string | null; authorAgentSlug?: string },
+): QaSubmission<ResearchQaArtifact> {
+  return {
+    artifactSchema: "validated_intelligence",
+    artifact,
+    authorAgentSlug: ctx.authorAgentSlug ?? "research_intelligence_orchestrator",
+    contributingAgents: RESEARCH_AUTHORING_AGENTS,
+    department: "research_intelligence",
+    workflowId: ctx.workflowId,
+    taskId: ctx.taskId ?? null,
+    clientWorkspaceId: ctx.clientWorkspaceId ?? null,
+    completedStages: [...RESEARCH_QA_STAGES],
+  };
+}
