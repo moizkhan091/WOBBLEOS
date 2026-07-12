@@ -41,6 +41,8 @@ describe("seedDepartments", () => {
     expect(depts.get("content")?.status).toBe("active");
     expect(depts.get("proposal")?.status).toBe("active");
     expect(depts.get("proposal")?.orchestratorAgentSlug).toBe("proposal_orchestrator");
+    expect(depts.get("research_intelligence")?.status).toBe("active");
+    expect(depts.get("research_intelligence")?.orchestratorAgentSlug).toBe("research_intelligence_orchestrator");
 
     // Declared-but-not-yet-built departments are HONESTLY draft, not shallow-active.
     expect(depts.get("delivery")?.status).toBe("draft");

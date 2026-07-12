@@ -20,10 +20,12 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "research_intelligence",
     name: "Research & Intelligence",
     purpose: "Continuously scout, analyse and validate market/competitor/trend signals into approved intelligence.",
-    status: "draft", // multi-agent (scout→analyst→dreamer) but currently chained via jobs; handoff migration = Phase 5
+    status: "active", // scout→analyst→dreamer now run as a department policy (runResearchIntelligenceDepartment)
+    orchestratorAgentSlug: "research_intelligence_orchestrator",
     permissions: { authorizedMemoryScopes: ["research", "competitor", "market", "company"], permittedDataClassifications: ["internal"] },
     io: { inboundCapabilities: ["scout", "analyse", "dream"], acceptedHandoffSchemas: [], outboundProducts: ["validated_intelligence", "source_recommendations", "trend_reports", "opportunity_recommendations", "change_alerts"], downstreamConsumers: ["content", "proposal", "founder_command_centre"] },
-    governance: { requiredApprovals: ["intelligence_suggestion", "research_target"], escalationRules: [] },
+    governance: { requiredApprovals: ["intelligence_suggestion", "research_target"], escalationRules: [{ condition: "stale_intelligence", escalateTo: "founder_command_centre" }] },
+    kpis: [{ key: "approval_rate", target: 0.6, unit: "ratio" }],
     owner: "Moiz",
   },
   {
@@ -170,6 +172,11 @@ export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
   // deterministic service maps it into the versioned proposal artifact + fires the commercial chain on accept.
   { departmentSlug: "proposal", memberType: "agent", memberRef: "proposal_solution_architect", role: "solution_architect", responsibility: "design the technical solution, integration, ROI and risks from the audit", priority: 10, capabilities: ["solution_design"], toolGrants: ["run_node"], memoryGrants: ["company", "offer", "research"], allowedInputSchemas: ["business_audit", "audit_report"], expectedOutputs: ["technical_solution"], escalationDestination: "proposal_orchestrator" },
   { departmentSlug: "proposal", memberType: "service", memberRef: "createProposalFromAudit", role: "assembler", responsibility: "map the audit into the versioned proposal artifact deterministically", priority: 20, capabilities: ["assemble"] },
+  // Research & Intelligence team — scout ingests observations, the analyst turns them into insights, the
+  // dreamer proposes proactive moves. All three are real, job-backed agents sequenced by the orchestrator.
+  { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "competitor_scout", role: "scout", responsibility: "ingest competitor/market observations", priority: 10, capabilities: ["scout"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market"], expectedOutputs: ["intelligence_item"], escalationDestination: "research_intelligence_orchestrator" },
+  { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "intelligence_analyst", role: "analyst", responsibility: "extract durable insights from observations (pending approval)", priority: 20, capabilities: ["analyse"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market", "company"], expectedOutputs: ["intelligence_insight"], escalationDestination: "research_intelligence_orchestrator" },
+  { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "dreamer", role: "strategist", responsibility: "propose proactive moves from approved intelligence (approval-gated)", priority: 30, capabilities: ["dream"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market", "company"], approvalAuthority: [], expectedOutputs: ["intelligence_suggestion"], escalationDestination: "research_intelligence_orchestrator" },
 ];
 
 export interface SeedDepartmentsResult {

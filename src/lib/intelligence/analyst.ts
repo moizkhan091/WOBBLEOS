@@ -32,6 +32,8 @@ export interface AnalystInput {
 
 export interface AnalystDeps extends IntelligenceDeps {
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  /** Attributes the analyst's provider usage to a unit of work so budgets settle against ACTUAL cost (L1). */
+  usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext;
 }
 
 export interface AnalystResult {
@@ -52,7 +54,7 @@ export async function runIntelligenceAnalyst(input: AnalystInput = {}, deps: Ana
   if (items.length < 2) {
     return { analyzedItems: items.length, proposedInsights: 0, insightIds: [], note: "Not enough observations to analyze yet — ingest more first." };
   }
-  const runProvider = deps.runProvider ?? defaultRunProvider;
+  const runProvider = deps.runProvider ?? ((i) => defaultRunProvider(i, deps.usageContext));
 
   const catalog = items.map((it) => {
     const ex = it.extracted && Object.keys(it.extracted).length ? ` | ${Object.entries(it.extracted).slice(0, 5).map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`).join("; ")}` : "";
@@ -100,7 +102,7 @@ export async function runIntelligenceAnalyst(input: AnalystInput = {}, deps: Ana
   return { analyzedItems: items.length, proposedInsights: insightIds.length, insightIds, note: "Insights proposed — approve in the Intelligence Inbox to make them retrievable." };
 }
 
-async function defaultRunProvider(input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) {
-  const result = await runTextProvider(input);
+async function defaultRunProvider(input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }, usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext) {
+  const result = await runTextProvider({ ...input, usageContext: usageContext ? { ...usageContext, agentSlug: input.role } : undefined });
   return { text: result.text, run: { id: result.run.id } };
 }
