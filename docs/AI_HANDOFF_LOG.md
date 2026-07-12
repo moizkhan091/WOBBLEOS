@@ -4207,3 +4207,22 @@ no schema/migration touched.
 Phase 5 remaining: source registry field enrichment · snapshots + change detection · freshness/staleness/
 contradictions/dedup · richer ingestion (transcript/video-frame/visual) · continuous-research UI + Playwright.
 Then Context OS; Phases 6–11.
+
+## cont.30 — Phase 5: source freshness / staleness (built + proven)
+
+Mandate E (freshness/staleness): a scheduled source overdue on its cadence is STALE — the founder must see it
+(never a silent degradation).
+
+- `computeSourceFreshness(target, now)` (pure domain): from cadence + lastCheckedAt + nextRunAt → { ageMs,
+  expectedIntervalMs, isStale, overdueBy }. A scheduled source never checked, or checked > 2× its cadence
+  interval ago, is stale; manual/on_trigger sources are never stale (not scheduled).
+- `listStaleSources(deps)` (service): the APPROVED (active) sources that are stale.
+
+Proven: 5 unit tests (`source-freshness.test.ts`) — daily fresh (12h) / stale (3d) / never-checked stale /
+manual+on_trigger never stale / weekly fresh (5d).
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 825 tests / 102 files · build 0 · no schema/migration.
+
+Phase 5 remaining: source registry field enrichment · snapshots + change detection · contradiction handling +
+dedup · richer ingestion (transcript/video-frame/visual) · continuous-research UI + Playwright. Then Context
+OS; Phases 6–11.

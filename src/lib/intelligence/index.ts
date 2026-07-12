@@ -237,6 +237,19 @@ export async function listResearchTargets(query: ListIntelligenceQuery = {}, dep
 }
 
 /** Record that a research target was just scouted and schedule its next run (used by the scheduler). */
+/**
+ * List APPROVED (active) sources that are STALE — scheduled but overdue on their cadence (Phase 5, mandate E).
+ * The founder sees which sources have stopped producing fresh intelligence (never a silent degradation).
+ */
+export async function listStaleSources(deps: IntelligenceDeps & { now?: Date } = {}): Promise<Array<{ target: ResearchTargetRow; freshness: import("@/lib/domain/intelligence").SourceFreshness }>> {
+  const { computeSourceFreshness } = await import("@/lib/domain/intelligence");
+  const now = deps.now ?? new Date();
+  const approved = await listResearchTargets({ approvalStatus: "approved", limit: 1000 }, deps);
+  return approved
+    .map((target) => ({ target, freshness: computeSourceFreshness(target, now) }))
+    .filter((r) => r.freshness.isStale);
+}
+
 export async function markResearchTargetScouted(id: string, fields: { lastCheckedAt: Date; nextRunAt: Date | null }, deps: IntelligenceDeps = {}): Promise<void> {
   const store = deps.store ?? defaultStore();
   if (!store.updateResearchTarget) return;

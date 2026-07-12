@@ -1236,3 +1236,42 @@ export const sourceProposalSchema = _zSource.object({
   confidence: _zSource.number().min(0).max(1).default(0.5),
 });
 export type SourceProposal = _zSource.input<typeof sourceProposalSchema>;
+
+// ---------------------------------------------------------------- source freshness / staleness (Phase 5, E)
+//
+// A scheduled source that stops being collected on its cadence is STALE — its intelligence is aging and the
+// founder must know (a stale source degrades quietly otherwise). manual/on_trigger sources are not scheduled,
+// so they are never "stale". Pure + deterministic (now is passed in).
+
+const _CADENCE_INTERVAL_MS: Record<ResearchCadence, number | null> = {
+  manual: null,
+  on_trigger: null,
+  hourly: 60 * 60_000,
+  daily: 24 * 60 * 60_000,
+  weekly: 7 * 24 * 60 * 60_000,
+  monthly: 30 * 24 * 60 * 60_000,
+};
+
+export interface SourceFreshness {
+  cadence: ResearchCadence;
+  lastCheckedAt: Date | null;
+  /** ms since the last successful check; null when never checked. */
+  ageMs: number | null;
+  expectedIntervalMs: number | null;
+  /** true for a SCHEDULED source that has never been checked, or whose age exceeds ~2× its cadence interval. */
+  isStale: boolean;
+  /** ms past the expected next check (0 when on time or not scheduled). */
+  overdueBy: number;
+}
+
+export function computeSourceFreshness(
+  target: { cadence: ResearchCadence; lastCheckedAt: Date | null; nextRunAt?: Date | null },
+  now: Date,
+): SourceFreshness {
+  const interval = _CADENCE_INTERVAL_MS[target.cadence];
+  const ageMs = target.lastCheckedAt ? now.getTime() - target.lastCheckedAt.getTime() : null;
+  if (interval === null) return { cadence: target.cadence, lastCheckedAt: target.lastCheckedAt, ageMs, expectedIntervalMs: null, isStale: false, overdueBy: 0 };
+  const isStale = target.lastCheckedAt === null || (ageMs !== null && ageMs > interval * 2);
+  const overdueBy = target.nextRunAt ? Math.max(0, now.getTime() - target.nextRunAt.getTime()) : ageMs !== null && ageMs > interval ? ageMs - interval : 0;
+  return { cadence: target.cadence, lastCheckedAt: target.lastCheckedAt, ageMs, expectedIntervalMs: interval, isStale, overdueBy };
+}
