@@ -110,6 +110,9 @@ describe("Proposal department vertical", () => {
     expect(proposal.services.map((s) => s.name)).toEqual(["Missed-call text-back", "AI intake concierge"]);
     expect(proposal.pricingCents).toBe(480000);
     expect(proposal.opportunityId).toBe("opp_1");
+    // The architect's synthesis is PERSISTED onto the artifact (metadata.solutionDesign) — the paid LLM
+    // judgment is not computed-then-discarded.
+    expect((proposal.metadata as { solutionDesign?: SolutionSynthesis }).solutionDesign?.technicalSolution).toContain("Missed-call");
     expect(proposal.status).toBe("draft"); // awaits founder approval — the chain has NOT fired yet
     expect(audits).toEqual(expect.arrayContaining(["department.accepted", "department.completed"]));
   });

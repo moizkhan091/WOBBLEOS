@@ -64,6 +64,8 @@ export const createProposalSchema = z.object({
   currency: z.string().trim().min(1).default("USD"),
   terms: z.string().trim().min(1).optional(),
   createdBy: z.string().trim().min(1).optional(),
+  /** Structured enrichment persisted on the artifact (e.g. the solution architect's synthesis). */
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateProposalInput = z.input<typeof createProposalSchema>;
 
@@ -92,7 +94,7 @@ export function buildProposalRow(input: CreateProposalInput, opts: { now?: Date;
     acceptedAt: null,
     rejectedReason: null,
     archivedAt: null,
-    metadata: {},
+    metadata: p.metadata ?? {},
     createdAt: now,
     updatedAt: now,
   };

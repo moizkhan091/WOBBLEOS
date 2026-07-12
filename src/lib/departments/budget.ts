@@ -134,8 +134,12 @@ export async function settleReservationFromUsage(
 ): Promise<{ settled: boolean; actualCents: number; fromActual: boolean }> {
   const { usageForUnit } = await import("@/lib/provider-usage");
   const usage = await usageForUnit(unit.departmentSlug, unit.workflowId, unit.taskId, { store: deps.usageStore });
-  const fromActual = usage.rows > 0;
-  const actualCents = fromActual ? usage.costCents : Math.max(0, Math.round(fallbackEstimateCents));
+  // Settle against recorded usage whenever any exists; fall back to the caller estimate only when NOTHING
+  // was recorded. `fromActual` is a TRUTHFUL label: it is only true when at least one row is real actual
+  // usage (not an estimated placeholder), so estimated-only settlement is never reported as actual.
+  const hasUsage = usage.rows > 0;
+  const fromActual = usage.anyActual;
+  const actualCents = hasUsage ? usage.costCents : Math.max(0, Math.round(fallbackEstimateCents));
   const settled = await settleBudget(reservationId, { actualCents, actualTokens: usage.tokens }, deps);
   return { settled, actualCents, fromActual };
 }

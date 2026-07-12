@@ -44,9 +44,13 @@ describe("seedDepartments", () => {
     expect(depts.get("research_intelligence")?.status).toBe("active");
     expect(depts.get("research_intelligence")?.orchestratorAgentSlug).toBe("research_intelligence_orchestrator");
 
-    // Declared-but-not-yet-built departments are HONESTLY draft, not shallow-active.
-    expect(depts.get("delivery")?.status).toBe("draft");
-    expect(depts.get("sales_crm")?.status).toBe("draft");
+    // Commercial Operating Unit (Phase 3) — now real department verticals, honestly active.
+    expect(depts.get("sales_crm")?.status).toBe("active");
+    expect(depts.get("sales_crm")?.orchestratorAgentSlug).toBe("sales_crm_orchestrator");
+    expect(depts.get("finance")?.status).toBe("active");
+    expect(depts.get("finance")?.orchestratorAgentSlug).toBe("finance_orchestrator");
+    expect(depts.get("delivery")?.status).toBe("active");
+    expect(depts.get("delivery")?.orchestratorAgentSlug).toBe("delivery_orchestrator");
 
     // Downstream routing is declared (paid_audit → proposal).
     expect(depts.get("paid_audit")?.io.downstreamConsumers).toContain("proposal");

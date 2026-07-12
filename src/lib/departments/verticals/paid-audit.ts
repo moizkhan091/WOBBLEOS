@@ -1,4 +1,6 @@
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
+import { dispatchHandoff, defaultStore as defaultHandoffStore, type HandoffStore } from "@/lib/handoff";
+import type { AuditEventInput } from "@/lib/domain/audit";
 import { runPaidAuditGraph, type RunPaidAuditInput, type PaidAuditResult, type PaidAuditDeps } from "@/lib/paid-audit-graph";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
 
@@ -72,7 +74,10 @@ export async function runPaidAuditDepartment(
     return {
       product: result,
       productSchema: "business_audit",
-      outputs: { auditId: result.auditId, opportunities: result.report.opportunities.length, phases: result.report.roadmap.length },
+      // Carry enough on the routed handoff for the downstream Proposal consumer to reconstruct its input
+      // (auditId + businessName + companyId) without re-reading the audit — the autonomous consumer loop
+      // claims this handoff and runs the Proposal department off these outputs.
+      outputs: { auditId: result.auditId, businessName: input.businessName, companyId: input.companyId ?? null, opportunities: result.report.opportunities.length, phases: result.report.roadmap.length },
       telemetry: { latencyMs: undefined, qualityScore: undefined },
       confidence: 0.8,
       routeTo: ["proposal"],
@@ -80,4 +85,47 @@ export async function runPaidAuditDepartment(
   };
 
   return runDepartment({ departmentSlug: "paid_audit", inbound: { envelope, receiverCtx }, policy }, deps);
+}
+
+/** The Proposal department's authorized memory grant (routing narrows to this — never widens). */
+const PROPOSAL_GRANT = ["company", "offer", "research"];
+
+/**
+ * ORIGINATE the department chain from a completed production paid audit: dispatch a `business_audit`
+ * handoff to the Proposal department so the autonomous consumer loop claims it and produces a proposal
+ * draft (with the solution architect's synthesis). Best-effort + non-regressive: a failure here (e.g. the
+ * departments aren't seeded, or no DB) is logged by the caller and never fails the audit itself.
+ */
+export async function dispatchBusinessAuditToProposal(
+  audit: { auditId: string; businessName: string; companyId?: string | null },
+  opts: { store?: HandoffStore; recordAudit?: (i: AuditEventInput) => Promise<void>; now?: Date } = {},
+): Promise<{ handoffId: string; deduped: boolean }> {
+  const now = opts.now ?? new Date();
+  const store = opts.store ?? defaultHandoffStore();
+  const workflowId = audit.companyId ?? audit.auditId;
+  const envelope = buildHandoffEnvelope(
+    {
+      workflowId,
+      department: "proposal",
+      sourceAgent: "paid_audit_orchestrator",
+      destinationAgent: "proposal_orchestrator",
+      objective: `Design a proposal for ${audit.businessName}`,
+      requestedAction: "design_solution",
+      expectedOutputSchema: "business_audit",
+      confidence: 0.8,
+      companyId: audit.companyId ?? null,
+      clientWorkspaceId: audit.companyId ?? null,
+      dataClassification: audit.companyId ? "client_confidential" : "internal",
+      authorizedMemoryScopes: PROPOSAL_GRANT,
+      previousAgentOutputs: { auditId: audit.auditId, businessName: audit.businessName, companyId: audit.companyId ?? null },
+      idempotencyKey: `${workflowId}:paid_audit->proposal`,
+    },
+    { now },
+  );
+  const { handoff, deduped } = await dispatchHandoff(
+    envelope,
+    { clientWorkspaceId: audit.companyId ?? null, grantedMemoryScopes: PROPOSAL_GRANT },
+    { store, recordAudit: opts.recordAudit, now },
+  );
+  return { handoffId: handoff.id, deduped };
 }

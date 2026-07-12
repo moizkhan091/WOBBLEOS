@@ -51,8 +51,9 @@ async function main(): Promise<void> {
   const scheduleTimer = setInterval(() => {
     const runMaintenance = Date.now() - lastMaintenance >= MAINTENANCE_INTERVAL_MS;
     if (runMaintenance) lastMaintenance = Date.now();
-    runScheduledTick({ runMaintenance })
-      .then((r) => { if (r.automationsFired || r.scoutsEnqueued || r.postsDispatched || r.maintenanceRan) console.log(`[scheduler] fired`, r); })
+    // runDepartmentConsumers: drive the autonomous inter-department chain (claim + run routed handoffs).
+    runScheduledTick({ runMaintenance, runDepartmentConsumers: true })
+      .then((r) => { if (r.automationsFired || r.scoutsEnqueued || r.postsDispatched || r.departmentHandoffsConsumed || r.maintenanceRan) console.log(`[scheduler] fired`, r); })
       .catch((e) => console.error("[scheduler] tick failed:", e instanceof Error ? e.message : e));
   }, SCHEDULE_INTERVAL_MS);
   scheduleTimer.unref?.();

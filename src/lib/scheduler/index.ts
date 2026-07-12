@@ -10,6 +10,7 @@ import { reconcileApprovalEffects } from "@/lib/approval-effects";
 import { refreshAllDepartmentHealth } from "@/lib/departments/health";
 import { expireStaleReservations } from "@/lib/departments/budget";
 import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
+import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -43,6 +44,13 @@ export interface SchedulerDeps {
   reclaimStalled?: (now: Date) => Promise<number>;
   /** run daily-maintenance this tick (the worker gates this to ~once/day) */
   runMaintenance?: boolean;
+  /**
+   * Drive the department CONSUMER loop this tick — claim + run routed inter-department handoffs so the
+   * chain is autonomous. OPT-IN (the worker enables it); default OFF so unit ticks never claim real
+   * handoffs or fire real provider calls. Injectable override for the tick itself (proofs/tests).
+   */
+  runDepartmentConsumers?: boolean;
+  consumeDepartments?: (now: Date) => Promise<{ claimed: number; completed: number; failed: number }>;
 }
 
 export interface SchedulerResult {
@@ -50,6 +58,7 @@ export interface SchedulerResult {
   scoutsEnqueued: number;
   postsDispatched: number;
   stalledReclaimed: number;
+  departmentHandoffsConsumed: number;
   maintenanceRan: boolean;
   errors: string[];
 }
@@ -69,7 +78,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -112,6 +121,18 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await escalateDeadLetteredHandoffs({ now });
   } catch (e) {
     result.errors.push(`dead-letter-escalation: ${e instanceof Error ? e.message : e}`);
+  }
+  // Department CONSUMER loop (opt-in): claim routed inter-department handoffs and run the destination
+  // department so the chain is autonomous (and a RESUMED handoff actually re-executes). Off by default so
+  // unit ticks never claim real handoffs or fire real provider calls.
+  if (deps.runDepartmentConsumers) {
+    try {
+      const consumed = await (deps.consumeDepartments ?? (async (n: Date) => runDepartmentConsumerTick({ now: n })))(now);
+      result.departmentHandoffsConsumed = consumed.completed;
+      for (let i = 0; i < consumed.failed; i++) result.errors.push("department-consumer: a handoff failed and was requeued/dead-lettered");
+    } catch (e) {
+      result.errors.push(`department-consumer: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   // 1. Schedule-triggered automation rules (cron).
@@ -161,7 +182,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;

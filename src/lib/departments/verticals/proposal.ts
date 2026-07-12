@@ -104,8 +104,9 @@ export async function runProposalDepartment(input: RunProposalDepartmentInput, d
     const synthesis = await synthesize({ auditId: input.auditId, businessName: input.businessName, usageContext: { departmentSlug: "proposal", workflowId, taskId: api.envelope.taskId, companyId: input.companyId ?? null, clientWorkspaceId: input.companyId ?? null } });
 
     // DETERMINISTIC write: map the audit → the versioned proposal artifact (services, timeline, scope,
-    // pricing). The architect's synthesis rides on the department product for founder review + downstream.
-    const proposal = await createProposalFromAudit(input.auditId, { createdBy: input.requestedBy }, deps.proposalDeps);
+    // pricing). The architect's synthesis is PERSISTED onto the artifact (metadata.solutionDesign + it
+    // enriches the visible scope) so the paid judgment is never discarded — it survives for founder review.
+    const proposal = await createProposalFromAudit(input.auditId, { createdBy: input.requestedBy, enrichment: synthesis }, deps.proposalDeps);
     if (!proposal) throw new Error(`proposal: audit '${input.auditId}' not found`);
 
     return {

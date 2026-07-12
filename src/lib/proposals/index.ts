@@ -61,8 +61,21 @@ export async function createProposal(input: CreateProposalInput, deps: ProposalD
   return row;
 }
 
-/** Build + persist a proposal deterministically from an audit's findings. */
-export async function createProposalFromAudit(auditId: string, input: { createdBy?: string } = {}, deps: ProposalDeps = {}): Promise<ProposalRow | null> {
+/**
+ * Structured judgment enrichment (the Proposal department's solution architect) persisted ONTO the
+ * proposal artifact. The deterministic service still owns the write; the architect's synthesis is stored
+ * so it is not paid-for-then-discarded — it rides the persisted artifact for founder review + downstream.
+ */
+export interface ProposalEnrichment {
+  technicalSolution?: string;
+  integrationDesign?: string;
+  roiAssumptions?: string;
+  risks?: string[];
+}
+
+/** Build + persist a proposal deterministically from an audit's findings (optionally enriched by the
+ *  solution architect's synthesis, which is PERSISTED onto the artifact — never discarded). */
+export async function createProposalFromAudit(auditId: string, input: { createdBy?: string; enrichment?: ProposalEnrichment } = {}, deps: ProposalDeps = {}): Promise<ProposalRow | null> {
   const getRow = deps.getAuditRow ?? (async (id: string) => {
     const a = await getAudit(id);
     return a ? { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report: a.report as unknown as Record<string, unknown> } : null;
@@ -70,7 +83,14 @@ export async function createProposalFromAudit(auditId: string, input: { createdB
   const auditRow = await getRow(auditId);
   if (!auditRow) return null;
   const proposalInput = proposalInputFromAudit(auditRow);
-  return createProposal({ ...proposalInput, createdBy: input.createdBy }, deps);
+  const enrichment = input.enrichment;
+  // The architect's technical solution enriches the visible scope when the audit's own summary is thin,
+  // and the full synthesis is persisted structurally under metadata.solutionDesign.
+  const scope = proposalInput.scope || (enrichment?.technicalSolution ? enrichment.technicalSolution.slice(0, 4000) : undefined);
+  const metadata = enrichment && (enrichment.technicalSolution || enrichment.integrationDesign || enrichment.roiAssumptions || (enrichment.risks?.length ?? 0) > 0)
+    ? { solutionDesign: enrichment }
+    : undefined;
+  return createProposal({ ...proposalInput, scope, metadata, createdBy: input.createdBy }, deps);
 }
 
 export async function listProposals(query: { status?: string; includeArchived?: boolean; limit?: number } = {}, deps: ProposalDeps = {}): Promise<ProposalRow[]> {

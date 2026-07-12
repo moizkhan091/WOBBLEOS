@@ -72,7 +72,9 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     purpose: "Produce grounded, on-brand content packs: strategy → research → copy (draft→revise) → QA scoring.",
     status: "active",
     orchestratorAgentSlug: "content_orchestrator",
-    permissions: { authorizedMemoryScopes: CONTENT_MEMORY, permittedDataClassifications: ["internal"] },
+    // client_confidential is permitted: the vertical accepts a companyId and builds a client-scoped
+    // envelope for client-specific content — without this the client path is rejected before any work runs.
+    permissions: { authorizedMemoryScopes: CONTENT_MEMORY, permittedDataClassifications: ["internal", "client_confidential"] },
     io: { inboundCapabilities: ["generate_content_pack"], acceptedHandoffSchemas: ["creative_brief"], outboundProducts: ["content_strategy", "brief", "content_pack"], downstreamConsumers: ["publishing"] },
     governance: { requiredApprovals: ["content_packet"], escalationRules: [{ condition: "quality_gate_failed", escalateTo: "founder_command_centre" }] },
     kpis: [{ key: "approval_rate", target: 0.8, unit: "ratio" }, { key: "success_rate", target: 0.9, unit: "ratio" }],
@@ -111,27 +113,39 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "sales_crm",
     name: "Sales & CRM",
     purpose: "Qualify opportunities, handle objections, run follow-ups, recommend deals; on won → hand to Delivery.",
-    status: "draft",
+    status: "active", // runSalesCrmDepartment: revenue-operator judgment (advisory) → deterministic moveOpportunityStage(won)
+    orchestratorAgentSlug: "sales_crm_orchestrator",
+    deterministicServices: ["moveOpportunityStage"],
     permissions: { authorizedMemoryScopes: ["company", "offer"], permittedDataClassifications: ["internal", "client_confidential"] },
-    io: { inboundCapabilities: ["qualify", "advance_deal"], acceptedHandoffSchemas: ["proposal_artifact"], outboundProducts: ["qualified_opportunities", "objections", "follow_ups", "deal_recommendations"], downstreamConsumers: ["delivery", "finance"] },
+    io: { inboundCapabilities: ["qualify", "advance_deal"], acceptedHandoffSchemas: ["proposal_artifact"], outboundProducts: ["qualified_opportunities", "objections", "follow_ups", "deal_recommendations", "won_deal"], downstreamConsumers: ["delivery", "finance"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "deal_at_risk", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
   },
   {
     slug: "finance",
     name: "Finance",
     purpose: "Issue invoices, track payment state, produce revenue and margin intelligence.",
-    status: "draft",
+    status: "active", // runFinanceDepartment: finance-analyst judgment (advisory) → deterministic createInvoice (DRAFT); AI never moves money
+    orchestratorAgentSlug: "finance_orchestrator",
+    deterministicServices: ["createInvoice", "getRevenueSummary"],
     permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted"] },
-    io: { inboundCapabilities: ["invoice", "report_revenue"], acceptedHandoffSchemas: [], outboundProducts: ["invoices", "payment_state", "revenue_margin_intelligence"], downstreamConsumers: ["founder_command_centre"] },
+    io: { inboundCapabilities: ["invoice", "report_revenue"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["invoices", "payment_state", "revenue_margin_intelligence"], downstreamConsumers: ["founder_command_centre"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "margin_or_overdue_risk", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
   },
   {
     slug: "delivery",
     name: "Delivery & Projects",
     purpose: "Run projects: milestones, tasks, risks and truthful delivery health.",
-    status: "draft",
+    status: "active", // runDeliveryDepartment: delivery-lead judgment (advisory) → deterministic addProject + kickoff tasks; truthful health
+    orchestratorAgentSlug: "delivery_orchestrator",
+    deterministicServices: ["addProject", "addTask"],
     permissions: { authorizedMemoryScopes: ["company", "client"], permittedDataClassifications: ["internal", "client_confidential"] },
-    io: { inboundCapabilities: ["run_project"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["projects", "milestones", "tasks", "risks", "delivery_health"], downstreamConsumers: ["founder_command_centre", "finance"] },
+    // Completion routes to the Founder Command Centre (the human visibility hub — no autonomous consumer,
+    // so no mis-consumption). A dedicated Finance/Research completion-feed (revenue recognition) is a scoped
+    // follow-up: it requires Finance to gain a delivery_health consumer distinct from its won_deal path.
+    io: { inboundCapabilities: ["run_project"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["projects", "milestones", "tasks", "risks", "delivery_health"], downstreamConsumers: ["founder_command_centre"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "delivery_blocked", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
   },
   {
@@ -177,6 +191,15 @@ export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
   { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "competitor_scout", role: "scout", responsibility: "ingest competitor/market observations", priority: 10, capabilities: ["scout"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market"], expectedOutputs: ["intelligence_item"], escalationDestination: "research_intelligence_orchestrator" },
   { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "intelligence_analyst", role: "analyst", responsibility: "extract durable insights from observations (pending approval)", priority: 20, capabilities: ["analyse"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market", "company"], expectedOutputs: ["intelligence_insight"], escalationDestination: "research_intelligence_orchestrator" },
   { departmentSlug: "research_intelligence", memberType: "agent", memberRef: "dreamer", role: "strategist", responsibility: "propose proactive moves from approved intelligence (approval-gated)", priority: 30, capabilities: ["dream"], toolGrants: ["run_node"], memoryGrants: ["research", "competitor", "market", "company"], approvalAuthority: [], expectedOutputs: ["intelligence_suggestion"], escalationDestination: "research_intelligence_orchestrator" },
+  // Sales & CRM team — revenue operator advises (judgment); the deterministic crm service does the won mutation.
+  { departmentSlug: "sales_crm", memberType: "agent", memberRef: "sales_deal_agent", role: "revenue_operator", responsibility: "assess a won deal's loss/execution risk and next-best-action (advisory)", priority: 10, capabilities: ["advance_deal", "qualify"], toolGrants: ["run_node"], memoryGrants: ["company", "offer"], allowedInputSchemas: ["proposal_artifact"], expectedOutputs: ["deal_recommendations"], escalationDestination: "sales_crm_orchestrator" },
+  { departmentSlug: "sales_crm", memberType: "service", memberRef: "moveOpportunityStage", role: "mutator", responsibility: "advance the opportunity to won deterministically", priority: 20, capabilities: ["advance_deal"] },
+  // Finance team — analyst advises (judgment); the deterministic finance service drafts the invoice.
+  { departmentSlug: "finance", memberType: "agent", memberRef: "finance_analyst_agent", role: "finance_analyst", responsibility: "assess margin + overdue risk of a new invoice (advisory)", priority: 10, capabilities: ["invoice", "report_revenue"], toolGrants: ["run_node"], memoryGrants: ["company"], allowedInputSchemas: ["won_deal"], expectedOutputs: ["revenue_margin_intelligence"], escalationDestination: "finance_orchestrator" },
+  { departmentSlug: "finance", memberType: "service", memberRef: "createInvoice", role: "mutator", responsibility: "draft the invoice deterministically", priority: 20, capabilities: ["invoice"] },
+  // Delivery team — delivery lead advises (judgment); the deterministic projects service creates the project + tasks.
+  { departmentSlug: "delivery", memberType: "agent", memberRef: "delivery_lead_agent", role: "delivery_lead", responsibility: "assess feasibility, scope conflicts and dependency risks (advisory)", priority: 10, capabilities: ["run_project"], toolGrants: ["run_node"], memoryGrants: ["company", "client"], allowedInputSchemas: ["won_deal"], expectedOutputs: ["delivery_health", "risks"], escalationDestination: "delivery_orchestrator" },
+  { departmentSlug: "delivery", memberType: "service", memberRef: "addProject", role: "mutator", responsibility: "create the delivery project + kickoff milestones/tasks deterministically", priority: 20, capabilities: ["run_project"] },
 ];
 
 export interface SeedDepartmentsResult {
