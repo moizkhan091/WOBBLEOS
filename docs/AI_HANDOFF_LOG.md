@@ -4038,3 +4038,12 @@ GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 811 tests / 102 fi
 (content-publishing ×2 + content-gate + content-vertical regressions) · no schema/migration touched.
 
 NEXT: proposal-accept full-chain browser E2E; Phase 5 Continuous Research + Context OS; Phases 6–11.
+
+## cont.23 — Escalation REROUTE browser coverage (Phase 3 escalation-action E2E complete)
+
+Added reroute edge-case coverage to the required Playwright gate, completing browser coverage for ALL FOUR
+escalation actions (resume/terminate/dismiss happy-path + reroute; plus duplicate/invalid/unauthorized/
+not-found edge cases from cont.21). Reroute edge cases (the happy path is proven by verify-escalation-reroute-db
++ 7 unit tests): reroute with no live handoff → 409 (nothing to re-route); reroute to a non-existent/
+unauthorized destination department → 409, the old handoff untouched (never fabricates an unauthorized route).
+Verified locally: 9 escalation Playwright tests pass.

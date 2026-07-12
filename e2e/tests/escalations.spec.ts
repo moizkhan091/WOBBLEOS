@@ -87,4 +87,21 @@ test.describe("Escalations — edge cases (idempotency / invalid transitions)", 
     const res = await request.post(`/api/escalations/escalation_does_not_exist/action`, { data: { action: "dismiss", reason: "ghost" } });
     expect(res.status()).toBe(404);
   });
+
+  test("REROUTE with no live handoff to re-route is refused (409), state unchanged", async ({ request }) => {
+    // escDismiss carries no linked handoff — there is no in-flight work to send to an alternate department.
+    const res = await request.post(`/api/escalations/${IDS.escDismiss}/action`, { data: { action: "reroute", destinationDepartment: "proposal", reason: "attempt reroute of non-actionable noise" } });
+    expect(res.status()).toBe(409);
+    expect((await escalationById(request, IDS.escDismiss))?.status).toBe("open");
+  });
+
+  test("REROUTE to a NON-EXISTENT / unauthorized destination department is refused (409), handoff untouched", async ({ request }) => {
+    // escResume has a real (dead-lettered) handoff, but no such department exists to legitimately accept it —
+    // reroute must not fabricate an unauthorized route.
+    await expect.poll(async () => (await handoffByWorkflow(request, WF.resume))?.deliveryState, { timeout: 15_000 }).toBe("dead_lettered");
+    const res = await request.post(`/api/escalations/${IDS.escResume}/action`, { data: { action: "reroute", destinationDepartment: "does_not_exist_dept", reason: "invalid target" } });
+    expect(res.status()).toBe(409);
+    expect((await escalationById(request, IDS.escResume))?.status).toBe("open"); // unchanged
+    expect((await handoffByWorkflow(request, WF.resume))?.deliveryState).toBe("dead_lettered"); // the old route is untouched
+  });
 });
