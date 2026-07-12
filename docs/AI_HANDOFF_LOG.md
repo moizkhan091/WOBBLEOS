@@ -3631,3 +3631,25 @@ chain, atomic + exactly-once + crash-safe (accept and emit commit together; a cr
 work). Remaining Priority-2 sub-item: a browser E2E from the real acceptance API that drives the consumer.
 NEXT: Priority 4 (dispatch-time classification gate #7), Priority 3 (QA live gates), Priority 5 (escalation
 control proof in required CI), independent review, then Phases 5-11. Do NOT deploy to VPS.
+
+## 2026-07-12 (cont. 9) - Claude (Opus 4.8) - Priority 4: dispatch-time data-classification gate (reviewer #7)
+
+Enforced destination data-classification authorization at DISPATCH time (before persistence/delivery), not
+only when work is consumed.
+
+- `validateHandoff` (called by `dispatchHandoff` before the row is stored) + `planDepartmentRoute` now
+  reject a route whose envelope `dataClassification` is not in the destination's `permittedDataClassifications`.
+  `HandoffReceiverContext.permittedDataClassifications` is the opt-in hook (no list → not enforced there,
+  backward compatible). The orchestrator passes the destination's permitted list into `dispatchHandoff` and
+  `planDepartmentRoute`; the direct origination dispatch (`dispatchBusinessAuditToProposal`) passes it too
+  (direct-call bypass gated). Memory-scope-widening + tenant-mismatch were already rejected; the consumer
+  still revalidates defensively (unchanged).
+- Tests: validateHandoff (unauthorized classification rejected, permitted passes, opt-in no-op) +
+  planDepartmentRoute (unauthorized blocked with a clear reason, permitted routes, omitted = no-op). Fixed a
+  test-fixture gap it surfaced (commercial-verticals financeDept now permits client_confidential, matching
+  the real seed). All 5 key real-DB proofs (commercial-chain, proposal-accept-origination, content,
+  research, consumer) re-run green — no routing regression.
+
+STATE: dispatch-time classification enforcement is live. Priorities 1, 2, 4 done. NEXT: Priority 3 (make QA
+boards gate live workflows), Priority 5 (complete escalation-control proof in required CI), independent
+review, then Phases 5-11. Do NOT deploy to VPS.

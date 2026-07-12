@@ -112,8 +112,9 @@ export function enforceBudget(budget: Pick<DepartmentBudget, "operatingBudgetCen
  */
 export function planDepartmentRoute(
   from: Pick<DepartmentRow, "slug" | "status" | "io">,
-  to: Pick<DepartmentRow, "slug" | "status" | "io">,
+  to: Pick<DepartmentRow, "slug" | "status" | "io" | "permissions">,
   productSchema: string,
+  dataClassification?: string,
 ): Decision {
   const errors: string[] = [];
   if (from.status !== "active") errors.push(`source department '${from.slug}' is ${from.status}, not active`);
@@ -121,5 +122,9 @@ export function planDepartmentRoute(
   if (to.status === "archived") errors.push(`destination department '${to.slug}' is archived`);
   const accepted = to.io.acceptedHandoffSchemas;
   if (accepted.length && !accepted.includes(productSchema)) errors.push(`destination '${to.slug}' does not accept product schema '${productSchema}'`);
+  // Dispatch-time data-classification gate: never route a product the destination is not cleared to handle.
+  if (dataClassification && !(to.permissions.permittedDataClassifications as string[]).includes(dataClassification)) {
+    errors.push(`destination '${to.slug}' does not permit data classification '${dataClassification}'`);
+  }
   return { ok: errors.length === 0, errors };
 }

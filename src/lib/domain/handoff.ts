@@ -157,6 +157,10 @@ export interface HandoffReceiverContext {
   clientWorkspaceId?: string | null;
   /** Memory scopes the receiver is permitted to read (its own grant). The envelope may not exceed these. */
   grantedMemoryScopes?: string[];
+  /** Data classifications the receiver is permitted to handle. When set, an envelope whose
+   *  dataClassification is not permitted is rejected at DISPATCH time (before persistence), not only at
+   *  accept — defense-in-depth against a mis-routed / direct-call classification leak. */
+  permittedDataClassifications?: string[];
 }
 
 export interface HandoffValidation {
@@ -193,6 +197,13 @@ export function validateHandoff(envelope: unknown, ctx: HandoffReceiverContext =
     const granted = new Set(ctx.grantedMemoryScopes);
     const over = e.authorizedMemoryScopes.filter((s) => !granted.has(s));
     if (over.length) errors.push(`unauthorized memory scopes: ${over.join(", ")}`);
+  }
+
+  // Data-classification authorization (dispatch-time defense-in-depth): the destination must be permitted
+  // to handle the envelope's classification. Rejected BEFORE persistence, so a mis-routed / direct-call
+  // client_confidential handoff never lands in a department not cleared for it.
+  if (ctx.permittedDataClassifications && !ctx.permittedDataClassifications.includes(e.dataClassification)) {
+    errors.push(`data classification '${e.dataClassification}' is not permitted for this destination`);
   }
 
   // Required inputs must be present in the carried outputs.

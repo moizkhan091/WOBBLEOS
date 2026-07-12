@@ -122,4 +122,19 @@ describe("planDepartmentRoute", () => {
   it("blocks routing from a non-active source", () => {
     expect(planDepartmentRoute(dept({ status: "inactive" }), to, "business_audit").ok).toBe(false);
   });
+
+  it("blocks routing a data classification the destination is not cleared for (dispatch-time gate)", () => {
+    const dest = buildDepartmentRow(
+      { slug: "proposal", name: "Proposal", purpose: "p", status: "draft",
+        io: { acceptedHandoffSchemas: ["business_audit"], inboundCapabilities: [], outboundProducts: [], downstreamConsumers: [] },
+        permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] } },
+      { now },
+    );
+    const r = planDepartmentRoute(dept(), dest, "business_audit", "restricted");
+    expect(r.ok).toBe(false);
+    expect(r.errors.join()).toMatch(/does not permit data classification 'restricted'/);
+    // A permitted classification still routes; omitting it is a no-op (backward compatible).
+    expect(planDepartmentRoute(dept(), dest, "business_audit", "client_confidential").ok).toBe(true);
+    expect(planDepartmentRoute(dept(), dest, "business_audit").ok).toBe(true);
+  });
 });

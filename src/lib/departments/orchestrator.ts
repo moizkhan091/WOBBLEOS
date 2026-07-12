@@ -241,7 +241,7 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
   for (const targetSlug of targets) {
     const to = await loadDepartment(targetSlug);
     if (!to) { escalations.push(`downstream department '${targetSlug}' not found`); continue; }
-    const routePlan = planDepartmentRoute(department, to, result.productSchema);
+    const routePlan = planDepartmentRoute(department, to, result.productSchema, envelope.dataClassification);
     if (!routePlan.ok) {
       await audit(deps, { eventType: "department.route_blocked", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { to: targetSlug, errors: routePlan.errors } });
       continue;
@@ -269,7 +269,7 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
     if (deps.handoffStore) {
       const { handoff, deduped } = await dispatchHandoff(
         routedEnvelope,
-        { clientWorkspaceId: routedEnvelope.clientWorkspaceId, grantedMemoryScopes: to.permissions.authorizedMemoryScopes },
+        { clientWorkspaceId: routedEnvelope.clientWorkspaceId, grantedMemoryScopes: to.permissions.authorizedMemoryScopes, permittedDataClassifications: to.permissions.permittedDataClassifications },
         { store: deps.handoffStore, recordAudit: deps.recordAudit, now },
       );
       routedTo.push({ department: to.slug, handoffId: handoff.id, deduped });

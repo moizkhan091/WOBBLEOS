@@ -83,6 +83,19 @@ describe("validateHandoff — schema + isolation + memory authorization", () => 
     expect(v.errors.join()).toMatch(/schemaVersion 999/);
   });
 
+  it("REJECTS a data classification the destination is not permitted to handle (dispatch-time gate)", () => {
+    const e = make({ dataClassification: "client_confidential" });
+    const v = validateHandoff(e, { permittedDataClassifications: ["internal", "public"] });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join()).toMatch(/data classification 'client_confidential' is not permitted/);
+  });
+
+  it("PASSES a permitted data classification, and is a no-op when the receiver declares none", () => {
+    const e = make({ dataClassification: "client_confidential" });
+    expect(validateHandoff(e, { permittedDataClassifications: ["internal", "client_confidential"] }).ok).toBe(true);
+    expect(validateHandoff(e, {}).ok).toBe(true); // opt-in: no permitted list → not enforced here
+  });
+
   it("REJECTS malformed input (strict schema)", () => {
     expect(validateHandoff({ nonsense: true }).ok).toBe(false);
   });

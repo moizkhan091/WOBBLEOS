@@ -120,7 +120,7 @@ const salesCrmDept = buildDepartmentRow(
 const financeDept = buildDepartmentRow(
   { slug: "finance", name: "Finance", purpose: "p", status: "active", orchestratorAgentSlug: "finance_orchestrator",
     io: { acceptedHandoffSchemas: [], inboundCapabilities: ["invoice", "report_revenue"], outboundProducts: ["revenue_margin_intelligence"], downstreamConsumers: ["founder_command_centre"] },
-    permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted"], allowedTools: ["run_node"], deniedTools: [] } },
+    permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted", "client_confidential"], allowedTools: ["run_node"], deniedTools: [] } },
   { now },
 );
 const deliveryDept = buildDepartmentRow(

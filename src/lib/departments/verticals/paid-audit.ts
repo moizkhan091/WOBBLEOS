@@ -124,7 +124,7 @@ export async function dispatchBusinessAuditToProposal(
   );
   const { handoff, deduped } = await dispatchHandoff(
     envelope,
-    { clientWorkspaceId: audit.companyId ?? null, grantedMemoryScopes: PROPOSAL_GRANT },
+    { clientWorkspaceId: audit.companyId ?? null, grantedMemoryScopes: PROPOSAL_GRANT, permittedDataClassifications: ["internal", "client_confidential"] },
     { store, recordAudit: opts.recordAudit, now },
   );
   return { handoffId: handoff.id, deduped };
