@@ -1780,6 +1780,35 @@ export const escalations = pgTable("escalations", {
   index("escalations_created_idx").on(table.createdAt),
 ]);
 
+// Phase 4 — independent QA board reviews. Append-only: a re-review after a `revise` is a legitimately new
+// row (the PK is the only uniqueness). An INDEPENDENT reviewer (distinct agent identity) evaluates another
+// department's artifact against explicit evidence + criteria; the authoring agent can never approve its own.
+export const qaReviews = pgTable("qa_reviews", {
+  id: id(),
+  boardSlug: varchar("board_slug", { length: 120 }).notNull(),
+  reviewerAgentSlug: varchar("reviewer_agent_slug", { length: 120 }).notNull(),
+  department: varchar("department", { length: 120 }).notNull(),
+  artifactSchema: varchar("artifact_schema", { length: 120 }).notNull(),
+  authorAgentSlug: varchar("author_agent_slug", { length: 120 }).notNull(),
+  workflowId: text("workflow_id").notNull(),
+  taskId: varchar("task_id", { length: 160 }),
+  clientWorkspaceId: varchar("client_workspace_id", { length: 120 }),
+  verdict: varchar("verdict", { length: 16 }).notNull(), // pass | fail | revise | blocked
+  score: numeric("score", { precision: 6, scale: 4 }).notNull().default("0"), // 0..1
+  independent: boolean("independent").notNull().default(true),
+  criteria: jsonb("criteria").$type<Record<string, unknown>[]>().notNull().default([]),
+  evidence: jsonb("evidence").$type<Record<string, unknown>[]>().notNull().default([]),
+  routingTarget: jsonb("routing_target").$type<Record<string, unknown> | null>(),
+  summary: text("summary").notNull(),
+  blockedReason: text("blocked_reason"),
+  createdAt: createdAt(),
+}, (table) => [
+  index("qa_reviews_board_workflow_idx").on(table.boardSlug, table.workflowId),
+  index("qa_reviews_dept_verdict_idx").on(table.department, table.verdict),
+  index("qa_reviews_workflow_idx").on(table.workflowId),
+  index("qa_reviews_created_idx").on(table.createdAt),
+]);
+
 // ---- PROVIDER USAGE (Phase 3): the ONE normalized contract for every provider call's ACTUAL usage —
 // tokens (incl. cached + reasoning), provider-reported vs internally-calculated cost, latency, attempt,
 // and the full workflow/task/handoff/department/agent/tenant context. Budget settles against THIS (actual),
