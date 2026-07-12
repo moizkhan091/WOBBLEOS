@@ -15,10 +15,10 @@ on:
   pull_request:
     branches: ["**"]
 
-# Cancel older runs of the same branch when a new commit is pushed.
+# Queue runs for the same branch instead of cancelling older runs.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
