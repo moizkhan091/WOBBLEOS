@@ -3977,3 +3977,25 @@ from-scratch + zero-drift · DB proof ×2.
 TRANSCRIPT FOUNDATIONS COMPLETE (3/3). NEXT: the four un-wired brief providers (provider_health/kpi/
 crm_movement/intelligence) + AIOS org-metrics from finance (documented follow-ups); browser E2Es in required
 CI (proposal-accept, QA-gate, escalation edge cases); Phase 5 Continuous Research + Context OS; Phases 6–11.
+
+## cont.21 — Escalation-action edge cases added to the REQUIRED Playwright gate
+
+Extended the browser gate with the escalation-action EDGE cases the mandate called out (duplicate clicks,
+invalid transitions, unauthorized users) — proving the guards on the SAME real action API the founder
+buttons drive, each asserted as settled state read back through the API:
+
+- **Unauthorized** (unauth project): `POST /api/escalations/{id}/action` with a valid body but NO session →
+  401 before the handler runs (the mutation never executes — an unauthorized user can't resolve/dismiss a
+  founder escalation).
+- **Duplicate action** (idempotency): dismiss an escalation, then dismiss again → the second is a 409 no-op
+  (the transition guard only moves open/acknowledged → dismissed); state stays `dismissed`, no double-effect.
+- **Invalid transition**: resume an escalation with no redrivable handoff → 409 (resume never fakes a
+  success); the escalation stays `open`.
+- **Non-existent id** → 404 (no silent success).
+
+Verified locally against Postgres (dev-server mode): 10 Playwright tests passed (the 3 original real-effect
+tests + 4 new edge cases + unauth gate), with the 200/409/404 responses observed in the server log. These run
+in the REQUIRED `e2e browser gate (Playwright)` CI job (no continue-on-error).
+
+NEXT: proposal-accept full-chain browser E2E + a QA-gate browser E2E (backend fully proven on Postgres);
+Phase 5 Continuous Research + Context OS; Phases 6–11.

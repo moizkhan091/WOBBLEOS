@@ -19,4 +19,12 @@ test.describe("Auth gate — unauthenticated", () => {
     const json = (await res.json()) as { ok?: boolean };
     expect(json.ok).toBe(false);
   });
+
+  test("an escalation ACTION without a session is gated at 401 (the mutation never runs)", async ({ request }) => {
+    // A valid body so the request reaches the auth check (not a 422). The founder gate must block it before
+    // any state change — an unauthorized user can never resolve/dismiss a founder escalation.
+    const res = await request.post("/api/escalations/escalation_e2e_dismiss/action", { data: { action: "dismiss", reason: "unauthorized attempt" } });
+    expect(res.status()).toBe(401);
+    expect(((await res.json()) as { ok?: boolean }).ok).toBe(false);
+  });
 });

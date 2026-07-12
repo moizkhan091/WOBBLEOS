@@ -56,3 +56,35 @@ test.describe("Escalations — resume / terminate / dismiss (real effects)", () 
     await expect.poll(async () => (await escalationById(request, IDS.escDismiss))?.status, { timeout: 30_000 }).toBe("dismissed");
   });
 });
+
+/**
+ * Edge cases on the SAME real action API the founder buttons drive — proving the guards, not just the happy
+ * path: a duplicate action is a no-op (not a double-effect), an invalid transition is refused, and a ghost id
+ * 404s. All assert the settled state back through the API. (Unauthorized access is proven in the unauth
+ * project's auth-gate spec — the same POST returns 401 before the handler runs.)
+ */
+test.describe("Escalations — edge cases (idempotency / invalid transitions)", () => {
+  test.beforeEach(() => reseed());
+
+  test("a DUPLICATE dismiss is a 409 no-op (the second click cannot re-resolve or double-act)", async ({ request }) => {
+    const first = await request.post(`/api/escalations/${IDS.escDismiss}/action`, { data: { action: "dismiss", reason: "first dismiss" } });
+    expect(first.ok()).toBe(true);
+    await expect.poll(async () => (await escalationById(request, IDS.escDismiss))?.status, { timeout: 15_000 }).toBe("dismissed");
+
+    const second = await request.post(`/api/escalations/${IDS.escDismiss}/action`, { data: { action: "dismiss", reason: "duplicate dismiss" } });
+    expect(second.status()).toBe(409); // already resolved — the transition guard refuses it
+    expect((await escalationById(request, IDS.escDismiss))?.status).toBe("dismissed"); // unchanged
+  });
+
+  test("an INVALID transition (resume an escalation with no redrivable handoff) is refused (409), state unchanged", async ({ request }) => {
+    // escDismiss carries no linked handoff, so there is nothing to redrive — resume must not fake a success.
+    const res = await request.post(`/api/escalations/${IDS.escDismiss}/action`, { data: { action: "resolve", resolutionAction: "resume", resolution: "try to resume non-actionable noise" } });
+    expect(res.status()).toBe(409);
+    expect((await escalationById(request, IDS.escDismiss))?.status).toBe("open"); // still open — nothing happened
+  });
+
+  test("acting on a NON-EXISTENT escalation returns 404 (no silent success)", async ({ request }) => {
+    const res = await request.post(`/api/escalations/escalation_does_not_exist/action`, { data: { action: "dismiss", reason: "ghost" } });
+    expect(res.status()).toBe(404);
+  });
+});
