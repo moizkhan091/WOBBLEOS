@@ -27,6 +27,8 @@ export interface HandoffStore {
   getById(id: string): Promise<HandoffRow | null>;
   /** Atomically claim the next due `delivered` handoff for `destinationAgent`, setting a lease. */
   claimNext(destinationAgent: string, lease: { owner: string; expiresAt: Date }, now: Date): Promise<HandoffRow | null>;
+  /** Atomically claim the next due `delivered` handoff addressed to a DEPARTMENT, setting a lease. */
+  claimNextForDepartment(department: string, lease: { owner: string; expiresAt: Date }, now: Date): Promise<HandoffRow | null>;
   /** Conditional transition: apply `fields` (incl. deliveryState) only if still at `from`. Returns claimed. */
   transition(id: string, from: HandoffDeliveryState, fields: Partial<HandoffRow>): Promise<boolean>;
   /** Reclaim `processing` handoffs whose lease expired → back to `delivered`. Returns count. */
@@ -98,6 +100,16 @@ export async function claimNextHandoff(destinationAgent: string, leaseOwner: str
   const now = deps.now ?? new Date();
   const expiresAt = new Date(now.getTime() + HANDOFF_LEASE_MS);
   const claimed = await store.claimNext(destinationAgent, { owner: leaseOwner, expiresAt }, now);
+  if (claimed) await audit(deps, { eventType: "handoff.claimed", module: "handoff", entityType: "handoff", entityId: claimed.id, actor: leaseOwner, metadata: auditMeta(claimed) });
+  return claimed;
+}
+
+/** Claim the next `delivered` handoff addressed to a DEPARTMENT (consumer side of dept-to-dept routing). */
+export async function claimNextDepartmentHandoff(department: string, leaseOwner: string, deps: HandoffDeps = {}): Promise<HandoffRow | null> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const expiresAt = new Date(now.getTime() + HANDOFF_LEASE_MS);
+  const claimed = await store.claimNextForDepartment(department, { owner: leaseOwner, expiresAt }, now);
   if (claimed) await audit(deps, { eventType: "handoff.claimed", module: "handoff", entityType: "handoff", entityId: claimed.id, actor: leaseOwner, metadata: auditMeta(claimed) });
   return claimed;
 }
@@ -245,6 +257,25 @@ export function defaultStore(db: Db = getDb()): HandoffStore {
         WHERE id = (
           SELECT id FROM handoffs
           WHERE destination_agent = ${destinationAgent} AND delivery_state = 'delivered'
+            AND (run_after IS NULL OR run_after <= ${now})
+          ORDER BY created_at ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        )
+        RETURNING *;
+      `);
+      const row = (claimed.rows?.[0] ?? null) as unknown as HandoffRow | null;
+      return row ? await this.getById(row.id) : null;
+    },
+    async claimNextForDepartment(department, lease, now) {
+      // Same atomic SKIP-LOCKED claim, but addressed to a DEPARTMENT (a department's orchestrator
+      // consumes whatever was routed to it, regardless of the specific destination agent).
+      const claimed = await db.execute(sql`
+        UPDATE handoffs SET
+          delivery_state = 'processing', lease_owner = ${lease.owner}, lease_expires_at = ${lease.expiresAt}, updated_at = ${now}
+        WHERE id = (
+          SELECT id FROM handoffs
+          WHERE department = ${department} AND delivery_state = 'delivered'
             AND (run_after IS NULL OR run_after <= ${now})
           ORDER BY created_at ASC
           FOR UPDATE SKIP LOCKED

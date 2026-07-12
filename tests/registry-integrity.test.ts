@@ -36,7 +36,11 @@ const GRAPH_SERVICE_AGENTS = [PITCH_AGENT, ROADMAP_AGENT];
 
 // Department orchestrators — driven by the department runtime (runDepartment), which accepts the inbound
 // department handoff and runs the department's graph (paid-audit / content) through the handoff backbone.
-const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orchestrator"];
+const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orchestrator", "proposal_orchestrator"];
+
+// Department specialists that run synchronously inside a department policy (not via a graph job) — the
+// Proposal solution architect is the judgment step in runProposalDepartment, attributed for real settlement.
+const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect"];
 
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [
@@ -59,6 +63,7 @@ const EXECUTABLE_SLUGS = new Set<string>([
   ...GRAPH_NODE_AGENTS,
   ...GRAPH_SERVICE_AGENTS,
   ...DEPARTMENT_ORCHESTRATOR_AGENTS,
+  ...DEPARTMENT_SPECIALIST_AGENTS,
   ...SYNC_OR_SUBROUTINE_AGENTS,
   ...JOB_BACKED_AGENTS.map((j) => j.slug),
 ]);

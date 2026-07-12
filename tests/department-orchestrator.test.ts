@@ -38,6 +38,7 @@ function makeHandoffStore() {
     insert: async (row) => { if ([...rows.values()].some((r) => key(r) === key(row))) throw new Error("duplicate key value violates unique constraint"); rows.set(row.id, row); },
     getById: async (id) => rows.get(id) ?? null,
     claimNext: async () => null,
+    claimNextForDepartment: async () => null,
     transition: async (id, from, fields) => { const r = rows.get(id); if (!r || r.deliveryState !== from) return false; rows.set(id, { ...r, ...fields }); return true; },
     reclaimExpiredLeases: async () => 0,
     list: async () => [...rows.values()],

@@ -55,9 +55,13 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "proposal",
     name: "Proposal & Solution Design",
     purpose: "Turn an approved audit into a technical solution, pricing, implementation plan, ROI model and proposal artifact.",
-    status: "draft",
+    status: "active",
+    orchestratorAgentSlug: "proposal_orchestrator",
+    deterministicServices: ["createProposalFromAudit", "proposalAction"],
     permissions: { authorizedMemoryScopes: ["company", "offer", "research"], permittedDataClassifications: ["internal", "client_confidential"] },
     io: { inboundCapabilities: ["design_solution"], acceptedHandoffSchemas: ["business_audit", "audit_report"], outboundProducts: ["technical_solution", "pricing", "implementation_plan", "roi_model", "proposal_artifact"], downstreamConsumers: ["sales_crm"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "audit_missing", escalateTo: "founder_command_centre" }] },
+    kpis: [{ key: "success_rate", target: 0.9, unit: "ratio" }],
     owner: "Moiz",
   },
   {
@@ -162,6 +166,10 @@ export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
   { departmentSlug: "content", memberType: "agent", memberRef: CONTENT_GRAPH_AGENTS.research, role: "researcher", responsibility: "gather grounded evidence for the angle", priority: 20, capabilities: ["research"], toolGrants: ["run_node", "retrieve_memory"], memoryGrants: CONTENT_MEMORY, allowedInputSchemas: ["evidence_pack"], expectedOutputs: ["evidence_pack"], escalationDestination: "content_orchestrator" },
   { departmentSlug: "content", memberType: "agent", memberRef: CONTENT_GRAPH_AGENTS.copywriting, role: "copywriter", responsibility: "write + self-revise in-brand copy", priority: 30, capabilities: ["copywriting"], toolGrants: ["run_node"], memoryGrants: CONTENT_MEMORY, allowedInputSchemas: ["content_copy"], expectedOutputs: ["content_copy"], escalationDestination: "content_orchestrator" },
   { departmentSlug: "content", memberType: "agent", memberRef: CONTENT_GRAPH_AGENTS.scoring, role: "qa_scorer", responsibility: "score + gate the pack", priority: 40, capabilities: ["scoring"], toolGrants: ["run_node"], memoryGrants: CONTENT_MEMORY, allowedInputSchemas: ["score"], expectedOutputs: ["score"], approvalAuthority: [], escalationDestination: "content_orchestrator" },
+  // Proposal team — the solution architect (AGENT judgment) synthesizes the design from the audit; the
+  // deterministic service maps it into the versioned proposal artifact + fires the commercial chain on accept.
+  { departmentSlug: "proposal", memberType: "agent", memberRef: "proposal_solution_architect", role: "solution_architect", responsibility: "design the technical solution, integration, ROI and risks from the audit", priority: 10, capabilities: ["solution_design"], toolGrants: ["run_node"], memoryGrants: ["company", "offer", "research"], allowedInputSchemas: ["business_audit", "audit_report"], expectedOutputs: ["technical_solution"], escalationDestination: "proposal_orchestrator" },
+  { departmentSlug: "proposal", memberType: "service", memberRef: "createProposalFromAudit", role: "assembler", responsibility: "map the audit into the versioned proposal artifact deterministically", priority: 20, capabilities: ["assemble"] },
 ];
 
 export interface SeedDepartmentsResult {

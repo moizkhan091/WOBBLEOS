@@ -46,6 +46,15 @@ function makeStore() {
       rows.set(claimed.id, claimed);
       return claimed;
     },
+    claimNextForDepartment: async (department, lease, at) => {
+      const due = [...rows.values()]
+        .filter((r) => r.department === department && r.deliveryState === "delivered" && (r.runAfter === null || r.runAfter.getTime() <= at.getTime()))
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+      if (!due) return null;
+      const claimed = { ...due, deliveryState: "processing" as HandoffDeliveryState, leaseOwner: lease.owner, leaseExpiresAt: lease.expiresAt, updatedAt: at };
+      rows.set(claimed.id, claimed);
+      return claimed;
+    },
     transition: async (id, from, fields) => {
       const r = rows.get(id);
       if (!r || r.deliveryState !== from) return false; // optimistic guard

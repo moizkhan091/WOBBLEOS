@@ -35,14 +35,16 @@ describe("seedDepartments", () => {
     expect(depts.size).toBe(CANONICAL_DEPARTMENTS.length);
     expect(members.size).toBe(CANONICAL_MEMBERSHIPS.length);
 
-    // Paid audit + content are the operational departments (real teams + orchestrators).
+    // Paid audit + content + proposal are the operational departments (real teams + orchestrators).
     expect(depts.get("paid_audit")?.status).toBe("active");
     expect(depts.get("paid_audit")?.orchestratorAgentSlug).toBe("paid_audit_orchestrator");
     expect(depts.get("content")?.status).toBe("active");
+    expect(depts.get("proposal")?.status).toBe("active");
+    expect(depts.get("proposal")?.orchestratorAgentSlug).toBe("proposal_orchestrator");
 
     // Declared-but-not-yet-built departments are HONESTLY draft, not shallow-active.
-    expect(depts.get("proposal")?.status).toBe("draft");
     expect(depts.get("delivery")?.status).toBe("draft");
+    expect(depts.get("sales_crm")?.status).toBe("draft");
 
     // Downstream routing is declared (paid_audit → proposal).
     expect(depts.get("paid_audit")?.io.downstreamConsumers).toContain("proposal");

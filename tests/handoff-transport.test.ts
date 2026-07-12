@@ -24,6 +24,7 @@ function makeStore() {
       rows.set(claimed.id, claimed);
       return claimed;
     },
+    claimNextForDepartment: async () => null,
     transition: async (id, from, fields) => {
       const r = rows.get(id);
       if (!r || r.deliveryState !== from) return false;

@@ -137,6 +137,7 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
       getById: async (id: string) => byId.get(id) ?? null,
       transition: async (id: string, from: string, fields: { deliveryState?: string }) => { const r = byId.get(id); if (!r || r.deliveryState !== from) return false; Object.assign(r, fields); return true; },
       claimNext: async () => null, reclaimExpiredLeases: async () => 0, list: async () => [], countByState: async () => ({}), deleteExpired: async () => 0,
+    claimNextForDepartment: async () => null,
     } as unknown as import("@/lib/handoff").HandoffStore;
 
     await runPaidAuditGraph(
