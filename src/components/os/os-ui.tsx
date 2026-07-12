@@ -4902,6 +4902,11 @@ function HandoffPage() {
 // ---- Departments & Handoffs Command Centre (Phase 3) ----
 type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
 type HandoffView = { id: string; department: string; deliveryState: string; sourceAgent: string; destinationAgent: string | null; workflowId: string; clientWorkspaceId: string | null; retryCount: number; failureReason: string | null; correlationId: string; causationId: string | null; costEstimate: string | null; latencyMs: number | null; qualityScore: string | null };
+type EscView = { id: string; departmentSlug: string; reason: string; severity: string; status: string; requiredDecision: string; assignee: string | null; workflowId: string | null; resolutionAction: string | null };
+type BudgetStateView = { departmentSlug: string; caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; concurrencyLimit: number }; usage: { dailyCents: number; monthlyCents: number; dailyTokens: number; activeReservations: number }; remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null } };
+type KpiView = { key: string; definition: string; value: number | null; unit: string; target: number | null; trend: string | null; confidence: string };
+
+const SEV_COLOR: Record<string, string> = { critical: C.orange, high: C.orange, medium: "#F5C542", low: C.gray };
 
 const HEALTH_COLOR: Record<string, string> = { healthy: C.lime, degraded: "#F5C542", blocked: C.orange, over_budget: C.orange, failed: C.orange, unavailable: C.gray, misconfigured: C.orange, stale: C.blue, unknown: C.gray };
 const STATE_COLOR: Record<string, string> = { completed: C.lime, delivered: C.blue, processing: C.blue, acknowledged: C.blue, dead_lettered: C.orange, failed: C.orange, cancelled: C.gray, created: C.gray };
@@ -4912,6 +4917,9 @@ function DepartmentsPage() {
   const [deptFilter, setDeptFilter] = useState("");
   const q = [stateFilter ? `deliveryState=${stateFilter}` : "", deptFilter ? `department=${deptFilter}` : "", "limit=100"].filter(Boolean).join("&");
   const handoffs = useApi<{ handoffs: HandoffView[]; counts: Record<string, number> }>(`/api/handoffs?${q}`);
+  const escs = useApi<{ escalations: EscView[]; counts: Record<string, number> }>("/api/escalations?status=open&limit=100");
+  const budget = useApi<{ budget: BudgetStateView }>(deptFilter ? `/api/departments/${deptFilter}/budget` : "/api/departments/__none__/budget");
+  const kpis = useApi<{ kpis: KpiView[] }>(deptFilter ? `/api/departments/${deptFilter}/kpis` : "/api/departments/__none__/kpis");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -4927,11 +4935,27 @@ function DepartmentsPage() {
     } catch (e) { setMsg(String(e)); } finally { setBusy(null); }
   }
 
+  async function actEsc(id: string, body: Record<string, unknown>) {
+    setBusy(id);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/escalations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      setMsg(r.ok && j.ok ? `escalation ${body.action} ok` : `failed: ${j.error ?? r.status}`);
+      escs.reload();
+      depts.reload();
+    } catch (e) { setMsg(String(e)); } finally { setBusy(null); }
+  }
+
   const guard = offlineIf(depts);
   if (guard) return guard;
   const list = depts.data?.departments ?? [];
   const hs = handoffs.data?.handoffs ?? [];
   const counts = handoffs.data?.counts ?? {};
+  const escList = escs.data?.escalations ?? [];
+  const bud = deptFilter ? budget.data?.budget : undefined;
+  const kpiList = deptFilter ? kpis.data?.kpis ?? [] : [];
+  const fmtKpi = (v: KpiView) => (v.value === null ? "—" : v.unit === "ratio" ? `${Math.round(v.value * 100)}%` : v.unit === "ms" ? `${Math.round(v.value / 100) / 10}s` : v.unit === "cents" ? `$${(v.value / 100).toFixed(2)}` : String(v.value));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -4939,8 +4963,49 @@ function DepartmentsPage() {
         <Kpi label="Departments" value={String(list.length)} icon="Network" color={C.lime} />
         <Kpi label="Active" value={String(list.filter((d) => d.status === "active").length)} icon="CircleDot" color={C.blue} />
         <Kpi label="Handoffs in-flight" value={String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" />
-        <Kpi label="Stuck (needs you)" value={String((counts.dead_lettered ?? 0) + (counts.failed ?? 0))} icon="AlertTriangle" color={C.orange} />
+        <Kpi label="Open escalations" value={String(escs.data?.counts?.open ?? 0)} icon="AlertTriangle" color={escList.length ? C.orange : C.gray} />
       </div>
+
+      {escList.length > 0 ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: C.orange }}>Escalations — blocked work needs a decision</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {escList.map((e) => (
+              <div key={e.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: SEV_COLOR[e.severity] ?? C.gray }} />
+                <Tag text={e.departmentSlug} color={C.gray} />
+                <Tag text={e.reason} color={C.orange} />
+                <Tag text={e.severity} color={SEV_COLOR[e.severity] ?? C.gray} />
+                <span style={{ fontSize: 12, flex: 1, minWidth: 240 }}>{e.requiredDecision}</span>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "resume", resolution: "resolved from Command Centre — resume" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: "pointer", background: "transparent" }}>resume</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "terminate", resolution: "terminated from Command Centre" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: "pointer", background: "transparent" }}>terminate</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "dismiss", reason: "dismissed from Command Centre" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: faint, cursor: "pointer", background: "transparent" }}>dismiss</button>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {deptFilter && (bud || kpiList.length) ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{deptFilter} — budget & KPIs</div>
+          {bud ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <Tag text={`daily $${(bud.usage.dailyCents / 100).toFixed(2)}${bud.caps.dailyCents != null ? ` / $${(bud.caps.dailyCents / 100).toFixed(2)}` : ""}`} color={C.blue} />
+              <Tag text={`monthly $${(bud.usage.monthlyCents / 100).toFixed(2)}${bud.caps.monthlyCents != null ? ` / $${(bud.caps.monthlyCents / 100).toFixed(2)}` : ""}`} color={C.blue} />
+              <Tag text={`active ${bud.usage.activeReservations} / ${bud.caps.concurrencyLimit}`} color={C.gray} />
+            </div>
+          ) : null}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 8 }}>
+            {kpiList.map((v) => (
+              <div key={v.key} style={{ ...card, padding: "8px 11px" }} title={`${v.definition} · confidence ${v.confidence}`}>
+                <div style={{ fontSize: 11, color: faint }}>{v.key}{v.trend ? ` · ${v.trend}` : ""}</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{fmtKpi(v)}{v.target != null ? <span style={{ fontSize: 11, color: faint }}> / {v.unit === "ratio" ? `${Math.round(v.target * 100)}%` : v.target}</span> : null}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Departments — truthful health</div>
