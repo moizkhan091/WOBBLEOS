@@ -138,7 +138,12 @@ export async function getActingFounder(request: Request, deps: AuthDeps = {}): P
 }
 
 export function sessionCookie(token: string, opts: { secure?: boolean } = {}): string {
-  const secure = opts.secure ?? process.env.NODE_ENV === "production";
+  // Secure in production, EXCEPT when an explicit test-only override disables it. The E2E browser gate
+  // runs the production build over http://127.0.0.1, where a `Secure` cookie is accepted by the browser
+  // (secure context) but NOT replayed by Playwright's APIRequestContext — so authed API reads would 401.
+  // `SESSION_COOKIE_INSECURE=1` (set ONLY by the E2E harness, never in real deploys) issues a non-secure
+  // cookie so both the browser and the API-request context authenticate. Defaults to secure.
+  const secure = opts.secure ?? (process.env.SESSION_COOKIE_INSECURE === "1" ? false : process.env.NODE_ENV === "production");
   return [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     "Path=/",

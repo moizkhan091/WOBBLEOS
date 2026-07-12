@@ -91,6 +91,10 @@ export default defineConfig({
       // Isolated E2E auth — known password + secret ONLY for this server.
       SESSION_SECRET: E2E_SESSION_SECRET,
       SHARED_LOGIN_PASSWORD_HASH_B64: E2E_PASSWORD_HASH_B64,
+      // The production build issues a `Secure` session cookie, which Playwright's APIRequestContext will
+      // NOT replay over http://127.0.0.1 → authed API reads would 401. Issue a non-secure cookie for the
+      // E2E server ONLY (test harness; never a real deploy) so both the browser and request context auth.
+      SESSION_COOKIE_INSECURE: "1",
       // Real DB (loaded from .env locally; exported by the job in CI).
       DATABASE_URL: process.env.DATABASE_URL ?? "",
     },

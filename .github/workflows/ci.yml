@@ -57,13 +57,11 @@ jobs:
   e2e:
     name: e2e browser gate (Playwright)
     runs-on: ubuntu-latest
-    # Proven green LOCALLY (10 tests, real Postgres + Chromium) but NOT yet green in CI: the first CI run
-    # failed (candidate cause: Secure login cookie rejected over http in CI `next start` — A's note suggests
-    # running the E2E server with NODE_ENV=development; or browser-deps/startup timing). Until stabilised
-    # this job runs ONLY on manual dispatch so it never reds push/PR CI. To stabilise: trigger it manually
-    # (Actions → CI → Run workflow), fix, then promote to on-push + required.
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    continue-on-error: true
+    # REQUIRED browser gate on push + PR. Proves REAL DB effects (escalation resume/terminate/dismiss,
+    # handoff retry/cancel, budget/KPI verified usage) against the production build + a real Postgres.
+    # Two CI-env fixes made it green from a clean checkout: migration 0026 is now idempotent (from-scratch
+    # apply), and the E2E server issues a non-secure session cookie (SESSION_COOKIE_INSECURE via the
+    # Playwright config) so authed API reads over http are not 401'd.
     timeout-minutes: 30
     services:
       postgres:
