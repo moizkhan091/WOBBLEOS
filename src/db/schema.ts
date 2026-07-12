@@ -1854,3 +1854,32 @@ export const providerUsage = pgTable("provider_usage", {
   index("provider_usage_created_idx").on(table.createdAt),
   index("provider_usage_client_idx").on(table.clientWorkspaceId),
 ]);
+
+// ---- DECISION LEARNING (Doctrine 7): durable scoped policy PROPOSALS derived from committed Decision Room
+// decisions. Never auto-applied — a row is `proposed` until an explicit, gated approval flips it to `active`.
+// Partial-unique backstop: at most one LIVE (proposed|active) policy per (scope, scope_id, category,
+// direction) so a concurrent proposer can't duplicate a direction the service already tracks. ----
+export const decisionPolicies = pgTable("decision_policies", {
+  id: id(),
+  scope: varchar("scope", { length: 16 }).notNull(), // wobble | founder | client | project
+  scopeId: varchar("scope_id", { length: 200 }).notNull(),
+  category: varchar("category", { length: 120 }).notNull(),
+  direction: text("direction").notNull(),
+  statement: text("statement").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("proposed"), // proposed | active | superseded | rejected
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"), // 0..1
+  repetitionCount: integer("repetition_count").notNull().default(0),
+  agreementRatio: numeric("agreement_ratio", { precision: 4, scale: 3 }).notNull().default("0"), // 0..1
+  contested: boolean("contested").notNull().default(false),
+  dissentCount: integer("dissent_count").notNull().default(0),
+  evidence: jsonb("evidence").$type<Record<string, unknown>[]>().notNull().default([]),
+  effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
+  effectiveTo: timestamp("effective_to", { withTimezone: true }),
+  supersedes: text("supersedes"),
+  origin: varchar("origin", { length: 24 }).notNull(), // repetition | explicit_approval
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("decision_policies_live_natural_uidx").on(table.scope, table.scopeId, table.category, table.direction).where(sql`status in ('proposed','active')`),
+  index("decision_policies_scope_idx").on(table.scope, table.scopeId, table.category),
+  index("decision_policies_status_idx").on(table.status),
+]);

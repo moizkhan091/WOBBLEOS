@@ -3876,3 +3876,37 @@ escalations + approvals tables → no drift).
 
 NEXT: QA-gate + proposal-accept + escalation browser E2E in required CI; transcript foundations DB
 persistence; Phase 5 Continuous Research + Context OS; then Phases 6–11.
+
+## cont.18 — Decision Learning made REAL (durable + triggered + founder-gated). Transcript foundation 1/3.
+
+The three transcript foundations (Daily Brief, AIOS Value, Decision Learning) shipped as pure services with
+in-memory default stores — honest foundations, but standalone (no durable state, no trigger, no surface).
+This makes **Decision Learning** a real, durable, triggered, founder-gated capability end-to-end.
+
+- **Durable state:** new `decision_policies` table (migration `0039_decision_policies`) + `createDbDecisionPolicyStore`
+  (Drizzle-backed; numeric↔string, jsonb evidence with Date reviving). A **partial-unique index** on
+  (scope, scope_id, category, direction) WHERE status in (proposed|active) is a real DB backstop — a
+  concurrent duplicate live insert is a silent no-op. `defaultStore` is DB-backed when DATABASE_URL is set.
+- **Real trigger:** the scheduler's daily-maintenance block now runs `proposeDecisionPolicies` — derives
+  scoped policy PROPOSALS from committed Decision Room decisions. Idempotent by natural key (a tracked
+  direction is never re-proposed), so running daily never duplicates. New `SchedulerResult.decisionPoliciesProposed`.
+- **Founder surface (gated):** `GET/POST /api/decision-policies` (list; propose-on-demand, founder-gated) +
+  `POST /api/decision-policies/[id]/action` (approve → active / reject → rejected, founder-gated). Approval is
+  the ONLY path to activation — nothing auto-applies.
+
+HARD RULES preserved (proven): a single decision never becomes a policy (needs repetition + strict majority);
+conflicting decisions never over-generalize; a policy is always `proposed` until an explicit founder approval.
+
+Proofs: `verify-decision-learning-db` (18 checks, ×2, `verify:decision-learning`) on live Postgres — repeated
+committed direction → one persisted PROPOSED policy (repetition/dissent counts from real evidence); single
+minority decision spawns nothing; idempotent re-run; partial-unique backstop rejects a duplicate live insert;
+approve → active (persisted); reject → rejected (persisted); distinct scope → its own proposal. Migration
+applies FROM SCRATCH on a fresh DB (40 migrations, exit 0); zero drift (`db:generate` → "nothing to migrate").
+Existing 15 domain/scheduler tests green.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 807 tests / 102 files · build 0 · migration
+from-scratch + zero-drift · DB proof ×2.
+
+NEXT (transcript foundations 2/3, 3/3): make AIOS Value/KPI + Daily Founder Brief durable + triggered the
+same way (task_inventory + aios_value_snapshots + daily_briefs tables, DB stores, real providers/triggers,
+founder surfaces). Then browser E2Es in required CI; Phase 5 Continuous Research + Context OS; Phases 6–11.
