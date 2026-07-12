@@ -1883,3 +1883,30 @@ export const decisionPolicies = pgTable("decision_policies", {
   index("decision_policies_scope_idx").on(table.scope, table.scopeId, table.category),
   index("decision_policies_status_idx").on(table.status),
 ]);
+
+// ---- AIOS VALUE / KPI (Doctrine 9): the durable, curated task/work inventory the value KPIs are computed
+// from. Each row carries its OWN evidence tier (founder-estimate … verified-financial) so an aggregate KPI
+// is never stronger than its weakest input. Curated (not auto-derived from logs), hence durable + editable. ----
+export const taskInventory = pgTable("task_inventory", {
+  id: id(),
+  task: text("task").notNull(),
+  owner: varchar("owner", { length: 120 }).notNull(),
+  department: varchar("department", { length: 120 }).notNull(),
+  frequency: jsonb("frequency").$type<{ per: string; count: number }>().notNull(),
+  baselineMinutes: numeric("baseline_minutes", { precision: 10, scale: 2 }).notNull().default("0"),
+  currentMinutes: numeric("current_minutes", { precision: 10, scale: 2 }).notNull().default("0"),
+  automationState: varchar("automation_state", { length: 16 }).notNull(), // manual | augmented | automated | autonomous
+  humanReviewMinutes: numeric("human_review_minutes", { precision: 10, scale: 2 }).notNull().default("0"),
+  evidenceSource: varchar("evidence_source", { length: 24 }).notNull(), // AIOS_EVIDENCE_TIERS
+  confidence: varchar("confidence", { length: 8 }).notNull().default("low"), // none | low | medium | high
+  completedCount: integer("completed_count"),
+  clientId: varchar("client_id", { length: 120 }), // denormalized from metadata for scope queries
+  projectId: varchar("project_id", { length: 120 }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("task_inventory_department_idx").on(table.department),
+  index("task_inventory_client_idx").on(table.clientId),
+  index("task_inventory_project_idx").on(table.projectId),
+]);

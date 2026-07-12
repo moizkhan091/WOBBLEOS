@@ -281,6 +281,13 @@
       "when": 1783880199346,
       "tag": "0039_decision_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783881337680,
+      "tag": "0040_task_inventory",
+      "breakpoints": true
     }
   ]
 }

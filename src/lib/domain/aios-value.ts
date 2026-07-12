@@ -93,7 +93,7 @@ export interface TaskInventoryItem {
   metadata: Record<string, unknown>;
 }
 
-const taskInventorySchema = z.object({
+export const taskInventorySchema = z.object({
   task: z.string().trim().min(1),
   owner: z.string().trim().min(1),
   department: z.string().trim().min(1),

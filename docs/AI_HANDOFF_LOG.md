@@ -3910,3 +3910,35 @@ from-scratch + zero-drift · DB proof ×2.
 NEXT (transcript foundations 2/3, 3/3): make AIOS Value/KPI + Daily Founder Brief durable + triggered the
 same way (task_inventory + aios_value_snapshots + daily_briefs tables, DB stores, real providers/triggers,
 founder surfaces). Then browser E2Es in required CI; Phase 5 Continuous Research + Context OS; Phases 6–11.
+
+## cont.19 — AIOS Value/KPI made durable (task_inventory + snapshot API). Transcript foundation 2/3.
+
+Second transcript foundation (Doctrine 9) made real: durable curated inventory + a founder-facing snapshot.
+
+- **Durable state:** new `task_inventory` table (migration `0040_task_inventory`) + `createDbTaskInventoryStore`
+  (Drizzle; numeric↔string minutes, jsonb frequency/metadata; clientId/projectId denormalized from metadata
+  for scope queries; upsert idempotent by id so editing an item overwrites, never duplicates). `defaultStore`
+  is DB-backed when DATABASE_URL is set.
+- **Founder surface:** `GET /api/aios-value?scope=company|department|client|project&id=…` returns the
+  evidence-tiered snapshot (its real consumer — an on-demand analytics read, not an autonomous action);
+  `POST /api/aios-value` upserts a curated inventory item (founder-gated — the inventory is a founder artifact).
+- **Honesty preserved (proven):** empty scope → honest NULLS (no zeros pretending to be results); an aggregate
+  KPI is tiered to its WEAKEST input and flagged `isEstimate` (a founder-estimate is never shown as a measured
+  actual); founder-owned savings roll up separately at their own stronger tier.
+
+The task inventory is CURATED (each row carries its own evidence tier), so it is a durable founder artifact —
+not auto-derived from logs (which would be "inferred" at best). Org metrics (revenue/cost/founder-rate) stay
+honest-null until finance/HR are wired — exactly what the domain is built for (a documented follow-up; the
+KPIs that depend on them return null, never a fake number).
+
+Proofs: `verify-aios-value-db` (11 checks, ×2, `verify:aios-value`) on live Postgres — empty→nulls; two real
+tasks persisted; hours-saved/month + automation % computed from the persisted inventory; weakest-tier
+aggregation; founder-scope rollup; upsert-by-id idempotency. Migration from-scratch (fresh DB, exit 0) + zero
+drift. Existing 9 aios-value domain tests green.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 807 tests / 102 files · build 0 · migration
+from-scratch + zero-drift · DB proof ×2.
+
+NEXT (transcript foundation 3/3): Daily Founder Brief — durable `daily_briefs` + real signal providers wired
+to the live stores (escalations/approvals/finance/delivery/health/KPIs/CRM/intelligence) + a scheduled
+cadence trigger + a founder surface. Then browser E2Es in required CI; Phase 5+.
