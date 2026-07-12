@@ -18,6 +18,8 @@ import {
   cancelHandoff,
   purgeExpiredHandoffs,
   handoffStateCounts,
+  listHandoffs,
+  getHandoff,
   type HandoffStore,
 } from "@/lib/handoff";
 
@@ -60,7 +62,7 @@ function makeStore() {
       }
       return n;
     },
-    list: async (q) => [...rows.values()].filter((r) => (!q.workflowId || r.workflowId === q.workflowId) && (!q.deliveryState || r.deliveryState === q.deliveryState) && (!q.clientWorkspaceId || r.clientWorkspaceId === q.clientWorkspaceId)).slice(0, q.limit),
+    list: async (q) => [...rows.values()].filter((r) => (!q.workflowId || r.workflowId === q.workflowId) && (!q.deliveryState || r.deliveryState === q.deliveryState) && (!q.clientWorkspaceId || r.clientWorkspaceId === q.clientWorkspaceId) && (!q.department || r.department === q.department) && (!q.sourceAgent || r.sourceAgent === q.sourceAgent) && (!q.destinationAgent || r.destinationAgent === q.destinationAgent)).slice(0, q.limit),
     countByState: async () => { const out: Record<string, number> = {}; for (const r of rows.values()) out[r.deliveryState] = (out[r.deliveryState] ?? 0) + 1; return out; },
     deleteExpired: async (before) => { let n = 0; for (const [k, r] of rows) if (["completed", "cancelled", "dead_lettered"].includes(r.deliveryState) && r.updatedAt.getTime() <= before.getTime()) { rows.delete(k); n += 1; } return n; },
   };
@@ -182,5 +184,41 @@ describe("handoff runtime (durable backbone)", () => {
     const later = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000);
     const purged = await purgeExpiredHandoffs(later, { store });
     expect(purged).toBe(2);
+  });
+
+  it("Command Centre: filters by workflow/client/department/source/dest/state + inspects one handoff", async () => {
+    const { store } = makeStore();
+    const auth = { clientWorkspaceId: null as string | null, grantedMemoryScopes: ["company"] };
+    const deps = { store, recordAudit: async () => {}, now };
+    // Two departments, distinct source/destination agents.
+    await dispatchHandoff(envelope({ idempotencyKey: "k1", department: "paid_audit", sourceAgent: "orchestrator", destinationAgent: "audit_opportunity_finder", clientWorkspaceId: null, authorizedMemoryScopes: ["company"] }), auth, deps);
+    await dispatchHandoff(envelope({ idempotencyKey: "k2", department: "content", sourceAgent: "content_strategist", destinationAgent: "content_researcher", clientWorkspaceId: null, authorizedMemoryScopes: ["company"] }), auth, deps);
+
+    expect((await listHandoffs({ department: "paid_audit" }, { store })).map((h) => h.idempotencyKey)).toEqual(["k1"]);
+    expect((await listHandoffs({ department: "content" }, { store })).map((h) => h.idempotencyKey)).toEqual(["k2"]);
+    expect((await listHandoffs({ sourceAgent: "content_strategist" }, { store })).map((h) => h.idempotencyKey)).toEqual(["k2"]);
+    expect((await listHandoffs({ destinationAgent: "audit_opportunity_finder" }, { store })).map((h) => h.idempotencyKey)).toEqual(["k1"]);
+    expect(await listHandoffs({ deliveryState: "delivered" }, { store })).toHaveLength(2);
+    expect(await listHandoffs({ deliveryState: "completed" }, { store })).toHaveLength(0);
+
+    // Inspect: the full row (envelope + lineage + delivery state) is returned by id; unknown id → null.
+    const one = (await listHandoffs({ department: "content" }, { store }))[0];
+    const inspected = await getHandoff(one.id, { store });
+    expect(inspected?.envelope.department).toBe("content");
+    expect(inspected?.deliveryState).toBe("delivered");
+    expect(await getHandoff("handoff_missing", { store })).toBeNull();
+  });
+
+  it("redrive/cancel are refused on terminal handoffs (a stale Command Centre click can't rewrite finished work)", async () => {
+    const { store } = makeStore();
+    const auth = { clientWorkspaceId: null as string | null, grantedMemoryScopes: ["company"] };
+    const deps = { store, recordAudit: async () => {}, now };
+    const d = await dispatchHandoff(envelope({ idempotencyKey: "term", clientWorkspaceId: null, authorizedMemoryScopes: ["company"] }), auth, deps);
+    await claimNextHandoff("audit_opportunity_finder", "w", deps);
+    await completeHandoff(d.handoff.id, {}, deps);
+
+    expect(await cancelHandoff(d.handoff.id, "Moiz", deps)).toBe(false); // can't cancel a completed handoff
+    expect(await redriveHandoff(d.handoff.id, "Moiz", deps)).toBe(false); // can't redrive a completed handoff
+    expect((await getHandoff(d.handoff.id, { store }))!.deliveryState).toBe("completed"); // untouched
   });
 });

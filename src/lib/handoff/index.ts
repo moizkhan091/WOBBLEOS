@@ -6,6 +6,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { validateHandoff, type HandoffEnvelope, type HandoffReceiverContext } from "@/lib/domain/handoff";
 import {
   buildHandoffRow,
+  canTransitionHandoff,
   decideHandoffFailure,
   HANDOFF_LEASE_MS,
   type HandoffDeliveryState,
@@ -30,7 +31,7 @@ export interface HandoffStore {
   transition(id: string, from: HandoffDeliveryState, fields: Partial<HandoffRow>): Promise<boolean>;
   /** Reclaim `processing` handoffs whose lease expired → back to `delivered`. Returns count. */
   reclaimExpiredLeases(now: Date): Promise<number>;
-  list(query: { workflowId?: string; deliveryState?: HandoffDeliveryState; clientWorkspaceId?: string; limit: number }): Promise<HandoffRow[]>;
+  list(query: HandoffListQuery & { limit: number }): Promise<HandoffRow[]>;
   countByState(): Promise<Record<string, number>>;
   deleteExpired(before: Date): Promise<number>;
 }
@@ -39,6 +40,16 @@ export interface HandoffDeps {
   store?: HandoffStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
+}
+
+/** Command Centre filters for browsing handoffs (workflow / client / department / source / dest / state). */
+export interface HandoffListQuery {
+  workflowId?: string;
+  deliveryState?: HandoffDeliveryState;
+  clientWorkspaceId?: string;
+  department?: string;
+  sourceAgent?: string;
+  destinationAgent?: string;
 }
 
 async function audit(deps: HandoffDeps, input: AuditEventInput): Promise<void> {
@@ -159,22 +170,27 @@ export async function reclaimExpiredHandoffLeases(deps: HandoffDeps = {}): Promi
   return n;
 }
 
-/** Manual redrive: put a dead-lettered (or failed) handoff back into delivery, resetting retries. */
+/** Manual redrive: put a dead-lettered (or failed) handoff back into delivery, resetting retries. Refused
+ *  for states that can't legally reach `delivered` (completed/cancelled/created/acknowledged/already-delivered). */
 export async function redriveHandoff(id: string, actor: string, deps: HandoffDeps = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
   const row = await store.getById(id);
   if (!row) return false;
+  if (!canTransitionHandoff(row.deliveryState, "delivered")) return false; // e.g. redriving a completed handoff
   const ok = await store.transition(id, row.deliveryState, { deliveryState: "delivered", retryCount: 0, runAfter: null, failureReason: null, deliveredAt: now, updatedAt: now });
   if (ok) await audit(deps, { eventType: "handoff.redriven", module: "handoff", entityType: "handoff", entityId: id, actor, metadata: auditMeta(row) });
   return ok;
 }
 
+/** Cancel a live handoff. Refused once terminal (completed/cancelled) or dead-lettered — those can only be
+ *  redriven or reaped, never cancelled — so a stale Command Centre click can't rewrite finished work. */
 export async function cancelHandoff(id: string, actor: string, deps: HandoffDeps = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
   const row = await store.getById(id);
   if (!row) return false;
+  if (!canTransitionHandoff(row.deliveryState, "cancelled")) return false; // e.g. cancelling a completed handoff
   const ok = await store.transition(id, row.deliveryState, { deliveryState: "cancelled", cancelledAt: now, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
   if (ok) await audit(deps, { eventType: "handoff.cancelled", module: "handoff", entityType: "handoff", entityId: id, actor, metadata: auditMeta(row) });
   return ok;
@@ -185,9 +201,15 @@ export async function purgeExpiredHandoffs(before: Date, deps: HandoffDeps = {})
   return store.deleteExpired(before);
 }
 
-export async function listHandoffs(query: { workflowId?: string; deliveryState?: HandoffDeliveryState; clientWorkspaceId?: string; limit?: number } = {}, deps: HandoffDeps = {}): Promise<HandoffRow[]> {
+export async function listHandoffs(query: HandoffListQuery & { limit?: number } = {}, deps: HandoffDeps = {}): Promise<HandoffRow[]> {
   const store = deps.store ?? defaultStore();
   return store.list({ ...query, limit: Math.min(Math.max(query.limit ?? 100, 1), 500) });
+}
+
+/** Command Centre: inspect one handoff — full envelope, attempts, failure, lease, lineage, telemetry. */
+export async function getHandoff(id: string, deps: HandoffDeps = {}): Promise<HandoffRow | null> {
+  const store = deps.store ?? defaultStore();
+  return store.getById(id);
 }
 
 /** Founder Command Centre visibility: how many handoffs sit in each delivery state right now. */
@@ -250,8 +272,12 @@ export function defaultStore(db: Db = getDb()): HandoffStore {
       if (query.workflowId) conds.push(eq(handoffsTable.workflowId, query.workflowId));
       if (query.deliveryState) conds.push(eq(handoffsTable.deliveryState, query.deliveryState));
       if (query.clientWorkspaceId) conds.push(eq(handoffsTable.clientWorkspaceId, query.clientWorkspaceId));
+      if (query.department) conds.push(eq(handoffsTable.department, query.department));
+      if (query.sourceAgent) conds.push(eq(handoffsTable.sourceAgent, query.sourceAgent));
+      if (query.destinationAgent) conds.push(eq(handoffsTable.destinationAgent, query.destinationAgent));
       const base = db.select().from(handoffsTable);
-      const rows = await (conds.length ? base.where(and(...conds)) : base).orderBy(handoffsTable.createdAt).limit(query.limit);
+      // Newest first for the Command Centre feed (most-recent handoffs at the top).
+      const rows = await (conds.length ? base.where(and(...conds)) : base).orderBy(sql`${handoffsTable.createdAt} DESC`).limit(query.limit);
       return rows as unknown as HandoffRow[];
     },
     async countByState() {
