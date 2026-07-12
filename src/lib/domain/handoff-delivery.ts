@@ -26,7 +26,7 @@ const TRANSITIONS: Record<HandoffDeliveryState, HandoffDeliveryState[]> = {
   acknowledged: ["completed", "failed", "cancelled"],
   completed: [],
   failed: ["delivered", "dead_lettered"], // ->delivered = retry
-  dead_lettered: ["delivered"], // ->delivered = manual redrive
+  dead_lettered: ["delivered", "cancelled"], // ->delivered = manual redrive (resume); ->cancelled = abort/supersede (terminate/reroute)
   cancelled: [],
 };
 

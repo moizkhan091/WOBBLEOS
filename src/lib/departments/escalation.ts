@@ -10,6 +10,10 @@ import {
   type EscalationStatus,
   type EscalationResolutionAction,
 } from "@/lib/domain/escalation";
+import { nextHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
+import type { HandoffRow } from "@/lib/domain/handoff-delivery";
+import { departmentCanAccept, type DepartmentRow } from "@/lib/domain/department";
+import type { HandoffStore } from "@/lib/handoff";
 
 /**
  * Escalation service (Phase 3). Creates escalations when department work is blocked (idempotent: one OPEN
@@ -158,6 +162,111 @@ export async function terminateEscalation(id: string, actor: string, deps: Escal
   await resolveEscalation(id, { action: "terminate", resolution: `Terminated by ${actor}: ${cancelled} handoff(s) cancelled`, resolvedBy: actor }, deps);
   await audit(deps, { eventType: "escalation.terminated", module: "departments", entityType: "escalation", entityId: id, actor, metadata: { workflowId: row.workflowId, cancelled } });
   return { ok: true, cancelled };
+}
+
+export interface RerouteEscalationInput {
+  /** The alternate destination department to send the blocked work to. */
+  destinationDepartment: string;
+  /** Founder's reason (audited). */
+  reason: string;
+  destinationAgent?: string | null;
+  destinationCapability?: string | null;
+  /** Optional product-schema override; defaults to the blocked handoff's expectedOutputSchema. */
+  expectedOutputSchema?: string;
+}
+
+export interface RerouteEscalationDeps extends EscalationActionDeps {
+  handoffStore?: HandoffStore;
+  getHandoff?: (id: string) => Promise<HandoffRow | null>;
+  loadDepartment?: (slug: string) => Promise<DepartmentRow | null>;
+  dispatchHandoff?: (envelope: HandoffEnvelope, ctx: { clientWorkspaceId: string | null; grantedMemoryScopes: string[]; permittedDataClassifications: string[] }) => Promise<{ handoff: { id: string }; deduped: boolean }>;
+}
+
+/**
+ * REROUTE: a founder redirects blocked work to an AUTHORIZED alternate department, WITHOUT losing lineage.
+ * Unlike RESUME (redrive the same route) this creates a NEW handoff to a DIFFERENT destination. It preserves
+ * correlation/causation/tenant/classification/evidence/previous outputs (via `nextHandoff`), narrows memory
+ * scope to the destination's grant (never widens), verifies the destination is active + accepts the schema +
+ * permits the classification + fits the memory scope + matches the tenant (`departmentCanAccept`), dispatches
+ * the alternate handoff durably (which re-validates), cancels/supersedes the old blocked handoff ONLY after
+ * the alternate is durably accepted, releases any held reservation, links the new handoff onto the escalation,
+ * and resolves action=reroute. Idempotent per (workflow, destination) via the handoff idempotency key.
+ * Rejects (no state change, old work preserved): terminal handoff, unknown/inactive destination, unaccepted
+ * schema, disallowed classification, memory-scope widening, tenant mismatch.
+ */
+export async function rerouteEscalation(id: string, actor: string, input: RerouteEscalationInput, deps: RerouteEscalationDeps = {}): Promise<{ ok: boolean; error?: string; newHandoffId?: string }> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const row = await store.getById(id);
+  if (!row) return { ok: false, error: "escalation not found" };
+  if (row.status === "resolved" && row.resolutionAction === "reroute") return { ok: true }; // idempotent
+  if (!row.handoffId) return { ok: false, error: "escalation has no linked handoff to reroute" };
+
+  const h = await import("@/lib/handoff");
+  const getHandoff = deps.getHandoff ?? ((hid: string) => h.getHandoff(hid));
+  const loadDepartment = deps.loadDepartment ?? (async (slug: string) => (await import("@/lib/departments/registry")).getDepartment(slug));
+
+  // 1-2. Load the blocked handoff + reject terminal work.
+  const blocked = await getHandoff(row.handoffId);
+  if (!blocked) return { ok: false, error: "linked handoff not found" };
+  if (["completed", "cancelled"].includes(blocked.deliveryState)) return { ok: false, error: `handoff is ${blocked.deliveryState} — cannot reroute terminal work` };
+
+  // 3. Load + verify the alternate destination.
+  const to = await loadDepartment(input.destinationDepartment);
+  if (!to) return { ok: false, error: `destination department '${input.destinationDepartment}' not found` };
+
+  // Build the alternate envelope from the blocked one (preserves lineage/tenant/classification/outputs),
+  // narrowing memory scope to the destination's grant (never widen) and addressing it to the new dept.
+  const prevEnv = blocked.envelope;
+  const schema = input.expectedOutputSchema ?? prevEnv.expectedOutputSchema;
+  const destScopes = prevEnv.authorizedMemoryScopes.filter((s) => to.permissions.authorizedMemoryScopes.includes(s));
+  const alt = nextHandoff(
+    prevEnv,
+    {
+      sourceAgent: `reroute:${actor}`,
+      destinationAgent: input.destinationAgent ?? to.orchestratorAgentSlug ?? null,
+      destinationCapability: input.destinationCapability ?? to.io.inboundCapabilities[0] ?? null,
+      objective: `Reroute blocked ${prevEnv.department} work → ${to.slug}: ${input.reason}`,
+      requestedAction: `consume ${schema}`,
+      expectedOutputSchema: schema,
+      addOutputs: {},
+      confidence: prevEnv.confidence,
+      idempotencyKey: `${prevEnv.workflowId}:reroute:${to.slug}`,
+    },
+    { now },
+  );
+  const altEnvelope: HandoffEnvelope = { ...alt, department: to.slug, authorizedMemoryScopes: destScopes };
+
+  // 4-10. Authorize the alternate route: active + accepted schema + permitted classification + memory scope
+  //       (tenant is preserved from the blocked envelope; dispatch re-validates it defensively).
+  const auth = departmentCanAccept(to, { expectedOutputSchema: altEnvelope.expectedOutputSchema, dataClassification: altEnvelope.dataClassification, authorizedMemoryScopes: altEnvelope.authorizedMemoryScopes });
+  if (!auth.ok) return { ok: false, error: `reroute to '${to.slug}' rejected: ${auth.errors.join("; ")}` };
+
+  // 15. Dispatch the alternate handoff durably (re-validates tenant + memory + classification before storing).
+  const dispatch = deps.dispatchHandoff ?? (async (env: HandoffEnvelope, ctx: { clientWorkspaceId: string | null; grantedMemoryScopes: string[]; permittedDataClassifications: string[] }) => h.dispatchHandoff(env, ctx, { store: deps.handoffStore, recordAudit: deps.recordAudit, now }));
+  let newHandoffId: string;
+  try {
+    const res = await dispatch(altEnvelope, { clientWorkspaceId: altEnvelope.clientWorkspaceId, grantedMemoryScopes: to.permissions.authorizedMemoryScopes, permittedDataClassifications: to.permissions.permittedDataClassifications });
+    newHandoffId = res.handoff.id;
+  } catch (e) {
+    return { ok: false, error: `reroute dispatch failed (old work preserved): ${e instanceof Error ? e.message : e}` };
+  }
+
+  // 16. Supersede/cancel the OLD blocked handoff — only AFTER the alternate is durably accepted.
+  const rt = await handoffRuntime(deps);
+  await rt.cancel(row.handoffId, actor).catch(() => false);
+  // Release any held reservation on the old route (the alternate reserves its own budget when it runs).
+  if (row.budgetReservationId) {
+    const releaseFn = deps.releaseReservation ?? (async (rid: string) => (await import("@/lib/departments/budget")).releaseBudget(rid, {}));
+    await releaseFn(row.budgetReservationId).catch(() => false);
+  }
+
+  // 18-20. Link the new handoff onto the escalation, resolve action=reroute (only after durable acceptance),
+  //        and audit the old + new destination + actor + reason.
+  if (deps.store) await store.transition(id, ["open", "acknowledged"], { handoffId: newHandoffId, updatedAt: now }).catch(() => false);
+  await resolveEscalation(id, { action: "reroute", resolution: `Rerouted by ${actor} → ${to.slug}: ${input.reason} (new handoff ${newHandoffId})`, resolvedBy: actor }, deps);
+  await audit(deps, { eventType: "escalation.rerouted", module: "departments", entityType: "escalation", entityId: id, actor, metadata: { workflowId: row.workflowId, fromDepartment: prevEnv.department, toDepartment: to.slug, oldHandoffId: row.handoffId, newHandoffId, reason: input.reason } });
+  return { ok: true, newHandoffId };
 }
 
 export async function dismissEscalation(id: string, actor: string, reason: string, deps: EscalationDeps = {}): Promise<boolean> {

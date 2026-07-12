@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
-import { getEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation } from "@/lib/departments/escalation";
+import { getEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, rerouteEscalation } from "@/lib/departments/escalation";
 import { ESCALATION_RESOLUTION_ACTIONS } from "@/lib/domain/escalation";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,8 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("acknowledge") }),
   z.object({ action: z.literal("resolve"), resolutionAction: z.enum(ESCALATION_RESOLUTION_ACTIONS), resolution: z.string().trim().min(1) }),
   z.object({ action: z.literal("dismiss"), reason: z.string().trim().min(1) }),
+  // Reroute is a real alternate-route execution (not a label): it needs the destination department.
+  z.object({ action: z.literal("reroute"), destinationDepartment: z.string().trim().min(1), reason: z.string().trim().min(1), destinationAgent: z.string().trim().min(1).optional(), expectedOutputSchema: z.string().trim().min(1).optional() }),
 ]);
 
 /**
@@ -38,6 +40,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ok = await acknowledgeEscalation(id, auth);
     } else if (parsed.data.action === "dismiss") {
       ok = await dismissEscalation(id, auth, parsed.data.reason);
+    } else if (parsed.data.action === "reroute") {
+      // Reroute creates a real, authorized alternate handoff (lineage preserved) and cancels the old route.
+      const r = await rerouteEscalation(id, auth, { destinationDepartment: parsed.data.destinationDepartment, reason: parsed.data.reason, destinationAgent: parsed.data.destinationAgent, expectedOutputSchema: parsed.data.expectedOutputSchema }); ok = r.ok; reason = r.error;
     } else if (parsed.data.resolutionAction === "resume") {
       // Resume controls the REAL workflow: redrive the linked handoff, then resolve.
       const r = await resumeEscalation(id, auth); ok = r.ok; reason = r.error;

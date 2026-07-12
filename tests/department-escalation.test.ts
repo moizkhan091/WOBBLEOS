@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildEscalationRow, isEscalationOverdue, type EscalationRow } from "@/lib/domain/escalation";
-import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, listEscalations, escalationStatusCounts, type EscalationStore } from "@/lib/departments/escalation";
+import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, rerouteEscalation, listEscalations, escalationStatusCounts, type EscalationStore } from "@/lib/departments/escalation";
+import { buildHandoffEnvelope } from "@/lib/domain/handoff";
+import { buildHandoffRow, type HandoffRow } from "@/lib/domain/handoff-delivery";
+import { buildDepartmentRow, type DepartmentRow } from "@/lib/domain/department";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -138,5 +141,100 @@ describe("real escalation action semantics — control the actual workflow", () 
     expect(cancelled.sort()).toEqual(["h_a", "h_c"]);
     expect(released).toBe("res_1"); // budget reservation released
     expect(rows.get(escalation.id)!.resolutionAction).toBe("terminate");
+  });
+});
+
+describe("rerouteEscalation — REAL alternate-route execution (not a label)", () => {
+  const blockedEnvelope = () => buildHandoffEnvelope(
+    { workflowId: "wf_rr", department: "paid_audit", sourceAgent: "paid_audit_orchestrator", destinationAgent: "proposal_orchestrator", objective: "o", requestedAction: "consume business_audit", expectedOutputSchema: "business_audit", confidence: 0.7, companyId: "clientA", clientWorkspaceId: "clientA", dataClassification: "client_confidential", authorizedMemoryScopes: ["company", "offer", "research"], previousAgentOutputs: { auditId: "aud_1" }, idempotencyKey: "wf_rr:paid_audit->proposal" },
+    { now },
+  );
+  const blockedHandoff = (deliveryState = "dead_lettered"): HandoffRow => ({ ...buildHandoffRow(blockedEnvelope(), { now }), deliveryState: deliveryState as HandoffRow["deliveryState"] });
+  const dest = (over: Partial<Parameters<typeof buildDepartmentRow>[0]> = {}): DepartmentRow => buildDepartmentRow(
+    { slug: "delivery", name: "Delivery", purpose: "p", status: "active", orchestratorAgentSlug: "delivery_orchestrator",
+      io: { acceptedHandoffSchemas: ["business_audit"], inboundCapabilities: ["run_project"], outboundProducts: [], downstreamConsumers: [] },
+      permissions: { authorizedMemoryScopes: ["company", "offer", "research", "client"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] }, ...over },
+    { now },
+  );
+  const rrDeps = (store: EscalationStore, over: Record<string, unknown> = {}) => ({
+    ...deps(store),
+    getHandoff: async () => blockedHandoff(),
+    loadDepartment: async () => dest(),
+    dispatchHandoff: async (_env: unknown, _ctx: unknown) => ({ handoff: { id: "h_new_1" }, deduped: false }),
+    cancelHandoff: async () => true,
+    ...over,
+  });
+  const rrEsc = async (store: EscalationStore) => (await createEscalation({ departmentSlug: "paid_audit", workflowId: "wf_rr", taskId: "t1", reason: "dead_lettered" as const, severity: "high" as const, requiredDecision: "resume/reroute/terminate", handoffId: "h_old_1" }, deps(store))).escalation;
+
+  it("creates a valid alternate handoff, cancels the old route, resolves action=reroute (lineage preserved)", async () => {
+    const { store, rows } = makeStore();
+    const esc = await rrEsc(store);
+    let cancelledOld: string | null = null;
+    let dispatched: { department?: string; authorizedMemoryScopes?: string[]; clientWorkspaceId?: string | null; previousAgentOutputs?: Record<string, unknown> } | null = null;
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "specialist unavailable" }, rrDeps(store, {
+      dispatchHandoff: async (env: { department?: string; authorizedMemoryScopes?: string[]; clientWorkspaceId?: string | null; previousAgentOutputs?: Record<string, unknown> }) => { dispatched = env; return { handoff: { id: "h_new_1" }, deduped: false }; },
+      cancelHandoff: async (id: string) => { cancelledOld = id; return true; },
+    }));
+    expect(r.ok).toBe(true);
+    expect(r.newHandoffId).toBe("h_new_1");
+    expect(cancelledOld).toBe("h_old_1"); // old route superseded
+    expect(dispatched!.department).toBe("delivery"); // addressed to the alternate
+    expect(dispatched!.clientWorkspaceId).toBe("clientA"); // tenant preserved
+    expect(dispatched!.previousAgentOutputs!.auditId).toBe("aud_1"); // completed work / evidence preserved
+    expect(dispatched!.authorizedMemoryScopes).toEqual(["company", "offer", "research"]); // within dest grant, not widened
+    expect(rows.get(esc.id)!.resolutionAction).toBe("reroute");
+    expect(rows.get(esc.id)!.handoffId).toBe("h_new_1"); // new handoff linked to the escalation
+  });
+
+  it("REJECTS terminal work (completed/cancelled handoff cannot be rerouted)", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, { getHandoff: async () => blockedHandoff("completed") }));
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/completed — cannot reroute terminal/);
+  });
+
+  it("REJECTS an inactive destination", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, { loadDepartment: async () => dest({ status: "draft" }) }));
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/not active/);
+  });
+
+  it("REJECTS a destination that does not accept the product schema", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, { loadDepartment: async () => dest({ io: { acceptedHandoffSchemas: ["won_deal"], inboundCapabilities: [], outboundProducts: [], downstreamConsumers: [] } }) }));
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/schema 'business_audit' is not accepted/);
+  });
+
+  it("REJECTS a destination not permitted for the data classification", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, { loadDepartment: async () => dest({ permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal"], allowedTools: [], deniedTools: [] } }) }));
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/classification 'client_confidential' is not permitted/);
+  });
+
+  it("does NOT cancel the old route if the alternate dispatch fails (old work preserved)", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    let cancelled = false;
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, {
+      dispatchHandoff: async () => { throw new Error("tenant mismatch"); },
+      cancelHandoff: async () => { cancelled = true; return true; },
+    }));
+    expect(r.ok).toBe(false);
+    expect(cancelled).toBe(false); // old route untouched
+  });
+
+  it("is idempotent: rerouting an already-rerouted escalation is a no-op success", async () => {
+    const { store } = makeStore();
+    const esc = await rrEsc(store);
+    await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store));
+    const again = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store));
+    expect(again.ok).toBe(true);
   });
 });

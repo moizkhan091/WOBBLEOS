@@ -3700,3 +3700,30 @@ OPEN war-room priorities: P3 (wire QA to gate live workflows), P5 (real `reroute
 label; + escalation edge-case Playwright in required CI), the transcript-derived operating layer (Context
 OS / Decision Learning / Daily Founder Brief / AIOS-KPIs / Prime-Brainstorm-Explore / Visual Cockpit /
 Project Intelligence Graph — see docs/AIOS_TRANSCRIPT_DELTA_2026_07_12.md), and Phases 5–11.
+
+## 2026-07-12 (cont. 12) - Claude (Opus 4.8) - Phase 3 closure: REAL reroute escalation action (was a label)
+
+Implemented real reroute execution (Priority 5). Previously `resolveEscalation` recorded
+`resolutionAction:"reroute"` with NO alternate-route execution — a decorative label.
+
+- `rerouteEscalation(id, actor, {destinationDepartment, reason, ...})` in `escalation.ts`: loads the blocked
+  handoff, rejects terminal work, builds an alternate envelope via `nextHandoff` (preserves
+  workflow/correlation/causation/tenant/classification/evidence/previousAgentOutputs), narrows memory scope
+  to the destination's grant (never widens), authorizes via `departmentCanAccept` (active + accepted schema +
+  permitted classification + memory fit; tenant preserved), dispatches the alternate durably (re-validates),
+  then cancels/supersedes the OLD route ONLY after durable acceptance, releases the old reservation, links the
+  new handoff to the escalation, resolves action=reroute. Rejections leave state untouched (old work preserved).
+- Handoff state machine: added `dead_lettered → cancelled` (was `[delivered]` only). A rerouted dead-lettered
+  handoff must be cancellable so a later RESUME can't redrive it → double-execution. resume (dead_lettered→
+  delivered) + terminate (skips terminal) unaffected — verified by re-running verify-escalation-actions-db.
+- API `POST /api/escalations/[id]/action` gained a real `{action:"reroute", destinationDepartment, reason}` path
+  (was falling into the label-only resolve branch).
+- Tests: 7 unit tests (happy path lineage-preserved + reject terminal/inactive/unaccepted-schema/disallowed-
+  classification + dispatch-failure-preserves-old + idempotent). Real-DB proof `verify-escalation-reroute-db`
+  (run twice): rejections (content doesn't accept won_deal; draft dept inactive), valid reroute → Delivery
+  (tenant+lineage+evidence+correlation preserved, old cancelled, escalation linked to new handoff), idempotency.
+
+STATE: all four escalation actions (resume/terminate/dismiss/reroute) now control REAL execution + proven on
+real DB. Remaining Priority-5 sub-item: escalation-action Playwright coverage (duplicate clicks / invalid
+transitions / unauthorized users) in required CI. Workstreams B (live QA gates) + C (transcript foundations)
+in progress; D (project graph investigation) committed. NEXT: integrate B + C, gate, then continue.
