@@ -1,7 +1,7 @@
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { runTextProvider } from "@/lib/providers";
-import { createInvoice, getRevenueSummary, type FinanceDeps } from "@/lib/finance";
+import { createInvoice, getRevenueSummary, listInvoices, type FinanceDeps } from "@/lib/finance";
 import type { InvoiceRow, RevenueSummary } from "@/lib/domain/finance";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
 import type { RiskLevel } from "@/lib/departments/verticals/sales-crm";
@@ -121,7 +121,13 @@ export async function runFinanceDepartment(input: RunFinanceDepartmentInput, dep
     // value. A non-invoiceable amount (≤ 0) is a real escalation, not a fabricated invoice.
     let invoice: InvoiceRow | null = null;
     if (input.amountCents > 0) {
-      invoice = await createInvoice(
+      // IDEMPOTENCY GUARD: a consumer retry/reclaim (crash or a transient error on a later step) must NOT
+      // draft a SECOND invoice for the same deal. The chain produces one invoice per opportunity, so if one
+      // already exists for this opportunity we reuse it instead of creating a duplicate.
+      const existing = input.opportunityId
+        ? (await listInvoices({ limit: 5000 }, financeDeps)).find((i) => i.opportunityId === input.opportunityId)
+        : null;
+      invoice = existing ?? await createInvoice(
         {
           companyId: input.companyId ?? undefined,
           opportunityId: input.opportunityId ?? undefined,

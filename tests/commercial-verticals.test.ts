@@ -264,6 +264,16 @@ describe("Commercial verticals — Finance", () => {
     expect([...handoffRows.values()].some((h) => h.department === "founder_command_centre")).toBe(true);
   });
 
+  it("IDEMPOTENT: a consumer re-run does not draft a SECOND invoice for the same deal", async () => {
+    const { store: fin, invs } = makeFinanceStore();
+    const input = { opportunityId: "opp_win_1", companyId: "co_acme", proposalId: "prop_1", businessName: "Acme", amountCents: 480000, requestedBy: "Moiz", workflowId: "wf_fin_idem" };
+    const deps = { ...registry, assessMargin: async () => CANNED_MARGIN, getRevenue: async () => CANNED_REVENUE, financeDeps: { store: fin, ...noAudit }, ...noAudit, now };
+    await runFinanceDepartment(input, deps);
+    const r2 = await runFinanceDepartment(input, deps); // retry / reclaim of the same won_deal
+    expect([...invs.values()]).toHaveLength(1); // exactly one invoice — the guard reused it
+    expect(r2.product?.invoice?.totalCents).toBe(480000); // the reused invoice still rides on the product
+  });
+
   it("ANTI-DECORATIVE: the invoice is created even when the margin-assessment agent FAILS (LLM is not on the money path)", async () => {
     const { store: fin, invs } = makeFinanceStore();
 
@@ -293,6 +303,17 @@ describe("Commercial verticals — Finance", () => {
 });
 
 describe("Commercial verticals — Delivery", () => {
+  it("IDEMPOTENT: a consumer re-run does not create a SECOND project or duplicate kickoff tasks for the same deal", async () => {
+    const { store: proj, projs } = makeProjectStore();
+    const { store: task, tasks } = makeTaskStore();
+    const input = { opportunityId: "opp_win_1", companyId: "co_acme", proposalId: "prop_1", projectName: "Acme", servicesIncluded: ["Missed-call text-back"], owner: "Ali", requestedBy: "Moiz", workflowId: "wf_del_idem" };
+    const deps = { ...registry, assessFeasibility: async () => CANNED_FEASIBILITY, projectDeps: { store: proj, ...noAudit }, taskDeps: { store: task, ...noAudit }, ...noAudit, now };
+    await runDeliveryDepartment(input, deps);
+    await runDeliveryDepartment(input, deps); // retry / reclaim of the same won_deal
+    expect([...projs.values()]).toHaveLength(1); // exactly one project — the guard reused it
+    expect([...tasks.values()]).toHaveLength(2); // kickoff tasks not duplicated
+  });
+
   it("accepts won_deal → advisory feasibility → DETERMINISTIC project + milestones + tasks + owner → health + route", async () => {
     const { store: proj, projs } = makeProjectStore();
     const { store: task, tasks } = makeTaskStore();

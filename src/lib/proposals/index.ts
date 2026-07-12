@@ -12,7 +12,7 @@ import {
   type ProposalRow,
   type ProposalStatus,
 } from "@/lib/domain/proposal";
-import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
+import { buildHandoffEnvelope, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
 import { createInvoice } from "@/lib/finance";
@@ -77,7 +77,13 @@ export async function defaultAcceptAndEmit(id: string, buildEnvelope: (p: Propos
       .returning();
     if (!claimed[0]) return null; // lost the atomic claim → no double-run
     const proposal = claimed[0] as ProposalRow;
-    const row = buildHandoffRow(buildEnvelope(proposal), { now });
+    const envelope = buildEnvelope(proposal);
+    // Defense-in-depth: the atomic emit inserts the handoff directly (not via dispatchHandoff), so gate the
+    // classification here too — Sales/CRM handles internal + client_confidential. A mismatch rolls back the
+    // whole transaction (accept + emit), so a mis-classified proposal never even flips to accepted.
+    const check = validateHandoff(envelope, { permittedDataClassifications: ["internal", "client_confidential"] });
+    if (!check.ok) throw new Error(`proposal accept: outbox emit rejected — ${check.errors.join("; ")}`);
+    const row = buildHandoffRow(envelope, { now });
     const inserted = await tx
       .insert(handoffsTable)
       .values(row as never)

@@ -1,7 +1,7 @@
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { runTextProvider } from "@/lib/providers";
-import { addProject, type ProjectDeps } from "@/lib/projects";
+import { addProject, listProjects, type ProjectDeps } from "@/lib/projects";
 import { addTask, type TaskDeps } from "@/lib/tasks";
 import type { ProjectRow } from "@/lib/domain/project";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
@@ -144,25 +144,33 @@ export async function runDeliveryDepartment(input: RunDeliveryDepartmentInput, d
 
     // DETERMINISTIC write (AUTHORITATIVE — the LLM never touches project/milestone/task state). Stand up the
     // real delivery project with kickoff milestones + an assigned owner, then seed kickoff tasks.
-    const project = await addProject(
-      {
-        name: input.projectName,
-        companyId: input.companyId ?? undefined,
-        opportunityId: input.opportunityId ?? undefined,
-        proposalId: input.proposalId ?? undefined,
-        servicesIncluded: services,
-        owner: owner ?? undefined,
-        teamMembers: input.teamMembers ?? (owner ? [owner] : []),
-        status: "onboarding",
-        milestones: [{ title: "Kickoff call" }, { title: "Onboarding complete" }],
-        createdBy: input.requestedBy,
-      },
-      projectDeps,
-    );
-
-    // Kickoff tasks — assigned to the responsible owner (real, owned work; not a decorative label).
-    await addTask({ title: `Kick off delivery: ${input.projectName}`, companyId: input.companyId ?? undefined, opportunityId: input.opportunityId ?? undefined, assignedTo: owner ?? undefined, createdBy: input.requestedBy }, taskDeps);
-    await addTask({ title: `Schedule onboarding: ${input.projectName}`, companyId: input.companyId ?? undefined, opportunityId: input.opportunityId ?? undefined, assignedTo: owner ?? undefined, createdBy: input.requestedBy }, taskDeps);
+    // IDEMPOTENCY GUARD: a consumer retry/reclaim (crash or a transient error on a later step) must NOT create
+    // a SECOND project or duplicate kickoff tasks for the same deal. If a project already exists for this
+    // opportunity we reuse it and skip the writes (the chain produces one project per opportunity).
+    const existingProjects = input.opportunityId ? await listProjects({ opportunityId: input.opportunityId, limit: 1 }, projectDeps) : [];
+    let project: ProjectRow;
+    if (existingProjects.length > 0) {
+      project = existingProjects[0];
+    } else {
+      project = await addProject(
+        {
+          name: input.projectName,
+          companyId: input.companyId ?? undefined,
+          opportunityId: input.opportunityId ?? undefined,
+          proposalId: input.proposalId ?? undefined,
+          servicesIncluded: services,
+          owner: owner ?? undefined,
+          teamMembers: input.teamMembers ?? (owner ? [owner] : []),
+          status: "onboarding",
+          milestones: [{ title: "Kickoff call" }, { title: "Onboarding complete" }],
+          createdBy: input.requestedBy,
+        },
+        projectDeps,
+      );
+      // Kickoff tasks — assigned to the responsible owner (real, owned work; not a decorative label).
+      await addTask({ title: `Kick off delivery: ${input.projectName}`, companyId: input.companyId ?? undefined, opportunityId: input.opportunityId ?? undefined, assignedTo: owner ?? undefined, createdBy: input.requestedBy }, taskDeps);
+      await addTask({ title: `Schedule onboarding: ${input.projectName}`, companyId: input.companyId ?? undefined, opportunityId: input.opportunityId ?? undefined, assignedTo: owner ?? undefined, createdBy: input.requestedBy }, taskDeps);
+    }
 
     // Truthful delivery health from the REAL project signals (never assumed from record existence).
     const health = deliveryHealthLabel(project);

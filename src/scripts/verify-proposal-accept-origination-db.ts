@@ -24,6 +24,8 @@ import { seedDepartments } from "@/lib/departments/seed";
 import { defaultStore as registryStore } from "@/lib/departments/registry";
 import { defaultStore as handoffStore } from "@/lib/handoff";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
+import { runFinanceDepartment } from "@/lib/departments/verticals/finance";
+import { runDeliveryDepartment } from "@/lib/departments/verticals/delivery";
 import { buildAuditRow, type AuditReport } from "@/lib/domain/free-audit";
 import { addCompany, addOpportunity, getOpportunity } from "@/lib/crm";
 import { createProposalFromAudit, proposalAction } from "@/lib/proposals";
@@ -128,6 +130,20 @@ async function main() {
     assert((await db.select().from(invoices).where(eq(invoices.proposalId, proposalId))).length === 1, "still exactly one invoice (no duplicate on re-drive)");
     assert((await listProjects({ opportunityId: opp.id, limit: 5 })).length === 1, "still exactly one project (no duplicate on re-drive)");
     assert((await getOpportunity(opp.id))?.stage === "won", "the opportunity is still won (idempotent)");
+
+    console.log("\nStep 4 — RECLAIM idempotency: directly re-running Finance + Delivery on the same deal (simulating a lease-expiry reclaim / retry-after-partial-write) creates NO duplicate:");
+    const hs = handoffStore(db);
+    await runFinanceDepartment(
+      { opportunityId: opp.id, companyId: company.id, proposalId, businessName: "Acme (accept-origination)", amountCents: 480000, requestedBy: "Moiz", workflowId: wf },
+      { handoffStore: hs, assessMargin: CANNED.assessMargin, financeDeps: { recordAudit: async () => {} }, recordAudit: async () => {}, now },
+    );
+    await runDeliveryDepartment(
+      { opportunityId: opp.id, companyId: company.id, proposalId, projectName: "Acme (accept-origination)", requestedBy: "Moiz", workflowId: wf },
+      { handoffStore: hs, assessFeasibility: CANNED.assessFeasibility, projectDeps: { recordAudit: async () => {} }, taskDeps: { recordAudit: async () => {} }, recordAudit: async () => {}, now },
+    );
+    assert((await db.select().from(invoices).where(eq(invoices.proposalId, proposalId))).length === 1, "RECLAIM: still exactly one invoice after a direct Finance re-run (per-deal guard)");
+    assert((await listProjects({ opportunityId: opp.id, limit: 5 })).length === 1, "RECLAIM: still exactly one project after a direct Delivery re-run (per-deal guard)");
+    assert((await db.select().from(tasks).where(eq(tasks.opportunityId, opp.id))).length === 2, "RECLAIM: kickoff tasks were not duplicated");
 
     console.log("\nALL REAL-DB PROPOSAL-ACCEPT ORIGINATION CHECKS PASSED ✅");
   } finally {

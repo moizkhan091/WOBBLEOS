@@ -3653,3 +3653,33 @@ only when work is consumed.
 STATE: dispatch-time classification enforcement is live. Priorities 1, 2, 4 done. NEXT: Priority 3 (make QA
 boards gate live workflows), Priority 5 (complete escalation-control proof in required CI), independent
 review, then Phases 5-11. Do NOT deploy to VPS.
+
+## 2026-07-12 (cont. 10) - Claude (Opus 4.8) - Independent review loop + fix the confirmed HIGH finding (consumer-reclaim idempotency)
+
+Ran an independent read-only reviewer over this session's work (Priorities 1/2/4). Verdict: the three
+headline claims hold (atomic accept origination, dispatch-time classification gate, Playwright required+green
+in CI), docs are candid, no overstatement. It confirmed ONE genuine live HIGH defect + two LOWs; all fixed:
+
+- **HIGH (fixed) — consumer-reclaim duplicates invoices/projects/tasks.** The reviewer showed this is broader
+  than a crash: if ANY step after createInvoice/addProject throws inside runDepartment (e.g. the outbound
+  route dispatch or budget settle), the consumer's catch → failHandoff → delivered → retry re-runs the whole
+  vertical → duplicate write; the lease-expiry reclaim sweep is a second vector. FIX: per-deal idempotency
+  guards — Finance reuses an existing invoice for the opportunity (`listInvoices`), Delivery reuses an
+  existing project for the opportunity (`listProjects({opportunityId})`) and skips duplicate kickoff tasks,
+  BEFORE writing. Proven: 2 unit tests (re-run → no duplicate) + `verify-proposal-accept-origination-db`
+  Step 4 (direct Finance+Delivery re-run on the same deal → still exactly one invoice/project + 2 tasks).
+- **LOW (fixed) — `defaultAcceptAndEmit` bypassed the dispatch-time classification gate** (direct tx-insert,
+  not via dispatchHandoff). Added a `validateHandoff` classification check before the insert (rolls back the
+  whole accept+emit on a mismatch). The accept-time `departmentCanAccept` backstop already covered it; this
+  closes the gate's stated guarantee for the origination path too.
+- **LOW (fixed) — stale ci.yml comment** claiming the e2e job was manual-while-stabilising; it is now
+  required on push/PR. Comment corrected.
+
+Reviewer explicitly verified (not invented): the accept+emit is genuinely ONE db.transaction (no lost-work
+window); exactly-once origination is backed by the real `handoffs_workflow_key_uidx` unique index; escalation
+actions drive real execution; the e2e gate is truly required with SESSION_COOKIE_INSECURE test-only.
+
+STATE: Priorities 1, 2, 4 done + the independent-review HIGH/LOW findings fixed and proven. Financial-write
+safety: invoices are draft-only (founder approves) AND now per-deal idempotent. NEXT: Priority 3 (QA boards
+gate live workflows), Priority 5 (escalation-control proof incl. reroute + duplicate-clicks + unauthorized
+users in required CI), then Phases 5-11. Do NOT deploy to VPS.

@@ -14,7 +14,7 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
-  workflow_dispatch: {}   # manual trigger for the e2e browser gate while it is being stabilised in CI
+  workflow_dispatch: {}   # allow a manual re-run of the full CI (the e2e gate is already required on push/PR)
 
 # Queue runs for the same branch instead of cancelling older runs.
 concurrency:
