@@ -34,6 +34,7 @@
     "verify:content-gate": "tsx src/scripts/verify-content-gate-db.ts",
     "verify:content-publishing": "tsx src/scripts/verify-content-publishing-db.ts",
     "verify:research-qa": "tsx src/scripts/verify-research-qa-db.ts",
+    "verify:source-approval": "tsx src/scripts/verify-source-granular-approval-db.ts",
     "verify:decision-learning": "tsx src/scripts/verify-decision-learning-db.ts",
     "verify:aios-value": "tsx src/scripts/verify-aios-value-db.ts",
     "verify:daily-brief": "tsx src/scripts/verify-daily-brief-db.ts",

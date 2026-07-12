@@ -4144,3 +4144,19 @@ Phase 5 remaining (large — next slices): source registry enrichment + source d
 approval (the 10+4+1=11-active invariant), change detection, historical snapshots, source value/ROI, approved
 propagation to authorized consumers, ingestion (transcript/video-frame/visual), continuous-research UI +
 Playwright. Then Context OS; Phases 6–11.
+
+## cont.27 — Phase 5: granular source-approval invariant proven (10 + 4 + approve 1 = 11 active)
+
+Proved the mandate-critical granular source-approval invariant on live Postgres. A source (research target) is
+scouted on its cadence ONLY when `approvalStatus === "approved"` (the scheduler's scout set is
+`listResearchTargets({ approvalStatus: "approved" })`). Approval is per-source (by id) — approving ONE
+proposed source never activates the others.
+
+Proven: `verify-source-granular-approval-db` (twice, `verify:source-approval`) — 10 approved + 4 pending
+(proposed); approving EXACTLY ONE pending source → exactly 11 approved and the OTHER 3 STILL pending (never
+14); the scheduler scout set is exactly the 11 approved sources, and none of the still-proposed sources leak
+into it. Proof-only (no src change) on the existing research-target infrastructure.
+
+Phase 5 remaining: source registry field enrichment + source discovery proposals + change detection +
+historical snapshots + source value/ROI + approved propagation to authorized consumers + richer ingestion
+(transcript/video-frame/visual) + a continuous-research UI + Playwright. Then Context OS; Phases 6–11.
