@@ -135,26 +135,24 @@ async function main() {
     assert(persisted!.opportunityId === opp.id, "the proposal is linked to the CRM opportunity");
     assert(persisted!.status === "draft", "the proposal awaits founder approval (chain has NOT fired yet)");
 
-    // No delivery project yet — accept is what fires the chain.
+    // No chain effects before accept.
     assert((await listProjects({ opportunityId: opp.id, limit: 1 })).length === 0, "no delivery project exists before acceptance");
+    cleanup.push(() => db.delete(handoffs).where(inArray(handoffs.workflowId, [opp.id])));
 
-    // Founder-gated lifecycle → ACCEPT fires the deterministic commercial chain.
+    // Founder-gated lifecycle → ACCEPT atomically emits the Sales/CRM outbox handoff (the autonomous
+    // commercial chain owns won+invoice+delivery; see verify-proposal-accept-origination-db for the full chain).
     await proposalAction(proposalId, "approve", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     await proposalAction(proposalId, "send", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     const accepted = await proposalAction(proposalId, "accept", { actor: "Moiz" }, { recordAudit: async () => {}, now });
 
     assert(accepted?.proposal.status === "accepted", "the proposal transitioned to accepted");
-    assert(!!accepted?.invoiceId, "accept auto-drafted a real invoice");
-    const inv = await db.select().from(invoices).where(eq(invoices.proposalId, proposalId));
-    assert(inv.length === 1 && inv[0].totalCents === 480000, "the invoice row exists for the proposal total (480000¢)");
+    assert(!!accepted?.handoffId, "accept emitted a Sales/CRM outbox handoff (not an inline invoice)");
+    assert(accepted?.invoiceId === undefined, "no inline invoice — the commercial chain owns it");
+    const emittedHandoffs = (await db.select().from(handoffs).where(eq(handoffs.workflowId, opp.id))).filter((h) => h.department === "sales_crm");
+    assert(emittedHandoffs.length === 1 && emittedHandoffs[0].deliveryState === "delivered", "exactly one proposal_artifact handoff is delivered to Sales/CRM");
+    assert(emittedHandoffs[0].clientWorkspaceId === company.id, "the outbox handoff carries the client workspace (tenant scope preserved)");
 
-    const wonOpp = await getOpportunity(opp.id);
-    assert(wonOpp?.stage === "won", "the linked opportunity advanced to won");
-    const deliveryProjects = await listProjects({ opportunityId: opp.id, limit: 5 });
-    assert(deliveryProjects.length === 1, "the CRM won-hook created exactly one delivery project");
-    assert(deliveryProjects[0].status === "onboarding", "the delivery project starts in onboarding");
-
-    console.log("\nALL REAL-DB PROPOSAL VERTICAL + COMMERCIAL CHAIN CHECKS PASSED ✅");
+    console.log("\nALL REAL-DB PROPOSAL VERTICAL + ATOMIC ACCEPT-EMIT CHECKS PASSED ✅");
   } finally {
     await runCleanup();
   }

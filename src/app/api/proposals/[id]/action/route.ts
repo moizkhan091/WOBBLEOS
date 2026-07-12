@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({ action: z.enum(["approve", "send", "accept", "reject"]), reason: z.string().trim().min(1).optional() });
 
-/** POST /api/proposals/[id]/action — founder-gated lifecycle; accept auto-drafts an invoice. */
+/**
+ * POST /api/proposals/[id]/action — founder-gated lifecycle. Accepting an opportunity-linked proposal
+ * atomically emits a Sales/CRM outbox handoff (returns `handoffId`); the autonomous commercial chain then
+ * advances the deal to won, drafts the invoice and stands up the project. (Opp-less proposals draft an
+ * inline invoice — `invoiceId`.)
+ */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const { id } = await ctx.params;

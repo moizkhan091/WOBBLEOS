@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { proposals as proposalsTable } from "@/db/schema";
+import { proposals as proposalsTable, handoffs as handoffsTable } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -12,8 +12,80 @@ import {
   type ProposalRow,
   type ProposalStatus,
 } from "@/lib/domain/proposal";
+import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
+import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
 import { createInvoice } from "@/lib/finance";
+
+/** Sales & CRM's authorized memory grant — the emitted proposal_artifact handoff narrows to this. */
+const SALES_CRM_GRANT = ["company", "offer"];
+
+/**
+ * Build the `proposal_artifact` outbox envelope addressed to the Sales & CRM department. On founder
+ * acceptance this is emitted (exactly-once) so the autonomous commercial chain (Sales/CRM → Finance →
+ * Delivery) advances the deal, drafts the invoice and stands up the project — no inline duplication.
+ */
+export function buildProposalArtifactEnvelope(proposal: ProposalRow, actor: string, now: Date): HandoffEnvelope {
+  const workflowId = proposal.opportunityId ?? proposal.id;
+  return buildHandoffEnvelope(
+    {
+      workflowId,
+      department: "sales_crm",
+      sourceAgent: "proposal_orchestrator",
+      destinationAgent: "sales_crm_orchestrator",
+      actor,
+      objective: `Advance the accepted proposal ${proposal.id} to a won deal`,
+      requestedAction: "advance_deal",
+      expectedOutputSchema: "proposal_artifact",
+      confidence: 0.9,
+      companyId: proposal.companyId ?? null,
+      clientWorkspaceId: proposal.companyId ?? null,
+      dataClassification: proposal.companyId ? "client_confidential" : "internal",
+      authorizedMemoryScopes: SALES_CRM_GRANT,
+      previousAgentOutputs: {
+        opportunityId: proposal.opportunityId,
+        proposalId: proposal.id,
+        businessName: proposal.title,
+        valueCents: proposal.pricingCents,
+      },
+      idempotencyKey: `${workflowId}:proposal_accept`,
+    },
+    { now },
+  );
+}
+
+export interface AcceptAndEmitResult {
+  proposal: ProposalRow;
+  handoffId: string;
+  /** true if THIS call emitted the outbox handoff; false if it was already emitted (deduped). */
+  emitted: boolean;
+}
+
+/**
+ * ATOMIC accept + transactional outbox: in ONE database transaction, claim the sent→accepted transition
+ * (only one caller wins) AND persist the Sales/CRM handoff. A crash after commit cannot lose the downstream
+ * work (both rows are committed together); a duplicate acceptance loses the claim and never re-runs the
+ * chain; the handoff's (workflowId, idempotencyKey) unique index makes the emit exactly-once. Returns null
+ * when the proposal is not in `sent` (already accepted / wrong state) — the caller treats null as no-op.
+ */
+export async function defaultAcceptAndEmit(id: string, buildEnvelope: (p: ProposalRow) => HandoffEnvelope, now: Date, db: Db = getDb()): Promise<AcceptAndEmitResult | null> {
+  return db.transaction(async (tx) => {
+    const claimed = await tx
+      .update(proposalsTable)
+      .set({ status: "accepted", acceptedAt: now, updatedAt: now })
+      .where(and(eq(proposalsTable.id, id), eq(proposalsTable.status, "sent")))
+      .returning();
+    if (!claimed[0]) return null; // lost the atomic claim → no double-run
+    const proposal = claimed[0] as ProposalRow;
+    const row = buildHandoffRow(buildEnvelope(proposal), { now });
+    const inserted = await tx
+      .insert(handoffsTable)
+      .values(row as never)
+      .onConflictDoNothing({ target: [handoffsTable.workflowId, handoffsTable.idempotencyKey] })
+      .returning({ id: handoffsTable.id });
+    return { proposal, handoffId: inserted[0]?.id ?? row.id, emitted: inserted.length > 0 };
+  });
+}
 
 /**
  * Proposals service (IO). Build a proposal from an audit, run the founder-gated lifecycle, and — on
@@ -33,8 +105,11 @@ export interface ProposalDeps {
   getAuditRow?: (id: string) => Promise<{ id: string; businessName: string; companyId: string | null; opportunityId: string | null; report: Record<string, unknown> } | null>;
   draftInvoice?: (input: { companyId?: string; opportunityId?: string; proposalId: string; totalCents: number; description: string; createdBy?: string }) => Promise<{ id: string } | null>;
   /** Advance the linked CRM opportunity to 'won' when a proposal is accepted (which creates delivery).
-   *  Injectable for tests; the default is DB-backed + env-gated. */
+   *  Injectable for tests; the default is DB-backed + env-gated. Used only for the OPP-LESS edge path. */
   advanceOpportunityToWon?: (opportunityId: string, actor: string) => Promise<void>;
+  /** ATOMIC accept + Sales/CRM outbox emit (opportunity-linked proposals). Injectable for tests; the
+   *  default is a real DB transaction (claim + emit). */
+  acceptAndEmit?: (id: string, buildEnvelope: (p: ProposalRow) => HandoffEnvelope, now: Date) => Promise<AcceptAndEmitResult | null>;
   now?: Date;
 }
 
@@ -104,12 +179,31 @@ export async function getProposal(id: string, deps: ProposalDeps = {}): Promise<
 
 export type ProposalAction = "approve" | "send" | "accept" | "reject";
 
-/** Founder-gated lifecycle. accept → auto-draft an invoice for the proposal total. */
-export async function proposalAction(id: string, action: ProposalAction, input: { actor: string; reason?: string }, deps: ProposalDeps = {}): Promise<{ proposal: ProposalRow; invoiceId?: string } | null> {
+/**
+ * Founder-gated lifecycle. On ACCEPT of an OPPORTUNITY-LINKED proposal, the accept commits atomically with
+ * a Sales/CRM outbox handoff (exactly-once), and the AUTONOMOUS commercial department chain (Sales/CRM →
+ * Finance → Delivery) advances the deal to won, drafts the invoice and creates the project — replacing the
+ * old inline synchronous invoice/won/project writes (which were non-atomic; reviewer #5). BEHAVIOUR CHANGE
+ * (intentional, documented): for opportunity-linked proposals the invoice + project now appear when the
+ * consumer processes the handoff (a running worker) rather than synchronously inside the accept call. An
+ * OPP-LESS proposal has no deal to advance, so it keeps the inline invoice draft (unchanged edge case).
+ */
+export async function proposalAction(id: string, action: ProposalAction, input: { actor: string; reason?: string }, deps: ProposalDeps = {}): Promise<{ proposal: ProposalRow; invoiceId?: string; handoffId?: string } | null> {
   const store = deps.store ?? defaultStore();
   const prop = await store.getProposal(id);
   if (!prop) return null;
   const now = deps.now ?? new Date();
+
+  // ACCEPT + opportunity-linked → atomic accept + Sales/CRM outbox emit (the commercial chain owns the rest).
+  if (action === "accept" && prop.opportunityId) {
+    if (!canTransitionProposal(prop.status, "accepted")) return null;
+    const emit = deps.acceptAndEmit ?? defaultAcceptAndEmit;
+    const result = await emit(id, (p) => buildProposalArtifactEnvelope(p, input.actor, now), now);
+    if (!result) return null; // lost the atomic claim (already accepted / not `sent`) → no double-run
+    await audit(deps, { eventType: "proposal.accept", module: PROPOSAL_MODULE, entityType: "proposal", entityId: id, actor: input.actor, metadata: { from: prop.status, to: "accepted", emittedHandoffId: result.handoffId, deduped: !result.emitted } });
+    return { proposal: result.proposal, handoffId: result.handoffId };
+  }
+
   const target: ProposalStatus = action === "approve" ? "approved" : action === "send" ? "sent" : action === "accept" ? "accepted" : "rejected";
   if (!canTransitionProposal(prop.status, target)) return null;
 
@@ -120,6 +214,7 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
   if (action === "reject") fields.rejectedReason = input.reason ?? null;
   await store.updateProposal(id, fields);
 
+  // OPP-LESS accept: no deal to advance → keep the inline invoice draft (unchanged edge-case behaviour).
   let invoiceId: string | undefined;
   if (action === "accept" && prop.pricingCents > 0) {
     const draft = deps.draftInvoice ?? (async (i) => {
@@ -128,12 +223,6 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
     });
     const inv = await draft({ companyId: prop.companyId ?? undefined, opportunityId: prop.opportunityId ?? undefined, proposalId: prop.id, totalCents: prop.pricingCents, description: prop.title, createdBy: input.actor });
     invoiceId = inv?.id;
-  }
-
-  // Accepting a proposal advances the deal: move the linked opportunity to 'won' (which creates the
-  // delivery project + kickoff tasks via the CRM won-hook). Idempotent and best-effort.
-  if (action === "accept" && prop.opportunityId) {
-    await (deps.advanceOpportunityToWon ?? defaultAdvanceOpportunityToWon)(prop.opportunityId, input.actor);
   }
 
   await audit(deps, { eventType: `proposal.${action}`, module: PROPOSAL_MODULE, entityType: "proposal", entityId: id, actor: input.actor, metadata: { from: prop.status, to: target, invoiceId } });

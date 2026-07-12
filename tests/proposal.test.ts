@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildProposalRow, canTransitionProposal, proposalInputFromAudit, type ProposalRow } from "@/lib/domain/proposal";
 import { createProposalFromAudit, proposalAction, type ProposalStore } from "@/lib/proposals";
+import type { HandoffEnvelope } from "@/lib/domain/handoff";
 
 const now = new Date("2026-07-09T12:00:00Z");
 
@@ -67,28 +68,40 @@ describe("proposal service", () => {
     expect(prop?.auditId).toBe("audit_1");
   });
 
-  it("accepting a proposal auto-drafts an invoice for the total", async () => {
+  it("accepting an opportunity-linked proposal atomically emits a Sales/CRM outbox handoff (exactly-once)", async () => {
     const { store } = makeStore();
     const prop = await createProposalFromAudit("audit_1", { createdBy: "Moiz" }, {
       store, now, recordAudit: async () => {},
       getAuditRow: async () => ({ id: "audit_1", businessName: "Acme", companyId: "co_1", opportunityId: "opp_1", report: { opportunities: [{ title: "X" }], roi: { estimatedImplementationCents: 600000 } } }),
     });
-    // approve -> send -> accept
-    let invoiced: { totalCents: number; proposalId: string } | null = null;
-    const advanced: string[] = [];
-    const deps = {
-      store, now, recordAudit: async () => {},
-      draftInvoice: async (i: { totalCents: number; proposalId: string }) => { invoiced = { totalCents: i.totalCents, proposalId: i.proposalId }; return { id: "inv_1" }; },
-      advanceOpportunityToWon: async (oppId: string) => { advanced.push(oppId); },
+    // In-memory atomic accept + emit: claim sent→accepted once, record the outbox envelope.
+    const emitted: HandoffEnvelope[] = [];
+    const seenKeys = new Set<string>();
+    const acceptAndEmit = async (id: string, buildEnvelope: (p: import("@/lib/domain/proposal").ProposalRow) => HandoffEnvelope, at: Date) => {
+      const p = await store.getProposal(id);
+      if (!p || p.status !== "sent") return null; // atomic claim: only a `sent` proposal accepts, once
+      await store.updateProposal(id, { status: "accepted", acceptedAt: at, updatedAt: at });
+      const env = buildEnvelope({ ...p, status: "accepted" });
+      const emit = !seenKeys.has(env.idempotencyKey); // idempotency dedup
+      if (emit) { seenKeys.add(env.idempotencyKey); emitted.push(env); }
+      return { proposal: { ...p, status: "accepted" as const }, handoffId: `h_${env.idempotencyKey}`, emitted: emit };
     };
+    const deps = { store, now, recordAudit: async () => {}, acceptAndEmit };
     await proposalAction(prop!.id, "approve", { actor: "Moiz" }, deps);
     await proposalAction(prop!.id, "send", { actor: "Moiz" }, deps);
     const res = await proposalAction(prop!.id, "accept", { actor: "Moiz" }, deps);
+
     expect(res?.proposal.status).toBe("accepted");
-    expect(res?.invoiceId).toBe("inv_1");
-    expect(invoiced!.totalCents).toBe(600000);
-    expect(invoiced!.proposalId).toBe(prop!.id);
-    // Accepting the proposal advances the linked deal to won (→ delivery), not just an invoice.
-    expect(advanced).toEqual(["opp_1"]);
+    expect(res?.handoffId).toBeTruthy();
+    expect(res?.invoiceId).toBeUndefined(); // NO inline invoice — the commercial chain owns it now
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].department).toBe("sales_crm");
+    expect(emitted[0].expectedOutputSchema).toBe("proposal_artifact");
+    expect((emitted[0].previousAgentOutputs as { opportunityId?: string }).opportunityId).toBe("opp_1");
+
+    // Duplicate acceptance loses the atomic claim → the chain never runs twice.
+    const dup = await proposalAction(prop!.id, "accept", { actor: "Moiz" }, deps);
+    expect(dup).toBeNull();
+    expect(emitted).toHaveLength(1);
   });
 });

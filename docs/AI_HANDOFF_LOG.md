@@ -3602,3 +3602,32 @@ Resumed from HEAD aafea28 (e2e job manual-only/continue-on-error). Retrieved the
 Restored the e2e job to REQUIRED on push/PR (removed continue-on-error + the workflow_dispatch-only gate). Changes: src/db/migrations/0026_polite_chamber.sql, src/lib/auth/index.ts, playwright.config.ts, .github/workflows/ci.yml.
 
 STATE: Playwright is now a real required CI gate (verified green locally against the exact CI production path). NEXT priorities (per the war-room prompt): (2) real proposal-accept → autonomous commercial chain origination (transactional outbox, reviewer #5); (3) make QA boards gate live workflows (Paid Audit→Proposal etc.); (4) dispatch-time classification enforcement (reviewer #7); (5) complete escalation-control proof (Resume/Terminate/Dismiss/Reroute) in required CI; then independent review + Phases 5-11. Do NOT deploy to VPS.
+
+## 2026-07-12 (cont. 8) - Claude (Opus 4.8) - Priority 2: real proposal-accept origination (atomic outbox) + reviewer #5
+
+Wired the founder-facing proposal acceptance into the autonomous commercial department chain via a
+transactional outbox, and resolved reviewer #5 (the non-atomic accept path).
+
+- **Atomic accept + outbox (`src/lib/proposals/index.ts`):** `proposalAction` "accept" of an
+  opportunity-linked proposal now calls `defaultAcceptAndEmit`, which in ONE db.transaction claims the
+  sent→accepted transition (UPDATE ... WHERE status='sent' RETURNING — only one caller wins) AND persists
+  the `proposal_artifact` outbox handoff to Sales/CRM (idempotent on the handoffs (workflowId, idempotencyKey)
+  unique index). The old inline invoice + advanceOpportunityToWon writes are REMOVED for the opp-linked path
+  (reviewer #5's 3 non-atomic writes are gone) — the autonomous consumer chain (Sales/CRM → Finance →
+  Delivery) now owns won+invoice+project. Opp-less proposals keep the inline invoice (unchanged edge case).
+  `buildProposalArtifactEnvelope` narrows memory scope to Sales/CRM's grant and carries the client workspace.
+- **Intentional, documented behaviour change:** for opp-linked proposals the invoice/project now appear when
+  the consumer processes the handoff (a running worker) rather than synchronously inside accept.
+- **Seed fix (real gap the proof caught):** Finance now permits `client_confidential` — client deals flow
+  Sales/CRM → Finance for invoicing; without it the client won_deal was rejected.
+- **Tests:** `tests/proposal.test.ts` + `tests/proposal-department.test.ts` rewritten to assert the emit +
+  exactly-once (duplicate accept returns null, no second handoff). `verify-proposal-vertical-db` Part B now
+  asserts the atomic emit. Real-DB proof `verify-proposal-accept-origination-db` (run twice): atomicity,
+  exactly-once, client scope, autonomous won→invoice→delivery, idempotent re-drive (no duplicates).
+- API route `/api/proposals/[id]/action` returns `handoffId` for opp-linked accepts.
+
+STATE: proposal acceptance is now a real transactional-outbox origination for the autonomous commercial
+chain, atomic + exactly-once + crash-safe (accept and emit commit together; a crash cannot lose downstream
+work). Remaining Priority-2 sub-item: a browser E2E from the real acceptance API that drives the consumer.
+NEXT: Priority 4 (dispatch-time classification gate #7), Priority 3 (QA live gates), Priority 5 (escalation
+control proof in required CI), independent review, then Phases 5-11. Do NOT deploy to VPS.

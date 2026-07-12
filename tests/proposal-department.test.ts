@@ -117,19 +117,21 @@ describe("Proposal department vertical", () => {
     expect(audits).toEqual(expect.arrayContaining(["department.accepted", "department.completed"]));
   });
 
-  it("on founder ACCEPT the deterministic commercial chain fires (invoice draft + opportunity→won)", async () => {
+  it("on founder ACCEPT an opportunity-linked proposal atomically emits the Sales/CRM outbox handoff (chain owns won+invoice+delivery)", async () => {
     const { store } = makeHandoffStore();
     const { store: proposalStore } = makeProposalStore();
-    const invoiced: Array<{ proposalId: string; totalCents: number }> = [];
-    const wonOpportunities: string[] = [];
-
-    const proposalDeps = {
-      store: proposalStore,
-      getAuditRow: async (id: string) => auditRow(id, "opp_9", "clientA"),
-      draftInvoice: async (i: { proposalId: string; totalCents: number }) => { invoiced.push({ proposalId: i.proposalId, totalCents: i.totalCents }); return { id: "inv_1" }; },
-      advanceOpportunityToWon: async (opportunityId: string) => { wonOpportunities.push(opportunityId); },
-      recordAudit: async () => {},
+    const emitted: import("@/lib/domain/handoff").HandoffEnvelope[] = [];
+    const seen = new Set<string>();
+    const acceptAndEmit = async (id: string, buildEnvelope: (p: ProposalRow) => import("@/lib/domain/handoff").HandoffEnvelope, at: Date) => {
+      const p = await proposalStore.getProposal(id);
+      if (!p || p.status !== "sent") return null;
+      await proposalStore.updateProposal(id, { status: "accepted", acceptedAt: at, updatedAt: at });
+      const env = buildEnvelope({ ...p, status: "accepted" });
+      const emit = !seen.has(env.idempotencyKey);
+      if (emit) { seen.add(env.idempotencyKey); emitted.push(env); }
+      return { proposal: { ...p, status: "accepted" as const }, handoffId: `h_${env.idempotencyKey}`, emitted: emit };
     };
+    const proposalDeps = { store: proposalStore, getAuditRow: async (id: string) => auditRow(id, "opp_9", "clientA"), acceptAndEmit, recordAudit: async () => {} };
 
     const res = await runProposalDepartment(
       { auditId: "aud_2", businessName: "Acme", companyId: "clientA", requestedBy: "Moiz", workflowId: "wf_prop_2" },
@@ -137,15 +139,21 @@ describe("Proposal department vertical", () => {
     );
     const proposalId = res.product!.proposal.id;
 
-    // Founder-gated lifecycle: draft → approved → sent → accepted. Accept fires the commercial chain.
+    // Founder-gated lifecycle: draft → approved → sent → accepted. Accept emits the outbox handoff.
     await proposalAction(proposalId, "approve", { actor: "Moiz" }, proposalDeps);
     await proposalAction(proposalId, "send", { actor: "Moiz" }, proposalDeps);
     const accepted = await proposalAction(proposalId, "accept", { actor: "Moiz" }, proposalDeps);
 
     expect(accepted?.proposal.status).toBe("accepted");
-    expect(accepted?.invoiceId).toBe("inv_1");
-    expect(invoiced).toEqual([{ proposalId, totalCents: 480000 }]);
-    expect(wonOpportunities).toEqual(["opp_9"]); // opportunity advanced → CRM won-hook creates the delivery project
+    expect(accepted?.handoffId).toBeTruthy();
+    expect(accepted?.invoiceId).toBeUndefined(); // no inline invoice — the commercial chain owns it
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].department).toBe("sales_crm");
+    expect((emitted[0].previousAgentOutputs as { opportunityId?: string }).opportunityId).toBe("opp_9");
+
+    // Duplicate acceptance loses the atomic claim → the chain never runs twice.
+    expect(await proposalAction(proposalId, "accept", { actor: "Moiz" }, proposalDeps)).toBeNull();
+    expect(emitted).toHaveLength(1);
   });
 
   it("escalates (not silently) when the department has no registered solution architect", async () => {

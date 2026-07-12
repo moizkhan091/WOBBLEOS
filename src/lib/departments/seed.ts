@@ -128,7 +128,9 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     status: "active", // runFinanceDepartment: finance-analyst judgment (advisory) → deterministic createInvoice (DRAFT); AI never moves money
     orchestratorAgentSlug: "finance_orchestrator",
     deterministicServices: ["createInvoice", "getRevenueSummary"],
-    permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted"] },
+    // client_confidential is permitted: client deals flow Sales/CRM → Finance for invoicing; without it the
+    // client won_deal would be rejected at accept-time enforcement (see the dispatch-classification gate).
+    permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted", "client_confidential"] },
     io: { inboundCapabilities: ["invoice", "report_revenue"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: ["invoices", "payment_state", "revenue_margin_intelligence"], downstreamConsumers: ["founder_command_centre"] },
     governance: { requiredApprovals: [], escalationRules: [{ condition: "margin_or_overdue_risk", escalateTo: "founder_command_centre" }] },
     owner: "Moiz",
