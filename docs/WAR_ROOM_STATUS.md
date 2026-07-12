@@ -11,8 +11,8 @@ Then read this file's §6 (open work) and continue the next unchecked item.
 ## 1. Verified current state (checked against the repo, not summaries)
 - **Branch:** `main` · **HEAD:** `<proposal-vertical commit>` · working tree clean.
 - **Migrations applied (0037 latest, zero drift):** 0032 departments · 0033 department_members · 0034 budget_reservations · 0035 escalations · 0036 provider_usage · 0037 escalation_links. (Proposal vertical added NO migration — it consumes existing services.)
-- **Gate:** typecheck 0 · **702 tests (92 files)** · build 0 · real-DB proofs pass (incl. `verify-proposal-vertical-db`, run twice cleanly).
-- **Phases 1–2:** COMPLETE. **Phase 3 RUNTIME:** correctness-complete (see §3). **Phase-3 verticals:** Paid Audit + **Proposal + commercial chain** done. **Phases 4–10:** open (see §6). **VPS:** not deployed (blocked — see §7).
+- **Gate:** typecheck 0 · **706 tests (93 files)** · build 0 · real-DB proofs pass (incl. `verify-proposal-vertical-db` + `verify-content-vertical-db`, each run twice cleanly).
+- **Phases 1–2:** COMPLETE. **Phase 3 RUNTIME:** correctness-complete (see §3). **Phase-3 verticals:** Paid Audit + **Proposal + commercial chain** + **Content** done. **Phases 4–10:** open (see §6). **VPS:** not deployed (blocked — see §7).
 - **Active departments (4):** paid_audit, content, **proposal**, founder_command_centre.
 
 ## 2. Locked shared contracts (LEAD-owned; do NOT edit concurrently in subagents)
@@ -57,7 +57,7 @@ Subagents may OWN: new `src/lib/departments/verticals/<name>.ts`, their `tests/<
 ## 6. Open work (next-session checklist — each plugs into the finished runtime)
 - [x] **Proposal & Solution Design vertical** — DONE. `runProposalDepartment`: solution architect synthesizes (real LLM, budget-attributed); deterministic `createProposalFromAudit` writes the artifact; on accept the commercial chain fires. Activated (status active, `proposal_orchestrator` + `proposal_solution_architect` registered). Consumer primitive `claimNextDepartmentHandoff` added. Real-DB proof runs isolated + repeatable.
 - [x] **Commercial chain (Paid Audit → Proposal → accept → invoice + won + delivery)** — PROVEN on live Postgres. LLMs never mutate finances; every write is a deterministic service. Remaining: an explicit Sales/CRM & Finance & Delivery department-coordination/visibility layer over these proven services (the writes already exist + are proven).
-- [ ] **Content chain** — Content Strategy→Copywriting→Design Intelligence→approval→Publishing→feedback. Media Production stays draft/blocked (Phase 10).
+- [x] **Content chain** — DONE. `runContentDepartment` wraps the content graph as a department policy (Strategy→Research→Copywriting→Scoring via claimed handoffs) → routes QA-gated content_pack to Publishing. L1 usage attribution threaded through the content graph. Real-DB proof run twice cleanly. Design Intelligence → Publishing consumers stay draft (their own build).
 - [ ] **Research foundation** — scout→analyst→dreamer via the runtime + founder approval gate + downstream routing.
 - [ ] **L3** — isolated/repeatable DB-proof harness; retrofit KPI proof to scope by unique ids.
 - [ ] **L4** — committed Playwright E2E + CI Postgres service.
@@ -75,4 +75,5 @@ Lead owns §2. Spawn 3–4 implementation subagents on independent verticals (ea
 
 ## 9. Log
 - 2026-07-12: L1 (actual provider settlement, `1d4b254`) + L2 (real escalation control, `090c3ee`) landed, real-proven. War room opened. Proposal vertical started; commercial-chain recon dispatched.
-- 2026-07-12: **Proposal vertical + commercial chain** landed (702 tests, real-DB proven twice, isolated + repeatable). Added `claimNextDepartmentHandoff` consumer primitive. 4 active departments. L3 isolated-proof methodology demonstrated in `verify-proposal-vertical-db`. NEXT (merge order): Content chain, Research foundation, Sales/CRM-Finance-Delivery visibility layer, L4 Playwright/CI, then Phases 4–10.
+- 2026-07-12: **Proposal vertical + commercial chain** landed (702 tests, real-DB proven twice, isolated + repeatable). Added `claimNextDepartmentHandoff` consumer primitive. 4 active departments. L3 isolated-proof methodology demonstrated in `verify-proposal-vertical-db`. CI green `423bc6c`.
+- 2026-07-12: **Content vertical** landed (706 tests, real-DB proven twice). content_orchestrator now genuinely driven by the department runtime; content_pack routes to Publishing; L1 usage attribution threaded through the content graph. NEXT (merge order): Research foundation, Sales/CRM-Finance-Delivery visibility layer, L4 Playwright/CI, then Phases 4–10.

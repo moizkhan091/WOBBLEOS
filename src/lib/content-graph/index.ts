@@ -77,6 +77,8 @@ export interface ContentGraphDeps {
   enqueueJob?: (input: EnqueueJobInput) => Promise<unknown>;
   checkpointStore?: GraphCheckpointStore;
   handoffStore?: HandoffStore;
+  /** Attributes every node's provider usage to this unit of work so budgets settle against ACTUAL cost (L1). */
+  usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext;
   now?: Date;
 }
 
@@ -106,17 +108,20 @@ async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
   await writeAuditEvent(input);
 }
 
-async function defaultRunNode(input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }): Promise<NodeRunResult> {
-  const result = await runTextProvider({
-    role: input.role,
-    module: input.module,
-    messages: input.messages,
-    maxTokens: 1600,
-    temperature: 0.6,
-    linkedEntityType: "content_track",
-    linkedEntityId: input.linkedEntityId,
-  });
-  return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
+function makeDefaultRunNode(usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext): NonNullable<ContentGraphDeps["runNode"]> {
+  return async (input) => {
+    const result = await runTextProvider({
+      role: input.role,
+      module: input.module,
+      messages: input.messages,
+      maxTokens: 1600,
+      temperature: 0.6,
+      linkedEntityType: "content_track",
+      linkedEntityId: input.linkedEntityId,
+      usageContext: usageContext ? { ...usageContext, agentSlug: input.role } : undefined,
+    });
+    return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
+  };
 }
 
 async function defaultGetTrack(contentTrackId: string): Promise<ContentTrackRow> {
@@ -160,7 +165,7 @@ function runNodeWithTelemetry<T>(
 export async function runContentGraph(input: RunContentGraphInput, deps: ContentGraphDeps = {}): Promise<ContentGraphResult> {
   const actor = input.requestedBy;
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
-  const runNode = deps.runNode ?? defaultRunNode;
+  const runNode = deps.runNode ?? makeDefaultRunNode(deps.usageContext);
   const retrieve = deps.retrieve ?? defaultRetrieve;
   const track = await (deps.getTrack ?? defaultGetTrack)(input.contentTrackId);
   const trackCtx: GraphTrackContext = {
