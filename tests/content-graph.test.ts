@@ -273,3 +273,47 @@ describe("runContentGraph", () => {
     expect(scorer.qualityScore).toBeCloseTo((82 + 88 + 75) / 30, 5);
   });
 });
+
+describe("runContentGraph — independent QA gate (approval release)", () => {
+  it("opens the founder approval only when the gate RELEASES; the gate sees the real assembled pack + lineage", async () => {
+    const { deps, getPacket } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    let seen: { artifact: { scores: { predictedImpact: number; brandFit: number }; provenance: { sourceIds: string[] } }; ctx: { workflowId: string; taskId: string | null } } | null = null;
+    const result = await runContentGraph(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" },
+      { ...deps, qaGate: async (artifact, ctx) => { seen = { artifact, ctx }; return { released: true, verdict: "pass", reviewIds: ["qa_1", "qa_2"] }; } },
+    );
+    // the gate judged the REAL assembled pack (revised copy's score + grounded provenance) under this run's id
+    expect(seen!.artifact.scores.predictedImpact).toBe(82);
+    expect(seen!.artifact.provenance.sourceIds).toEqual(["s1"]);
+    expect(seen!.ctx.workflowId).toBe("ct1"); // falls back to the track id when no graphRunId (prod passes the job id)
+    // released → approval opened + outcome surfaced
+    expect((getPacket() as { requestApproval?: boolean }).requestApproval).toBe(true);
+    expect(result.approvalId).toBe("ap_1");
+    expect(result.qa?.released).toBe(true);
+  });
+
+  it("BLOCKS the founder approval when the gate does not release (a QA-failed pack never becomes publishable)", async () => {
+    const { deps, getPacket, audits } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const result = await runContentGraph(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" },
+      { ...deps, qaGate: async () => ({ released: false, verdict: "revise", blockingBoardSlug: "content_brand_review", failedStages: ["copywriting"], escalationIds: ["esc_1"] }) },
+    );
+    // even though the graph's own quality gate passed, the independent gate withholds the approval
+    expect((getPacket() as { requestApproval?: boolean }).requestApproval).toBe(false);
+    expect(result.approvalId).toBeNull();
+    expect(result.qa?.released).toBe(false);
+    expect(result.qa?.blockingBoardSlug).toBe("content_brand_review");
+    // the block is auditable (the founder-facing outcome is recorded)
+    const completed = audits.find((e) => e.eventType === "content_graph.completed")!;
+    expect((completed.metadata as { qaReleased: boolean }).qaReleased).toBe(false);
+    expect((completed.metadata as { qaBlockingBoard: string }).qaBlockingBoard).toBe("content_brand_review");
+  });
+
+  it("no gate supplied → unchanged (approval driven by the graph quality gate alone)", async () => {
+    const { deps, getPacket } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const result = await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, deps);
+    expect((getPacket() as { requestApproval?: boolean }).requestApproval).toBe(true);
+    expect(result.approvalId).toBe("ap_1");
+    expect(result.qa).toBeUndefined();
+  });
+});

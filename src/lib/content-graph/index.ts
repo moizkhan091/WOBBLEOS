@@ -65,8 +65,31 @@ export interface NodeRunResult {
   cost?: number;
 }
 
+/** The outcome of the independent QA gate over an assembled content pack (before a founder approval opens). */
+export interface ContentGraphQaOutcome {
+  /** true iff EVERY independent board passed — the only state in which a founder publish-approval is opened. */
+  released: boolean;
+  verdict?: string;
+  blockingBoardSlug?: string | null;
+  failedStages?: string[];
+  reviewIds?: string[];
+  escalationIds?: string[];
+}
+
 export interface ContentGraphDeps {
   getTrack?: (contentTrackId: string) => Promise<ContentTrackRow>;
+  /**
+   * Opt-in INDEPENDENT QA gate at the founder-approval decision. Given the assembled (not-yet-persisted)
+   * result + its lineage, returns whether the pack is RELEASED to a founder publish-approval. The founder
+   * approval is the gateway to the Library + scheduled-posts publishing pipeline, so a non-release keeps a
+   * QA-failed pack unpublishable; the gate itself raises the founder escalation. Injected by the production
+   * job handler (real content_quality + content_brand boards, DB-backed stores); omitted in unit tests → no
+   * gate (behaviour unchanged, approval driven by the graph's own quality gate alone).
+   */
+  qaGate?: (
+    artifact: ContentGraphResult,
+    ctx: { workflowId: string; taskId: string | null; clientWorkspaceId: string | null },
+  ) => Promise<ContentGraphQaOutcome>;
   retrieveBrain?: () => Promise<Array<{ title: string; content: string }>>;
   retrieve?: (query: string) => Promise<{ notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }>;
   retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
@@ -102,6 +125,9 @@ export interface ContentGraphResult {
   brief: CreativeBrief;
   scores: { predictedImpact: number; brandFit: number; platformFit: number };
   provenance: { insightIds: string[]; chunkIds: string[]; sourceIds: string[] };
+  /** The independent QA gate outcome (present only when a qaGate was supplied). When `released` is false no
+   *  founder approval was opened (the pack is unpublishable) and the gate raised a founder escalation. */
+  qa?: ContentGraphQaOutcome;
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -350,7 +376,30 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     // ---- Assemble the PACK ----
     const packetInput = assembleContentPacketInput({ contentTrackId: track.id, brief, copy: finalCopy, evidence, score, provenance, createdBy: actor });
     const gatePassed = passesQualityGate(score.selfReview);
-    const created = await (deps.createPacket ?? createContentPacket)({ ...packetInput, requestApproval: gatePassed });
+
+    // INDEPENDENT QA GATE (opt-in; the production job handler supplies it). Two independent boards
+    // (content_quality + content_brand) review the assembled pack BEFORE a founder publish-approval is
+    // opened. Because that approval is the gateway to the Library + scheduled-posts publishing pipeline, the
+    // approval opens ONLY when the graph's own quality gate AND both independent boards pass — a QA-failed
+    // pack never becomes publishable, and the gate raises a real founder escalation naming the exact failed
+    // stage. Omitted (unit tests) → behaviour is unchanged (approval driven by the graph quality gate alone).
+    let qa: ContentGraphQaOutcome | undefined;
+    if (deps.qaGate) {
+      const provisional: ContentGraphResult = {
+        contentTrackId: track.id,
+        packetId: "",
+        approvalId: null,
+        qualityStatus: gatePassed ? "passed" : "failed",
+        agentRunCount: 5,
+        modelRunIds,
+        brief,
+        scores: { predictedImpact: score.predictedImpact, brandFit: score.brandFit, platformFit: score.platformFit },
+        provenance,
+      };
+      qa = await deps.qaGate(provisional, { workflowId: input.graphRunId ?? track.id, taskId: null, clientWorkspaceId: null });
+    }
+    const releasedToApproval = gatePassed && (qa ? qa.released : true);
+    const created = await (deps.createPacket ?? createContentPacket)({ ...packetInput, requestApproval: releasedToApproval });
 
     // Provenance: record which approved intelligence shaped this content packet.
     await logOutputIntelligenceUsage({ outputType: "content_packet", outputId: created.packet.id, itemIds: intel.itemIds, insightIds: intel.insightIds }).catch(() => {});
@@ -368,6 +417,10 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
         insightIds: provenance.insightIds.length,
         sourceIds: provenance.sourceIds.length,
         modelRunIds,
+        qaReleased: qa ? qa.released : null,
+        qaVerdict: qa?.verdict ?? null,
+        qaBlockingBoard: qa?.blockingBoardSlug ?? null,
+        qaFailedStages: qa?.failedStages ?? [],
       },
     });
 
@@ -384,6 +437,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       brief,
       scores: { predictedImpact: score.predictedImpact, brandFit: score.brandFit, platformFit: score.platformFit },
       provenance,
+      qa,
     };
   } catch (error) {
     await recordAudit({
@@ -426,18 +480,21 @@ export async function enqueueContentGraphJob(
   });
 }
 
-export async function runContentGraphJobHandler(job: JobRow): Promise<Record<string, unknown>> {
+export async function runContentGraphJobHandler(job: JobRow, deps: ContentGraphDeps = {}): Promise<Record<string, unknown>> {
   const payload = (job.payload ?? {}) as Partial<RunContentGraphInput>;
   if (!payload.contentTrackId || !payload.requestedBy || !payload.objective) {
     throw new Error("content.graph job requires contentTrackId, requestedBy, objective");
   }
-  const result = await runContentGraph({
-    contentTrackId: payload.contentTrackId,
-    requestedBy: payload.requestedBy,
-    objective: payload.objective,
-    platformFocus: payload.platformFocus,
-    formatFocus: payload.formatFocus,
-    graphRunId: job.id, // stable across retries -> completed nodes resume instead of re-charging
-  });
+  const result = await runContentGraph(
+    {
+      contentTrackId: payload.contentTrackId,
+      requestedBy: payload.requestedBy,
+      objective: payload.objective,
+      platformFocus: payload.platformFocus,
+      formatFocus: payload.formatFocus,
+      graphRunId: job.id, // stable across retries -> completed nodes resume instead of re-charging
+    },
+    deps, // the composition root injects the live independent QA gate (content_quality + content_brand boards)
+  );
   return { ...result };
 }

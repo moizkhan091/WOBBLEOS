@@ -1,7 +1,9 @@
 import type { JobHandler, JobHandlerRegistry } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
 import { runContentGenerateJobHandler } from "@/lib/content-worker";
-import { runContentGraphJobHandler } from "@/lib/content-graph";
+import { runContentGraphJobHandler, type ContentGraphResult, type ContentGraphQaOutcome } from "@/lib/content-graph";
+import { runQaGate } from "@/lib/qa/gate";
+import { contentQualityBoard, contentBrandBoard, buildContentSubmission } from "@/lib/qa/boards";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
 import { runPaidAuditJobHandler, type PaidAuditResult } from "@/lib/paid-audit-graph";
@@ -52,11 +54,37 @@ async function runPaidAuditWithOriginationJobHandler(job: PaidAuditJobRow): Prom
   return result;
 }
 
+/**
+ * LIVE independent content QA gate. Two independent boards (content_quality + content_brand) review every
+ * assembled pack BEFORE a founder publish-approval is opened. Only a release (BOTH pass) lets the approval
+ * open — a QA-failed pack never reaches the Library / scheduled-posts publishing pipeline, and the gate
+ * raises a real founder escalation naming the exact failed stage. Stores default to the DB (qa_reviews +
+ * escalations) when DATABASE_URL is set. Deterministic boards → no LLM cost, safe on the hot content path.
+ */
+export async function liveContentQaGate(
+  artifact: ContentGraphResult,
+  ctx: { workflowId: string; taskId: string | null; clientWorkspaceId: string | null },
+): Promise<ContentGraphQaOutcome> {
+  const submission = buildContentSubmission(artifact, { workflowId: ctx.workflowId, taskId: ctx.taskId, clientWorkspaceId: ctx.clientWorkspaceId });
+  const decision = await runQaGate({ boards: [contentQualityBoard, contentBrandBoard], submission }, {});
+  return {
+    released: decision.released,
+    verdict: decision.verdict,
+    blockingBoardSlug: decision.blockingBoardSlug,
+    failedStages: decision.routingTarget?.failedStages ?? [],
+    reviewIds: decision.reviews.map((r) => r.id),
+    escalationIds: decision.escalationIds,
+  };
+}
+
+/** Production content.graph handler: run the graph with the LIVE independent QA gate enabled. */
+const contentGraphHandler: JobHandler = (job: JobRow) => runContentGraphJobHandler(job, { qaGate: liveContentQaGate });
+
 export const generalRegistry: JobHandlerRegistry = {
   noop,
   "test.echo": echo,
   "content.generate": runContentGenerateJobHandler,
-  "content.graph": runContentGraphJobHandler,
+  "content.graph": contentGraphHandler,
   "knowledge.compile": runKnowledgeCompileJobHandler,
   "publishing.dispatch": runPublishingDispatchJobHandler,
   "library.import": runLibraryImportJobHandler,

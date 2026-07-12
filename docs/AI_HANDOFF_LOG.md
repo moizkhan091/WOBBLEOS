@@ -3837,3 +3837,42 @@ table → no drift).
 
 NEXT: content-gate production trigger; QA-gate + proposal-accept + escalation browser E2E in required CI;
 Phase 5 Continuous Research + Context OS; then Phases 6–11.
+
+## cont.17 — Content QA gate GOES LIVE on the production trigger (block/release real publishing)
+
+Closed the "wired-but-unreachable" content-gate gap: the two independent content boards
+(content_quality + content_brand) now GATE LIVE production work. Previously they were wired into
+`runContentDepartment`, but production content runs via the raw `content.graph` job — so they never fired.
+
+Rather than route content through the department wrapper (whose `routeTo: ["publishing"]` targets a
+department with no consumer — a decorative handoff), the gate was placed at the REAL publishing choke point.
+Tracing the live path: `content.graph` job → graph produces a pack + opens a FOUNDER PUBLISH-APPROVAL →
+founder approves → `activateApprovedContentPacket` enqueues `library.import` → the pack becomes a publishable
+Library asset → scheduled-posts queue → pluggable publisher (manual/zernio). The founder approval is the
+single gateway into that pipeline, so THAT is where the gate belongs.
+
+- **Seam (decoupled):** `runContentGraph` gains an opt-in `deps.qaGate` callback invoked at the
+  approval-decision point. The founder approval opens ONLY when the graph's own quality gate AND the injected
+  gate both release. A block withholds the approval → the QA-failed pack can NEVER reach the Library /
+  scheduled-posts pipeline. The core graph stays free of any QA-framework import (no require cycle) — the
+  gate is injected.
+- **Live wiring:** the composition root (`workers/registry.ts`) injects `liveContentQaGate` (content_quality
+  + content_brand via `runQaGate`, DB-backed qa_reviews + escalations) into the `content.graph` handler. The
+  boards are DETERMINISTIC evaluators → no LLM cost on the hot content path. On a block the gate raises a real
+  founder escalation (repeated_qa_failure) naming the exact failed stage.
+- **Isolation of the effect:** a pack's `qualityStatus` is self-review-driven, so a weak-scored pack still
+  passes the graph's OWN gate — a withheld approval is attributable ONLY to the independent boards, proving
+  the gate (not the graph) holds the pack.
+
+Proofs: `verify-content-gate-db` (twice, `verify:content-gate`) on live Postgres through the REAL
+`createContentPacket` — STRONG pack → released + real approval row + 2 pass qa_reviews + no escalation; WEAK
+pack → blocked + NO approval row + fail qa_review + real content escalation; idempotent re-run reuses the
+reviews + does not duplicate the escalation. Plus 3 unit tests in `content-graph.test.ts` (release opens the
+approval / block withholds it / no-gate unchanged) and a content-vertical DB regression re-run (green).
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 807 tests / 102 files · build 0 · DB proofs
+(content-gate ×2, content-vertical regression) · no schema/migration touched (uses existing qa_reviews +
+escalations + approvals tables → no drift).
+
+NEXT: QA-gate + proposal-accept + escalation browser E2E in required CI; transcript foundations DB
+persistence; Phase 5 Continuous Research + Context OS; then Phases 6–11.
