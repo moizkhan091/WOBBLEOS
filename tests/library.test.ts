@@ -138,7 +138,7 @@ function makeStore() {
   const posts = new Map<string, ScheduledPostRow>();
   const store: LibraryStore = {
     insertAsset: async (r) => void assets.set(r.id, r),
-    listAssets: async (q) => [...assets.values()].filter((a) => (!q.status || a.status === q.status) && (!q.kind || a.kind === q.kind)).slice(0, q.limit),
+    listAssets: async (q) => [...assets.values()].filter((a) => (!q.status || a.status === q.status) && (!q.kind || a.kind === q.kind) && (!q.ownerScope || a.ownerScope === q.ownerScope) && (!q.ownerId || a.ownerId === q.ownerId)).slice(0, q.limit),
     getAssetById: async (id) => assets.get(id) ?? null,
     updateAsset: async (id, f) => { const a = assets.get(id); if (a) assets.set(id, { ...a, ...f }); },
     findAssetByPacketId: async (pid) => [...assets.values()].find((a) => a.sourcePacketId === pid) ?? null,
@@ -172,6 +172,41 @@ describe("library service", () => {
     expect(a1?.sourcePacketId).toBe("pk1");
     expect(a2?.id).toBe(a1?.id); // no duplicate
     expect((await listContentAssets({}, { store }))).toHaveLength(1);
+  });
+
+  it("REFUSES to promote an UNAPPROVED pack — unapproved content cannot publish", async () => {
+    const { store } = makeStore();
+    for (const status of ["pending", "rejected", "draft"] as const) {
+      const asset = await importFromContentPacket(`pk_${status}`, { store, getPacketForImport: async () => ({ id: `pk_${status}`, hook: "H", approvalStatus: status }), recordAudit: async () => {}, now });
+      expect(asset).toBeNull(); // never promoted
+    }
+    expect((await listContentAssets({}, { store }))).toHaveLength(0); // no asset created for any unapproved pack
+  });
+
+  it("promotes an APPROVED pack and carries the source-track owner scope onto the asset (tenant isolation)", async () => {
+    const { store } = makeStore();
+    const a = await importFromContentPacket("pk_ok", { store, getPacketForImport: async () => ({ id: "pk_ok", hook: "H", approvalStatus: "approved", ownerScope: "content_track", ownerId: "track_A" }), recordAudit: async () => {}, now });
+    expect(a).not.toBeNull();
+    expect(a!.ownerScope).toBe("content_track");
+    expect(a!.ownerId).toBe("track_A");
+  });
+
+  it("listContentAssets ISOLATES by owner — a caller scoped to one owner never sees another's assets", async () => {
+    const { store } = makeStore();
+    await importFromContentPacket("pk_a", { store, getPacketForImport: async () => ({ id: "pk_a", hook: "A", approvalStatus: "approved", ownerScope: "content_track", ownerId: "track_A" }), recordAudit: async () => {}, now });
+    await importFromContentPacket("pk_b", { store, getPacketForImport: async () => ({ id: "pk_b", hook: "B", approvalStatus: "approved", ownerScope: "content_track", ownerId: "track_B" }), recordAudit: async () => {}, now });
+    const onlyA = await listContentAssets({ ownerScope: "content_track", ownerId: "track_A" }, { store });
+    expect(onlyA).toHaveLength(1);
+    expect(onlyA[0].sourcePacketId).toBe("pk_a"); // B's asset is not leaked to A's scope
+  });
+
+  it("schedulePost is IDEMPOTENT — a duplicate active schedule returns the existing post (no double-post)", async () => {
+    const { store } = makeStore();
+    const asset = await addContentAsset({ title: "A", platforms: ["instagram"] }, { store, now, recordAudit: async () => {} });
+    const p1 = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-10T09:00:00Z", createdBy: "Moiz" }, { store, now, recordAudit: async () => {} });
+    const p2 = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: "2026-07-11T09:00:00Z", createdBy: "Moiz" }, { store, now, recordAudit: async () => {} });
+    expect(p2.id).toBe(p1.id); // the retry returned the same live post
+    expect(await listScheduledPosts({ status: "scheduled" }, { store })).toHaveLength(1); // exactly one active post
   });
 
   it("schedules a post and moves the asset to scheduled", async () => {

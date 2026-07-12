@@ -3999,3 +3999,42 @@ in the REQUIRED `e2e browser gate (Playwright)` CI job (no continue-on-error).
 
 NEXT: proposal-accept full-chain browser E2E + a QA-gate browser E2E (backend fully proven on Postgres);
 Phase 5 Continuous Research + Context OS; Phases 6–11.
+
+## cont.22 — Content QA → Publishing path completed + proven end-to-end (production-reachable, no decorative handoff)
+
+Closed the honest content→publish path on the EXISTING Library / scheduled_posts / publisher substrate — NO
+decorative handoff to a consumer-less Publishing department. The distinctions are preserved as separate,
+gated steps: generation → QA acceptance → founder approval → Library promotion → scheduling → external publishing.
+
+Three real hardenings (no schema change — used the existing `content_assets.ownerScope/ownerId` + a code guard):
+- **Approved-only promotion** (`importFromContentPacket`): a packet is promotable to a publishable Library
+  asset ONLY when `approvalStatus === "approved"`. A pending/rejected/draft (incl. a QA-failed) packet is
+  refused (returns null) — **unapproved content cannot publish**, and a QA-failed pack can never reach the
+  Library. `PackForImport` now carries `approvalStatus` + owner; `defaultGetPacketForImport` provides both.
+- **Tenant isolation** on the Library: the imported asset is owner-scoped to its source content track
+  (`ownerScope: content_track`, `ownerId: <trackId>`); `listContentAssets` filters by owner so a caller
+  scoped to one owner never sees another's assets. (Content is track-scoped — the track carries the owner.)
+- **Schedule idempotency** (`schedulePost`): a retry/double-click for the same asset+platform returns the
+  existing live post instead of creating a duplicate scheduled post. Plus a best-effort audit on the
+  auto-dispatch publish (a logging failure never flips a real publish back to failed).
+
+Provider path is credential-gated (existing): a manual publisher truthfully DEFERS a due post (no fake
+"published") when no provider credentials are configured; a configured provider dispatches through the REAL
+adapter (`publish()` invoked → post moves to published with the external ref).
+
+Proven: `verify-content-publishing-db` (17 checks, ×2, `verify:content-publishing`) on live Postgres —
+approved→publishable asset (owner-scoped); pending/draft refused (no asset); idempotent import + idempotent
+schedule; tenant isolation (A can't see B); manual DEFERS (truthful blocked); configured provider invokes the
+real adapter → published + external ref; promotion/scheduling/publishing each audited. Plus 4 library unit
+tests (approved-only, tenant carry, owner isolation, schedule idempotency) and Playwright: unauth 401 on the
+Library + scheduled surfaces, and the founder can read both (content-vertical + content-gate DB proofs re-run
+green — no regression).
+
+QA verdict effects on this path (proven in `verify-content-gate-db`): PASS opens the founder publish-approval
+(→ promotion); FAIL/REVISE/BLOCKED withhold the approval + raise a founder escalation naming the exact failed
+stage. Full node-level selective rerun of a content stage on REVISE is the Phase-7 selective-revision engine.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 811 tests / 102 files · build 0 · DB proofs
+(content-publishing ×2 + content-gate + content-vertical regressions) · no schema/migration touched.
+
+NEXT: proposal-accept full-chain browser E2E; Phase 5 Continuous Research + Context OS; Phases 6–11.

@@ -170,6 +170,11 @@ export interface PackForImport {
   caption?: string | null;
   carouselSlides?: Array<Record<string, unknown>> | null;
   createdBy?: string | null;
+  /** The packet's approval status — a packet is promotable to the Library ONLY when `approved`. */
+  approvalStatus?: string | null;
+  /** Owner scoping carried onto the asset for tenant isolation (the source track's owner). */
+  ownerScope?: string | null;
+  ownerId?: string | null;
 }
 
 /** Map an approved Content Command pack into a library asset (media comes later from the studio). */
@@ -183,6 +188,8 @@ export function assetInputFromPacket(packet: PackForImport): CreateAssetInput {
     caption: captionParts.join("\n\n") || undefined,
     platforms: platform,
     tags: ["from_content_command"],
+    ownerScope: packet.ownerScope ?? "company",
+    ownerId: packet.ownerId ?? undefined,
     sourceType: "content_pack",
     sourcePacketId: packet.id,
     status: "ready",

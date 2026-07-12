@@ -75,7 +75,7 @@ export function defaultPublisherRegistry(): Record<string, PublisherAdapter> {
 
 export interface LibraryStore {
   insertAsset(row: ContentAssetRow): Promise<void>;
-  listAssets(query: { status?: string; kind?: string; limit: number }): Promise<ContentAssetRow[]>;
+  listAssets(query: { status?: string; kind?: string; ownerScope?: string; ownerId?: string; limit: number }): Promise<ContentAssetRow[]>;
   getAssetById(id: string): Promise<ContentAssetRow | null>;
   updateAsset(id: string, fields: Partial<ContentAssetRow>): Promise<void>;
   findAssetByPacketId(packetId: string): Promise<ContentAssetRow | null>;
@@ -119,6 +119,10 @@ async function defaultGetPacketForImport(packetId: string): Promise<PackForImpor
     caption: (p.caption as string) ?? null,
     carouselSlides: (p.carouselSlides as Array<Record<string, unknown>>) ?? null,
     createdBy: (p.createdBy as string) ?? null,
+    approvalStatus: (p.approvalStatus as string) ?? null,
+    // Content is track-scoped: carry the source track so the imported asset is isolated to its owner.
+    ownerScope: p.contentTrackId ? "content_track" : "company",
+    ownerId: (p.contentTrackId as string) ?? null,
   };
 }
 
@@ -139,9 +143,11 @@ export async function addContentAsset(input: CreateAssetInput, deps: LibraryDeps
   return row;
 }
 
-export async function listContentAssets(query: { status?: string; kind?: string; limit?: number } = {}, deps: LibraryDeps = {}): Promise<ContentAssetRow[]> {
+export async function listContentAssets(query: { status?: string; kind?: string; ownerScope?: string; ownerId?: string; limit?: number } = {}, deps: LibraryDeps = {}): Promise<ContentAssetRow[]> {
   const store = deps.store ?? defaultStore();
-  return store.listAssets({ status: query.status, kind: query.kind, limit: Math.min(Math.max(query.limit ?? 100, 1), 500) });
+  // ownerScope/ownerId scope the read to a single tenant/track owner — a caller scoped to one owner never
+  // sees another owner's assets (tenant isolation on the Library).
+  return store.listAssets({ status: query.status, kind: query.kind, ownerScope: query.ownerScope, ownerId: query.ownerId, limit: Math.min(Math.max(query.limit ?? 100, 1), 500) });
 }
 
 export async function getContentAsset(id: string, deps: LibraryDeps = {}): Promise<ContentAssetRow | null> {
@@ -157,13 +163,21 @@ export async function archiveContentAsset(id: string, deps: LibraryDeps = {}): P
   return true;
 }
 
-/** Import an approved Content Command pack into the library (idempotent per packet). */
+/**
+ * Import an APPROVED Content Command pack into the library (idempotent per packet). Two hard guards:
+ *  - IDEMPOTENCY: a re-run for the same packet returns the existing asset (never a duplicate).
+ *  - APPROVAL: only an `approved` packet may become a publishable Library asset — a pending/rejected/draft
+ *    (incl. a QA-failed) packet is refused (returns null). The founder approval is the promotion gate; a
+ *    packet that never cleared QA + approval can never reach the Library / scheduled-posts / publishing path.
+ */
 export async function importFromContentPacket(packetId: string, deps: LibraryDeps = {}): Promise<ContentAssetRow | null> {
   const store = deps.store ?? defaultStore();
   const existing = await store.findAssetByPacketId(packetId);
   if (existing) return existing; // already imported — don't duplicate
   const packet = await (deps.getPacketForImport ?? defaultGetPacketForImport)(packetId);
   if (!packet) return null;
+  // UNAPPROVED CONTENT CANNOT PUBLISH. When the approval status is known, it MUST be `approved`.
+  if (packet.approvalStatus !== undefined && packet.approvalStatus !== null && packet.approvalStatus !== "approved") return null;
   return addContentAsset(assetInputFromPacket(packet), deps);
 }
 
@@ -174,6 +188,12 @@ export async function schedulePost(input: SchedulePostInput, deps: LibraryDeps &
   const asset = await store.getAssetById(input.assetId);
   if (!asset) throw new Error(`content asset '${input.assetId}' not found`);
   if (asset.status === "archived") throw new Error("cannot schedule an archived asset");
+  // IDEMPOTENCY: a retry (or a double-click) must NOT create a SECOND live post for the same asset+platform.
+  // If an active (scheduled/publishing) post already exists for this asset on this platform, return it.
+  if (store.findPostByAssetAndPlatform) {
+    const active = await store.findPostByAssetAndPlatform(input.assetId, input.platform);
+    if (active && (active.status === "scheduled" || active.status === "publishing")) return active;
+  }
   const row = buildScheduledPostRow(input, { now: deps.now });
   const now = deps.now ?? new Date();
   // Local-first: always persist the schedule before touching the provider, so we ALWAYS have a
@@ -366,6 +386,15 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
       const res = await publisher.publish({ post, asset });
       await store.updateScheduledPost(post.id, { status: "published", publishedAt: now, publisherRef: res.publisherRef ?? null, result: res.result ?? {}, updatedAt: now });
       await store.updateAsset(post.assetId, { status: "published", updatedAt: now });
+      // Best-effort audit — a logging failure must NEVER flip a real publish back to failed.
+      await (deps.recordAudit ?? defaultRecordAudit)({
+        eventType: "library.post_published",
+        module: LIBRARY_MODULE,
+        entityType: "scheduled_post",
+        entityId: post.id,
+        actor: "publisher",
+        metadata: { assetId: post.assetId, platform: post.platform, publisher: post.publisher, publisherRef: res.publisherRef ?? null },
+      }).catch(() => {});
       dispatched += 1;
     } catch (error) {
       await store.updateScheduledPost(post.id, { status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: now });
@@ -488,6 +517,8 @@ export function defaultStore(db: Db = getDb()): LibraryStore {
       const conditions = [];
       if (query.status) conditions.push(eq(contentAssets.status, query.status));
       if (query.kind) conditions.push(eq(contentAssets.kind, query.kind));
+      if (query.ownerScope) conditions.push(eq(contentAssets.ownerScope, query.ownerScope));
+      if (query.ownerId) conditions.push(eq(contentAssets.ownerId, query.ownerId));
       const base = db.select().from(contentAssets);
       const rows = await (conditions.length ? base.where(and(...conditions)) : base).orderBy(desc(contentAssets.createdAt)).limit(query.limit);
       return rows as ContentAssetRow[];

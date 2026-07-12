@@ -27,4 +27,12 @@ test.describe("Auth gate — unauthenticated", () => {
     expect(res.status()).toBe(401);
     expect(((await res.json()) as { ok?: boolean }).ok).toBe(false);
   });
+
+  test("the publishing surfaces (Library + scheduled posts) are gated at 401 without a session", async ({ request }) => {
+    // An unauthorized user can neither inspect nor promote content — the Library + scheduled-posts queue are
+    // founder-gated at the proxy, not merely hidden in the UI.
+    expect((await request.get("/api/library/assets")).status()).toBe(401);
+    expect((await request.get("/api/library/scheduled")).status()).toBe(401);
+    expect((await request.post("/api/library/assets", { data: { title: "unauthorized asset", kind: "image" } })).status()).toBe(401);
+  });
 });
