@@ -29,6 +29,7 @@ export interface NavGroup {
 export const MODULES: Record<string, ModuleDef> = {
   // WORKSPACE
   command: { id: "command", label: "Command Center", title: "Command Center", icon: "LayoutDashboard", status: "wired", api: "/api/approvals,/api/costs,/api/audit", tagline: "One pane of glass over the entire WOBBLE workforce - research, content, media, decisions, and the founder approvals that gate it all." },
+  departments: { id: "departments", label: "Departments", title: "Departments & Handoffs", icon: "Network", status: "wired", api: "/api/departments,/api/handoffs", tagline: "The org as independent operating units — each department's truthful health, agent team, live inter-agent handoffs, spend and products. Inspect, retry, redrive or cancel any handoff." },
   ask: { id: "ask", label: "Ask WOBBLE", title: "Ask WOBBLE", icon: "Sparkles", status: "wired", chunk: 11, api: "/api/ask", tagline: "A direct line into the OS. Ask across every module, kick off the golden workflow, or interrogate memory in natural language." },
   brain: { id: "brain", label: "WOBBLE Brain", title: "WOBBLE Brain", icon: "Brain", status: "wired", chunk: 10, api: "/api/memory", tagline: "The shared knowledge core - everything the workforce has learned, embedded and retrievable." },
   agents: { id: "agents", label: "Agent Registry", title: "Agent Registry", icon: "Bot", status: "wired", chunk: 52, api: "/api/agents", tagline: "The AI workforce - every agent, what it does, its runs, cost and quality. The hive-mind, made visible." },
@@ -80,7 +81,7 @@ export const MODULES: Record<string, ModuleDef> = {
 };
 
 export const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", items: ["command", "ask", "brain", "agents"] },
+  { label: "WORKSPACE", items: ["command", "departments", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },

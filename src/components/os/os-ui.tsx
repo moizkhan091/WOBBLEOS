@@ -4899,7 +4899,114 @@ function HandoffPage() {
   );
 }
 
+// ---- Departments & Handoffs Command Centre (Phase 3) ----
+type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
+type HandoffView = { id: string; department: string; deliveryState: string; sourceAgent: string; destinationAgent: string | null; workflowId: string; clientWorkspaceId: string | null; retryCount: number; failureReason: string | null; correlationId: string; causationId: string | null; costEstimate: string | null; latencyMs: number | null; qualityScore: string | null };
+
+const HEALTH_COLOR: Record<string, string> = { healthy: C.lime, degraded: "#F5C542", blocked: C.orange, over_budget: C.orange, failed: C.orange, unavailable: C.gray, misconfigured: C.orange, stale: C.blue, unknown: C.gray };
+const STATE_COLOR: Record<string, string> = { completed: C.lime, delivered: C.blue, processing: C.blue, acknowledged: C.blue, dead_lettered: C.orange, failed: C.orange, cancelled: C.gray, created: C.gray };
+
+function DepartmentsPage() {
+  const depts = useApi<{ departments: DeptRollup[] }>("/api/departments");
+  const [stateFilter, setStateFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const q = [stateFilter ? `deliveryState=${stateFilter}` : "", deptFilter ? `department=${deptFilter}` : "", "limit=100"].filter(Boolean).join("&");
+  const handoffs = useApi<{ handoffs: HandoffView[]; counts: Record<string, number> }>(`/api/handoffs?${q}`);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function act(id: string, action: "redrive" | "cancel") {
+    setBusy(id);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/handoffs/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = await r.json().catch(() => ({}));
+      setMsg(r.ok && j.ok ? `${action} ok` : `${action} failed: ${j.error ?? r.status}`);
+      handoffs.reload();
+      depts.reload();
+    } catch (e) { setMsg(String(e)); } finally { setBusy(null); }
+  }
+
+  const guard = offlineIf(depts);
+  if (guard) return guard;
+  const list = depts.data?.departments ?? [];
+  const hs = handoffs.data?.handoffs ?? [];
+  const counts = handoffs.data?.counts ?? {};
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="Departments" value={String(list.length)} icon="Network" color={C.lime} />
+        <Kpi label="Active" value={String(list.filter((d) => d.status === "active").length)} icon="CircleDot" color={C.blue} />
+        <Kpi label="Handoffs in-flight" value={String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" />
+        <Kpi label="Stuck (needs you)" value={String((counts.dead_lettered ?? 0) + (counts.failed ?? 0))} icon="AlertTriangle" color={C.orange} />
+      </div>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Departments — truthful health</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 10 }}>
+          {list.map((d) => (
+            <div key={d.department} style={{ ...card, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 7, cursor: "pointer", borderColor: d.department === deptFilter ? C.lime : undefined }} onClick={() => setDeptFilter(d.department === deptFilter ? "" : d.department)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray }} />
+                <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{d.name ?? d.department}</span>
+                <Tag text={d.status ?? "—"} color={d.status === "active" ? C.lime : C.gray} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <Tag text={d.healthStatus ?? "unknown"} color={HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray} />
+                <Tag text={`team ${d.members.active}/${d.members.total}`} color={C.gray} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 11, color: faint }}>
+                <span>in-flight {d.handoffs.inFlight}</span>
+                <span>done {d.handoffs.completed}</span>
+                {d.handoffs.stuck > 0 ? <span style={{ color: C.orange }}>stuck {d.handoffs.stuck}</span> : null}
+                {d.quality.avg != null ? <span>q {d.quality.avg}</span> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Inter-agent handoffs{deptFilter ? ` · ${deptFilter}` : ""}</div>
+          <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} style={{ ...card, padding: "5px 9px", fontSize: 12, color: C.white, background: "rgba(255,255,255,0.04)" }}>
+            <option value="">all states</option>
+            {["delivered", "processing", "acknowledged", "completed", "dead_lettered", "failed", "cancelled"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {deptFilter ? <button onClick={() => setDeptFilter("")} style={{ ...card, padding: "5px 9px", fontSize: 12, color: C.white, cursor: "pointer", background: "transparent" }}>clear dept</button> : null}
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.includes("ok") ? C.lime : C.orange, marginBottom: 8 }}>{msg}</div> : null}
+        {hs.length === 0 ? <StateBlock kind="empty" message="No handoffs match. Run a department (e.g. a paid audit) to see the agent team's inter-agent handoffs here." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {hs.map((h) => {
+              const terminal = ["completed", "cancelled"].includes(h.deliveryState);
+              const canRedrive = ["dead_lettered", "failed", "processing"].includes(h.deliveryState);
+              const canCancel = !terminal && h.deliveryState !== "dead_lettered";
+              return (
+                <div key={h.id} style={{ ...card, padding: "8px 11px", display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATE_COLOR[h.deliveryState] ?? C.gray }} />
+                  <Tag text={h.department} color={C.gray} />
+                  <span style={{ fontSize: 12, minWidth: 220 }}>{h.sourceAgent} → {h.destinationAgent ?? "—"}</span>
+                  <Tag text={h.deliveryState} color={STATE_COLOR[h.deliveryState] ?? C.gray} />
+                  {h.retryCount > 0 ? <span style={{ fontSize: 11, color: faint }}>retries {h.retryCount}</span> : null}
+                  {h.failureReason ? <span style={{ fontSize: 11, color: C.orange, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.failureReason}>{h.failureReason}</span> : null}
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: 10.5, color: faint }} title={`workflow ${h.workflowId} · correlation ${h.correlationId}`}>{h.workflowId.slice(0, 14)}</span>
+                  {canRedrive ? <button disabled={busy === h.id} onClick={() => act(h.id, "redrive")} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: "pointer", background: "transparent" }}>retry</button> : null}
+                  {canCancel ? <button disabled={busy === h.id} onClick={() => act(h.id, "cancel")} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: "pointer", background: "transparent" }}>cancel</button> : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
+  departments: DepartmentsPage,
   command: CommandPage,
   learning: LearningPage,
   library: LibraryPage,
