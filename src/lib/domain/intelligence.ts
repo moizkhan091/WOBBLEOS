@@ -1215,3 +1215,24 @@ export function computeSourceValue(
   const valueScore = Math.round(Math.max(0, Math.min(100, avgImpact * (approvalRate ?? 0))));
   return { targetId, itemsCollected: itemIds.size, findingsProduced: findings.length, findingsApproved: approved.length, findingsRejected: rejected.length, findingsPending: pending.length, approvalRate, falsePositiveRate, valueScore };
 }
+
+// ---------------------------------------------------------------- source discovery proposals (Phase 5, B)
+//
+// The Research Department may DISCOVER and PROPOSE new sources. A proposal is a research target that lands
+// `pending` (never active) carrying the evidence + rationale the founder needs to approve it individually —
+// it flows into the SAME granular approval path (approve exactly one; the invariant holds). This is the
+// structured proposal payload stored on the target's metadata.
+import { z as _zSource } from "zod";
+
+export const sourceProposalSchema = _zSource.object({
+  reason: _zSource.string().trim().min(1),
+  evidence: _zSource.array(_zSource.string().trim().min(1)).min(1, "a source proposal must cite ≥1 piece of evidence"),
+  expectedValue: _zSource.string().trim().min(1),
+  intendedDepartments: _zSource.array(_zSource.string().trim().min(1)).default([]),
+  collectionMethod: _zSource.string().trim().min(1),
+  estimatedCostCents: _zSource.number().int().min(0).default(0),
+  risk: _zSource.string().trim().min(1).default("low"),
+  classification: _zSource.string().trim().min(1).default("internal"),
+  confidence: _zSource.number().min(0).max(1).default(0.5),
+});
+export type SourceProposal = _zSource.input<typeof sourceProposalSchema>;

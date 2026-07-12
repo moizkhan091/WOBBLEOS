@@ -214,6 +214,23 @@ export async function getSourceValue(targetId: string, deps: IntelligenceDeps = 
   return computeSourceValue(targetId, items, insights);
 }
 
+/**
+ * Source DISCOVERY proposal (Phase 5, mandate B): propose a NEW source as a `pending` research target
+ * carrying the structured evidence + rationale the founder needs to approve it. It lands pending (never
+ * active) and flows into the SAME granular approval path (approve exactly one → it becomes scouted; the
+ * others stay pending). Validated so a proposal always cites ≥1 piece of evidence.
+ */
+export async function proposeResearchSource(
+  input: ResearchTargetInput & { proposal: import("@/lib/domain/intelligence").SourceProposal },
+  deps: IntelligenceDeps = {},
+): Promise<ResearchTargetRow> {
+  const { sourceProposalSchema } = await import("@/lib/domain/intelligence");
+  const { proposal, ...targetInput } = input;
+  const validated = sourceProposalSchema.parse(proposal);
+  const { target } = await createResearchTarget({ ...targetInput, metadata: { ...(targetInput.metadata as Record<string, unknown> | undefined), proposal: validated } }, deps);
+  return target; // approvalStatus "pending" — a proposal, never auto-activated
+}
+
 export async function listResearchTargets(query: ListIntelligenceQuery = {}, deps: IntelligenceDeps = {}): Promise<ResearchTargetRow[]> {
   const store = deps.store ?? defaultStore();
   return store.listResearchTargets({ ...query, limit: clampIntelligenceLimit(query.limit) });

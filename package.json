@@ -37,6 +37,7 @@
     "verify:source-approval": "tsx src/scripts/verify-source-granular-approval-db.ts",
     "verify:intel-propagation": "tsx src/scripts/verify-intel-propagation-db.ts",
     "verify:source-value": "tsx src/scripts/verify-source-value-db.ts",
+    "verify:source-discovery": "tsx src/scripts/verify-source-discovery-db.ts",
     "verify:decision-learning": "tsx src/scripts/verify-decision-learning-db.ts",
     "verify:aios-value": "tsx src/scripts/verify-aios-value-db.ts",
     "verify:daily-brief": "tsx src/scripts/verify-daily-brief-db.ts",

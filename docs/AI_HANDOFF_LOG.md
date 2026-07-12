@@ -4185,3 +4185,25 @@ GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 820 tests / 102 fi
 Phase 5 remaining: source registry field enrichment · source discovery PROPOSALS (feeding the granular
 approval) · snapshots + change detection · freshness/staleness/contradictions/dedup · richer ingestion
 (transcript/video-frame/visual) · continuous-research UI + Playwright. Then Context OS; Phases 6–11.
+
+## cont.29 — Phase 5: source DISCOVERY proposals (built + proven)
+
+Mandate B: the Research Department can DISCOVER + PROPOSE new sources, flowing into the SAME granular approval.
+
+- `SourceProposal` (domain, zod-validated): reason + evidence(≥1) + expectedValue + intendedDepartments +
+  collectionMethod + estimatedCostCents + risk + classification + confidence.
+- `proposeResearchSource(input)` (service): creates a research target that lands `pending` (a proposal, NEVER
+  auto-active) carrying the structured proposal on its metadata. It is excluded from the scheduler's
+  approved-only scout set until the founder approves it individually — then it enters the scout set (the
+  granular-approval invariant, cont.27, holds). A proposal with no evidence is refused.
+
+Proven: `verify-source-discovery-db` (×2, `verify:source-discovery`) — proposed source lands pending + carries
+evidence/rationale/intended-departments; NOT scouted until approved; granular approval activates exactly it;
+an evidence-less proposal is refused.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 820 tests / 102 files · build 0 · DB proof ×2 ·
+no schema/migration touched.
+
+Phase 5 remaining: source registry field enrichment · snapshots + change detection · freshness/staleness/
+contradictions/dedup · richer ingestion (transcript/video-frame/visual) · continuous-research UI + Playwright.
+Then Context OS; Phases 6–11.
