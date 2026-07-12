@@ -1,6 +1,7 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { handoffs as handoffsTable, agents as agentsTable } from "@/db/schema";
+import type { HandoffRow } from "@/lib/domain/handoff-delivery";
 
 /**
  * Department roll-up (Phase 3 — real departments). WOBBLE OS is a team of agents per module; this makes
@@ -45,13 +46,34 @@ export interface DepartmentRollup {
   lastActivityAt: Date | null;
 }
 
+/** One member of a department's registered agent team. */
+export interface DepartmentAgent {
+  slug: string;
+  name: string;
+  module: string;
+  status: string;
+  qualityScore: number | null;
+  runCount: number;
+  failureCount: number;
+}
+
+/** Drill-down for one department: its agent team + its most recent inter-agent handoffs. */
+export interface DepartmentDetail {
+  department: string;
+  agents: DepartmentAgent[];
+  recentHandoffs: HandoffRow[];
+}
+
 export interface DepartmentRollupStore {
   handoffAggByDepartment(): Promise<HandoffAggRow[]>;
   agentCountsByTeam(): Promise<AgentAggRow[]>;
+  agentsByTeam(team: string): Promise<DepartmentAgent[]>;
 }
 
 export interface DepartmentDeps {
   store?: DepartmentRollupStore;
+  /** Recent handoffs for a department (env-gated default delegates to the handoff runtime). Injectable. */
+  listRecentHandoffs?: (department: string, limit: number) => Promise<HandoffRow[]>;
 }
 
 const IN_FLIGHT = new Set(["delivered", "processing", "acknowledged"]);
@@ -108,6 +130,14 @@ export async function getDepartmentRollups(deps: DepartmentDeps = {}): Promise<D
   return shapeDepartmentRollups(handoffRows, agentRows);
 }
 
+/** Drill into one department: its registered agent team + its most recent inter-agent handoffs. */
+export async function getDepartmentDetail(department: string, deps: DepartmentDeps = {}, limit = 25): Promise<DepartmentDetail> {
+  const store = deps.store ?? defaultStore();
+  const listRecent = deps.listRecentHandoffs ?? (async (dept: string, lim: number) => (process.env.DATABASE_URL ? (await import("@/lib/handoff")).listHandoffs({ department: dept, limit: lim }) : []));
+  const [agents, recentHandoffs] = await Promise.all([store.agentsByTeam(department), listRecent(department, Math.min(Math.max(limit, 1), 200))]);
+  return { department, agents, recentHandoffs };
+}
+
 export function defaultStore(db: Db = getDb()): DepartmentRollupStore {
   return {
     async handoffAggByDepartment() {
@@ -136,6 +166,14 @@ export function defaultStore(db: Db = getDb()): DepartmentRollupStore {
         .where(sql`${agentsTable.team} is not null`)
         .groupBy(agentsTable.team);
       return rows.filter((r): r is { team: string; total: number; active: number } => typeof r.team === "string").map((r) => ({ team: r.team, total: Number(r.total), active: Number(r.active) }));
+    },
+    async agentsByTeam(team) {
+      const rows = await db
+        .select({ slug: agentsTable.slug, name: agentsTable.name, module: agentsTable.module, status: agentsTable.status, qualityScore: agentsTable.qualityScore, runCount: agentsTable.runCount, failureCount: agentsTable.failureCount })
+        .from(agentsTable)
+        .where(eq(agentsTable.team, team))
+        .orderBy(agentsTable.slug);
+      return rows.map((r) => ({ slug: r.slug, name: r.name, module: r.module, status: r.status, qualityScore: r.qualityScore === null ? null : Number(r.qualityScore), runCount: Number(r.runCount ?? 0), failureCount: Number(r.failureCount ?? 0) }));
     },
   };
 }

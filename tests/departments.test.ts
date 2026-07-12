@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { shapeDepartmentRollups, getDepartmentRollups, type HandoffAggRow, type AgentAggRow, type DepartmentRollupStore } from "@/lib/departments";
+import { shapeDepartmentRollups, getDepartmentRollups, getDepartmentDetail, type HandoffAggRow, type AgentAggRow, type DepartmentRollupStore, type DepartmentAgent } from "@/lib/departments";
+import type { HandoffRow } from "@/lib/domain/handoff-delivery";
 
 const t = (s: string) => new Date(s);
 
@@ -62,9 +63,33 @@ describe("getDepartmentRollups", () => {
     const store: DepartmentRollupStore = {
       handoffAggByDepartment: async () => [{ department: "content", deliveryState: "completed", n: 3, costSum: 0.2, qualitySum: 24, qualityN: 3, lastAt: t("2026-07-12T08:00:00Z") }],
       agentCountsByTeam: async () => [{ team: "content", total: 4, active: 4 }],
+      agentsByTeam: async () => [],
     };
     const rollups = await getDepartmentRollups({ store });
     expect(rollups).toHaveLength(1);
     expect(rollups[0]).toMatchObject({ department: "content", handoffs: { completed: 3 }, quality: { avg: 8 }, agents: { total: 4, active: 4 } });
+  });
+});
+
+describe("getDepartmentDetail", () => {
+  it("returns the department's agent team + recent handoffs from the injected deps", async () => {
+    const teamAgents: DepartmentAgent[] = [
+      { slug: "content_strategist", name: "Strategist", module: "content", status: "active", qualityScore: 8.5, runCount: 12, failureCount: 1 },
+      { slug: "content_scorer", name: "Scorer", module: "content", status: "active", qualityScore: 9, runCount: 12, failureCount: 0 },
+    ];
+    const store: DepartmentRollupStore = {
+      handoffAggByDepartment: async () => [],
+      agentCountsByTeam: async () => [],
+      agentsByTeam: async (team) => (team === "content" ? teamAgents : []),
+    };
+    const recent = [{ id: "handoff_1", department: "content" } as unknown as HandoffRow];
+
+    const detail = await getDepartmentDetail("content", { store, listRecentHandoffs: async (dept, lim) => { expect(dept).toBe("content"); expect(lim).toBeLessThanOrEqual(200); return recent; } });
+
+    expect(detail.department).toBe("content");
+    expect(detail.agents.map((a) => a.slug)).toEqual(["content_strategist", "content_scorer"]);
+    expect(detail.agents[0]).toMatchObject({ qualityScore: 8.5, runCount: 12, failureCount: 1 });
+    expect(detail.recentHandoffs).toHaveLength(1);
+    expect(detail.recentHandoffs[0].id).toBe("handoff_1");
   });
 });
