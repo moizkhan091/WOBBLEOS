@@ -7,6 +7,7 @@ import { purgeExpiredArchivedMemory } from "@/lib/memory";
 import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/lib/graph-checkpoint";
 import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS } from "@/lib/handoff";
 import { reconcileApprovalEffects } from "@/lib/approval-effects";
+import { refreshAllDepartmentHealth } from "@/lib/departments/health";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -87,6 +88,14 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await reconcileApprovalEffects(APPROVAL_EFFECT_APPLIERS, { now });
   } catch (e) {
     result.errors.push(`approval-effects: ${e instanceof Error ? e.message : e}`);
+  }
+  // Refresh truthful department health from live signals (orchestrator/team availability, handoff
+  // backlog/dead-letters/failures, budget, blocked approvals) so the Command Centre never shows a stale
+  // or falsely-healthy department.
+  try {
+    await refreshAllDepartmentHealth({ now });
+  } catch (e) {
+    result.errors.push(`department-health: ${e instanceof Error ? e.message : e}`);
   }
 
   // 1. Schedule-triggered automation rules (cron).

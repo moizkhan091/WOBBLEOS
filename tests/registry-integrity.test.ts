@@ -34,6 +34,10 @@ const GRAPH_NODE_AGENTS = [...Object.values(CONTENT_GRAPH_AGENTS), ...Object.val
 // Synchronous graph services invoked directly by a route (pitch, interview roadmap).
 const GRAPH_SERVICE_AGENTS = [PITCH_AGENT, ROADMAP_AGENT];
 
+// Department orchestrators — driven by the department runtime (runDepartment), which accepts the inbound
+// department handoff and runs the department's graph (paid-audit / content) through the handoff backbone.
+const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orchestrator"];
+
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [
   "ask_wobble", // Ask WOBBLE — synchronous /api/ask router
@@ -54,6 +58,7 @@ const JOB_BACKED_AGENTS: Array<{ slug: string; jobType: string }> = [
 const EXECUTABLE_SLUGS = new Set<string>([
   ...GRAPH_NODE_AGENTS,
   ...GRAPH_SERVICE_AGENTS,
+  ...DEPARTMENT_ORCHESTRATOR_AGENTS,
   ...SYNC_OR_SUBROUTINE_AGENTS,
   ...JOB_BACKED_AGENTS.map((j) => j.slug),
 ]);
