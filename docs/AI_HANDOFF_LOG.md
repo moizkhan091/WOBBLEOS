@@ -3727,3 +3727,24 @@ STATE: all four escalation actions (resume/terminate/dismiss/reroute) now contro
 real DB. Remaining Priority-5 sub-item: escalation-action Playwright coverage (duplicate clicks / invalid
 transitions / unauthorized users) in required CI. Workstreams B (live QA gates) + C (transcript foundations)
 in progress; D (project graph investigation) committed. NEXT: integrate B + C, gate, then continue.
+
+## 2026-07-12 (cont. 13) - Claude (Opus 4.8) - Reroute landed; parallel workstreams interrupted by a hard session usage limit
+
+Reconciled the authoritative docs (WAR_ROOM §1 + LEDGER header) to current truth, committed the transcript
+delta matrix (docs/AIOS_TRANSCRIPT_DELTA_2026_07_12.md), and launched 4 parallel workstreams + implemented
+Phase-3 reroute myself as lead.
+
+- **Reroute (Priority 5) — DONE + CI-green** (main @ cad7fb3): real alternate-route execution, 7 unit tests +
+  verify-escalation-reroute-db (twice), full suite 753 green, CI green.
+- **Workstream D — DONE:** Project Intelligence Graph investigation (build native, don't adopt Graphify).
+- **Workstreams B (live QA gates) + C (transcript foundations) — INTERRUPTED** by the shared session usage
+  limit (resets ~21:00 Asia/Karachi). Their partial, NOT-gated work is preserved + pushed to branch
+  `wip/qa-gates-and-aios-foundations`. main was restored to a clean, green, CI-verified state (their partial
+  files are OFF main). Resume from the wip branch — see WAR_ROOM §9a for the exact TODOs.
+
+STOP REASON: hard session usage exhaustion (subagents already hit it; main session near it). State left exact
++ resumable: main clean+green+CI-verified @ cad7fb3, wip branch pushed, docs current, DB clean.
+CONTINUE: `git checkout wip/qa-gates-and-aios-foundations` → fix C's aios-value tsc → finish B's qa-gate test
++ DB proof → lead registers QA org (seed/agents) + migration specs → gate → merge to main (Phase 4 QA first,
+then foundations). Then Phase 3 proposal-accept E2E + escalation-action Playwright; then Phase 5+.
+Blockers: session usage limit (temporary); VPS + media provider keys (external, unchanged).
