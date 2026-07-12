@@ -225,6 +225,13 @@
       "when": 1783786414036,
       "tag": "0031_approval_effects",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783816664018,
+      "tag": "0032_departments",
+      "breakpoints": true
     }
   ]
 }

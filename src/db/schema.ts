@@ -1643,3 +1643,35 @@ export const approvalEffects = pgTable("approval_effects", {
   index("approval_effects_state_idx").on(table.state),
   index("approval_effects_created_at_idx").on(table.createdAt),
 ]);
+
+// ---- DEPARTMENTS (Phase 3): a department is an independent operating unit — versioned identity, an
+// orchestrator, hard tool/memory/data-classification permissions, the handoff schemas it accepts, the
+// products it emits, the departments it delivers to, approvals + escalation, KPIs, and budget/limits.
+// Authorization comes from THIS record + explicit memberships — never inferred from a free-text label. ----
+export const departments = pgTable("departments", {
+  id: id(),
+  slug: varchar("slug", { length: 120 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  purpose: text("purpose").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("draft"), // draft | active | inactive | archived
+  version: integer("version").notNull().default(1),
+  orchestratorAgentSlug: varchar("orchestrator_agent_slug", { length: 120 }),
+  deterministicServices: jsonb("deterministic_services").$type<string[]>().notNull().default([]),
+  permissions: jsonb("permissions").$type<Record<string, unknown>>().notNull().default({}),
+  io: jsonb("io").$type<Record<string, unknown>>().notNull().default({}),
+  events: jsonb("events").$type<Record<string, unknown>>().notNull().default({}),
+  governance: jsonb("governance").$type<Record<string, unknown>>().notNull().default({}),
+  kpis: jsonb("kpis").$type<Record<string, unknown>[]>().notNull().default([]),
+  budget: jsonb("budget").$type<Record<string, unknown>>().notNull().default({}),
+  limits: jsonb("limits").$type<Record<string, unknown>>().notNull().default({}),
+  degradedBehaviour: text("degraded_behaviour"),
+  healthStatus: varchar("health_status", { length: 32 }).notNull().default("unknown"),
+  owner: varchar("owner", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("departments_slug_unique").on(table.slug),
+  index("departments_status_idx").on(table.status),
+  index("departments_health_idx").on(table.healthStatus),
+]);
