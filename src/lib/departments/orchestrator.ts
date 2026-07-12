@@ -6,6 +6,8 @@ import { selectSpecialists, type DepartmentMemberRow } from "@/lib/domain/depart
 import { dispatchHandoff, type HandoffStore } from "@/lib/handoff";
 import { getDepartment, listMembers } from "@/lib/departments/registry";
 import { reserveBudget, settleBudget, releaseBudget, type BudgetStore } from "@/lib/departments/budget";
+import { createEscalation, type EscalationStore } from "@/lib/departments/escalation";
+import type { EscalationReason, EscalationSeverity } from "@/lib/domain/escalation";
 import {
   acceptInboundHandoff,
   authorizeMemberAction,
@@ -75,6 +77,8 @@ export interface RunDepartmentDeps {
   handoffStore?: HandoffStore;
   /** When set together with input.budget, the run reserves→settles against the department budget. */
   budgetStore?: BudgetStore;
+  /** When set, blocked/escalated work raises a real escalation row (visible in the Command Centre). */
+  escalationStore?: EscalationStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
 }
@@ -112,6 +116,23 @@ async function audit(deps: RunDepartmentDeps, input: AuditEventInput): Promise<v
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
 }
 
+/** Map a policy's free-text escalation string to a structured escalation reason category. */
+function mapEscalationReason(raw: string): EscalationReason {
+  const s = raw.toLowerCase();
+  if (s.includes("budget")) return "budget_exhausted";
+  if (s.includes("qa")) return "repeated_qa_failure";
+  if (s.includes("approval")) return "missing_approval";
+  if (s.includes("provider")) return "provider_unavailable";
+  if (s.includes("retr")) return "exhausted_retries";
+  if (s.includes("dead")) return "dead_lettered";
+  if (s.includes("downstream")) return "downstream_rejection";
+  if (s.includes("stale")) return "stale_intelligence";
+  if (s.includes("conflict")) return "conflicting_conclusions";
+  if (s.includes("permission") || s.includes("unauthorized")) return "permission_denied";
+  if (s.includes("sla")) return "sla_breach";
+  return "other";
+}
+
 export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDepartmentDeps = {}): Promise<DepartmentRunResult<T>> {
   const now = deps.now ?? new Date();
   const loadDepartment = deps.loadDepartment ?? ((slug: string) => getDepartment(slug));
@@ -131,6 +152,20 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
 
   const members = await loadMembers(department.slug);
   const escalations: string[] = [];
+  const escalateTo = department.governance.escalationRules[0]?.escalateTo ?? "founder_command_centre";
+
+  // Raise a REAL escalation row (visible + resolvable in the Command Centre) when work is blocked, plus
+  // the department.escalated audit. Idempotent per (department, workflow, task, reason).
+  const raiseEscalation = async (reason: EscalationReason, severity: EscalationSeverity, requiredDecision: string, evidence: Record<string, unknown>): Promise<void> => {
+    escalations.push(reason);
+    await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason, escalateTo } });
+    if (deps.escalationStore) {
+      await createEscalation(
+        { departmentSlug: department.slug, workflowId: envelope.workflowId, taskId: envelope.taskId, clientWorkspaceId: envelope.clientWorkspaceId, sourceAgent: envelope.sourceAgent, reason, severity, requiredDecision, assignee: escalateTo, evidence, attemptedRecoveries: [] },
+        { store: deps.escalationStore, recordAudit: deps.recordAudit, now },
+      );
+    }
+  };
 
   const api: DepartmentRuntimeApi = {
     department,
@@ -155,8 +190,7 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
       { department, budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now },
     );
     if (!res.ok) {
-      escalations.push(`budget_exhausted:${res.evaluation.blockedBy}`);
-      await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason: `budget_exhausted:${res.evaluation.blockedBy}`, escalateTo: department.governance.escalationRules[0]?.escalateTo ?? "founder_command_centre" } });
+      await raiseEscalation("budget_exhausted", "high", `Department budget exhausted (${res.evaluation.blockedBy}). Founder decision: raise budget / override / hold / terminate.`, { blockedBy: res.evaluation.blockedBy, reasons: res.evaluation.reasons });
       throw new DepartmentBudgetExhaustedError(department.slug, res.evaluation.blockedBy, res.evaluation.reasons);
     }
     reservationId = res.deduped ? null : res.reservation?.id ?? null;
@@ -178,9 +212,20 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
     await settleBudget(reservationId, { actualCents: Math.max(0, Math.round(result.telemetry?.costEstimate ?? 0)), actualTokens: input.budget?.estimatedTokens ?? 0 }, { budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now });
   }
 
-  // Record any escalations the policy raised.
-  for (const reason of escalations) {
-    await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason, escalateTo: department.governance.escalationRules[0]?.escalateTo ?? "founder_command_centre" } });
+  // Turn each escalation the POLICY raised (api.escalate) into a real escalation row + audit. Iterate a
+  // SNAPSHOT (createEscalation must not grow the array we're iterating). "budget_degraded" is a warning,
+  // not a blocking escalation, so it is audited but not turned into a row.
+  for (const reason of [...escalations]) {
+    if (reason === "budget_exhausted") continue; // already handled before the throw
+    if (reason === "budget_degraded") { await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason, escalateTo, warning: true } }); continue; }
+    const mapped = mapEscalationReason(reason);
+    await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason: mapped, raw: reason, escalateTo } });
+    if (deps.escalationStore) {
+      await createEscalation(
+        { departmentSlug: department.slug, workflowId: envelope.workflowId, taskId: envelope.taskId, clientWorkspaceId: envelope.clientWorkspaceId, sourceAgent: envelope.sourceAgent, reason: mapped, severity: "medium", requiredDecision: `Policy escalation in ${department.slug}: ${reason}`, assignee: escalateTo, evidence: { raw: reason }, attemptedRecoveries: [] },
+        { store: deps.escalationStore, recordAudit: deps.recordAudit, now },
+      );
+    }
   }
 
   // 3. Route the product to the declared downstream department(s) as real handoffs.

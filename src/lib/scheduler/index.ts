@@ -9,6 +9,7 @@ import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS
 import { reconcileApprovalEffects } from "@/lib/approval-effects";
 import { refreshAllDepartmentHealth } from "@/lib/departments/health";
 import { expireStaleReservations } from "@/lib/departments/budget";
+import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -104,6 +105,13 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await expireStaleReservations({ now });
   } catch (e) {
     result.errors.push(`budget-expiry: ${e instanceof Error ? e.message : e}`);
+  }
+  // Surface blocked inter-agent work: raise an escalation for every dead-lettered handoff (deduped) so it
+  // appears in the Founder Command Centre for a decision.
+  try {
+    await escalateDeadLetteredHandoffs({ now });
+  } catch (e) {
+    result.errors.push(`dead-letter-escalation: ${e instanceof Error ? e.message : e}`);
   }
 
   // 1. Schedule-triggered automation rules (cron).

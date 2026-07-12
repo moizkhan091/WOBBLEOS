@@ -1738,3 +1738,38 @@ export const budgetReservations = pgTable("budget_reservations", {
   index("budget_reservations_state_expiry_idx").on(table.state, table.expiresAt),
   index("budget_reservations_created_idx").on(table.createdAt),
 ]);
+
+// ---- ESCALATIONS (Phase 3): when work is blocked, a real escalation is raised for founder/department
+// decision — with reason, severity, evidence, attempted recoveries, required decision, assignee, SLA and
+// a truthful resolution (resume / reroute / blocked / terminate). Idempotent per (department, workflow,
+// task, reason) so the same blocked step doesn't spam duplicate escalations. ----
+export const escalations = pgTable("escalations", {
+  id: id(),
+  departmentSlug: varchar("department_slug", { length: 120 }).notNull(),
+  workflowId: text("workflow_id"),
+  taskId: varchar("task_id", { length: 160 }),
+  clientWorkspaceId: varchar("client_workspace_id", { length: 120 }),
+  sourceAgent: varchar("source_agent", { length: 120 }),
+  reason: varchar("reason", { length: 48 }).notNull(), // reason category
+  severity: varchar("severity", { length: 16 }).notNull().default("medium"), // low | medium | high | critical
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  attemptedRecoveries: jsonb("attempted_recoveries").$type<string[]>().notNull().default([]),
+  requiredDecision: text("required_decision").notNull(),
+  assignee: varchar("assignee", { length: 120 }),
+  slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
+  status: varchar("status", { length: 16 }).notNull().default("open"), // open | acknowledged | resolved | dismissed
+  resolution: text("resolution"),
+  resolutionAction: varchar("resolution_action", { length: 16 }), // resume | reroute | blocked | terminate
+  resolvedBy: varchar("resolved_by", { length: 120 }),
+  createdAt: createdAt(),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // At most one OPEN escalation per (department, workflow, task, reason) — dedup so a retrying step
+  // doesn't spam duplicates; resolved/dismissed rows don't participate (re-escalation is allowed later).
+  uniqueIndex("escalations_open_dedup_uidx").on(table.departmentSlug, table.workflowId, table.taskId, table.reason).where(sql`status = 'open'`),
+  index("escalations_dept_status_idx").on(table.departmentSlug, table.status),
+  index("escalations_status_idx").on(table.status),
+  index("escalations_created_idx").on(table.createdAt),
+]);
