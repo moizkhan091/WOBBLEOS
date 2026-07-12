@@ -7,6 +7,10 @@ import type { HandoffStore } from "@/lib/handoff";
 import { runDepartment, DepartmentRejectedError, DepartmentBudgetExhaustedError, type DepartmentPolicy } from "@/lib/departments/orchestrator";
 import type { BudgetStore } from "@/lib/departments/budget";
 import type { BudgetReservationRow } from "@/lib/domain/department-budget";
+import type { ProviderUsageStore } from "@/lib/provider-usage";
+
+// Empty provider-usage store → settlement falls back to the policy estimate (no actual usage recorded).
+const emptyUsageStore: ProviderUsageStore = { findByRequest: async () => null, insert: async () => {}, listForUnit: async () => [], listForWorkflow: async () => [], listForDepartmentSince: async () => [] };
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -165,13 +169,13 @@ describe("runDepartment — the orchestrator framework", () => {
     let ran = false;
     const policy: DepartmentPolicy<{ ok: boolean }> = async () => { ran = true; return { product: { ok: true }, productSchema: "business_audit", telemetry: { costEstimate: 30 } }; };
     await expect(
-      runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 100 } }, { ...budgetRegistry, budgetStore: bs1.store, recordAudit: async () => {}, now }),
+      runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 100 } }, { ...budgetRegistry, budgetStore: bs1.store, usageStore: emptyUsageStore, recordAudit: async () => {}, now }),
     ).rejects.toBeInstanceOf(DepartmentBudgetExhaustedError);
     expect(ran).toBe(false);
 
     // Within budget → runs, and the reservation settles against the policy's reported cost.
     const bs2 = makeBudgetStore();
-    const res = await runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 40 } }, { ...budgetRegistry, budgetStore: bs2.store, recordAudit: async () => {}, now });
+    const res = await runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 40 } }, { ...budgetRegistry, budgetStore: bs2.store, usageStore: emptyUsageStore, recordAudit: async () => {}, now });
     expect(res.accepted).toBe(true);
     const settled = [...bs2.rows.values()][0];
     expect(settled.state).toBe("settled");

@@ -55,10 +55,18 @@ export async function runPaidAuditDepartment(
     // label). If the team is missing, escalate rather than silently running degraded.
     if (!api.selectSpecialists({ capability: "discovery" }).length) api.escalate("paid_audit has no registered discovery specialist");
 
-    // Run the graph — it dispatches a CLAIMED handoff per node through the same runtime + store.
+    // Run the graph — it dispatches a CLAIMED handoff per node through the same runtime + store. Every
+    // node's provider usage is attributed to THIS unit of work (workflow + the inbound task) so the
+    // department budget settles against ACTUAL recorded usage.
     const result = await runPaidAuditGraph(
       { ...input, graphRunId: workflowId },
-      { ...deps.graph, handoffStore: deps.handoffStore ?? deps.graph?.handoffStore, recordAudit: deps.graph?.recordAudit, now },
+      {
+        ...deps.graph,
+        handoffStore: deps.handoffStore ?? deps.graph?.handoffStore,
+        recordAudit: deps.graph?.recordAudit,
+        usageContext: { departmentSlug: "paid_audit", workflowId, taskId: api.envelope.taskId, companyId: input.companyId ?? null, clientWorkspaceId: input.companyId ?? null },
+        now,
+      },
     );
 
     return {

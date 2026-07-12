@@ -4903,7 +4903,7 @@ function HandoffPage() {
 type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
 type HandoffView = { id: string; department: string; deliveryState: string; sourceAgent: string; destinationAgent: string | null; workflowId: string; clientWorkspaceId: string | null; retryCount: number; failureReason: string | null; correlationId: string; causationId: string | null; costEstimate: string | null; latencyMs: number | null; qualityScore: string | null };
 type EscView = { id: string; departmentSlug: string; reason: string; severity: string; status: string; requiredDecision: string; assignee: string | null; workflowId: string | null; resolutionAction: string | null };
-type BudgetStateView = { departmentSlug: string; caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; concurrencyLimit: number }; usage: { dailyCents: number; monthlyCents: number; dailyTokens: number; activeReservations: number }; remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null } };
+type BudgetStateView = { departmentSlug: string; caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; concurrencyLimit: number }; usage: { dailyCents: number; monthlyCents: number; dailyTokens: number; activeReservations: number }; remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null }; providerUsage: { actualCostCents: number; actualRows: number; estimatedRows: number; unverifiedRows: number } };
 type KpiView = { key: string; definition: string; value: number | null; unit: string; target: number | null; trend: string | null; confidence: string };
 
 const SEV_COLOR: Record<string, string> = { critical: C.orange, high: C.orange, medium: "#F5C542", low: C.gray };
@@ -4994,6 +4994,7 @@ function DepartmentsPage() {
               <Tag text={`daily $${(bud.usage.dailyCents / 100).toFixed(2)}${bud.caps.dailyCents != null ? ` / $${(bud.caps.dailyCents / 100).toFixed(2)}` : ""}`} color={C.blue} />
               <Tag text={`monthly $${(bud.usage.monthlyCents / 100).toFixed(2)}${bud.caps.monthlyCents != null ? ` / $${(bud.caps.monthlyCents / 100).toFixed(2)}` : ""}`} color={C.blue} />
               <Tag text={`active ${bud.usage.activeReservations} / ${bud.caps.concurrencyLimit}`} color={C.gray} />
+              <Tag text={`actual $${(bud.providerUsage.actualCostCents / 100).toFixed(2)} · ${bud.providerUsage.actualRows} verified${bud.providerUsage.estimatedRows ? ` · ${bud.providerUsage.estimatedRows} est` : ""}`} color={bud.providerUsage.unverifiedRows ? "#F5C542" : C.lime} />
             </div>
           ) : null}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 8 }}>

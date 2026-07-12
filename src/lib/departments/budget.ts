@@ -42,6 +42,8 @@ export interface BudgetStore {
 
 export interface BudgetDeps extends DepartmentRegistryDeps {
   budgetStore?: BudgetStore;
+  /** Provider-usage store — for the estimated-vs-actual summary + settling from actual usage. */
+  usageStore?: import("@/lib/provider-usage").ProviderUsageStore;
   /** A pre-loaded department (avoids a registry round-trip when the caller already has it). */
   department?: DepartmentRow;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -119,6 +121,25 @@ export async function settleBudget(reservationId: string, actual: { actualCents:
   return ok;
 }
 
+/**
+ * Settle a reservation against the ACTUAL provider usage recorded for its unit of work (department,
+ * workflow, task). Falls back to a caller estimate only when no usage was recorded (honestly reflected
+ * in provider_usage's estimation/verification status). This is what makes settlement real, not estimated.
+ */
+export async function settleReservationFromUsage(
+  reservationId: string,
+  unit: { departmentSlug: string; workflowId: string; taskId: string },
+  fallbackEstimateCents: number,
+  deps: BudgetDeps & { usageStore?: import("@/lib/provider-usage").ProviderUsageStore } = {},
+): Promise<{ settled: boolean; actualCents: number; fromActual: boolean }> {
+  const { usageForUnit } = await import("@/lib/provider-usage");
+  const usage = await usageForUnit(unit.departmentSlug, unit.workflowId, unit.taskId, { store: deps.usageStore });
+  const fromActual = usage.rows > 0;
+  const actualCents = fromActual ? usage.costCents : Math.max(0, Math.round(fallbackEstimateCents));
+  const settled = await settleBudget(reservationId, { actualCents, actualTokens: usage.tokens }, deps);
+  return { settled, actualCents, fromActual };
+}
+
 /** Release a reservation whose work was abandoned (frees the hold immediately). */
 export async function releaseBudget(reservationId: string, deps: BudgetDeps = {}): Promise<boolean> {
   const store = deps.budgetStore ?? defaultBudgetStore();
@@ -148,6 +169,8 @@ export interface BudgetState {
   usage: ReturnType<typeof aggregateUsage>;
   caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; monthlyTokens: number | null; concurrencyLimit: number };
   remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; monthlyTokens: number | null };
+  /** Estimated-vs-actual truth from recorded provider usage (this month). */
+  providerUsage: { actualCostCents: number; actualRows: number; estimatedRows: number; unverifiedRows: number };
 }
 
 /** Read-only budget state for the Command Centre: current windowed usage, caps and remaining. */
@@ -160,11 +183,21 @@ export async function getBudgetState(departmentSlug: string, deps: BudgetDeps = 
   const usage = aggregateUsage(await store.windowRows(departmentSlug, monthStart), now);
   const b = department.budget;
   const rem = (cap: number | null, used: number) => (cap === null ? null : Math.max(0, cap - used));
+  // Estimated-vs-actual from recorded provider usage (honest: actual only where real usage was captured).
+  let providerUsage = { actualCostCents: 0, actualRows: 0, estimatedRows: 0, unverifiedRows: 0 };
+  const puStore = deps.usageStore ?? (process.env.DATABASE_URL ? (await import("@/lib/provider-usage")).defaultStore() : null);
+  if (puStore) {
+    try {
+      const { summarizeUsage } = await import("@/lib/provider-usage");
+      providerUsage = summarizeUsage(await puStore.listForDepartmentSince(departmentSlug, monthStart));
+    } catch { /* best-effort summary */ }
+  }
   return {
     departmentSlug,
     usage,
     caps: { dailyCents: b.dailyCents, monthlyCents: b.monthlyCents, dailyTokens: b.dailyTokens, monthlyTokens: b.monthlyTokens, concurrencyLimit: department.limits.concurrencyLimit },
     remaining: { dailyCents: rem(b.dailyCents, usage.dailyCents), monthlyCents: rem(b.monthlyCents, usage.monthlyCents), dailyTokens: rem(b.dailyTokens, usage.dailyTokens), monthlyTokens: rem(b.monthlyTokens, usage.monthlyTokens) },
+    providerUsage,
   };
 }
 

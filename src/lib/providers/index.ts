@@ -100,6 +100,8 @@ export interface RunTextProviderInput {
   model?: string;
   linkedEntityType?: string;
   linkedEntityId?: string;
+  /** Department/workflow/tenant context so this call's usage is attributed + settled against a budget. */
+  usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext & { attempt?: number };
 }
 
 export interface RunTextProviderResult extends TextProviderOutput {
@@ -110,6 +112,8 @@ export interface ProviderDeps {
   store?: ProviderRegistryStore;
   adapters?: TextAdapterRegistry;
   modelRunDeps?: ModelRunDeps;
+  /** Record normalized provider usage (injectable; env-gated default records to the DB). */
+  recordUsage?: (input: import("@/lib/domain/provider-usage").BuildProviderUsageInput) => Promise<void>;
 }
 
 /** Parse model-supplied tool arguments defensively — never throw on malformed JSON. */
@@ -145,6 +149,8 @@ export function createOpenRouterTextAdapter(input: {
           messages: request.messages,
           temperature: request.temperature,
           max_tokens: request.maxTokens,
+          // Ask OpenRouter to return the ACTUAL billed cost + detailed token usage (cached / reasoning).
+          usage: { include: true },
           ...(request.tools?.length ? { tools: request.tools, tool_choice: request.toolChoice ?? "auto" } : {}),
           ...(request.plugins?.length ? { plugins: request.plugins } : {}),
         }),
@@ -170,7 +176,13 @@ export function createOpenRouterTextAdapter(input: {
             tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: string } }>;
           };
         }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          cost?: number; // OpenRouter-reported billed cost in USD (usage.include=true)
+          prompt_tokens_details?: { cached_tokens?: number };
+          completion_tokens_details?: { reasoning_tokens?: number };
+        };
       };
 
       const message = json.choices?.[0]?.message;
@@ -188,6 +200,9 @@ export function createOpenRouterTextAdapter(input: {
         toolCalls: toolCalls.length ? toolCalls : undefined,
         inputTokens: json.usage?.prompt_tokens,
         outputTokens: json.usage?.completion_tokens,
+        cachedInputTokens: json.usage?.prompt_tokens_details?.cached_tokens,
+        reasoningTokens: json.usage?.completion_tokens_details?.reasoning_tokens,
+        providerReportedCostUsd: typeof json.usage?.cost === "number" ? json.usage.cost : undefined,
         providerRunId: json.id,
       };
     },
@@ -241,6 +256,34 @@ export async function runTextProvider(
       }),
     deps.modelRunDeps,
   );
+
+  // Record the normalized ACTUAL provider usage (idempotent by providerRequestId) so budgets settle
+  // against real tokens/cost, not the estimate. Env-gated default; never fails the provider call.
+  const r = result as { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningTokens?: number; providerReportedCostUsd?: number; providerRunId?: string; toolCalls?: unknown[] };
+  const recordUsage = deps.recordUsage ?? (process.env.DATABASE_URL ? async (u: import("@/lib/domain/provider-usage").BuildProviderUsageInput) => { const { recordProviderUsage } = await import("@/lib/provider-usage"); await recordProviderUsage(u); } : undefined);
+  if (recordUsage) {
+    try {
+      await recordUsage({
+        providerRequestId: r.providerRunId,
+        provider: connection.slug,
+        model,
+        attempt: input.usageContext?.attempt ?? 1,
+        inputTokens: r.inputTokens ?? null,
+        outputTokens: r.outputTokens ?? null,
+        cachedInputTokens: r.cachedInputTokens ?? null,
+        reasoningTokens: r.reasoningTokens ?? null,
+        toolCalls: Array.isArray(r.toolCalls) ? r.toolCalls.length : 0,
+        providerReportedCostUsd: r.providerReportedCostUsd ?? null,
+        calculatedCostUsd: run.estimatedCost ? Number(run.estimatedCost) : undefined,
+        latencyMs: run.latencyMs ?? null,
+        status: "succeeded",
+        modelRunId: run.id,
+        context: { ...input.usageContext, role: input.role, module: input.module },
+      });
+    } catch (err) {
+      console.error("provider usage record failed (non-fatal):", err instanceof Error ? err.message : err);
+    }
+  }
 
   return { ...result, run };
 }

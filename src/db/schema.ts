@@ -1773,3 +1773,49 @@ export const escalations = pgTable("escalations", {
   index("escalations_status_idx").on(table.status),
   index("escalations_created_idx").on(table.createdAt),
 ]);
+
+// ---- PROVIDER USAGE (Phase 3): the ONE normalized contract for every provider call's ACTUAL usage —
+// tokens (incl. cached + reasoning), provider-reported vs internally-calculated cost, latency, attempt,
+// and the full workflow/task/handoff/department/agent/tenant context. Budget settles against THIS (actual),
+// never the estimate. Idempotent by provider_request_id so retries + duplicate callbacks never double-charge. ----
+export const providerUsage = pgTable("provider_usage", {
+  id: id(),
+  providerRequestId: varchar("provider_request_id", { length: 200 }).notNull(),
+  provider: varchar("provider", { length: 80 }).notNull(),
+  model: varchar("model", { length: 160 }).notNull(),
+  attempt: integer("attempt").notNull().default(1),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  cachedInputTokens: integer("cached_input_tokens"),
+  cachedOutputTokens: integer("cached_output_tokens"),
+  reasoningTokens: integer("reasoning_tokens"),
+  toolCalls: integer("tool_calls").notNull().default(0),
+  providerReportedCostUsd: numeric("provider_reported_cost_usd", { precision: 12, scale: 6 }),
+  calculatedCostUsd: numeric("calculated_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  currency: varchar("currency", { length: 8 }).notNull().default("USD"),
+  creditsConsumed: numeric("credits_consumed", { precision: 14, scale: 6 }),
+  latencyMs: integer("latency_ms"),
+  status: varchar("status", { length: 16 }).notNull().default("succeeded"), // succeeded | failed
+  billable: boolean("billable").notNull().default(true),
+  estimationStatus: varchar("estimation_status", { length: 16 }).notNull().default("estimated"), // estimated | actual
+  verificationStatus: varchar("verification_status", { length: 16 }).notNull().default("unverified"), // unverified | verified
+  workflowId: text("workflow_id"),
+  taskId: varchar("task_id", { length: 160 }),
+  handoffId: text("handoff_id"),
+  departmentSlug: varchar("department_slug", { length: 120 }),
+  agentSlug: varchar("agent_slug", { length: 120 }),
+  companyId: varchar("company_id", { length: 120 }),
+  clientWorkspaceId: varchar("client_workspace_id", { length: 120 }),
+  role: varchar("role", { length: 80 }),
+  module: varchar("module", { length: 80 }),
+  modelRunId: text("model_run_id"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (table) => [
+  // Idempotency: one usage row per (provider_request_id, attempt) — retries/duplicate callbacks converge.
+  uniqueIndex("provider_usage_request_uidx").on(table.providerRequestId, table.attempt),
+  index("provider_usage_unit_idx").on(table.departmentSlug, table.workflowId, table.taskId),
+  index("provider_usage_created_idx").on(table.createdAt),
+  index("provider_usage_client_idx").on(table.clientWorkspaceId),
+]);

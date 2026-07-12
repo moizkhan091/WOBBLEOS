@@ -58,6 +58,8 @@ export interface PaidAuditDeps {
   checkpointStore?: GraphCheckpointStore;
   /** Durable handoff backbone. Injected in tests; in prod the default DB store is used when DATABASE_URL is set. */
   handoffStore?: HandoffStore;
+  /** Attribution context so each node's provider usage is recorded + settled against the department budget. */
+  usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext;
   now?: Date;
 }
 
@@ -94,9 +96,11 @@ export interface PaidAuditResult {
   report: PaidAuditReport;
 }
 
-async function defaultRunNode(input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }): Promise<NodeRunResult> {
-  const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 6000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId });
-  return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
+function makeDefaultRunNode(usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext): NonNullable<PaidAuditDeps["runNode"]> {
+  return async (input) => {
+    const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 6000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId, usageContext: usageContext ? { ...usageContext, agentSlug: input.role } : undefined });
+    return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
+  };
 }
 
 async function defaultRetrieveBrain(): Promise<Array<{ title: string; content: string }>> {
@@ -129,7 +133,7 @@ function runAuditNode<T>(
 export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAuditDeps = {}): Promise<PaidAuditResult> {
   const actor = input.requestedBy;
   const recordAudit = deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i));
-  const runNode = deps.runNode ?? defaultRunNode;
+  const runNode = deps.runNode ?? makeDefaultRunNode(deps.usageContext);
   const now = deps.now ?? new Date();
   const entityId = input.companyId ?? input.businessName;
   const modelRunIds: string[] = [];

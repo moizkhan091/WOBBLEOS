@@ -5,7 +5,7 @@ import type { DepartmentRow } from "@/lib/domain/department";
 import { selectSpecialists, type DepartmentMemberRow } from "@/lib/domain/department-membership";
 import { dispatchHandoff, type HandoffStore } from "@/lib/handoff";
 import { getDepartment, listMembers } from "@/lib/departments/registry";
-import { reserveBudget, settleBudget, releaseBudget, type BudgetStore } from "@/lib/departments/budget";
+import { reserveBudget, settleReservationFromUsage, releaseBudget, type BudgetStore } from "@/lib/departments/budget";
 import { createEscalation, type EscalationStore } from "@/lib/departments/escalation";
 import type { EscalationReason, EscalationSeverity } from "@/lib/domain/escalation";
 import {
@@ -77,6 +77,8 @@ export interface RunDepartmentDeps {
   handoffStore?: HandoffStore;
   /** When set together with input.budget, the run reserves→settles against the department budget. */
   budgetStore?: BudgetStore;
+  /** Provider-usage store — the run settles against ACTUAL recorded usage for this unit of work. */
+  usageStore?: import("@/lib/provider-usage").ProviderUsageStore;
   /** When set, blocked/escalated work raises a real escalation row (visible in the Command Centre). */
   escalationStore?: EscalationStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -207,9 +209,14 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
     throw err;
   }
   if (reservationId) {
-    // Settle against the policy's reported cost; tokens fall back to the reserved estimate (telemetry
-    // does not carry a token count today).
-    await settleBudget(reservationId, { actualCents: Math.max(0, Math.round(result.telemetry?.costEstimate ?? 0)), actualTokens: input.budget?.estimatedTokens ?? 0 }, { budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now });
+    // Settle against the ACTUAL provider usage recorded for this unit of work (falls back to the policy's
+    // estimate only when no usage was captured — provider_usage keeps estimated vs actual honest).
+    await settleReservationFromUsage(
+      reservationId,
+      { departmentSlug: department.slug, workflowId: envelope.workflowId, taskId: envelope.taskId },
+      Math.max(0, Math.round(result.telemetry?.costEstimate ?? 0)),
+      { budgetStore: deps.budgetStore, usageStore: deps.usageStore, recordAudit: deps.recordAudit, now },
+    );
   }
 
   // Turn each escalation the POLICY raised (api.escalate) into a real escalation row + audit. Iterate a
