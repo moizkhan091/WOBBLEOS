@@ -3,6 +3,27 @@ import { dispatchHandoff, defaultStore as defaultHandoffStore, type HandoffStore
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runPaidAuditGraph, type RunPaidAuditInput, type PaidAuditResult, type PaidAuditDeps } from "@/lib/paid-audit-graph";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { runQaGate, type QaGateDeps, type QaGateDecision } from "@/lib/qa/gate";
+import { paidAuditQaBoard, buildPaidAuditSubmission } from "@/lib/qa/boards";
+
+/**
+ * OPT-IN QA gate for the paid-audit → proposal origination. When provided, the independent Paid Audit QA
+ * board reviews the FULL audit product before the business_audit handoff is emitted; the handoff is
+ * dispatched ONLY on a PASS. A revise/fail/blocked verdict blocks the emission and (via the gate) raises a
+ * real founder-visible escalation naming the exact failed stage. Absent this config the behaviour is
+ * unchanged (existing unit tests + DB proofs are unaffected) — the gate is default-enabled in production by
+ * the caller supplying it, off in tests by omitting it.
+ */
+export interface AuditProposalQaGate {
+  /** The full audit product to review (the board needs the report, not just the auditId). */
+  result: PaidAuditResult;
+  /** Authoring identity (default `paid_audit_orchestrator`). Must never equal the reviewer identity. */
+  authorAgentSlug?: string;
+  /** Injectable gate deps (qa store, escalation store, hooks) — DB-backed by default in production. */
+  deps?: QaGateDeps;
+  /** Explicit off switch (default on when this config is present). */
+  enabled?: boolean;
+}
 
 /**
  * Paid Audit DEPARTMENT vertical (Phase 3, Batch 5). Wires the existing paid-audit multi-agent graph
@@ -98,11 +119,27 @@ const PROPOSAL_GRANT = ["company", "offer", "research"];
  */
 export async function dispatchBusinessAuditToProposal(
   audit: { auditId: string; businessName: string; companyId?: string | null },
-  opts: { store?: HandoffStore; recordAudit?: (i: AuditEventInput) => Promise<void>; now?: Date } = {},
-): Promise<{ handoffId: string; deduped: boolean }> {
+  opts: { store?: HandoffStore; recordAudit?: (i: AuditEventInput) => Promise<void>; now?: Date; qa?: AuditProposalQaGate } = {},
+): Promise<{ handoffId: string; deduped: boolean; blocked?: boolean; qa?: QaGateDecision<PaidAuditResult> }> {
   const now = opts.now ?? new Date();
   const store = opts.store ?? defaultHandoffStore();
   const workflowId = audit.companyId ?? audit.auditId;
+  let qaDecision: QaGateDecision<PaidAuditResult> | undefined;
+
+  // QA GATE (opt-in): an INDEPENDENT board reviews the finished audit BEFORE the downstream handoff is
+  // emitted. Only a PASS releases the emission; a non-pass blocks it and the gate raises a real escalation
+  // with the exact failed stage. `handoffId: ""` signals "not emitted" alongside `blocked` + the decision.
+  if (opts.qa && opts.qa.enabled !== false) {
+    const submission = buildPaidAuditSubmission(opts.qa.result, {
+      workflowId,
+      taskId: `${workflowId}:paid_audit->proposal`,
+      clientWorkspaceId: audit.companyId ?? null,
+      authorAgentSlug: opts.qa.authorAgentSlug,
+    });
+    qaDecision = await runQaGate({ boards: [paidAuditQaBoard], submission }, { now, recordAudit: opts.recordAudit, ...opts.qa.deps });
+    if (!qaDecision.released) return { handoffId: "", deduped: false, blocked: true, qa: qaDecision };
+  }
+
   const envelope = buildHandoffEnvelope(
     {
       workflowId,
@@ -127,5 +164,5 @@ export async function dispatchBusinessAuditToProposal(
     { clientWorkspaceId: audit.companyId ?? null, grantedMemoryScopes: PROPOSAL_GRANT, permittedDataClassifications: ["internal", "client_confidential"] },
     { store, recordAudit: opts.recordAudit, now },
   );
-  return { handoffId: handoff.id, deduped };
+  return { handoffId: handoff.id, deduped, qa: qaDecision };
 }

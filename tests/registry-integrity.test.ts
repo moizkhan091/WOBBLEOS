@@ -36,11 +36,12 @@ const GRAPH_SERVICE_AGENTS = [PITCH_AGENT, ROADMAP_AGENT];
 
 // Department orchestrators — driven by the department runtime (runDepartment), which accepts the inbound
 // department handoff and runs the department's graph (paid-audit / content) through the handoff backbone.
-const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orchestrator", "proposal_orchestrator", "research_intelligence_orchestrator", "sales_crm_orchestrator", "finance_orchestrator", "delivery_orchestrator"];
+const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orchestrator", "proposal_orchestrator", "research_intelligence_orchestrator", "sales_crm_orchestrator", "finance_orchestrator", "delivery_orchestrator", "quality_assurance_orchestrator"];
 
 // Department specialists that run synchronously inside a department policy (not via a graph job) — the
 // Proposal solution architect is the judgment step in runProposalDepartment, attributed for real settlement.
-const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent"];
+// The QA reviewers wired into live gates execute via runQaGate (release/block/route real downstream work).
+const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent", "paid_audit_qa_reviewer", "content_quality_reviewer", "content_brand_reviewer", "proposal_technical_reviewer", "proposal_commercial_reviewer"];
 
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [

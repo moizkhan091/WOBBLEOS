@@ -28,6 +28,8 @@
     "verify:commercial": "tsx src/scripts/verify-commercial-chain-db.ts",
     "verify:consumer": "tsx src/scripts/verify-department-consumer-db.ts",
     "verify:origination": "tsx src/scripts/verify-proposal-accept-origination-db.ts",
+    "verify:reroute": "tsx src/scripts/verify-escalation-reroute-db.ts",
+    "verify:qa-gate": "tsx src/scripts/verify-qa-gate-db.ts",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:seed": "tsx e2e/fixtures/seed.ts seed",

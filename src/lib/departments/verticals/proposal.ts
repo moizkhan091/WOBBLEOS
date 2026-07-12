@@ -3,6 +3,7 @@ import { runTextProvider } from "@/lib/providers";
 import { createProposalFromAudit, type ProposalDeps } from "@/lib/proposals";
 import type { ProposalRow } from "@/lib/domain/proposal";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { runQaGate, QaGateBlockedError, PROPOSAL_QA_BOARDS, buildProposalQaSubmission, type QaGateDeps } from "@/lib/qa/gate";
 
 /**
  * Proposal & Solution Design DEPARTMENT vertical (Phase 3). Consumes the Paid Audit department's product
@@ -39,6 +40,24 @@ export interface RunProposalDepartmentDeps extends RunDepartmentDeps {
   proposalDeps?: ProposalDeps;
   /** An already-claimed inbound handoff envelope (from claimNextDepartmentHandoff) to consume. */
   inboundEnvelope?: HandoffEnvelope;
+  /** OPT-IN independent QA gate over the proposal (technical + commercial boards). Omitted → gate off. */
+  qa?: ProposalQaGate;
+}
+
+/**
+ * OPT-IN QA gate for the proposal. When provided, TWO independent boards (proposal_technical_review +
+ * proposal_commercial_review) review the built proposal + the architect's synthesis. On a non-pass verdict
+ * the gate raises a real founder-visible escalation naming the exact failed stage and the department run is
+ * HARD-BLOCKED (QaGateBlockedError) so an un-QA'd proposal never completes the run / advances the chain.
+ * Absent this config the behaviour is unchanged (existing unit tests + DB proofs unaffected).
+ */
+export interface ProposalQaGate {
+  /** Injectable gate deps (qa store, escalation store, hooks). */
+  deps?: QaGateDeps;
+  /** Authoring identity (default `proposal_orchestrator`). Must never equal a reviewer identity. */
+  authorAgentSlug?: string;
+  /** Explicit off switch (default on when this config is present). */
+  enabled?: boolean;
 }
 
 /** Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. */
@@ -109,10 +128,28 @@ export async function runProposalDepartment(input: RunProposalDepartmentInput, d
     const proposal = await createProposalFromAudit(input.auditId, { createdBy: input.requestedBy, enrichment: synthesis }, deps.proposalDeps);
     if (!proposal) throw new Error(`proposal: audit '${input.auditId}' not found`);
 
+    // OPT-IN independent QA GATE: the technical + commercial boards review the built proposal + synthesis
+    // BEFORE it is treated as an emittable product. A non-pass verdict raises a real founder-visible
+    // escalation (the exact failed stage) inside the gate and HARD-BLOCKS the run so the un-QA'd proposal
+    // never advances the founder-accept → commercial chain. Absent deps.qa this is skipped (unchanged).
+    let qaReviewIds: string[] = [];
+    if (deps.qa && deps.qa.enabled !== false) {
+      const submission = buildProposalQaSubmission(
+        { proposal, synthesis },
+        { workflowId, taskId: `${proposal.id}:v${proposal.version}`, clientWorkspaceId: input.companyId ?? null, authorAgentSlug: deps.qa.authorAgentSlug },
+      );
+      const decision = await runQaGate(
+        { boards: PROPOSAL_QA_BOARDS, submission },
+        { now, recordAudit: deps.recordAudit, escalationStore: deps.escalationStore, ...deps.qa.deps },
+      );
+      qaReviewIds = decision.reviews.map((r) => r.id);
+      if (!decision.released) throw new QaGateBlockedError(decision);
+    }
+
     return {
       product: { proposal, synthesis },
       productSchema: "proposal_artifact",
-      outputs: { proposalId: proposal.id, pricingCents: proposal.pricingCents },
+      outputs: { proposalId: proposal.id, pricingCents: proposal.pricingCents, qaReviewIds },
       confidence: 0.8,
       // The proposal awaits founder approval; on ACCEPT the deterministic commercial chain fires
       // (invoice + opportunity→won + delivery project) — no durable route needed here.

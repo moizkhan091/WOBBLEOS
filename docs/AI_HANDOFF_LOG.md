@@ -3748,3 +3748,27 @@ CONTINUE: `git checkout wip/qa-gates-and-aios-foundations` → fix C's aios-valu
 + DB proof → lead registers QA org (seed/agents) + migration specs → gate → merge to main (Phase 4 QA first,
 then foundations). Then Phase 3 proposal-accept E2E + escalation-action Playwright; then Phase 5+.
 Blockers: session usage limit (temporary); VPS + media provider keys (external, unchanged).
+
+## 2026-07-12 (cont. 14) - Claude (Opus 4.8) - Recovered Workstreams B (live QA gates) + C (foundations) after the usage reset
+
+Usage limit reset. Recovered the interrupted work from wip/qa-gates-and-aios-foundations onto main
+(git checkout <branch> -- <files>), verified, finished, and merged in order.
+
+- **Workstream B — Phase 4 LIVE QA gating (Priority 3) — DONE.** Recovered `src/lib/qa/gate.ts` (runQaGate)
+  + the opt-in gate wiring in verticals paid-audit/proposal/content (all present + green; C had already fixed
+  its tsc). LEAD-completed the parts B was interrupted before: (a) registered the QA operating unit —
+  `quality_assurance` department (active) + `quality_assurance_orchestrator` + 5 independent reviewer agents +
+  memberships in seed.ts/agents.ts (+ registry-integrity + department-seed test allowlists); (b) wrote the
+  real-DB proof `verify-qa-gate-db.ts`. Proven: qa-gate.test.ts (independence/pass/fail/revise/blocked) +
+  verify-qa-gate-db (twice: strong audit → gate RELEASES → business_audit handoff emitted to Proposal + pass
+  qa_reviews row by the independent reviewer; weak audit → gate BLOCKS → NO handoff + fail review + real
+  escalation; idempotent). 4 existing DB proofs (consumer/commercial/origination/content) re-run green — the
+  gate is OPT-IN so gate-off flows are unchanged.
+- **Workstream C — transcript foundations — recovered, green.** daily-brief + aios-value + decision-learning
+  domain+service modules with injectable stores + tests all pass (C's typecheck errors were already fixed
+  before interruption). DB persistence + migration specs remain a follow-up (these are functional foundations).
+
+Merge order: B (Phase 4 QA) committed first, then C (foundations). wip branch retained until both merged.
+
+STATE: 9 active departments (added quality_assurance). QA now GATES real work. Reroute real. NEXT: proposal-
+accept + QA-gate + escalation-action browser E2E in required CI; Delivery Completion product; Phase 5+.

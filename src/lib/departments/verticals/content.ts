@@ -1,6 +1,24 @@
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
 import { runContentGraph, type RunContentGraphInput, type ContentGraphResult, type ContentGraphDeps } from "@/lib/content-graph";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { runQaGate, type QaGateDeps } from "@/lib/qa/gate";
+import { contentQualityBoard, contentBrandBoard, buildContentSubmission } from "@/lib/qa/boards";
+
+/**
+ * OPT-IN QA gate for the content → publishing emission. When provided, TWO independent boards
+ * (content_quality_review + content_brand_review) review the finished content pack; the pack is routed to
+ * Publishing ONLY when BOTH pass. A non-pass verdict blocks the route to Publishing and (via the gate)
+ * raises a real founder-visible escalation naming the exact failed stage. Absent this config the behaviour
+ * is unchanged — the gate is opt-in (production supplies it; unit tests omit it).
+ */
+export interface ContentQaGate {
+  /** Injectable gate deps (qa store, escalation store, hooks). */
+  deps?: QaGateDeps;
+  /** Authoring identity (default `content_orchestrator`). Must never equal a reviewer identity. */
+  authorAgentSlug?: string;
+  /** Explicit off switch (default on when this config is present). */
+  enabled?: boolean;
+}
 
 /**
  * Content DEPARTMENT vertical (Phase 3). Wires the existing content multi-agent graph (Strategy →
@@ -21,6 +39,8 @@ export interface RunContentDepartmentInput extends RunContentGraphInput {
 export interface RunContentDepartmentDeps extends RunDepartmentDeps {
   /** Deps for the underlying content graph (getTrack, runNode, retrieve, createPacket, checkpointStore…). */
   graph?: ContentGraphDeps;
+  /** OPT-IN independent QA gate over the finished content pack (see ContentQaGate). Omitted → gate off. */
+  qa?: ContentQaGate;
 }
 
 /**
@@ -78,13 +98,40 @@ export async function runContentDepartment(
     // A QA-failed pack is a real quality-gate escalation, not a silent pass to Publishing.
     if (result.qualityStatus === "failed" || result.qualityStatus === "blocked") api.escalate(`content quality gate failed (${result.qualityStatus})`);
 
+    // OPT-IN independent QA GATE: two independent boards review the pack. Publishing is a downstream
+    // emission — it is RELEASED only when BOTH pass. A non-pass verdict blocks the route to Publishing; the
+    // gate has already recorded the evidence-backed review + raised a founder-visible escalation with the
+    // exact failed stage. Absent deps.qa the route is unchanged (["publishing"]).
+    let routeTo = ["publishing"];
+    let qaOutputs: Record<string, unknown> = {};
+    if (deps.qa && deps.qa.enabled !== false) {
+      const submission = buildContentSubmission(result, {
+        workflowId,
+        taskId: api.envelope.taskId,
+        clientWorkspaceId: input.companyId ?? null,
+        authorAgentSlug: deps.qa.authorAgentSlug,
+      });
+      const decision = await runQaGate(
+        { boards: [contentQualityBoard, contentBrandBoard], submission },
+        { now, recordAudit: deps.recordAudit, escalationStore: deps.escalationStore, ...deps.qa.deps },
+      );
+      qaOutputs = {
+        qaReleased: decision.released,
+        qaVerdict: decision.verdict,
+        qaBlockingBoard: decision.blockingBoardSlug,
+        qaFailedStages: decision.routingTarget?.failedStages ?? [],
+        qaReviewIds: decision.reviews.map((r) => r.id),
+      };
+      if (!decision.released) routeTo = []; // BLOCK the emission to Publishing (the gate raised the escalation).
+    }
+
     return {
       product: result,
       productSchema: "content_pack",
-      outputs: { packetId: result.packetId, approvalId: result.approvalId, qualityStatus: result.qualityStatus },
+      outputs: { packetId: result.packetId, approvalId: result.approvalId, qualityStatus: result.qualityStatus, ...qaOutputs },
       telemetry: { latencyMs: undefined, qualityScore: result.scores.predictedImpact },
       confidence: 0.8,
-      routeTo: ["publishing"],
+      routeTo,
     };
   };
 

@@ -168,6 +168,18 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     io: { inboundCapabilities: ["approve", "escalate", "intervene"], acceptedHandoffSchemas: [], outboundProducts: ["operational_summaries", "approvals", "escalations", "intervention_controls"], downstreamConsumers: [] },
     owner: "Moiz",
   },
+  {
+    slug: "quality_assurance",
+    name: "Quality Assurance",
+    purpose: "Independent QA boards that gate other departments' artifacts before downstream emission — release on pass, block + escalate on fail/blocked, route revise to the exact failed stage. A reviewer never authors the work it judges.",
+    status: "active", // the live QA gate (runQaGate) controls real downstream work (paid_audit→proposal, content, proposal)
+    orchestratorAgentSlug: "quality_assurance_orchestrator",
+    permissions: { authorizedMemoryScopes: ["qa_rubric", "brand", "offer", "company", "research", "competitor"], permittedDataClassifications: ["internal", "client_confidential"] },
+    io: { inboundCapabilities: ["qa_review"], acceptedHandoffSchemas: ["business_audit", "content_pack", "proposal_artifact", "validated_intelligence"], outboundProducts: ["qa_review"], downstreamConsumers: ["founder_command_centre"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "repeated_qa_failure", escalateTo: "founder_command_centre" }] },
+    kpis: [{ key: "qa_pass_rate", target: 0.85, unit: "ratio" }],
+    owner: "Moiz",
+  },
 ];
 
 /** Specialist memberships for the departments that are actually operational today (real agent teams). */
@@ -202,6 +214,14 @@ export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
   // Delivery team — delivery lead advises (judgment); the deterministic projects service creates the project + tasks.
   { departmentSlug: "delivery", memberType: "agent", memberRef: "delivery_lead_agent", role: "delivery_lead", responsibility: "assess feasibility, scope conflicts and dependency risks (advisory)", priority: 10, capabilities: ["run_project"], toolGrants: ["run_node"], memoryGrants: ["company", "client"], allowedInputSchemas: ["won_deal"], expectedOutputs: ["delivery_health", "risks"], escalationDestination: "delivery_orchestrator" },
   { departmentSlug: "delivery", memberType: "service", memberRef: "addProject", role: "mutator", responsibility: "create the delivery project + kickoff milestones/tasks deterministically", priority: 20, capabilities: ["run_project"] },
+  // Quality Assurance team — INDEPENDENT reviewers. Each is a member of quality_assurance (structurally NOT
+  // a member of the department it reviews) and carries qa_review approval authority. The 5 reviewers wired
+  // into live gates are members; the runtime independence guard rejects a self-review regardless.
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "paid_audit_qa_reviewer", role: "qa_reviewer", responsibility: "independently review the business_audit before it emits to Proposal", priority: 10, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "offer"], allowedInputSchemas: ["business_audit"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "content_quality_reviewer", role: "qa_reviewer", responsibility: "independently review the content_pack quality", priority: 20, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric"], allowedInputSchemas: ["content_pack"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "content_brand_reviewer", role: "qa_reviewer", responsibility: "independently review the content_pack brand fit", priority: 30, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "brand"], allowedInputSchemas: ["content_pack"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "proposal_technical_reviewer", role: "qa_reviewer", responsibility: "independently review the proposal technical design", priority: 40, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "company"], allowedInputSchemas: ["proposal_artifact"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
+  { departmentSlug: "quality_assurance", memberType: "agent", memberRef: "proposal_commercial_reviewer", role: "qa_reviewer", responsibility: "independently review the proposal commercial terms", priority: 50, capabilities: ["qa_review"], toolGrants: ["run_node"], memoryGrants: ["qa_rubric", "offer"], allowedInputSchemas: ["proposal_artifact"], expectedOutputs: ["qa_review"], approvalAuthority: ["qa_review"], escalationDestination: "founder_command_centre" },
 ];
 
 export interface SeedDepartmentsResult {

@@ -51,6 +51,9 @@ describe("seedDepartments", () => {
     expect(depts.get("finance")?.orchestratorAgentSlug).toBe("finance_orchestrator");
     expect(depts.get("delivery")?.status).toBe("active");
     expect(depts.get("delivery")?.orchestratorAgentSlug).toBe("delivery_orchestrator");
+    // Quality Assurance operating unit (Phase 4) — active, gates live work.
+    expect(depts.get("quality_assurance")?.status).toBe("active");
+    expect(depts.get("quality_assurance")?.orchestratorAgentSlug).toBe("quality_assurance_orchestrator");
 
     // Downstream routing is declared (paid_audit → proposal).
     expect(depts.get("paid_audit")?.io.downstreamConsumers).toContain("proposal");
