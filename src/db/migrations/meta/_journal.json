@@ -232,6 +232,13 @@
       "when": 1783816664018,
       "tag": "0032_departments",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783817387701,
+      "tag": "0033_department_members",
+      "breakpoints": true
     }
   ]
 }

@@ -1675,3 +1675,36 @@ export const departments = pgTable("departments", {
   index("departments_status_idx").on(table.status),
   index("departments_health_idx").on(table.healthStatus),
 ]);
+
+// ---- DEPARTMENT MEMBERSHIP (Phase 3): the EXPLICIT link between a department and a specialist agent or
+// deterministic service, with per-membership scoped grants (tools, memory, input schemas, approval
+// authority, budget). Security/memory authorization is derived from these rows + the department policy —
+// never from a display label. An agent joins >1 department only via separate explicit memberships. ----
+export const departmentMembers = pgTable("department_members", {
+  id: id(),
+  departmentSlug: varchar("department_slug", { length: 120 }).notNull(),
+  memberType: varchar("member_type", { length: 16 }).notNull().default("agent"), // agent | service
+  memberRef: varchar("member_ref", { length: 160 }).notNull(),
+  role: varchar("role", { length: 80 }).notNull(),
+  responsibility: text("responsibility").notNull(),
+  managerAgentSlug: varchar("manager_agent_slug", { length: 120 }),
+  active: boolean("active").notNull().default(true),
+  priority: integer("priority").notNull().default(100),
+  capabilities: jsonb("capabilities").$type<string[]>().notNull().default([]),
+  toolGrants: jsonb("tool_grants").$type<string[]>().notNull().default([]),
+  memoryGrants: jsonb("memory_grants").$type<string[]>().notNull().default([]),
+  allowedInputSchemas: jsonb("allowed_input_schemas").$type<string[]>().notNull().default([]),
+  expectedOutputs: jsonb("expected_outputs").$type<string[]>().notNull().default([]),
+  approvalAuthority: jsonb("approval_authority").$type<string[]>().notNull().default([]),
+  escalationDestination: varchar("escalation_destination", { length: 160 }),
+  budgetLimits: jsonb("budget_limits").$type<Record<string, unknown>>().notNull().default({}),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // One membership per (department, memberType, memberRef).
+  uniqueIndex("department_members_unique").on(table.departmentSlug, table.memberType, table.memberRef),
+  index("department_members_dept_idx").on(table.departmentSlug),
+  index("department_members_ref_idx").on(table.memberRef),
+  index("department_members_active_idx").on(table.active),
+]);
