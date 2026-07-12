@@ -4,9 +4,27 @@ import { buildDepartmentMemberRow, type DepartmentMemberRow } from "@/lib/domain
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { buildHandoffRow, type HandoffDeliveryState, type HandoffRow } from "@/lib/domain/handoff-delivery";
 import type { HandoffStore } from "@/lib/handoff";
-import { runDepartment, DepartmentRejectedError, type DepartmentPolicy } from "@/lib/departments/orchestrator";
+import { runDepartment, DepartmentRejectedError, DepartmentBudgetExhaustedError, type DepartmentPolicy } from "@/lib/departments/orchestrator";
+import type { BudgetStore } from "@/lib/departments/budget";
+import type { BudgetReservationRow } from "@/lib/domain/department-budget";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
+
+function makeBudgetStore() {
+  const rows = new Map<string, BudgetReservationRow>();
+  const store: BudgetStore = {
+    withDepartmentLock: async (_d, fn) => fn({
+      getUnit: async (d, wf, task) => [...rows.values()].find((r) => r.departmentSlug === d && r.workflowId === wf && r.taskId === task) ?? null,
+      windowRows: async (d, ms) => [...rows.values()].filter((r) => r.departmentSlug === d && r.createdAt.getTime() >= ms.getTime()),
+      insert: async (row) => { rows.set(row.id, row); },
+    }),
+    getById: async (id) => rows.get(id) ?? null,
+    transition: async (id, from, fields) => { const r = rows.get(id); if (!r || r.state !== from) return false; rows.set(id, { ...r, ...fields }); return true; },
+    listExpired: async () => [],
+    windowRows: async (d, ms) => [...rows.values()].filter((r) => r.departmentSlug === d && r.createdAt.getTime() >= ms.getTime()),
+  };
+  return { store, rows };
+}
 
 function makeHandoffStore() {
   const rows = new Map<string, HandoffRow>();
@@ -133,5 +151,30 @@ describe("runDepartment — the orchestrator framework", () => {
     await runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy: goodPolicy }, deps);
     const second = await runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy: goodPolicy }, deps);
     expect(second.routedTo[0].deduped).toBe(true); // same workflow+route idempotency key → dedup
+  });
+
+  it("BUDGET GATE: an over-budget run is blocked before the policy; a within-budget run settles", async () => {
+    const capped = buildDepartmentRow(
+      { slug: "paid_audit", name: "Paid Audit", purpose: "p", status: "active", orchestratorAgentSlug: "paid_audit_orchestrator", io: { acceptedHandoffSchemas: ["current_state_map"], inboundCapabilities: [], outboundProducts: ["business_audit"], downstreamConsumers: [] }, permissions: { authorizedMemoryScopes: ["company", "research"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: ["run_node"], deniedTools: [] }, budget: { dailyCents: 50 } as never },
+      { now },
+    );
+    const budgetRegistry = { loadDepartment: async (s: string) => (s === "paid_audit" ? capped : null), loadMembers: async () => members };
+
+    // Over budget (est 100¢ > 50¢ cap) → blocked before the policy runs.
+    const bs1 = makeBudgetStore();
+    let ran = false;
+    const policy: DepartmentPolicy<{ ok: boolean }> = async () => { ran = true; return { product: { ok: true }, productSchema: "business_audit", telemetry: { costEstimate: 30 } }; };
+    await expect(
+      runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 100 } }, { ...budgetRegistry, budgetStore: bs1.store, recordAudit: async () => {}, now }),
+    ).rejects.toBeInstanceOf(DepartmentBudgetExhaustedError);
+    expect(ran).toBe(false);
+
+    // Within budget → runs, and the reservation settles against the policy's reported cost.
+    const bs2 = makeBudgetStore();
+    const res = await runDepartment({ departmentSlug: "paid_audit", inbound: inbound(), policy, budget: { estimatedCents: 40 } }, { ...budgetRegistry, budgetStore: bs2.store, recordAudit: async () => {}, now });
+    expect(res.accepted).toBe(true);
+    const settled = [...bs2.rows.values()][0];
+    expect(settled.state).toBe("settled");
+    expect(settled.actualCents).toBe(30); // policy telemetry.costEstimate
   });
 });

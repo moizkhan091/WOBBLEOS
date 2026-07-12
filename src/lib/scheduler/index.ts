@@ -8,6 +8,7 @@ import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/l
 import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS } from "@/lib/handoff";
 import { reconcileApprovalEffects } from "@/lib/approval-effects";
 import { refreshAllDepartmentHealth } from "@/lib/departments/health";
+import { expireStaleReservations } from "@/lib/departments/budget";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -96,6 +97,13 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await refreshAllDepartmentHealth({ now });
   } catch (e) {
     result.errors.push(`department-health: ${e instanceof Error ? e.message : e}`);
+  }
+  // Release abandoned budget reservations (work that reserved spend but never settled) so a crashed job
+  // can't hold a department's budget hostage.
+  try {
+    await expireStaleReservations({ now });
+  } catch (e) {
+    result.errors.push(`budget-expiry: ${e instanceof Error ? e.message : e}`);
   }
 
   // 1. Schedule-triggered automation rules (cron).

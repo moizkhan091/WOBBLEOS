@@ -90,12 +90,20 @@ export const departmentKpiSchema = z.object({
 export type DepartmentKpi = z.infer<typeof departmentKpiSchema>;
 
 export const departmentBudgetSchema = z.object({
-  /** Operating budget in cents (null = unbounded / not tracked). */
+  /** Operating budget in cents (null = unbounded / not tracked). Overall lifetime cap. */
   operatingBudgetCents: z.number().int().nonnegative().nullable().default(null),
-  /** Max tokens this department may spend per budget window (null = unbounded). */
+  /** Max tokens this department may spend overall (null = unbounded). */
   tokenBudget: z.number().int().nonnegative().nullable().default(null),
   /** Per-provider token/spend caps, keyed by provider id. */
   providerBudgets: z.record(z.string(), z.number()).default({}),
+  // Windowed operational caps (all null = unbounded for that window). Enforced by the budget runtime
+  // via reservation → settlement, not just stored.
+  perRunCents: z.number().int().nonnegative().nullable().default(null),
+  dailyCents: z.number().int().nonnegative().nullable().default(null),
+  monthlyCents: z.number().int().nonnegative().nullable().default(null),
+  perRunTokens: z.number().int().nonnegative().nullable().default(null),
+  dailyTokens: z.number().int().nonnegative().nullable().default(null),
+  monthlyTokens: z.number().int().nonnegative().nullable().default(null),
 });
 export type DepartmentBudget = z.infer<typeof departmentBudgetSchema>;
 

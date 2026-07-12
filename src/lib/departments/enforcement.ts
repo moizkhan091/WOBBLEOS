@@ -89,7 +89,7 @@ export interface BudgetDecision extends Decision {
  * Enforce the department budget against a projected/actual spend. Over the operating (cents), token, or a
  * named provider budget → over budget (blocked). A null limit means unbounded for that dimension.
  */
-export function enforceBudget(budget: DepartmentBudget, spend: { cents?: number; tokens?: number; provider?: { id: string; tokens: number } } = {}): BudgetDecision {
+export function enforceBudget(budget: Pick<DepartmentBudget, "operatingBudgetCents" | "tokenBudget" | "providerBudgets">, spend: { cents?: number; tokens?: number; provider?: { id: string; tokens: number } } = {}): BudgetDecision {
   const errors: string[] = [];
   if (budget.operatingBudgetCents !== null && spend.cents !== undefined && spend.cents > budget.operatingBudgetCents) {
     errors.push(`operating spend ${spend.cents}¢ exceeds budget ${budget.operatingBudgetCents}¢`);

@@ -5,6 +5,7 @@ import type { DepartmentRow } from "@/lib/domain/department";
 import { selectSpecialists, type DepartmentMemberRow } from "@/lib/domain/department-membership";
 import { dispatchHandoff, type HandoffStore } from "@/lib/handoff";
 import { getDepartment, listMembers } from "@/lib/departments/registry";
+import { reserveBudget, settleBudget, releaseBudget, type BudgetStore } from "@/lib/departments/budget";
 import {
   acceptInboundHandoff,
   authorizeMemberAction,
@@ -72,6 +73,8 @@ export interface RunDepartmentDeps {
   loadDepartment?: (slug: string) => Promise<DepartmentRow | null>;
   loadMembers?: (slug: string) => Promise<DepartmentMemberRow[]>;
   handoffStore?: HandoffStore;
+  /** When set together with input.budget, the run reserves→settles against the department budget. */
+  budgetStore?: BudgetStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
 }
@@ -81,6 +84,18 @@ export interface RunDepartmentInput<T> {
   /** The inbound handoff addressed to this department + the receiver context to validate it against. */
   inbound: { envelope: HandoffEnvelope; receiverCtx: HandoffReceiverContext };
   policy: DepartmentPolicy<T>;
+  /** Optional budget gate: reserve this estimate BEFORE the policy runs; exhausted → escalate + block. */
+  budget?: { estimatedCents?: number; estimatedTokens?: number; provider?: string | null; overrideBy?: string };
+}
+
+/** Thrown when the department's budget is exhausted and the run is blocked before any expensive work. */
+export class DepartmentBudgetExhaustedError extends Error {
+  readonly blockedBy: string | null;
+  constructor(department: string, blockedBy: string | null, reasons: string[]) {
+    super(`department '${department}' budget exhausted (${blockedBy}): ${reasons.join("; ")}`);
+    this.name = "DepartmentBudgetExhaustedError";
+    this.blockedBy = blockedBy;
+  }
 }
 
 /** Thrown when the department rejects the inbound handoff (unauthorized / mis-routed / mis-scoped). */
@@ -131,8 +146,37 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
     escalate: (reason) => { escalations.push(reason); },
   };
 
-  // 2. Run the department-specific policy → the department product.
-  const result = await input.policy(api);
+  // 1b. Budget gate: reserve the estimated spend BEFORE any expensive work. Exhausted → escalate the
+  //     budget exhaustion + block the run (no provider call). The reservation settles after the policy.
+  let reservationId: string | null = null;
+  if (input.budget && deps.budgetStore) {
+    const res = await reserveBudget(
+      { departmentSlug: department.slug, workflowId: envelope.workflowId, taskId: envelope.taskId, estimatedCents: input.budget.estimatedCents ?? 0, estimatedTokens: input.budget.estimatedTokens ?? 0, provider: input.budget.provider ?? null, reason: `run ${department.slug}`, overrideBy: input.budget.overrideBy },
+      { department, budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now },
+    );
+    if (!res.ok) {
+      escalations.push(`budget_exhausted:${res.evaluation.blockedBy}`);
+      await audit(deps, { eventType: "department.escalated", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, reason: `budget_exhausted:${res.evaluation.blockedBy}`, escalateTo: department.governance.escalationRules[0]?.escalateTo ?? "founder_command_centre" } });
+      throw new DepartmentBudgetExhaustedError(department.slug, res.evaluation.blockedBy, res.evaluation.reasons);
+    }
+    reservationId = res.deduped ? null : res.reservation?.id ?? null;
+    if (res.degraded) escalations.push("budget_degraded");
+  }
+
+  // 2. Run the department-specific policy → the department product. Settle the reservation against the
+  //    actual cost on success; release it if the policy fails (frees the hold for a retry).
+  let result: DepartmentProduct<T>;
+  try {
+    result = await input.policy(api);
+  } catch (err) {
+    if (reservationId) await releaseBudget(reservationId, { budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now });
+    throw err;
+  }
+  if (reservationId) {
+    // Settle against the policy's reported cost; tokens fall back to the reserved estimate (telemetry
+    // does not carry a token count today).
+    await settleBudget(reservationId, { actualCents: Math.max(0, Math.round(result.telemetry?.costEstimate ?? 0)), actualTokens: input.budget?.estimatedTokens ?? 0 }, { budgetStore: deps.budgetStore, recordAudit: deps.recordAudit, now });
+  }
 
   // Record any escalations the policy raised.
   for (const reason of escalations) {

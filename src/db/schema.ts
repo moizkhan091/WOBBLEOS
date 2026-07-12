@@ -1708,3 +1708,33 @@ export const departmentMembers = pgTable("department_members", {
   index("department_members_ref_idx").on(table.memberRef),
   index("department_members_active_idx").on(table.active),
 ]);
+
+// ---- BUDGET RESERVATIONS (Phase 3): real operational budget enforcement via reserve → settle. Expensive
+// work RESERVES an estimated spend against a department's windowed caps BEFORE the provider call; the
+// actual cost SETTLES it afterward; abandoned reservations EXPIRE and release their hold. Idempotent per
+// unit of work (department, workflow, task) so a retry never double-charges. ----
+export const budgetReservations = pgTable("budget_reservations", {
+  id: id(),
+  departmentSlug: varchar("department_slug", { length: 120 }).notNull(),
+  workflowId: text("workflow_id").notNull(),
+  taskId: varchar("task_id", { length: 160 }).notNull(),
+  estimatedCents: integer("estimated_cents").notNull().default(0),
+  estimatedTokens: integer("estimated_tokens").notNull().default(0),
+  actualCents: integer("actual_cents"),
+  actualTokens: integer("actual_tokens"),
+  provider: varchar("provider", { length: 80 }),
+  state: varchar("state", { length: 16 }).notNull().default("reserved"), // reserved | settled | released | expired
+  reason: text("reason"),
+  overrideBy: varchar("override_by", { length: 120 }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+  settledAt: timestamp("settled_at", { withTimezone: true }),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // Idempotency: one reservation per unit of work — a retry reuses it (never double-charges).
+  uniqueIndex("budget_reservations_unit_uidx").on(table.departmentSlug, table.workflowId, table.taskId),
+  index("budget_reservations_dept_state_idx").on(table.departmentSlug, table.state),
+  index("budget_reservations_state_expiry_idx").on(table.state, table.expiresAt),
+  index("budget_reservations_created_idx").on(table.createdAt),
+]);
