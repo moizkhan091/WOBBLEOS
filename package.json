@@ -34,6 +34,7 @@
     "verify:content-gate": "tsx src/scripts/verify-content-gate-db.ts",
     "verify:decision-learning": "tsx src/scripts/verify-decision-learning-db.ts",
     "verify:aios-value": "tsx src/scripts/verify-aios-value-db.ts",
+    "verify:daily-brief": "tsx src/scripts/verify-daily-brief-db.ts",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:seed": "tsx e2e/fixtures/seed.ts seed",

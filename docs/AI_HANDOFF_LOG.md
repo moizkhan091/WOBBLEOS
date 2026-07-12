@@ -3942,3 +3942,38 @@ from-scratch + zero-drift · DB proof ×2.
 NEXT (transcript foundation 3/3): Daily Founder Brief — durable `daily_briefs` + real signal providers wired
 to the live stores (escalations/approvals/finance/delivery/health/KPIs/CRM/intelligence) + a scheduled
 cadence trigger + a founder surface. Then browser E2Es in required CI; Phase 5+.
+
+## cont.20 — Daily Founder Brief made REAL (durable + real providers + cadence trigger + surface). Foundations 3/3 ✅.
+
+Third and final transcript foundation (Doctrine 8) made real — completing all three (Decision Learning,
+AIOS Value, Daily Brief). The brief was a pure assembler with NO wired providers, no persistence, no trigger.
+
+- **Real signal providers** (`daily-brief/providers.ts`): four wired to live stores — `escalations` (open
+  escalations → action-required), `approvalsDue` (pending approvals), `deliveryRisks` (at-risk/low-health
+  projects), `financeAlerts` (overdue invoices). Each normalizes real state into an evidence-linked draft
+  (every signal points at a real source id + a drill-to route). Scope-aware. The other four categories
+  (provider_health/kpi/crm_movement/intelligence) are honest coverage gaps until wired — the brief simply
+  omits them (it degrades a category ONLY when its provider throws, never for an un-wired one).
+- **Durable state:** new `daily_briefs` table (migration `0041_daily_briefs`) storing the full ranked brief
+  (progressive-disclosure headline + per-category sections + every evidence link) + queryable projections.
+  `createDbDailyBriefStore` (append-only history; reads take the latest per scope — fixed a null-scope read
+  to use `IS NULL`, not `= NULL`).
+- **Cadence trigger:** the scheduler daily-maintenance now runs `buildAndStoreDailyBrief({company, daily})`
+  from the real providers and persists it. New `SchedulerResult.dailyBriefGenerated`.
+- **Founder surface:** `GET /api/daily-brief?scope=…` returns the latest persisted brief; `POST` regenerates
+  on demand (founder-gated).
+
+Anti-fabrication preserved (proven): every signal carries ≥1 evidence link; a provider failure degrades ONLY
+its category (honest gap), never the brief.
+
+Proofs: `verify-daily-brief-db` (9 checks, ×2, `verify:daily-brief`) on live Postgres — a real open escalation
++ a real at-risk project surface as evidence-linked signals; the brief persists + reads back via the founder
+surface; a department scope filters escalations to that department; a throwing provider degrades only its
+category. Migration from-scratch (fresh DB, exit 0) + zero drift. 14 daily-brief/scheduler unit tests green.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 807 tests / 102 files · build 0 · migration
+from-scratch + zero-drift · DB proof ×2.
+
+TRANSCRIPT FOUNDATIONS COMPLETE (3/3). NEXT: the four un-wired brief providers (provider_health/kpi/
+crm_movement/intelligence) + AIOS org-metrics from finance (documented follow-ups); browser E2Es in required
+CI (proposal-accept, QA-gate, escalation edge cases); Phase 5 Continuous Research + Context OS; Phases 6–11.

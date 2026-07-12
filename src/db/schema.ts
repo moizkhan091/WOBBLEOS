@@ -1910,3 +1910,25 @@ export const taskInventory = pgTable("task_inventory", {
   index("task_inventory_client_idx").on(table.clientId),
   index("task_inventory_project_idx").on(table.projectId),
 ]);
+
+// ---- DAILY FOUNDER BRIEF (Doctrine 8): the durable, evidence-linked founder brief assembled on a cadence
+// from real WOBBLE signals (escalations/approvals/finance/delivery/…). Stores the full ranked brief so the
+// founder surface renders progressive disclosure + every signal's drill-to-evidence link. ----
+export const dailyBriefs = pgTable("daily_briefs", {
+  id: id(),
+  scopeType: varchar("scope_type", { length: 16 }).notNull(), // company | department | client | project
+  scopeId: varchar("scope_id", { length: 200 }),
+  cadence: varchar("cadence", { length: 16 }).notNull(), // daily | weekly | monthly | on_demand
+  generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  isEmpty: boolean("is_empty").notNull().default(true),
+  totalSignals: integer("total_signals").notNull().default(0),
+  lowestConfidence: varchar("lowest_confidence", { length: 8 }), // none | low | medium | high
+  degradedCategories: jsonb("degraded_categories").$type<string[]>().notNull().default([]),
+  omittedSignals: integer("omitted_signals").notNull().default(0),
+  note: text("note").notNull().default(""),
+  brief: jsonb("brief").$type<Record<string, unknown>>().notNull(), // the full assembled FounderBrief
+  createdAt: createdAt(),
+}, (table) => [
+  index("daily_briefs_scope_generated_idx").on(table.scopeType, table.scopeId, table.generatedAt),
+  index("daily_briefs_generated_idx").on(table.generatedAt),
+]);

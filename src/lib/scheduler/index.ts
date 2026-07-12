@@ -12,6 +12,7 @@ import { expireStaleReservations } from "@/lib/departments/budget";
 import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
+import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -61,6 +62,7 @@ export interface SchedulerResult {
   stalledReclaimed: number;
   departmentHandoffsConsumed: number;
   decisionPoliciesProposed: number;
+  dailyBriefGenerated: boolean;
   maintenanceRan: boolean;
   errors: string[];
 }
@@ -80,7 +82,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -186,11 +188,15 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // auto-applied — every result is a `proposed` row awaiting explicit founder approval. Idempotent by
       // natural key (a direction already tracked is not re-proposed), so running daily never duplicates.
       await proposeDecisionPolicies({}).then((p) => { result.decisionPoliciesProposed = p.length; }).catch((e) => result.errors.push(`decision-learning: ${e?.message ?? e}`));
+      // Daily Founder Brief: assemble the company-wide brief from the real wired signals (escalations,
+      // approvals-due, delivery-risks, finance-alerts) and PERSIST it durably. The founder surface reads the
+      // latest row. Best-effort — a provider failure degrades that one category, never the whole tick.
+      await buildAndStoreDailyBrief({ type: "company", cadence: "daily" }, { now }).then(() => { result.dailyBriefGenerated = true; }).catch((e) => result.errors.push(`daily-brief: ${e?.message ?? e}`));
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;
