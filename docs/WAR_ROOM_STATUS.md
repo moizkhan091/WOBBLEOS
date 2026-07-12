@@ -8,8 +8,10 @@ cd "C:\Wobble OS" && git pull && git rev-parse --short HEAD && ls src/db/migrati
 ```
 Then read this file's §6 (open work) and continue the next unchecked item.
 
-## 1. Verified current state (checked against the repo + runtime, not summaries) — CURRENT as of HEAD f9c204f
-- **Branch:** `main` · **HEAD:** `f9c204f` · working tree clean · in sync with origin.
+## 1. Verified current state (checked against the repo + runtime, not summaries) — CURRENT as of HEAD b19c6ff
+- **Branch:** `main` · **HEAD:** `b19c6ff` · working tree clean · in sync with origin.
+- **Content QA → Publishing path COMPLETE + proven** (cont.22): approved-only Library promotion, tenant isolation, schedule idempotency, credential-gated provider adapter — `verify-content-publishing-db` (17 checks ×2). **Escalation-action browser coverage COMPLETE** (cont.21+23): all four actions (resume/terminate/dismiss/reroute) + edge cases in the required Playwright gate.
+- **EXACT NEXT (Phase 3 closure):** proposal-accept full autonomous commercial-chain **browser E2E** — drive the real acceptance API → run the consumer tick (`/api/scheduler/tick` or the consumer endpoint) → assert won→invoice→project in the Command Centre. Backend fully DB-proven (`verify-proposal-accept-origination-db`); needs a new e2e seed fixture (a `sent` proposal linked to an opportunity) + consumer-tick driving. Then Phase 5 Continuous Research + Context OS; Phases 6–11.
 - **Migrations:** latest = **`0041_daily_briefs`** (files 0000–0041). A from-scratch `db:migrate` on a fresh DB applies ALL cleanly (proven this session on scratch DBs, exit 0) + **zero drift** (`db:generate` → "nothing to migrate"). New this session: `0039_decision_policies`, `0040_task_inventory`, `0041_daily_briefs`.
 - **Gate:** typecheck 0 · **807 tests (102 files)** · build 0 · required GitHub CI green (both jobs) on every commit this session (last `f9c204f`). Real-DB proofs pass twice each — added this session: `verify-{delivery-completion,content-gate,decision-learning,aios-value,daily-brief}-db` (plus the prior `verify-{proposal-vertical,content-vertical,research-intelligence-vertical,department-consumer,commercial-chain,proposal-accept-origination,qa-boards,escalation-reroute,qa-gate}-db`).
 - **Playwright E2E:** REQUIRED on push/PR (no continue-on-error), **green in real CI** — 14 browser tests proving real DB effects (added this session: 4 escalation-action edge cases — unauthorized 401, duplicate 409, invalid-transition 409, not-found 404).
