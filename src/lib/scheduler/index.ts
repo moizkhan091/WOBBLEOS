@@ -127,7 +127,9 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   // unit ticks never claim real handoffs or fire real provider calls.
   if (deps.runDepartmentConsumers) {
     try {
-      const consumed = await (deps.consumeDepartments ?? (async (n: Date) => runDepartmentConsumerTick({ now: n })))(now);
+      // enableQaGates: when the autonomous consumer runs in production, the Proposal consumer applies its
+      // independent QA gate (technical + commercial boards) — a non-pass proposal is hard-blocked + escalated.
+      const consumed = await (deps.consumeDepartments ?? (async (n: Date) => runDepartmentConsumerTick({ now: n, enableQaGates: true })))(now);
       result.departmentHandoffsConsumed = consumed.completed;
       for (let i = 0; i < consumed.failed; i++) result.errors.push("department-consumer: a handoff failed and was requeued/dead-lettered");
     } catch (e) {

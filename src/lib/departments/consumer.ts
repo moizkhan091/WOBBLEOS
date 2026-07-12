@@ -48,6 +48,10 @@ export interface DepartmentConsumerDeps extends RunDepartmentDeps {
   onlyDepartments?: string[];
   /** Load the departments to sweep (defaults to the active departments from the registry). */
   loadDepartments?: () => Promise<DepartmentRow[]>;
+  /** Enable the independent QA gate(s) inside each consumed vertical (production). When on, the Proposal
+   *  consumer runs the technical + commercial QA boards and HARD-BLOCKS a non-pass proposal (escalates).
+   *  Off by default so proofs/tests are unaffected; the worker enables it alongside runDepartmentConsumers. */
+  enableQaGates?: boolean;
 }
 
 const out = (env: HandoffEnvelope): Record<string, unknown> => (env.previousAgentOutputs as Record<string, unknown> | undefined) ?? {};
@@ -70,7 +74,7 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
         requestedBy: env.sourceAgent ?? "paid_audit_orchestrator",
         workflowId: env.workflowId,
       },
-      { ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env },
+      { ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env, qa: deps.proposal?.qa ?? (deps.enableQaGates ? { deps: {} } : undefined) },
     ),
   sales_crm: (env, deps) =>
     runSalesCrmDepartment(

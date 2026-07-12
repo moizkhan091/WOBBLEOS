@@ -3772,3 +3772,32 @@ Merge order: B (Phase 4 QA) committed first, then C (foundations). wip branch re
 
 STATE: 9 active departments (added quality_assurance). QA now GATES real work. Reroute real. NEXT: proposal-
 accept + QA-gate + escalation-action browser E2E in required CI; Delivery Completion product; Phase 5+.
+
+## 2026-07-12 (cont. 15) - Claude (Opus 4.8) - QA gates ENABLED on production triggers + independent-review fixes
+
+Ran an independent reviewer over the recovered wave (QA gates + reroute + foundations). It confirmed the code
+is real + well-engineered (independence enforced, reroute honest, foundations honest — all CONFIRMED), and
+found the crux + two more real issues. All fixed:
+
+- **HIGH #1 — QA gate wired-but-never-turned-on** (no production trigger passed `qa`; only tests/proofs did).
+  FIXED: (a) the `audit.paid` job (`workers/registry.ts`) now fetches the audit report + runs the
+  `paid_audit_qa` gate before emitting to Proposal (blocks on non-pass, raises a real escalation); (b) the
+  autonomous consumer tick enables the proposal technical+commercial gates via `enableQaGates` (threaded
+  scheduler → `runDepartmentConsumerTick` → proposal consumer). Opt-in default OFF so proofs/tests are
+  unaffected (consumer DB proof re-run green). Content-gate production trigger remains a scoped follow-up
+  (content runs via the raw `content.graph` job, not `runContentDepartment`).
+- **MEDIUM #3 — reroute never relinked the escalation in production** (`escalation.ts` guarded the relink on
+  the raw `deps.store`, undefined when the API route calls it with no deps; the DB proof masked it by passing
+  a store). FIXED: guard on the RESOLVED `store`. reroute unit tests (19) + DB proof re-run green.
+- **MEDIUM #2 — doc self-contradiction** (WAR_ROOM §1 said QA "not yet gating live" while §10 said DONE).
+  Reconciled §1 to the true state (gates live on paid_audit + proposal triggers; content follow-up).
+- **LOW #4** (QA agents dormant until enabled) — resolved by #1.
+
+Reviewer also CONFIRMED (no fix needed): QA independence guard (rejects self-review before evaluation);
+reroute lineage/authorization + no double-execution (old handoff cancelled + resume short-circuits on
+resolved); Decision Learning never turns one decision into a policy; AIOS Value never shows an estimate as
+actual (evidence tiers); foundations honestly standalone.
+
+STATE: QA gates control REAL work on production triggers (paid_audit_qa + proposal technical/commercial).
+NEXT: content-gate production trigger; QA-gate + proposal-accept + escalation browser E2E in required CI;
+Delivery Completion product; Phase 5+.

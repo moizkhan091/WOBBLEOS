@@ -4,8 +4,10 @@ import { runContentGenerateJobHandler } from "@/lib/content-worker";
 import { runContentGraphJobHandler } from "@/lib/content-graph";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
-import { runPaidAuditJobHandler } from "@/lib/paid-audit-graph";
+import { runPaidAuditJobHandler, type PaidAuditResult } from "@/lib/paid-audit-graph";
 import { dispatchBusinessAuditToProposal } from "@/lib/departments/verticals/paid-audit";
+import { getAudit } from "@/lib/free-audit";
+import type { PaidAuditReport } from "@/lib/domain/paid-audit-graph";
 import type { JobRow as PaidAuditJobRow } from "@/lib/domain/jobs";
 import { runScoutJobHandler, runAnalyzeJobHandler, runDreamerJobHandler } from "@/lib/intelligence/jobs";
 import { runSourceIntakeJobHandler } from "@/lib/source-intake";
@@ -35,7 +37,13 @@ async function runPaidAuditWithOriginationJobHandler(job: PaidAuditJobRow): Prom
   const auditId = result.auditId as string | undefined;
   if (auditId && p.businessName) {
     try {
-      const routed = await dispatchBusinessAuditToProposal({ auditId, businessName: p.businessName, companyId: p.companyId ?? null });
+      // LIVE QA GATE: the independent paid_audit_qa board reviews the finished audit BEFORE it emits to
+      // Proposal. Only a PASS releases the business_audit handoff; a non-pass BLOCKS the emission and the
+      // gate raises a real founder escalation. (qa deps default to the DB qa_reviews + escalation stores.)
+      const auditRow = await getAudit(auditId);
+      const qa = auditRow ? { result: { auditId, agentRunCount: Number(result.agentRunCount ?? 0), modelRunIds: [], report: auditRow.report as unknown as PaidAuditReport } as PaidAuditResult } : undefined;
+      const routed = await dispatchBusinessAuditToProposal({ auditId, businessName: p.businessName, companyId: p.companyId ?? null }, { qa });
+      if (routed.blocked) return { ...result, qaBlocked: true, qaVerdict: routed.qa?.verdict ?? null };
       return { ...result, routedToProposal: routed.handoffId, routedDeduped: routed.deduped };
     } catch (e) {
       console.error("[audit.paid] origination to proposal failed (audit still succeeded):", e instanceof Error ? e.message : e);

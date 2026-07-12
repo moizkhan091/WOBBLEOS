@@ -263,7 +263,10 @@ export async function rerouteEscalation(id: string, actor: string, input: Rerout
 
   // 18-20. Link the new handoff onto the escalation, resolve action=reroute (only after durable acceptance),
   //        and audit the old + new destination + actor + reason.
-  if (deps.store) await store.transition(id, ["open", "acknowledged"], { handoffId: newHandoffId, updatedAt: now }).catch(() => false);
+  // Relink the escalation to the NEW alternate handoff. Guard on the RESOLVED store (not the raw optional
+  // deps.store) — production calls rerouteEscalation with no deps, so deps.store is undefined even though the
+  // real DB store IS in use; guarding on deps.store would silently skip the relink in production.
+  await store.transition(id, ["open", "acknowledged"], { handoffId: newHandoffId, updatedAt: now }).catch(() => false);
   await resolveEscalation(id, { action: "reroute", resolution: `Rerouted by ${actor} → ${to.slug}: ${input.reason} (new handoff ${newHandoffId})`, resolvedBy: actor }, deps);
   await audit(deps, { eventType: "escalation.rerouted", module: "departments", entityType: "escalation", entityId: id, actor, metadata: { workflowId: row.workflowId, fromDepartment: prevEnv.department, toDepartment: to.slug, oldHandoffId: row.handoffId, newHandoffId, reason: input.reason } });
   return { ok: true, newHandoffId };
