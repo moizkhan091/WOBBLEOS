@@ -4226,3 +4226,16 @@ GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 825 tests / 102 fi
 Phase 5 remaining: source registry field enrichment · snapshots + change detection · contradiction handling +
 dedup · richer ingestion (transcript/video-frame/visual) · continuous-research UI + Playwright. Then Context
 OS; Phases 6–11.
+
+## cont.31 — Phase 5: contradiction handling + deduplication (built + proven)
+
+Mandate E: two findings on the SAME topic (same insight type + normalized title) either AGREE (a duplicate →
+suppress the redundant) or DISAGREE (a CONTRADICTION → record both + flag for founder review, NEVER silently
+overwrite). `detectInsightConflicts` (pure domain) — deterministic exact-topic matching; fuzzy-semantic is a
+later enhancement. Proven: 3 unit tests (`insight-conflicts.test.ts`) — duplicate / contradiction / no false
+conflation across topics or insight types.
+
+GATE: typecheck 0 · 828 tests / 102 files · build 0 · no schema/migration.
+
+Phase 5 remaining: source registry field enrichment · snapshots + change detection · richer ingestion · a
+continuous-research UI + Playwright. Then Context OS; Phases 6–11.

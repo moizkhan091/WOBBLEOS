@@ -1275,3 +1275,44 @@ export function computeSourceFreshness(
   const overdueBy = target.nextRunAt ? Math.max(0, now.getTime() - target.nextRunAt.getTime()) : ageMs !== null && ageMs > interval ? ageMs - interval : 0;
   return { cadence: target.cadence, lastCheckedAt: target.lastCheckedAt, ageMs, expectedIntervalMs: interval, isStale, overdueBy };
 }
+
+// ---------------------------------------------------------------- contradiction + dedup (Phase 5, mandate E)
+//
+// Two findings on the SAME topic (same insight type + normalized title) either AGREE (a duplicate → suppress
+// the redundant one) or DISAGREE (a contradiction → record BOTH + flag for founder review, NEVER silently
+// overwrite). Deterministic exact-topic matching (a reliable guard against the obvious cases + a foundation;
+// fuzzy-semantic matching is a later enhancement).
+
+export interface InsightConflict {
+  kind: "duplicate" | "contradiction";
+  aId: string;
+  bId: string;
+  topic: string;
+  reason: string;
+}
+
+const _normText = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+export function detectInsightConflicts(
+  insights: Array<{ id: string; insightType: string; title: string; recommendation: string }>,
+): InsightConflict[] {
+  const conflicts: InsightConflict[] = [];
+  for (let i = 0; i < insights.length; i++) {
+    for (let j = i + 1; j < insights.length; j++) {
+      const a = insights[i];
+      const b = insights[j];
+      if (a.insightType !== b.insightType) continue;
+      const topic = _normText(a.title);
+      if (topic !== _normText(b.title)) continue; // not the same topic
+      const sameRec = _normText(a.recommendation) === _normText(b.recommendation);
+      conflicts.push({
+        kind: sameRec ? "duplicate" : "contradiction",
+        aId: a.id,
+        bId: b.id,
+        topic,
+        reason: sameRec ? "same insight type + topic + recommendation (redundant)" : "same insight type + topic but DIFFERING recommendations (must not silently overwrite)",
+      });
+    }
+  }
+  return conflicts;
+}
