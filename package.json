@@ -26,7 +26,11 @@
     "memory:backfill-embeddings": "tsx src/scripts/backfill-memory-embeddings.ts",
     "auth:hash": "tsx src/scripts/hash-password.ts",
     "verify:commercial": "tsx src/scripts/verify-commercial-chain-db.ts",
-    "verify:consumer": "tsx src/scripts/verify-department-consumer-db.ts"
+    "verify:consumer": "tsx src/scripts/verify-department-consumer-db.ts",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium",
+    "e2e:seed": "tsx e2e/fixtures/seed.ts seed",
+    "e2e:cleanup": "tsx e2e/fixtures/seed.ts cleanup"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -44,6 +48,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

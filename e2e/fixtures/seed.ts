@@ -1,0 +1,140 @@
+import { loadDotEnv } from "./load-env";
+loadDotEnv(); // must precede the first `@/db` import so getPool() sees DATABASE_URL.
+
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { eq, inArray } from "drizzle-orm";
+import { getDb, closeDb, schema } from "@/db";
+import { buildHandoffEnvelope } from "@/lib/domain/handoff";
+import { buildHandoffRow, type HandoffRow, type HandoffDeliveryState } from "@/lib/domain/handoff-delivery";
+import { defaultStore as handoffStore } from "@/lib/handoff";
+import { buildEscalationRow } from "@/lib/domain/escalation";
+import { defaultStore as escalationStore } from "@/lib/departments/escalation";
+import { reserveBudget } from "@/lib/departments/budget";
+import { recordProviderUsage } from "@/lib/provider-usage";
+import { seedDepartments } from "@/lib/departments/seed";
+import { AGENTS, DECISIONS, E2E_DEPARTMENT, E2E_WORKSPACE, IDS, PROVIDER_USAGE_REQ_ID, WF } from "./constants";
+
+/**
+ * Deterministic E2E fixture builder. Every row is written through the REAL domain builders + stores the
+ * app uses in production (buildHandoffEnvelope → buildHandoffRow → handoff store; buildEscalationRow →
+ * escalation store; reserveBudget; recordProviderUsage) so the browser gate exercises the true code
+ * paths — the escalation actions genuinely redrive/cancel these handoffs, and the effects read back.
+ *
+ * Idempotent + repeatable: `cleanupE2E()` deletes the fixed-id / E2E-workflow rows, then `seedE2E()`
+ * re-inserts them, so the suite can run over and over against the same (isolated) workspace.
+ *
+ *   tsx e2e/fixtures/seed.ts          # seed
+ *   tsx e2e/fixtures/seed.ts cleanup  # remove all E2E fixtures
+ */
+
+function e2eHandoff(opts: { id: string; workflowId: string; sourceAgent: string; destinationAgent: string; state: HandoffDeliveryState }): HandoffRow {
+  const now = new Date();
+  const envelope = buildHandoffEnvelope(
+    {
+      workflowId: opts.workflowId,
+      department: E2E_DEPARTMENT,
+      sourceAgent: opts.sourceAgent,
+      destinationAgent: opts.destinationAgent,
+      objective: "E2E gate fixture handoff",
+      requestedAction: "noop (seeded for the browser gate)",
+      expectedOutputSchema: "opportunity_set",
+      confidence: 0.8,
+      clientWorkspaceId: E2E_WORKSPACE,
+      authorizedMemoryScopes: ["company"],
+    },
+    { now, taskId: `${opts.workflowId}_task` },
+  );
+  const row = buildHandoffRow(envelope, { now, id: opts.id });
+  if (opts.state === "dead_lettered") {
+    // Retriable/resumable via redrive (dead_lettered → delivered), exactly like a real exhausted handoff.
+    return { ...row, deliveryState: "dead_lettered", retryCount: row.maxRetries, deadLetteredAt: now, failureReason: "e2e: automatic retries exhausted → dead-lettered" };
+  }
+  return { ...row, deliveryState: opts.state };
+}
+
+export async function cleanupE2E(): Promise<void> {
+  const db = getDb();
+  const wfIds = Object.values(WF);
+  await db.delete(schema.providerUsage).where(eq(schema.providerUsage.providerRequestId, PROVIDER_USAGE_REQ_ID));
+  await db.delete(schema.budgetReservations).where(inArray(schema.budgetReservations.workflowId, wfIds));
+  await db.delete(schema.escalations).where(inArray(schema.escalations.id, [IDS.escResume, IDS.escTerminate, IDS.escDismiss]));
+  await db.delete(schema.handoffs).where(inArray(schema.handoffs.id, [IDS.handoffRetry, IDS.handoffCancel, IDS.handoffResume, IDS.handoffTerminate]));
+}
+
+export async function seedE2E(): Promise<void> {
+  // The department must exist for the grid + budget/kpi endpoints (idempotent upsert — safe every run).
+  // Skippable via E2E_FIXTURES_ONLY for the per-test reseed (departments already exist from global setup),
+  // which keeps the reseed fast and light on the DB.
+  if (process.env.E2E_FIXTURES_ONLY !== "1") await seedDepartments({ recordAudit: async () => {} });
+  await cleanupE2E();
+
+  const hs = handoffStore();
+  // 1) retriable handoff — dead-lettered ⇒ the UI offers "retry" (redrive → delivered).
+  await hs.insert(e2eHandoff({ id: IDS.handoffRetry, workflowId: WF.retry, sourceAgent: AGENTS.retrySrc, destinationAgent: AGENTS.retryDst, state: "dead_lettered" }));
+  // 2) cancellable handoff — delivered ⇒ the UI offers "cancel" (→ cancelled).
+  await hs.insert(e2eHandoff({ id: IDS.handoffCancel, workflowId: WF.cancel, sourceAgent: AGENTS.cancelSrc, destinationAgent: AGENTS.cancelDst, state: "delivered" }));
+  // 3) handoff linked to the RESUME escalation — dead-lettered ⇒ resume redrives it back to delivered.
+  await hs.insert(e2eHandoff({ id: IDS.handoffResume, workflowId: WF.resume, sourceAgent: AGENTS.resumeSrc, destinationAgent: AGENTS.resumeDst, state: "dead_lettered" }));
+  // 4) handoff in the TERMINATE escalation's workflow — delivered ⇒ terminate cancels it.
+  await hs.insert(e2eHandoff({ id: IDS.handoffTerminate, workflowId: WF.terminate, sourceAgent: AGENTS.terminateSrc, destinationAgent: AGENTS.terminateDst, state: "delivered" }));
+
+  const es = escalationStore();
+  const now = new Date();
+  await es.insert(
+    buildEscalationRow(
+      { departmentSlug: E2E_DEPARTMENT, workflowId: WF.resume, reason: "dead_lettered", severity: "high", handoffId: IDS.handoffResume, requiredDecision: DECISIONS.resume },
+      { id: IDS.escResume, now },
+    ),
+  );
+  await es.insert(
+    buildEscalationRow(
+      { departmentSlug: E2E_DEPARTMENT, workflowId: WF.terminate, reason: "sla_breach", severity: "medium", handoffId: IDS.handoffTerminate, requiredDecision: DECISIONS.terminate },
+      { id: IDS.escTerminate, now },
+    ),
+  );
+  await es.insert(
+    buildEscalationRow(
+      { departmentSlug: E2E_DEPARTMENT, workflowId: WF.dismiss, reason: "other", severity: "low", requiredDecision: DECISIONS.dismiss },
+      { id: IDS.escDismiss, now },
+    ),
+  );
+
+  // Real budget usage + a real, provider-reported (verified) usage row so the budget/KPI strip renders
+  // non-zero TRUTH, not zeros. This is what the budget + provider-usage assertions read back.
+  await reserveBudget({ departmentSlug: E2E_DEPARTMENT, workflowId: WF.budget, taskId: `${WF.budget}_task`, estimatedCents: 500, estimatedTokens: 1000, provider: "openrouter", reason: "e2e budget fixture" });
+  await recordProviderUsage({
+    providerRequestId: PROVIDER_USAGE_REQ_ID,
+    provider: "openrouter",
+    model: "openai/gpt-4o-mini",
+    inputTokens: 1000,
+    outputTokens: 500,
+    providerReportedCostUsd: 0.02, // present ⇒ verificationStatus "verified", estimationStatus "actual"
+    latencyMs: 850,
+    context: { departmentSlug: E2E_DEPARTMENT, workflowId: WF.budget, taskId: `${WF.budget}_task`, clientWorkspaceId: E2E_WORKSPACE, role: "audit_report", module: "departments" },
+  });
+}
+
+async function main(): Promise<void> {
+  const mode = process.argv[2] ?? "seed";
+  try {
+    if (mode === "cleanup") {
+      await cleanupE2E();
+      console.log("e2e_seed=cleaned");
+    } else {
+      await seedE2E();
+      console.log("e2e_seed=ok");
+    }
+  } catch (err) {
+    console.error("e2e_seed=failed");
+    console.error(err instanceof Error ? (err.stack ?? err.message) : err);
+    process.exitCode = 1;
+  } finally {
+    await closeDb();
+  }
+}
+
+// Only auto-run when invoked directly (`tsx e2e/fixtures/seed.ts …`) — importing the fns must not run it.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  void main();
+}

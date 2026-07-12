@@ -1,0 +1,65 @@
+/**
+ * Shared E2E constants — pure TypeScript, NO `@/…` imports, so this file is safe to import from both
+ * the Playwright test process AND the `tsx`-run seed script. Everything the browser gate needs to line
+ * up (auth, the department under test, deterministic row ids, greppable UI labels) lives here so the
+ * seed and the assertions can never drift apart.
+ */
+
+export const E2E_PORT = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
+export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${E2E_PORT}`;
+
+// Saved founder session (storageState). Written once by auth.setup.ts, reused by the authed project.
+export const AUTH_STATE_PATH = "e2e/.auth/founder.json";
+
+// ---- Isolated E2E auth --------------------------------------------------------------------------
+// The Playwright config injects a bcrypt hash of E2E_PASSWORD + E2E_SESSION_SECRET into the web
+// server's env, so this password is the real, working shared-login password for the E2E server only.
+export const E2E_FOUNDER = "Moiz";
+export const E2E_PASSWORD = "wobble-e2e-secret-pw";
+export const E2E_SESSION_SECRET = "e2e-session-secret-please-change-0001"; // >= 16 chars (getSecretKey)
+
+// ---- Isolated logical workspace + the department under test -------------------------------------
+export const E2E_WORKSPACE = "e2e_ws";
+export const E2E_DEPARTMENT = "paid_audit"; // seeded `active` with real KPIs — a truthful, stable target.
+
+// ---- Deterministic workflow ids (also the cleanup scope) ----------------------------------------
+export const WF = {
+  retry: "wf_e2e_retry",
+  cancel: "wf_e2e_cancel",
+  resume: "wf_e2e_resume",
+  terminate: "wf_e2e_terminate",
+  dismiss: "wf_e2e_dismiss",
+  budget: "wf_e2e_budget",
+} as const;
+
+// ---- Deterministic row ids. The seed deletes-then-inserts these, so the suite is repeatable. -----
+export const IDS = {
+  handoffRetry: "handoff_e2e_retry",
+  handoffCancel: "handoff_e2e_cancel",
+  handoffResume: "handoff_e2e_resume",
+  handoffTerminate: "handoff_e2e_terminate",
+  escResume: "escalation_e2e_resume",
+  escTerminate: "escalation_e2e_terminate",
+  escDismiss: "escalation_e2e_dismiss",
+} as const;
+
+// ---- Unique, greppable UI labels so a test can find EXACTLY its own row --------------------------
+export const AGENTS = {
+  retrySrc: "e2e_retry_src",
+  retryDst: "e2e_retry_dst",
+  cancelSrc: "e2e_cancel_src",
+  cancelDst: "e2e_cancel_dst",
+  resumeSrc: "e2e_resume_src",
+  resumeDst: "e2e_resume_dst",
+  terminateSrc: "e2e_terminate_src",
+  terminateDst: "e2e_terminate_dst",
+} as const;
+
+// The escalation panel renders `requiredDecision` as its row text — unique strings = precise locators.
+export const DECISIONS = {
+  resume: "E2E-RESUME redrive the dead-lettered handoff",
+  terminate: "E2E-TERMINATE stop this workflow",
+  dismiss: "E2E-DISMISS non-actionable noise",
+} as const;
+
+export const PROVIDER_USAGE_REQ_ID = "preq_e2e_paidaudit_1";

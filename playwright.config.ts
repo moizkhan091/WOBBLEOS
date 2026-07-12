@@ -1,0 +1,98 @@
+import { defineConfig, devices } from "@playwright/test";
+import bcrypt from "bcryptjs";
+import { loadDotEnv } from "./e2e/fixtures/load-env";
+import { AUTH_STATE_PATH, BASE_URL, E2E_PASSWORD, E2E_PORT, E2E_SESSION_SECRET } from "./e2e/fixtures/constants";
+
+/**
+ * WOBBLE OS — Phase 3 browser gate (Playwright E2E).
+ *
+ * Proves REAL effects, not just rendered rows: the founder logs in once (storageState), the department
+ * grid / handoff feed / escalation queue are driven from the UI, and each mutating action is read back
+ * through the API to assert the DB actually changed (handoff redriven→delivered, cancelled; escalation
+ * resolved/resume, resolved/terminate, dismissed; budget + real provider usage).
+ *
+ * Auth is isolated to this server: the config injects a bcrypt hash of E2E_PASSWORD + a fixed
+ * SESSION_SECRET into the web server's env, so the shared-login password is known ONLY here. DATABASE_URL
+ * is passed through (loaded from .env locally; exported by the job in CI) and points at the E2E database.
+ */
+
+loadDotEnv();
+
+// Non-secret, test-only shared-login password → base64 bcrypt hash (the app reads *_HASH_B64, no `$` to
+// mangle). Computed from the same constant the setup logs in with, so they can never drift.
+const E2E_PASSWORD_HASH_B64 = Buffer.from(bcrypt.hashSync(E2E_PASSWORD, 8), "utf8").toString("base64");
+
+const isCI = !!process.env.CI;
+
+// Production build+start is the realistic gate in CI; `next dev` is the fast loop locally. Override with
+// PLAYWRIGHT_WEB_COMMAND when needed (e.g. to reuse an already-built server).
+const webCommand =
+  process.env.PLAYWRIGHT_WEB_COMMAND ??
+  (isCI ? `npm run build && npm run start -- --port ${E2E_PORT}` : `npm run dev -- --port ${E2E_PORT}`);
+
+export default defineConfig({
+  testDir: "./e2e",
+  outputDir: "./e2e/.artifacts/test-results",
+  fullyParallel: false, // the DB-effect tests mutate specific seeded rows — run serially for determinism.
+  workers: 1,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  timeout: 90_000, // generous for a cold `next dev` (Turbopack) server; warm routes are fast.
+  expect: { timeout: 20_000 },
+
+  reporter: isCI
+    ? [["list"], ["html", { outputFolder: "e2e/.artifacts/html-report", open: "never" }], ["github"]]
+    : [["list"], ["html", { outputFolder: "e2e/.artifacts/html-report", open: "never" }]],
+
+  use: {
+    baseURL: BASE_URL,
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+    actionTimeout: 20_000,
+    navigationTimeout: 45_000,
+  },
+
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
+
+  projects: [
+    // 1) Log in once and save the founder session.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+
+    // 2) Authenticated founder suite — everything under e2e/tests except the unauthenticated gate spec.
+    {
+      name: "chromium",
+      testMatch: /tests\/.*\.spec\.ts$/,
+      testIgnore: /\.unauth\.spec\.ts$/,
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], storageState: AUTH_STATE_PATH },
+    },
+
+    // 3) Unauthenticated gate — a fresh context with NO session (must be redirected / 401'd).
+    {
+      name: "unauth",
+      testMatch: /\.unauth\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], storageState: { cookies: [], origins: [] } },
+    },
+  ],
+
+  webServer: {
+    command: webCommand,
+    url: `${BASE_URL}/login`,
+    reuseExistingServer: !isCI,
+    timeout: 240_000,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      NODE_ENV: process.env.NODE_ENV ?? (isCI ? "production" : "development"),
+      NEXT_TELEMETRY_DISABLED: "1",
+      // Isolated E2E auth — known password + secret ONLY for this server.
+      SESSION_SECRET: E2E_SESSION_SECRET,
+      SHARED_LOGIN_PASSWORD_HASH_B64: E2E_PASSWORD_HASH_B64,
+      // Real DB (loaded from .env locally; exported by the job in CI).
+      DATABASE_URL: process.env.DATABASE_URL ?? "",
+    },
+  },
+});
