@@ -1175,3 +1175,43 @@ export function inferKnowledgeTypeForIntelligence(entry: IntelligenceInboxEntry)
   if (entry.recordType === "insight") return (entry.record as IntelligenceInsightRow).insightType;
   return (entry.record as IntelligenceSuggestionRow).suggestionType;
 }
+
+// ---------------------------------------------------------------- source value / ROI (Phase 5, mandate G)
+//
+// A source's value is measured from what it actually PRODUCED: the findings (insights) that cite its
+// collected observations, and how the founder judged them (approved vs rejected). Pure + deterministic, so
+// source deactivation can be argued from evidence (a low-value source is a proposal, never a silent kill).
+
+export interface SourceValue {
+  targetId: string;
+  itemsCollected: number;
+  /** Insights that cite ≥1 of this source's collected items. */
+  findingsProduced: number;
+  findingsApproved: number;
+  findingsRejected: number;
+  findingsPending: number;
+  /** approved / (approved + rejected); null when nothing has been decided yet (honest gap, not 0). */
+  approvalRate: number | null;
+  /** false positives = rejected findings ÷ produced; null when none produced. */
+  falsePositiveRate: number | null;
+  /** 0..100 — approval-weighted average impact of the APPROVED findings (an estimate, not a financial actual). */
+  valueScore: number;
+}
+
+export function computeSourceValue(
+  targetId: string,
+  items: Array<{ id: string; targetId: string | null }>,
+  insights: Array<{ evidenceItemIds: string[]; impactScore: number; approvalStatus: IntelligenceApprovalStatus }>,
+): SourceValue {
+  const itemIds = new Set(items.filter((i) => i.targetId === targetId).map((i) => i.id));
+  const findings = insights.filter((ins) => ins.evidenceItemIds.some((id) => itemIds.has(id)));
+  const approved = findings.filter((f) => f.approvalStatus === "approved");
+  const rejected = findings.filter((f) => f.approvalStatus === "rejected");
+  const pending = findings.filter((f) => f.approvalStatus === "pending" || f.approvalStatus === "needs_review");
+  const decided = approved.length + rejected.length;
+  const approvalRate = decided > 0 ? Math.round((approved.length / decided) * 100) / 100 : null;
+  const falsePositiveRate = findings.length > 0 ? Math.round((rejected.length / findings.length) * 100) / 100 : null;
+  const avgImpact = approved.length ? approved.reduce((s, f) => s + (f.impactScore ?? 0), 0) / approved.length : 0;
+  const valueScore = Math.round(Math.max(0, Math.min(100, avgImpact * (approvalRate ?? 0))));
+  return { targetId, itemsCollected: itemIds.size, findingsProduced: findings.length, findingsApproved: approved.length, findingsRejected: rejected.length, findingsPending: pending.length, approvalRate, falsePositiveRate, valueScore };
+}

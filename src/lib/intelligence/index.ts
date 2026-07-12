@@ -200,6 +200,20 @@ export async function createResearchTarget(
   return { target, approval };
 }
 
+/**
+ * Source value / ROI (Phase 5, mandate G): measure what a source actually produced — the findings (insights)
+ * that cite its collected observations and how the founder judged them. Reads the source's items + the
+ * insights that could cite them, then computes the pure value. Used by the founder-facing source-value surface
+ * and to argue (never silently perform) a low-value-source deactivation proposal.
+ */
+export async function getSourceValue(targetId: string, deps: IntelligenceDeps = {}): Promise<import("@/lib/domain/intelligence").SourceValue> {
+  const { computeSourceValue } = await import("@/lib/domain/intelligence");
+  const store = deps.store ?? defaultStore();
+  const items = await store.listIntelligenceItems({ limit: 5000 });
+  const insights = await store.listIntelligenceInsights({ limit: 5000 });
+  return computeSourceValue(targetId, items, insights);
+}
+
 export async function listResearchTargets(query: ListIntelligenceQuery = {}, deps: IntelligenceDeps = {}): Promise<ResearchTargetRow[]> {
   const store = deps.store ?? defaultStore();
   return store.listResearchTargets({ ...query, limit: clampIntelligenceLimit(query.limit) });

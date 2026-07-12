@@ -4160,3 +4160,28 @@ into it. Proof-only (no src change) on the existing research-target infrastructu
 Phase 5 remaining: source registry field enrichment + source discovery proposals + change detection +
 historical snapshots + source value/ROI + approved propagation to authorized consumers + richer ingestion
 (transcript/video-frame/visual) + a continuous-research UI + Playwright. Then Context OS; Phases 6–11.
+
+## cont.28 — Phase 5: approved-only propagation + tenant isolation (proven) + source value/ROI (built + proven)
+
+Two more Phase-5 capabilities: mandate F (approved-only propagation) proven, mandate G (source value/ROI) built.
+
+- **Approved-only propagation + tenant isolation (F) — PROVEN.** `buildApprovedIntelligenceContext` already
+  fetches ONLY `approvalStatus:"approved"` intelligence, scoped by client (+ global brand rules), with precise
+  scope filtering. `verify-intel-propagation-db` (×2) proves: a client's APPROVED insights propagate; its
+  PENDING insight does NOT (unapproved cannot influence a protected workflow); another client's approved
+  insight does NOT leak (tenant isolation); a global approved insight DOES reach the client; the reverse scope
+  holds (client B never sees A's).
+- **Source value / ROI (G) — BUILT + PROVEN.** `computeSourceValue` (pure domain): a source's value from the
+  REAL findings that cite its collected items + the founder's judgments — findingsProduced/approved/rejected/
+  pending, approvalRate, falsePositiveRate, and an approval-weighted valueScore (an estimate, never a fake
+  actual; honest nulls when nothing decided). `getSourceValue(targetId)` reads items+insights from the store;
+  founder surface `GET /api/intelligence/targets/[id]/value`. This is what argues a low-value-source
+  deactivation PROPOSAL (never a silent kill). Proven: 3 unit tests (`source-value.test.ts`) + `verify-source-value-db`
+  (×2 — items attributed by targetId, findings by evidenceItemIds, rates + valueScore from real judgments).
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 820 tests / 102 files · build 0 · DB proofs
+(intel-propagation ×2 + source-value ×2) · no schema/migration touched.
+
+Phase 5 remaining: source registry field enrichment · source discovery PROPOSALS (feeding the granular
+approval) · snapshots + change detection · freshness/staleness/contradictions/dedup · richer ingestion
+(transcript/video-frame/visual) · continuous-research UI + Playwright. Then Context OS; Phases 6–11.
