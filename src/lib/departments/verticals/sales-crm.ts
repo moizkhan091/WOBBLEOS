@@ -1,3 +1,4 @@
+import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { runTextProvider } from "@/lib/providers";
@@ -57,6 +58,7 @@ export interface RunSalesCrmDepartmentDeps extends RunDepartmentDeps {
 /** Default deal-risk assessor: a real revenue-operator LLM call, attributed for actual budget settlement. */
 async function defaultAssessDeal(input: { opportunity: OpportunityRow; proposalId: string | null; businessName: string; usageContext: ProviderUsageContext }): Promise<DealRiskAssessment> {
   const o = input.opportunity;
+  if (useDeterministicJudgment()) return { lossRisk: "low", riskFactors: [], nextBestAction: `Kick off onboarding for ${input.businessName}.`, rationale: "Deterministic advisory (CI adapter)." };
   const r = await runTextProvider({
     role: "content_strategy",
     module: "crm",

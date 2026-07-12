@@ -1,3 +1,4 @@
+import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { runTextProvider } from "@/lib/providers";
@@ -61,6 +62,7 @@ export interface RunDeliveryDepartmentDeps extends RunDepartmentDeps {
 
 /** Default feasibility assessor: a real delivery-lead LLM call, attributed for actual budget settlement. */
 async function defaultAssessFeasibility(input: { projectName: string; services: string[]; owner: string | null; usageContext: ProviderUsageContext }): Promise<DeliveryFeasibility> {
+  if (useDeterministicJudgment()) return { feasibility: "clear", risks: [], dependencies: [] };
   const r = await runTextProvider({
     role: "content_strategy",
     module: "projects",

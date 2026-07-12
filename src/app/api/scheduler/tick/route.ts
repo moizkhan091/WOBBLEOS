@@ -12,7 +12,10 @@ export async function POST(request: Request) {
   if (isAuthError(auth)) return auth;
   try {
     const u = new URL(request.url);
-    const result = await runScheduledTick({ runMaintenance: u.searchParams.get("maintenance") === "true" });
+    // `consumers=true` drives the autonomous inter-department consumer loop this tick (claims + runs routed
+    // handoffs) — the same path the worker runs every 60s. Founder-gated; used by the browser gate to advance
+    // the accepted-proposal commercial chain deterministically.
+    const result = await runScheduledTick({ runMaintenance: u.searchParams.get("maintenance") === "true", runDepartmentConsumers: u.searchParams.get("consumers") === "true" });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

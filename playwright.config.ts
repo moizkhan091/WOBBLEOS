@@ -97,6 +97,12 @@ export default defineConfig({
       SESSION_COOKIE_INSECURE: "1",
       // Real DB (loaded from .env locally; exported by the job in CI).
       DATABASE_URL: process.env.DATABASE_URL ?? "",
+      // CI-ONLY DETERMINISTIC JUDGMENT ADAPTER (non-production): the commercial-chain verticals' advisory LLM
+      // steps return fixed benign results instead of calling OpenRouter, so the proposal-accept browser gate
+      // drives the REAL production execution path (real runtime, consumer, deterministic CRM/Finance/Delivery
+      // writes) without live paid LLM calls. NOT proof of the live provider path — that is the separate
+      // real-OpenRouter smoke proof. Never set on a real deploy.
+      WOBBLE_JUDGMENT_ADAPTER: "deterministic",
     },
   },
 });

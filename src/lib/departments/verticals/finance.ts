@@ -1,3 +1,4 @@
+import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { runTextProvider } from "@/lib/providers";
@@ -53,6 +54,7 @@ export interface RunFinanceDepartmentDeps extends RunDepartmentDeps {
 
 /** Default margin assessor: a real finance-analyst LLM call, attributed for actual budget settlement. */
 async function defaultAssessMargin(input: { amountCents: number; revenue: RevenueSummary; businessName: string; usageContext: ProviderUsageContext }): Promise<MarginAssessment> {
+  if (useDeterministicJudgment()) return { marginRisk: "low", overdueRisk: "low", notes: ["Deterministic advisory (CI adapter)."] };
   const r = await runTextProvider({
     role: "content_strategy",
     module: "finance",

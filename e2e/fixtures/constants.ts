@@ -55,6 +55,17 @@ export const AGENTS = {
   terminateDst: "e2e_terminate_dst",
 } as const;
 
+// Proposal-accept autonomous-chain fixture: a real `sent` proposal linked to a real opportunity + company.
+// Accepting it fires the atomic outbox → the consumer chain drives won → invoice → project. The chain's
+// workflowId is the opportunity id (see buildProposalArtifactEnvelope).
+export const PROPOSAL = {
+  companyId: "company_e2e_prop",
+  opportunityId: "opp_e2e_prop",
+  proposalId: "proposal_e2e_sent",
+  businessName: "E2E Proposal Co",
+  valueCents: 500000,
+} as const;
+
 // The escalation panel renders `requiredDecision` as its row text — unique strings = precise locators.
 export const DECISIONS = {
   resume: "E2E-RESUME redrive the dead-lettered handoff",

@@ -35,4 +35,11 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/library/scheduled")).status()).toBe(401);
     expect((await request.post("/api/library/assets", { data: { title: "unauthorized asset", kind: "image" } })).status()).toBe(401);
   });
+
+  test("proposal ACCEPTANCE and the consumer tick are gated at 401 (an unauthorized user cannot accept a deal or drive the chain)", async ({ request }) => {
+    // A valid body so the request reaches the auth check. The atomic accept + outbox emit must never run for
+    // an unauthorized caller — no deal is won, no invoice/project is created.
+    expect((await request.post("/api/proposals/proposal_e2e_sent/action", { data: { action: "accept" } })).status()).toBe(401);
+    expect((await request.post("/api/scheduler/tick?consumers=true", { data: {} })).status()).toBe(401);
+  });
 });

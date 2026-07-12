@@ -1,3 +1,4 @@
+import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { runTextProvider } from "@/lib/providers";
 import { createProposalFromAudit, type ProposalDeps } from "@/lib/proposals";
@@ -62,6 +63,7 @@ export interface ProposalQaGate {
 
 /** Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. */
 async function defaultSynthesize(input: { auditId: string; businessName: string; usageContext: import("@/lib/domain/provider-usage").ProviderUsageContext }): Promise<SolutionSynthesis> {
+  if (useDeterministicJudgment()) return { technicalSolution: `Deterministic advisory synthesis for ${input.businessName}: integrate the audited systems, sequence the roadmap, and automate the highest-impact workflows first.`, integrationDesign: "Concrete integration across the audited toolchain via the WOBBLE handoff runtime and deterministic services.", roiAssumptions: "ROI grounded in the audited baseline; conservative estimates only.", risks: [] };
   const r = await runTextProvider({
     role: "content_strategy",
     module: "proposals",

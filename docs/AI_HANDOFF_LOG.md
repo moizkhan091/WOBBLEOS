@@ -4047,3 +4047,35 @@ not-found edge cases from cont.21). Reroute edge cases (the happy path is proven
 + 7 unit tests): reroute with no live handoff → 409 (nothing to re-route); reroute to a non-existent/
 unauthorized destination department → 409, the old handoff untouched (never fabricates an unauthorized route).
 Verified locally: 9 escalation Playwright tests pass.
+
+## cont.24 — Phase 3 CLOSED: proposal-accept full autonomous commercial-chain browser E2E (real path, CI-only deterministic judgment)
+
+The founder-facing autonomous commercial chain now runs end-to-end in the REQUIRED Playwright gate, driven
+from the real acceptance API through the REAL production execution path — no fixture inserts after acceptance,
+no bypass of the department runtime.
+
+- **CI-only deterministic judgment adapter** (`verticals/deterministic-judgment.ts`): each commercial-chain
+  vertical's ONE advisory LLM step (proposal synthesis, deal-risk, margin, feasibility) returns a fixed benign
+  result when `WOBBLE_JUDGMENT_ADAPTER=deterministic` (set ONLY in the E2E web server). Clearly labelled
+  CI-only / deterministic / non-production / NOT proof of the live provider path. The advisory steps never sit
+  on a write path, so the WRITE path (won / invoice / project) stays fully real. The live-OpenRouter provider
+  path keeps its own separate real proof (`verify-proposal-accept-origination-db` re-run green; the L1
+  real-provider usage proof unchanged).
+- **Consumer-tick trigger**: `POST /api/scheduler/tick?consumers=true` (founder-gated) drives the autonomous
+  consumer loop on demand — the same path the worker runs every 60s.
+- **Seed fixture** (`e2e/fixtures`): a real company + opportunity (`proposal_sent`) + a `sent` proposal linked
+  to the opportunity, built through the real domain builders; cleanup removes the whole chain it produces.
+
+Proven in the browser gate (22 Playwright tests pass): accept → 200 + `handoffId`; the accepted proposal
+ATOMICALLY has its outbox handoff (`delivered`); driving the consumer advances the opportunity to **won**,
+Finance drafts **exactly one** invoice, Delivery stands up **exactly one** project (with kickoff milestones),
+all read back through the Command Centre APIs. Idempotency: a DUPLICATE acceptance is 409 (lost the atomic
+claim, no second handoff); re-running the consumer creates no second invoice/project. Unauthorized: accept +
+consumer tick both 401 (no deal won, nothing created). Every step is a real deterministic CRM/Finance/Delivery
+write through the real handoff runtime + autonomous consumer.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 811 tests / 102 files · build 0 · 22 Playwright
+tests · `verify-proposal-accept-origination-db` re-run green · no schema/migration touched.
+
+NEXT: Phase 4 closure — Research Validation QA live gate + browser proof; then Daily-Brief remaining providers
++ AIOS org-metrics; Phase 5 Continuous Research; Context OS; Phases 6–11.
