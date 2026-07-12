@@ -32,6 +32,24 @@ describe("runScheduledTick crash-recovery", () => {
     expect(result.stalledReclaimed).toBe(3);
     expect(result.errors.some((e) => e.startsWith("reclaim:"))).toBe(false); // reclaim itself did not error
   });
+
+  it("runs Continuous Research in the daily-maintenance block and records the insight count (Phase 5 cadence)", async () => {
+    let researchRan = false;
+    const result = await runScheduledTick({
+      now,
+      runMaintenance: true,
+      enqueue: async () => ({ job: { id: "j" } }),
+      recordAudit: async () => {},
+      reclaimStalled: async () => 0,
+      // Injected research tick (the real default runs the research department WITH the research_validation
+      // QA gate; here we assert only that maintenance drives it and records the result).
+      researchTick: async () => { researchRan = true; return { insights: 3, released: true }; },
+    });
+    expect(researchRan).toBe(true); // continuous research is wired into maintenance, not dormant
+    expect(result.continuousResearchInsights).toBe(3);
+    expect(result.maintenanceRan).toBe(true);
+    expect(result.errors.some((e) => e.startsWith("continuous-research:"))).toBe(false);
+  });
 });
 
 function store(rules: AutomationRow[]) {

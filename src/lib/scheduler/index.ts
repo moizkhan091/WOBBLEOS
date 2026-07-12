@@ -53,6 +53,14 @@ export interface SchedulerDeps {
    */
   runDepartmentConsumers?: boolean;
   consumeDepartments?: (now: Date) => Promise<{ claimed: number; completed: number; failed: number }>;
+  /**
+   * Continuous Research (Phase 5) cadence seam: analyse recent observations → validate through the
+   * research_validation QA gate → propagate only released intelligence. Runs in the daily-maintenance block.
+   * Injectable so proofs/tests inject canned analyst/dreamer (no LLM); the default runs the real department
+   * with the QA gate enabled. Analysis is cost-safe — the analyst returns early (no LLM) when there is
+   * nothing new to analyse.
+   */
+  researchTick?: (now: Date) => Promise<{ insights: number; released: boolean }>;
 }
 
 export interface SchedulerResult {
@@ -63,8 +71,21 @@ export interface SchedulerResult {
   departmentHandoffsConsumed: number;
   decisionPoliciesProposed: number;
   dailyBriefGenerated: boolean;
+  continuousResearchInsights: number;
   maintenanceRan: boolean;
   errors: string[];
+}
+
+/**
+ * Default Continuous Research tick: run the Research & Intelligence department for the org scope WITH the
+ * research_validation QA gate enabled, so validated intelligence propagates to the Founder Command Centre
+ * only on PASS (a non-pass blocks propagation + raises an escalation). Lazy import avoids a scheduler↔dept
+ * cycle. Returns the insight count + whether the intelligence was released.
+ */
+async function defaultResearchTick(now: Date): Promise<{ insights: number; released: boolean }> {
+  const { runResearchIntelligenceDepartment } = await import("@/lib/departments/verticals/research-intelligence");
+  const res = await runResearchIntelligenceDepartment({ scope: "wobble", requestedBy: "scheduler" }, { qa: { deps: {} }, now });
+  return { insights: res.product?.analysis.proposedInsights ?? 0, released: res.routedTo.some((r) => r.department === "founder_command_centre") };
 }
 
 /** Is a cron schedule due since it last ran? */
@@ -82,7 +103,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -192,11 +213,18 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // approvals-due, delivery-risks, finance-alerts) and PERSIST it durably. The founder surface reads the
       // latest row. Best-effort — a provider failure degrades that one category, never the whole tick.
       await buildAndStoreDailyBrief({ type: "company", cadence: "daily" }, { now }).then(() => { result.dailyBriefGenerated = true; }).catch((e) => result.errors.push(`daily-brief: ${e?.message ?? e}`));
+      // Continuous Research (Phase 5): analyse recent observations into insights + suggestions, VALIDATE them
+      // through the research_validation QA gate, and propagate only released intelligence. Cost-safe (the
+      // analyst returns early without an LLM call when there is nothing new to analyse). This is what makes
+      // the research gate LIVE on a real production cadence.
+      if (deps.researchTick || process.env.DATABASE_URL) {
+        await (deps.researchTick ?? defaultResearchTick)(now).then((r) => { result.continuousResearchInsights = r.insights; }).catch((e) => result.errors.push(`continuous-research: ${e?.message ?? e}`));
+      }
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.continuousResearchInsights || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;

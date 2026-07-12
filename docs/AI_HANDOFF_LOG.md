@@ -4118,3 +4118,29 @@ GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 816 tests / 102 fi
 
 NEXT: Phase 5 Continuous Research (source registry/discovery/granular approval/ingestion/change-detection/
 propagation + the research cadence that enables the research gate live); then Context OS; Phases 6–11.
+
+## cont.26 — Phase 5 (start): Continuous Research cadence — the research_validation QA gate goes LIVE in production
+
+Wired the Continuous Research analysis cadence into the scheduler's daily-maintenance block, making the
+research_validation QA gate (cont.25) LIVE on a real production trigger.
+
+- `runScheduledTick` daily-maintenance now runs `defaultResearchTick` → `runResearchIntelligenceDepartment`
+  ({scope:"wobble"}) WITH the research_validation QA gate enabled (`qa: { deps: {} }`). Validated intelligence
+  propagates to the Founder Command Centre only on PASS; a non-pass BLOCKS propagation + raises a founder
+  escalation. New `SchedulerResult.continuousResearchInsights`. Injectable `researchTick` seam for tests.
+- **Production-reachable:** `src/workers/worker.ts` runs `runScheduledTick({ runMaintenance, runDepartmentConsumers:true })`
+  with `runMaintenance` gated to once/24h — so continuous research (analyse → validate → propagate) fires
+  daily in production. Cost-safe: the analyst returns early (no LLM) when there is nothing new to analyse.
+
+This closes the Phase-4 research-gate "production-live" follow-up: the gate now controls a REAL production
+research output on a real cadence.
+
+Proven: scheduler unit test (maintenance drives the research tick + records the insight count, not dormant);
+the research department + QA gate it invokes is DB-proven by `verify-research-qa-db` (cont.25). Full gate green.
+
+GATE (all green, `${PIPESTATUS[0]}` verified): typecheck 0 · 817 tests / 102 files · build 0 · no schema/migration.
+
+Phase 5 remaining (large — next slices): source registry enrichment + source discovery + granular source
+approval (the 10+4+1=11-active invariant), change detection, historical snapshots, source value/ROI, approved
+propagation to authorized consumers, ingestion (transcript/video-frame/visual), continuous-research UI +
+Playwright. Then Context OS; Phases 6–11.
