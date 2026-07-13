@@ -5067,3 +5067,24 @@ chunks API).
 
 GATE: typecheck 0 · full unit suite 922/922 (116 files) · build 0 (clean .next) · DB proof x2 · no migration (reuses
 source_chunks/intake runs) · Playwright ingestion + source-deactivation + full unauth gate green. (Reviewer next.)
+
+## cont.63-fix — Ingestion reviewer HIGH (DoS) + MEDIUM (SSRF) fixed — Claude (Opus 4.8)
+
+The cont.63 reviewer returned DO-NOT-SHIP (conditional): the new server-side fetch shipped without the standard
+rails. Fixed all mandatory findings:
+- HIGH (event-loop DoS): `defaultFetchText` now has a 10s `AbortSignal.timeout` + a 5MB response-size cap
+  (arrayBuffer + byteLength check). `stripHtml` is now genuinely LINEAR — script/style blocks are removed with an
+  indexOf scanner (`removeBlocks`), NOT a backtracking `<script[\s\S]*?</script>` regex (which was O(n²) on crafted
+  unclosed tokens — the reviewer measured 320KB→23s); input is also hard-clamped. Unit test proves ~2.4MB of
+  unclosed `<script` strips in <1.5s (was minutes).
+- MEDIUM (SSRF): `assertFetchableUrl` enforces an http/https scheme allowlist + rejects loopback/private/link-local/
+  reserved/metadata hosts (169.254.169.254, 127/8, 10/8, 172.16/12, 192.168/16, CGNAT, ::1, *.internal, …) BOTH by
+  host literal AND by resolving the hostname (catches a public domain pointing at an internal IP). Redirects are
+  `manual` and re-validated per hop (no auto-chase to internal). Residual DNS-rebind noted (a custom undici
+  connect-dispatcher is the follow-up); the concrete exploit vectors are blocked.
+- LOW (fixed): re-ingest is now IDEMPOTENT — chunks are REPLACED (delete-before-attach), so re-ingest / periodic
+  re-collection never accumulates duplicate chunks. LOW (fixed): `runSourceIntake` gates on active+approved BEFORE
+  any fetch, so a non-active source can never trigger an outbound ingestion request even via a direct API call.
+Proven: verify:ingestion x2 (now +idempotent-re-ingest assert) + 15 unit tests (incl. SSRF host classification +
+the linear-strip DoS guard). typecheck 0. (LOW recorded: apify_social 0-posts has no http fallback — a collection
+gap, not security; a future enhancement.)

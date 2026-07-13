@@ -40,8 +40,12 @@ async function main() {
     const inlineId = await mkActiveSource("inline", { sourceType: "manual_note", metadata: { content: "WOBBLE positioning: senior AI systems for founders. Repeatable, owned, not rented. " .repeat(3) } });
     const inline = await runSourceIntake(inlineId, { context: {} });
     assert(inline.ok && inline.adapter === "inline_text" && (inline.chunks ?? 0) >= 1, "INLINE-TEXT source → inline_text adapter attached ≥1 chunk (fully unblocked, no network)");
-    assert(await chunkCount(inlineId) >= 1, "the inline chunks are a REAL DB effect (source_chunks rows exist)");
+    const inlineChunks = await chunkCount(inlineId);
+    assert(inlineChunks >= 1, "the inline chunks are a REAL DB effect (source_chunks rows exist)");
     assert((await lastRun(inlineId))?.status === "succeeded", "the intake run for the inline source SUCCEEDED");
+    // IDEMPOTENT re-ingest: running intake again REPLACES the chunks (no duplicate accumulation).
+    await runSourceIntake(inlineId, { context: {} });
+    assert(await chunkCount(inlineId) === inlineChunks, "IDEMPOTENT re-ingest: a second intake REPLACES the chunks (count unchanged, no duplicate pollution)");
 
     // 2) WEBSITE with NO Apify → the http_web fallback (injected deterministic fetch).
     const webCtx: IngestionContext = { apifyConfigured: false, fetchText: async () => "<html><h1>Market Report</h1><p>AI adoption is accelerating across mid-market services firms.</p><script>x()</script></html>" };

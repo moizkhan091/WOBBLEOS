@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { sources } from "@/db/schema";
+import { sources, sourceChunks } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { createSourceIntakeRun, markSourceIntakeRunComplete, attachSourceChunks } from "@/lib/sources";
 import { apifyConfigured, scrapeWebsite, scrapeInstagram } from "@/lib/scraper/apify";
@@ -28,6 +28,14 @@ export async function runSourceIntake(sourceId: string, deps: SourceIntakeDeps =
   const [source] = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1);
   if (!source) return { ok: false, error: "source not found" };
 
+  // Only an ACTIVE, APPROVED source may be collected — this gates the server-side fetch too (a non-active source
+  // can never trigger an outbound ingestion request, even via a direct reingest API call).
+  if (source.status !== "active" || source.approvalStatus !== "approved") {
+    const { run } = await createSourceIntakeRun({ sourceId, trigger: "agent", tool: "ingestion" });
+    await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "cancelled", logs: [{ note: `source is not active+approved (status: ${source.status}, approval: ${source.approvalStatus}) — no collection` }] }).catch(() => {});
+    return { ok: true, chunks: 0, note: "source not active" };
+  }
+
   const { run } = await createSourceIntakeRun({ sourceId, trigger: "agent", tool: "ingestion" });
 
   const ctx: IngestionContext = deps.context ?? {
@@ -44,7 +52,12 @@ export async function runSourceIntake(sourceId: string, deps: SourceIntakeDeps =
 
   try {
     const { chunks, note } = await adapter.collect(source as SourceLike, ctx);
-    if (chunks.length) await attachSourceChunks({ sourceId, chunks });
+    // Idempotent re-ingest: REPLACE the source's chunks (delete the prior set before attaching) so a re-ingest or a
+    // periodic re-collection never accumulates duplicate chunks that would pollute retrieval.
+    if (chunks.length) {
+      await db.delete(sourceChunks).where(eq(sourceChunks.sourceId, sourceId));
+      await attachSourceChunks({ sourceId, chunks });
+    }
     await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "succeeded", logs: [{ adapter: adapter.slug, chunks: chunks.length, note }] }).catch(() => {});
     await recordAgentRun({ agentSlug: "source_intake_orchestrator", status: "succeeded", inputSummary: `${adapter.slug}:${(source.url ?? "inline").slice(0, 180)}`, outputSummary: `${chunks.length} chunks via ${adapter.slug}` }).catch(() => {});
     // Chain: now that chunks exist, compile them into the knowledge base.

@@ -4,6 +4,9 @@ import {
   inlineContentOf,
   stripHtml,
   chunkText,
+  isBlockedHost,
+  assertFetchableUrl,
+  MAX_INGEST_BYTES,
   INGESTION_ADAPTERS,
   type IngestionContext,
 } from "@/lib/source-intake/adapters";
@@ -20,6 +23,29 @@ describe("ingestion adapter registry", () => {
 
   it("stripHtml removes tags, scripts, styles and entities", () => {
     expect(stripHtml("<p>Hello&nbsp;<b>world</b></p><script>bad()</script>")).toBe("Hello world");
+  });
+
+  it("stripHtml stays LINEAR on a crafted unclosed-script body (DoS guard) — the old regex was quadratic", () => {
+    // ~2.4 MB of unclosed "<script " tokens would hang the old backtracking regex; the linear scanner drops the
+    // unclosed block and finishes near-instantly. (Also proves the clamp: output never exceeds the cap.)
+    const huge = "<script ".repeat(300_000);
+    const t0 = Date.now();
+    const out = stripHtml(huge);
+    expect(out.length).toBeLessThanOrEqual(MAX_INGEST_BYTES);
+    expect(Date.now() - t0).toBeLessThan(1500); // linear → fast, never an event-loop hang
+  });
+
+  it("isBlockedHost flags loopback / private / link-local / metadata targets (SSRF guard)", () => {
+    for (const h of ["localhost", "127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.5.5", "169.254.169.254", "::1", "0.0.0.0", "app.internal"]) expect(isBlockedHost(h)).toBe(true);
+    for (const h of ["example.com", "8.8.8.8", "wobblepk.com", "1.1.1.1"]) expect(isBlockedHost(h)).toBe(false);
+  });
+
+  it("assertFetchableUrl rejects non-http schemes and internal hosts (no DNS needed for these)", async () => {
+    await expect(assertFetchableUrl("file:///etc/passwd")).rejects.toThrow(/scheme/);
+    await expect(assertFetchableUrl("gopher://x/_")).rejects.toThrow(/scheme/);
+    await expect(assertFetchableUrl("http://127.0.0.1:6379/")).rejects.toThrow(/internal host/);
+    await expect(assertFetchableUrl("http://169.254.169.254/latest/meta-data/")).rejects.toThrow(/internal host/);
+    await expect(assertFetchableUrl("http://localhost:5432")).rejects.toThrow(/internal host/);
   });
 
   it("inlineContentOf reads content/rawText/transcript/extractedData", () => {
