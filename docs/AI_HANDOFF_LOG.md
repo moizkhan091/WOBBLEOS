@@ -4299,3 +4299,18 @@ GATE: typecheck 0 · 847 tests / 104 files · build 0 · no schema/migration.
 
 NEXT: Phase 8 Dream/Optimizer (governed) · Phase 9 Free Audit completion · Phase 10 Media Studio · Phase 11
 release gate. Plus Phase 5 UI + Context OS + durable autonomy/revision persistence.
+
+## cont.36 — Phase 8: controlled Dream/Optimizer core (built + proven)
+
+Mandate: the OS may PROPOSE improvements but NEVER silently rewrite production — observe → propose → historical
+test → approve → activate → monitor → rollback. Built `src/lib/domain/optimizer.ts` (pure): scoreProposal
+(value per unit cost+risk) + rankProposals; historicalTestPasses (candidate must beat baseline); canApprove
+(proposed + passing test only); canActivate (approved only — the ONLY path to a production behaviour change);
+shouldRollback (active metric below baseline); transitionProposal (throws on any illegal transition — never
+silent). Proven: 5 unit tests (scoring/ranking; approve needs a passing test; no auto-activation; rollback on
+degradation + refuses to roll back a healthy one; rejected can`t approve/activate).
+
+GATE: typecheck 0 · 852 tests / 105 files · build 0 · no schema/migration.
+
+NEXT: Phase 9 Free Audit completion/proof · Phase 10 Media Studio · Phase 11 release gate. Plus durable
+persistence + enforcement wiring for autonomy/revision/optimizer; Phase 5 UI; Context OS.
