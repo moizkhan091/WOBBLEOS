@@ -13,6 +13,7 @@ import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
+import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -74,6 +75,7 @@ export interface SchedulerResult {
   decisionPoliciesProposed: number;
   dailyBriefGenerated: boolean;
   continuousResearchInsights: number;
+  optimizerOpportunities: number;
   maintenanceRan: boolean;
   errors: string[];
 }
@@ -105,7 +107,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, deadLetterAutoRetried: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, deadLetterAutoRetried: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, optimizerOpportunities: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -226,11 +228,18 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       if (deps.researchTick || process.env.DATABASE_URL) {
         await (deps.researchTick ?? defaultResearchTick)(now).then((r) => { result.continuousResearchInsights = r.insights; }).catch((e) => result.errors.push(`continuous-research: ${e?.message ?? e}`));
       }
+      // Controlled Dream / Optimizer (Phase 8): ONCE/day, run a cycle that OBSERVES real signals (QA, revisions,
+      // dead letters, provider cost) and PROPOSES evidence-backed opportunities. It never approves/activates/
+      // changes anything — every output is a `proposed` row awaiting explicit founder approval. Cadence-gated so
+      // repeated ticks in a day never re-run it.
+      if (process.env.DATABASE_URL && await optimizerCycleDue(20 * 3600_000, { now })) {
+        await runOptimizerCycle({ trigger: "scheduled" }, { now }).then((r) => { result.optimizerOpportunities = r.opportunities; }).catch((e) => result.errors.push(`optimizer: ${e?.message ?? e}`));
+      }
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.continuousResearchInsights || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.continuousResearchInsights || result.optimizerOpportunities || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;

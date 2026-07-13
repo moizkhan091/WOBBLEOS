@@ -17,7 +17,8 @@ import {
 } from "@/lib/domain/comms";
 
 export interface CommunicationStore {
-  insert(row: CommunicationRow): Promise<void>;
+  /** Returns true if the row was inserted; false if a UNIQUE (dedupeKey) conflict lost the race (already exists). */
+  insert(row: CommunicationRow): Promise<boolean>;
   getById(id: string): Promise<CommunicationRow | null>;
   getByDedupeKey(key: string): Promise<CommunicationRow | null>;
   list(q: { status?: string; channel?: string; limit: number }): Promise<CommunicationRow[]>;
@@ -72,7 +73,14 @@ export async function prepareCommunication(input: PrepareCommunicationInput, dep
   }
 
   const row = buildCommunicationRow(input, { now });
-  await store.insert(row);
+  // Idempotent insert: a partial unique index guards `dedupeKey`. onConflictDoNothing makes a CONCURRENT duplicate
+  // prepare (which passed the read above before the other committed) a graceful dedupe, not a 500 — the loser
+  // re-reads the winner's row and returns it deduped, so a double-prepare NEVER double-creates or double-sends.
+  const inserted = await store.insert(row);
+  if (input.dedupeKey && inserted === false) {
+    const winner = await store.getByDedupeKey(input.dedupeKey);
+    if (winner) return { communication: winner, released: winner.actedAutonomously, deduped: true, decision: null };
+  }
   await audit(deps, { eventType: "communication.prepared", module: COMMUNICATION_MODULE, entityType: "communication", entityId: row.id, actor: row.preparedBy, metadata: { channel: row.channel, kind: row.kind, scopeType: row.scopeType, companyId: row.companyId, clientId: row.clientId } });
 
   const act = preparationAction(row.channel);
@@ -153,7 +161,10 @@ export async function getCommunication(id: string, deps: CommunicationDeps = {})
 
 export function defaultStore(db: Db = getDb()): CommunicationStore {
   return {
-    async insert(row) { await db.insert(commsTable).values(row as never); },
+    async insert(row) {
+      try { await db.insert(commsTable).values(row as never); return true; }
+      catch (e) { if ((e as { code?: string })?.code === "23505") return false; throw e; } // 23505 = unique_violation on the dedupeKey partial index (concurrent duplicate)
+    },
     async getById(id) { const r = await db.select().from(commsTable).where(eq(commsTable.id, id)).limit(1); return (r[0] as CommunicationRow) ?? null; },
     async getByDedupeKey(key) { const r = await db.select().from(commsTable).where(eq(commsTable.dedupeKey, key)).limit(1); return (r[0] as CommunicationRow) ?? null; },
     async list(q) {

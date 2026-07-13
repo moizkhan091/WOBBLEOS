@@ -96,6 +96,14 @@ export async function cleanupE2E(): Promise<void> {
     await db.delete(schema.sources).where(inArray(schema.sources.id, ids));
   }
   await db.delete(schema.autonomyPolicies).where(and(eq(schema.autonomyPolicies.category, "source.activation"), like(schema.autonomyPolicies.clientId, "e2e_srcauto_%")));
+  // Self-optimizer spec fixtures: the spec triggers real cycles that persist. This is a test DB, so clear the
+  // optimizer's own tables each run (child rows first) so counts + governance stay deterministic across runs.
+  await db.delete(schema.optimizerMonitoring);
+  await db.delete(schema.optimizerRollbackEvents);
+  await db.delete(schema.optimizerActivations);
+  await db.delete(schema.optimizerObservations);
+  await db.delete(schema.improvementProposals);
+  await db.delete(schema.optimizerCycles);
   // Communications-autonomy spec fixtures: the spec creates comms + grants per run scoped to `e2e_comm_%`.
   await db.delete(schema.communications).where(like(schema.communications.clientId, "e2e_comm_%"));
   await db.delete(schema.autonomyPolicies).where(and(inArray(schema.autonomyPolicies.category, ["notification.internal", "comms.external.prepare", "proposal.send.prepare", "comms.external.send", "proposal.send"]), like(schema.autonomyPolicies.clientId, "e2e_comm_%")));

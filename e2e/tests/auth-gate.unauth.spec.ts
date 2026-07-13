@@ -49,6 +49,14 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("the self-optimizer is gated at 401 (an unauthorized user cannot trigger a cycle, inspect, or govern a proposal)", async ({ request }) => {
+    // Running the optimizer + approving/activating/rolling back an improvement are founder-only — no anonymous
+    // caller can trigger a cycle or change the governance state of a proposal.
+    expect((await request.get("/api/optimizer")).status()).toBe(401);
+    expect((await request.post("/api/optimizer", { data: {} })).status()).toBe(401);
+    expect((await request.post("/api/optimizer/proposals/anything/action", { data: { action: "approve" } })).status()).toBe(401);
+  });
+
   test("the communications outbox is gated at 401 (an unauthorized user cannot prepare, send, or inspect a comm)", async ({ request }) => {
     // Preparing/sending a notification or external comm is founder-only — an unauthorized caller can neither
     // stage nor dispatch a communication, nor read the outbox.

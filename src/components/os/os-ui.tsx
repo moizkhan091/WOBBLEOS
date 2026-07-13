@@ -5193,8 +5193,81 @@ function CommsPage() {
   );
 }
 
+const OPT_STATUS_COLORS: Record<string, string> = { proposed: "#F5C542", approved: C.blue, active: C.lime, rejected: C.gray, rolled_back: C.orange, superseded: C.gray };
+
+function OptimizerPage() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const o = useApi<{ cycles: Record<string, unknown>[]; proposals: Record<string, unknown>[] }>("/api/optimizer?limit=30");
+  const guard = offlineIf(o);
+
+  async function runCycle() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/optimizer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg("Cycle failed: " + String(j.error ?? r.status)); return; }
+      setMsg(`Cycle complete — ${j.observations} observations, ${j.opportunities} opportunit${j.opportunities === 1 ? "y" : "ies"} proposed.`);
+      o.reload();
+    } finally { setBusy(false); }
+  }
+  async function act(id: string, action: string, extra: Record<string, unknown> = {}) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/optimizer/proposals/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg(action + " failed: " + String(j.error ?? r.status)); return; }
+      o.reload();
+    } finally { setBusy(false); }
+  }
+  if (guard) return guard;
+  const cycles = o.data?.cycles ?? [];
+  const proposals = o.data?.proposals ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ ...card, padding: "16px 17px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <button disabled={busy} onClick={runCycle} style={primaryBtn}>{busy ? "Working…" : "Run an optimizer cycle"}</button>
+        <span style={{ fontSize: 11.5, color: muted, flex: 1 }}>A cycle only OBSERVES real signals + PROPOSES opportunities. Nothing is approved, activated, or changed without you.</span>
+        {cycles[0] ? <span style={{ fontSize: 11, color: faint }}>last cycle {fmtTime(cycles[0].startedAt)} · {String(cycles[0].observationCount ?? 0)} obs · {String(cycles[0].opportunityCount ?? 0)} opp</span> : null}
+      </div>
+      {msg ? <div style={{ fontSize: 11.5, color: C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+      <div style={labelStyle}>IMPROVEMENT PROPOSALS</div>
+      {proposals.length === 0 ? <StateBlock kind="empty" message="No proposals yet. Run a cycle — if the OS is healthy across the tracked signals, it honestly proposes nothing." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {proposals.map((p, i) => {
+            const st = String(p.status ?? "proposed");
+            const base = Number(p.historicalBaselineMetric ?? 0), cand = Number(p.historicalCandidateMetric ?? 0);
+            const passing = cand > base;
+            return (
+              <div key={String(p.id ?? i)} style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7, alignItems: "center" }}>
+                  <Tag text={String(p.targetType ?? "")} color={C.gray} />
+                  <Tag text={st} color={OPT_STATUS_COLORS[st] ?? C.gray} />
+                  <Tag text={"risk " + String(p.riskLevel ?? "low")} color={C.blue} />
+                  <Tag text={"score " + String(p.score ?? "0")} color={C.blue} />
+                  <div style={{ flex: 1 }} />
+                  {st === "proposed" ? <button disabled={busy || !passing} title={passing ? "" : "historical test must pass"} onClick={() => act(String(p.id), "approve")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, opacity: passing ? 1 : 0.5 }}>Approve</button> : null}
+                  {st === "proposed" ? <button disabled={busy} onClick={() => act(String(p.id), "reject", { reason: "not now" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.gray }}>Reject</button> : null}
+                  {st === "approved" ? <button disabled={busy} onClick={() => act(String(p.id), "activate")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11 }}>Activate</button> : null}
+                  {st === "active" ? <button disabled={busy} onClick={() => act(String(p.id), "rollback", { reason: "founder rollback" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange }}>Roll back</button> : null}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{String(p.pattern ?? "")}</div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(p.hypothesis ?? "")}</div>
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>
+                  historical test: baseline {base.toFixed(2)} → candidate {cand.toFixed(2)} {passing ? "✓ passing" : "✗ not passing"} · est. value {String(p.estimatedValue ?? 0)} · {fmtTime(p.createdAt)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   comms: CommsPage,
+  optimizer: OptimizerPage,
   departments: DepartmentsPage,
   command: CommandPage,
   learning: LearningPage,

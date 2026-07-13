@@ -4882,3 +4882,46 @@ Playwright: comms-autonomy.spec (held → grant → released → external send c
 
 GATE: typecheck 0 · full unit suite 901/901 (113 files) · build 0 (clean .next) · DB proof x2 · migration 0047
 zero drift · Playwright full suite 44 passed. (Reviewer dispatched.)
+
+Reviewer verdict (independent, adversarial): SHIP — all 7 claims held, all proofs re-run green, no HIGH/MEDIUM.
+Applied its two LOWs: (1) the idempotent prepare is now a GRACEFUL race — `store.insert` returns false on a
+dedupeKey unique-violation (23505) and `prepareCommunication` re-reads + returns the winner deduped (no 500 on a
+concurrent double-prepare; the dangerous double-send was already prevented by the partial unique index). (2) the
+comms `[id]/action` route now runs `requireFounder` BEFORE schema parse (auth strictly first).
+
+---
+
+## cont.58 — Controlled Dream / OPTIMIZER made OPERATIONAL (Phase 8) — Claude (Opus 4.8)
+
+The pure optimizer DECISION core existed (`src/lib/domain/optimizer.ts`: scoring/ranking/historical-test/governance/
+rollback) but had NO durable store, NO scheduled cycle, NO evidence, NO API/UI. Now fully operational — the OS
+proposes improvements to its OWN behaviour, never silently rewriting production.
+
+Migration 0048: 6 durable tables — `optimizer_cycles`, `optimizer_observations` (real evidence + a pointer back to
+the rows), `improvement_proposals` (opportunity + estimated value/cost/risk + historical baseline/candidate +
+status lifecycle), `optimizer_activations` (versioned active record, pinned to the baseline it must beat),
+`optimizer_monitoring` (measured vs baseline), `optimizer_rollback_events`.
+
+Service `src/lib/optimizer/index.ts`: `runOptimizerCycle` = OBSERVE (4 REAL collectors reading qa_reviews /
+revision_cycles / handoffs / provider_usage → a normalized health metric each) → FORM opportunities (ONLY a
+below-threshold, well-sampled signal → never fabricated from thin evidence) → HISTORICAL test (baseline → projected
+candidate, an ESTIMATE) → persist `proposed`. Governance (reusing the pure domain): `approveProposal` (needs
+proposed + a PASSING historical test), `activateProposal` (the ONLY path to `active`; writes an activation record —
+NEVER mutates a prompt/skill/workflow/model/etc. in place), `recordMonitoring` (measured vs baseline; degraded →
+autoRollback), `rollbackProposal` (system on degradation or founder), `rejectProposal`. A cycle NEVER
+approves/activates/changes anything.
+
+Scheduler trigger: the daily-maintenance tick runs a cadence-gated (`optimizerCycleDue`, ~1/day) cycle — the REAL
+production consumer of the trigger. Founder API: `GET/POST /api/optimizer` + `POST /api/optimizer/proposals/[id]/
+action` (approve|reject|activate|rollback|monitor), founder-gated (auth-first). Founder UI: a new `optimizer` OS
+module (Self-Optimizer) under SYSTEM — run a cycle, inspect proposals + their historical test, approve/activate/
+rollback.
+
+PROVEN: verify:optimizer (x2, 21 asserts) — observe→propose (only well-evidenced), no auto-approve, historical
+test recorded + cited evidence, approval needs a passing test, activation only from approved, monitor→auto-rollback
++ rollback event, full lifecycle audited, AND the REAL collectors read the real qa_reviews table. verify:all-db
+(26). Unit: tests/optimizer-service.test.ts (5, in-memory). Playwright: optimizer.spec (trigger → inspect → 409
+governance guard → full approve/activate/monitor/rollback chain) + optimizer unauth 401 gate.
+
+GATE: typecheck 0 · full unit suite 906/906 (114 files) · build 0 (clean .next) · DB proof x2 · migration 0048
+zero drift · full Playwright 46 passed. (Reviewer dispatched.)

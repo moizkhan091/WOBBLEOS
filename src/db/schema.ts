@@ -2076,6 +2076,121 @@ export const autonomyPolicies = pgTable("autonomy_policies", {
   index("autonomy_policies_category_status_idx").on(table.category, table.status),
 ]);
 
+// ---- CONTROLLED DREAM / OPTIMIZER (Phase 8): the OS may PROPOSE improvements to its own behaviour, but NEVER
+// silently rewrites production. A cycle OBSERVES real signals → forms EVIDENCE-backed opportunities → HISTORICAL
+// test → founder APPROVAL → versioned ACTIVATION → MONITOR vs baseline → ROLLBACK if degraded. The optimizer only
+// ever writes to its OWN tables; the ONLY path to an `active` improvement is proposed → approved → active. ----
+export const optimizerCycles = pgTable("optimizer_cycles", {
+  id: id(),
+  trigger: varchar("trigger", { length: 24 }).notNull().default("scheduled"), // scheduled | manual
+  status: varchar("status", { length: 24 }).notNull().default("observing"),   // observing | proposed | complete | failed
+  scope: varchar("scope", { length: 40 }).notNull().default("os"),
+  observationCount: integer("observation_count").notNull().default(0),
+  opportunityCount: integer("opportunity_count").notNull().default(0),
+  note: text("note"),
+  metadata: metadata(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (table) => [
+  index("optimizer_cycles_status_idx").on(table.status),
+  index("optimizer_cycles_started_idx").on(table.startedAt),
+]);
+
+// Real evidence: each observation is a measured signal from a REAL production table (never fabricated), with a
+// pointer (evidenceRef) back to the rows it summarizes so a founder can audit the basis of any opportunity.
+export const optimizerObservations = pgTable("optimizer_observations", {
+  id: id(),
+  cycleId: varchar("cycle_id", { length: 120 }).notNull(),
+  signalType: varchar("signal_type", { length: 40 }).notNull(), // qa_failure | revision_frequency | workflow_retry | dead_letter | provider_cost | tool_failure | source_value | content_outcome | proposal_outcome | sales_outcome | delivery_outcome | aios_value | founder_feedback
+  metricKey: varchar("metric_key", { length: 120 }).notNull(),
+  metricValue: numeric("metric_value", { precision: 14, scale: 4 }).notNull(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  evidenceRef: jsonb("evidence_ref").$type<Record<string, unknown>>().notNull().default({}),
+  observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("optimizer_observations_cycle_idx").on(table.cycleId),
+  index("optimizer_observations_signal_idx").on(table.signalType),
+]);
+
+// An evidence-backed improvement OPPORTUNITY. estimatedValue/cost/risk drive the priority score; the historical
+// test records baseline vs candidate. status governs the lifecycle — the ONLY path to `active` is proposed→approved→active.
+export const improvementProposals = pgTable("improvement_proposals", {
+  id: id(),
+  cycleId: varchar("cycle_id", { length: 120 }),
+  pattern: text("pattern").notNull(),
+  hypothesis: text("hypothesis").notNull(),
+  targetType: varchar("target_type", { length: 24 }).notNull(), // prompt | workflow | model | skill | agent | tool | policy | qa_rubric | parameter
+  targetRef: varchar("target_ref", { length: 200 }),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]), // observation ids
+  estimatedValue: numeric("estimated_value", { precision: 6, scale: 2 }).notNull().default("0"),
+  estimatedCostCents: integer("estimated_cost_cents").notNull().default(0),
+  riskLevel: varchar("risk_level", { length: 16 }).notNull().default("low"),
+  score: numeric("score", { precision: 10, scale: 2 }),
+  historicalBaselineMetric: numeric("historical_baseline_metric", { precision: 14, scale: 4 }),
+  historicalCandidateMetric: numeric("historical_candidate_metric", { precision: 14, scale: 4 }),
+  historicalSampleSize: integer("historical_sample_size"),
+  status: varchar("status", { length: 16 }).notNull().default("proposed"), // proposed | approved | active | rejected | rolled_back | superseded
+  version: integer("version").notNull().default(1),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  rejectedReason: text("rejected_reason"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("improvement_proposals_status_idx").on(table.status),
+  index("improvement_proposals_cycle_idx").on(table.cycleId),
+]);
+
+// A versioned ACTIVATION — the durable record of an approved improvement being made active, pinned to the baseline
+// it must beat. Activation writes ONLY this record; it never mutates a prompt/skill/workflow/model/etc. in place.
+export const optimizerActivations = pgTable("optimizer_activations", {
+  id: id(),
+  proposalId: varchar("proposal_id", { length: 120 }).notNull(),
+  version: integer("version").notNull().default(1),
+  baselineMetric: numeric("baseline_metric", { precision: 14, scale: 4 }).notNull(),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}), // the versioned change payload (read by a consumer; never applied silently)
+  status: varchar("status", { length: 16 }).notNull().default("active"), // active | rolled_back
+  activatedBy: varchar("activated_by", { length: 120 }).notNull(),
+  activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("optimizer_activations_proposal_idx").on(table.proposalId),
+  index("optimizer_activations_status_idx").on(table.status),
+]);
+
+// MONITORED OUTCOMES vs baseline for an active improvement — the signal that decides rollback.
+export const optimizerMonitoring = pgTable("optimizer_monitoring", {
+  id: id(),
+  proposalId: varchar("proposal_id", { length: 120 }).notNull(),
+  activationId: varchar("activation_id", { length: 120 }).notNull(),
+  measuredMetric: numeric("measured_metric", { precision: 14, scale: 4 }).notNull(),
+  baselineMetric: numeric("baseline_metric", { precision: 14, scale: 4 }).notNull(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  degraded: boolean("degraded").notNull().default(false),
+  observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("optimizer_monitoring_proposal_idx").on(table.proposalId),
+]);
+
+// ROLLBACK EVENTS — a durable, audited record every time an active improvement is reverted (degraded or by founder).
+export const optimizerRollbackEvents = pgTable("optimizer_rollback_events", {
+  id: id(),
+  proposalId: varchar("proposal_id", { length: 120 }).notNull(),
+  activationId: varchar("activation_id", { length: 120 }),
+  reason: text("reason").notNull(),
+  measuredMetric: numeric("measured_metric", { precision: 14, scale: 4 }),
+  baselineMetric: numeric("baseline_metric", { precision: 14, scale: 4 }),
+  rolledBackBy: varchar("rolled_back_by", { length: 120 }).notNull(), // system | a founder
+  createdAt: createdAt(),
+}, (table) => [
+  index("optimizer_rollback_events_proposal_idx").on(table.proposalId),
+]);
+
 // ---- SELECTIVE REVISION (Phase 7): a composite artifact is a graph of versioned COMPONENTS. When only SOME
 // components fail QA we rerun EXACTLY the failed ones + their transitive dependents, PRESERVING every approved
 // component + its evidence. A revision cycle records the plan; component versions snapshot each state for rollback. ----

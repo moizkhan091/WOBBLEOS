@@ -21,7 +21,7 @@ const now = new Date("2026-07-13T12:00:00.000Z");
 function makeStore(seed: CommunicationRow[] = []) {
   const rows = new Map<string, CommunicationRow>(seed.map((r) => [r.id, r]));
   const store: CommunicationStore = {
-    insert: async (row) => { rows.set(row.id, row); },
+    insert: async (row) => { if (row.dedupeKey && [...rows.values()].some((r) => r.dedupeKey === row.dedupeKey)) return false; rows.set(row.id, row); return true; },
     getById: async (id) => rows.get(id) ?? null,
     getByDedupeKey: async (key) => [...rows.values()].find((r) => r.dedupeKey === key) ?? null,
     list: async (q) => [...rows.values()].filter((r) => (q.status ? r.status === q.status : true)).filter((r) => (q.channel ? r.channel === q.channel : true)).slice(0, q.limit),

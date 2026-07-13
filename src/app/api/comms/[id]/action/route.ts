@@ -20,12 +20,12 @@ const schema = z.discriminatedUnion("action", [
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const { id } = await ctx.params;
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 }); }
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
-  const auth = await requireFounder(request);
-  if (isAuthError(auth)) return auth;
   try {
     if (parsed.data.action === "send") {
       const result = await sendCommunication(id, { sentBy: auth }, { enforceAutonomy: true });
