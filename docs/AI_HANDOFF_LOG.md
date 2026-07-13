@@ -5035,3 +5035,35 @@ Also folds the cont.61 evidence-expansion reviewer's LOW (verdict SHIP; all 7 co
 normalizations, empty-set guards all green live): `founder_feedback` now counts ARCHIVE as dissatisfaction alongside
 REJECT (consistent with the taste engine's `decisionSign`, which scores both -1), so archiving bad output correctly
 lowers the approval rate. edit/regenerate/needs_review remain excluded (ambiguous). Optimizer proof still green.
+
+---
+
+## cont.63 — Continuous-research INGESTION ADAPTERS (registry, unblocked paths) + founder re-ingest — Claude (Opus 4.8)
+
+Program order #5. Source intake previously had only 2 adapters, BOTH hard-gated on Apify — a no-URL/inline source
+ingested nothing, and websites couldn't ingest without the paid key. Replaced the hardcoded if/else with a real
+INGESTION ADAPTER REGISTRY (`src/lib/source-intake/adapters.ts`), pure over an injectable `IngestionContext`:
+  1. `inline_text` — a manual note / pasted content / supplied transcript (metadata.content/rawText/transcript/…)
+     is chunked directly. FULLY UNBLOCKED (no network).
+  2. `rss_feed` — plain HTTP fetch + regex item extraction (title/description per item). UNBLOCKED.
+  3. `apify_social` — preferred for social handles WHEN a key is configured.
+  4. `apify_web` — preferred rich web scrape WHEN a key is configured.
+  5. `http_web` — the UNBLOCKED web fallback (native fetch + HTML strip). Any URL.
+`selectIngestionAdapter` picks the first applicable and SKIPS the apify adapters when no key (so a URL always falls
+through to http_web — never a dead end). Web + inline ingestion no longer HARD-depend on Apify; only rich social
+scrape does. `runSourceIntake` refactored to use the registry with injectable deps (deterministic proofs). The real
+production trigger is unchanged (`source.intake` job on approval → `runSourceIntakeJobHandler`).
+
+Founder control: `POST /api/sources/[id]/action {action:"reingest"}` runs the registry now (synchronous; a real
+founder-controlled collection trigger) + a "Re-ingest now" button in the source drawer showing the adapter + chunk
+count. (Part of program order #6 — a founder-facing continuous-research control + Playwright.)
+
+PROVEN: verify:ingestion (x2, 8 asserts) — inline_text attaches real chunks (no network); http_web fallback ingests
+a website with NO Apify (stripped plain text, scripts removed); rss_feed → one chunk per item; a URL-less+content-less
+source cleanly yields NO adapter (0 chunks, cancelled run — never a silent scrape failure). Added to verify:all-db
+(28) + the verify:coverage guard confirms it's wired. Unit: tests/ingestion-adapters.test.ts (12). Playwright:
+ingestion.spec (create inline source → approve → founder re-ingest → real chunks via inline_text, viewable in the
+chunks API).
+
+GATE: typecheck 0 · full unit suite 922/922 (116 files) · build 0 (clean .next) · DB proof x2 · no migration (reuses
+source_chunks/intake runs) · Playwright ingestion + source-deactivation + full unauth gate green. (Reviewer next.)

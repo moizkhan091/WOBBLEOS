@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("deactivate"), reason: z.string().trim().min(1).optional() }),
   z.object({ action: z.literal("reactivate") }),
+  z.object({ action: z.literal("reingest") }),
 ]);
 
 /**
@@ -27,6 +28,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
+    // Founder-triggered re-ingest: run the ingestion adapter registry now (inline/RSS/http work with no external
+    // key; social/rich web need Apify). A real founder control over the continuous-research collection path.
+    if (parsed.data.action === "reingest") {
+      const { runSourceIntake } = await import("@/lib/source-intake");
+      const r = await runSourceIntake(id);
+      if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 409 });
+      return NextResponse.json({ ok: true, chunks: r.chunks, adapter: r.adapter, note: r.note });
+    }
     const result = parsed.data.action === "deactivate"
       ? await deactivateSource(id, { deactivatedBy: auth, reason: parsed.data.reason })
       : await reactivateSource(id, { reactivatedBy: auth });

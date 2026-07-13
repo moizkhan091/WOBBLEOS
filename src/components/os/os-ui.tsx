@@ -1315,6 +1315,16 @@ function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<str
   const [msg, setMsg] = useState<string | null>(null);
   const status = String(source.status ?? "active");
   const approved = source.approvalStatus === "approved";
+  async function reingest() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/sources/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reingest" }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) { setMsg("Re-ingest failed: " + String(j.error ?? res.status)); return; }
+      setMsg(`Re-ingested via ${j.adapter ?? "adapter"} — ${j.chunks ?? 0} chunk(s).`);
+      chunks.reload(); // keep the drawer open so the founder sees the freshly-collected chunks
+    } finally { setBusy(false); }
+  }
   async function sourceAction(action: "deactivate" | "reactivate") {
     let reason: string | undefined;
     if (action === "deactivate") { const r = window.prompt("Deactivating stops NEW collection + propagation for this source. Existing evidence is preserved and this is reversible. Reason (optional):"); if (r === null) return; reason = r.trim() || undefined; }
@@ -1363,9 +1373,12 @@ function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<str
                 ? "This source is DEACTIVATED — no new collection or propagation. Existing evidence is preserved. Reactivate to resume."
                 : "Deactivating stops new collection + propagation. Existing evidence stays accessible; the action is reversible."}
             </div>
-            {status === "archived"
-              ? <button disabled={busy} onClick={() => sourceAction("reactivate")} style={primaryBtn}>{busy ? "Working…" : "Reactivate source"}</button>
-              : <button disabled={busy} onClick={() => sourceAction("deactivate")} style={{ ...primaryBtn, background: C.orange }}>{busy ? "Working…" : "Deactivate source"}</button>}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {status === "archived"
+                ? <button disabled={busy} onClick={() => sourceAction("reactivate")} style={primaryBtn}>{busy ? "Working…" : "Reactivate source"}</button>
+                : <button disabled={busy} onClick={() => sourceAction("deactivate")} style={{ ...primaryBtn, background: C.orange }}>{busy ? "Working…" : "Deactivate source"}</button>}
+              {status !== "archived" ? <button disabled={busy} onClick={reingest} style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>{busy ? "Working…" : "Re-ingest now"}</button> : null}
+            </div>
             {msg ? <div style={{ fontSize: 11.5, color: C.lime, marginTop: 8, lineHeight: 1.5 }}>{msg}</div> : null}
           </div>
         </div>

@@ -107,6 +107,17 @@ export async function cleanupE2E(): Promise<void> {
   // Communications-autonomy spec fixtures: the spec creates comms + grants per run scoped to `e2e_comm_%`.
   await db.delete(schema.communications).where(like(schema.communications.clientId, "e2e_comm_%"));
   await db.delete(schema.autonomyPolicies).where(and(inArray(schema.autonomyPolicies.category, ["notification.internal", "comms.external.prepare", "proposal.send.prepare", "comms.external.send", "proposal.send"]), like(schema.autonomyPolicies.clientId, "e2e_comm_%")));
+  // Ingestion spec fixtures (the spec creates an inline source per run under this ownerId prefix, then re-ingests).
+  const ingestSources = await db.select({ id: schema.sources.id }).from(schema.sources).where(like(schema.sources.ownerId, "e2e_ingest_%"));
+  if (ingestSources.length) {
+    const iids = ingestSources.map((s) => s.id);
+    await db.delete(schema.sourceChunks).where(inArray(schema.sourceChunks.sourceId, iids));
+    await db.delete(schema.sourceIntakeRuns).where(inArray(schema.sourceIntakeRuns.sourceId, iids));
+    await db.delete(schema.jobs).where(inArray(schema.jobs.idempotencyKey, iids.map((id) => `source.intake:${id}`)));
+    await db.delete(schema.approvals).where(inArray(schema.approvals.entityId, iids));
+    await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.entityId, iids));
+    await db.delete(schema.sources).where(inArray(schema.sources.id, iids));
+  }
   // Source-deactivation spec fixtures (the spec creates its own source per run under this ownerId prefix).
   const deactSources = await db.select({ id: schema.sources.id }).from(schema.sources).where(like(schema.sources.ownerId, "e2e_srcdeact_%"));
   if (deactSources.length) {
