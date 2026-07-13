@@ -5216,3 +5216,28 @@ actually received (fixes MEDIUM) and never counts void money (fixes HIGH). Reven
 has ever been received. Proof rewritten (x2) to prove BOTH: a payment against a cancelled invoice is excluded, and an
 installment counts only its in-period payment (60k), not the cumulative 100k. Unit: 5 cases (payments ledger,
 void-exclusion incl. void-only→null, installment, client scope, headcount). typecheck 0.
+
+---
+
+## cont.68 — Intelligence Cockpit (Visual Intelligence Cockpit) — Claude (Opus 4.8)
+
+Program order #11. "Visual Intelligence Cockpit" — built as a READ-ONLY founder aggregation over the OS's real
+operational systems (the vision-model analysis path is credential-blocked/paused, so this is the unblocked,
+genuinely-valuable interpretation). `src/lib/cockpit/index.ts` `getIntelligenceCockpit` assembles, in one call:
+- REVENUE (measured actual from the fixed finance provider — verified-financial or honest null)
+- SELF-OPTIMIZER proposals (proposed / active / total)
+- earned-AUTONOMY grants in force
+- what needs ATTENTION now (open escalations + pending approvals)
+- MEDIA pipeline (total + byStatus)
+Every panel reads an existing store through an injectable reader and reports real counts / honest zeros/nulls — it
+FABRICATES NOTHING (an empty store → 0/null, never invented). Founder API `GET /api/cockpit` (founder-gated); a new
+`cockpit` OS module (Intelligence Cockpit, top of SYSTEM) rendering the KPIs with evidence sublabels.
+
+PROVEN: verify:cockpit (x2, 7 asserts) — the injected-reader aggregation is EXACT (revenue/optimizer/autonomy/
+attention/media shapes), and a REAL baseline→seed→delta shows a queued media job / active grant / open escalation
+each increment the cockpit by exactly 1, with revenue reported honestly. → verify:all-db (33). Unit:
+tests/cockpit.test.ts (2, incl. honest-zeros-when-empty). Playwright: cockpit.spec (coherent real aggregation:
+totals consistent, non-negative) + cockpit unauth 401 gate.
+
+GATE: typecheck 0 · full unit suite 943/943 (123 files) · build 0 (clean .next) · DB proof x2 · no migration
+(read-only aggregation) · Playwright cockpit + full unauth gate green. (Reviewer next.)

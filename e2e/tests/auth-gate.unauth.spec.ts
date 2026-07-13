@@ -49,6 +49,10 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("the Intelligence Cockpit is gated at 401 (an unauthorized user cannot read the aggregated OS state)", async ({ request }) => {
+    expect((await request.get("/api/cockpit")).status()).toBe(401);
+  });
+
   test("Media Studio is gated at 401 (an unauthorized user cannot inspect, submit, or control a media job)", async ({ request }) => {
     expect((await request.get("/api/media")).status()).toBe(401);
     expect((await request.post("/api/media", { data: { kind: "image", prompt: "x" } })).status()).toBe(401);

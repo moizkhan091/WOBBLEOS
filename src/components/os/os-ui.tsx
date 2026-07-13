@@ -5385,7 +5385,33 @@ function OptimizerPage() {
   );
 }
 
+function CockpitPage() {
+  const c = useApi<{ cockpit: { generatedAt: string; revenue: { revenueCents: number | null; evidenceTier: string | null; periodMonths: number }; optimizer: { proposed: number; active: number; total: number }; autonomy: { activeGrants: number }; attention: { openEscalations: number; pendingApprovals: number; total: number }; media: { total: number; byStatus: Record<string, number> } } }>("/api/cockpit");
+  const guard = offlineIf(c);
+  if (guard) return guard;
+  const d = c.data?.cockpit;
+  const rev = d?.revenue.revenueCents;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+        <Kpi label={`Revenue · ${d?.revenue.periodMonths ?? 1}mo`} value={rev !== null && rev !== undefined ? `$${(rev / 100).toLocaleString()}` : "—"} icon="DollarSign" color={C.lime} sub={d?.revenue.evidenceTier ?? "no financial actual yet"} />
+        <Kpi label="Needs attention" value={String(d?.attention.total ?? 0)} icon="AlertTriangle" color={(d?.attention.total ?? 0) > 0 ? C.orange : C.lime} sub={`${d?.attention.openEscalations ?? 0} escalations · ${d?.attention.pendingApprovals ?? 0} approvals`} />
+        <Kpi label="Optimizer proposals" value={String(d?.optimizer.proposed ?? 0)} icon="Gauge" color={C.blue} sub={`${d?.optimizer.active ?? 0} active · ${d?.optimizer.total ?? 0} total`} />
+        <Kpi label="Autonomy grants" value={String(d?.autonomy.activeGrants ?? 0)} icon="ShieldCheck" color={C.blue} sub="in force" />
+        <Kpi label="Media jobs" value={String(d?.media.total ?? 0)} icon="Clapperboard" color={C.gray} sub={Object.entries(d?.media.byStatus ?? {}).map(([k, v]) => `${v} ${k}`).join(" · ") || "none queued"} />
+      </div>
+      <Panel>
+        <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.6 }}>
+          The Intelligence Cockpit is a READ-ONLY aggregation of the OS&apos;s real systems — revenue is a measured actual from paid invoices, and every count comes from a live store. Empty stores show honest zeros/nulls; nothing here is fabricated.
+        </div>
+        <div style={{ fontSize: 10.5, color: faint, marginTop: 8 }}>Generated {fmtTime(d?.generatedAt)}</div>
+      </Panel>
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
+  cockpit: CockpitPage,
   comms: CommsPage,
   optimizer: OptimizerPage,
   departments: DepartmentsPage,

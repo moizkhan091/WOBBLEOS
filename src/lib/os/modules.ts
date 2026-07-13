@@ -77,6 +77,7 @@ export const MODULES: Record<string, ModuleDef> = {
   taste: { id: "taste", label: "Taste Learning", title: "Taste + Feedback Learning", icon: "HeartHandshake", status: "wired", chunk: 56, api: "/api/taste/profiles,/api/taste/feedback", tagline: "How approvals, rejections, edits, founder preferences and client/project taste become usable learning without overwriting WOBBLE brand truth." },
   costs: { id: "costs", label: "Costs", title: "Costs", icon: "Receipt", status: "wired", chunk: 5, api: "/api/costs", tagline: "Spend across every model, render and service - against budget, in real time." },
   audit: { id: "audit", label: "Audit Log", title: "Audit Log", icon: "ScrollText", status: "wired", chunk: 3, api: "/api/audit", tagline: "Immutable record of every action, approval and system event with founder attribution." },
+  cockpit: { id: "cockpit", label: "Intelligence Cockpit", title: "Intelligence Cockpit", icon: "Gauge", status: "wired", api: "/api/cockpit", tagline: "One glance at the whole OS: measured revenue, the self-optimizer's open proposals, earned-autonomy grants in force, what needs your attention right now, and the media pipeline. A read-only aggregation of real systems — honest zeros/nulls, never fabricated." },
   optimizer: { id: "optimizer", label: "Self-Optimizer", title: "Controlled Dream / Self-Optimizer", icon: "Gauge", status: "wired", api: "/api/optimizer", tagline: "The OS studies its OWN performance — QA failures, revision load, dead letters, provider cost — and PROPOSES evidence-backed improvements. Nothing changes silently: a proposal is only approvable when its historical EVIDENCE is strong (enough samples, a clearly-below-threshold problem), needs your explicit approval, is monitored vs a baseline, and rolls back if it degrades. The improvement target shown is an estimate, not a backtest." },
   backup: { id: "backup", label: "Backup & Restore", title: "Backup & Restore", icon: "HardDrive", status: "wired", api: "/api/backup", tagline: "Point-in-time snapshots — export a full JSON backup of every business table on demand. Company assets are never auto-deleted." },
   settings: { id: "settings", label: "Settings", title: "Settings", icon: "Settings", status: "wired", api: "/api/settings", tagline: "Operational config for the whole OS — which integration keys are connected, the model-role map, and every provider's status." },
@@ -89,7 +90,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
   { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "comms", "skills", "workers", "handoff"] },
-  { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },
+  { label: "SYSTEM", items: ["cockpit", "memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },
 ];
 
 export const DEFAULT_MODULE = "command";
