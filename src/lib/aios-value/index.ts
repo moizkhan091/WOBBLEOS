@@ -51,23 +51,35 @@ export function emptyOrgMetrics(founders: string[] = []): AiosOrgMetrics {
   };
 }
 
+/** The canonical set of REVERSED/VOID invoice statuses whose money must NOT count as collected revenue — mirrors
+ *  `revenueSummary` in domain/finance.ts (the single source of truth for what "collected revenue" means). */
+const VOID_INVOICE_STATUSES = new Set(["cancelled", "refunded", "written_off", "draft", "needs_approval"]);
+
 /**
- * REAL org metrics from finance — REVENUE is now a measured actual (not honest-null), derived from PAID invoices.
- * Revenue = the sum of `amountPaidCents` for invoices paid within the period (1 month = MRR), tier `verified-financial`.
- * If NO invoice has ever been paid, revenue stays null (we have no financial actual yet — never a fabricated 0).
- * Headcount = the current team (the founders) so revenue/employee is computable; automation cost + founder rate stay
- * honestly null (HR/config not wired — a documented follow-up). `listInvoices` is injectable for deterministic proofs.
+ * REAL org metrics from finance — REVENUE is a measured actual, computed from the PAYMENTS LEDGER (not the invoice
+ * cache) so each payment is attributed to the period it was ACTUALLY received (fixes installment misattribution),
+ * and only payments against NON-VOID invoices count (a cancelled/refunded/written-off invoice's money is NEVER
+ * reported as revenue — consistent with domain/finance.ts). Revenue = sum of payment amounts received in the period
+ * (1 month = MRR), tier `verified-financial`. If NO non-void payment has EVER been received, revenue stays null
+ * (no financial actual yet — never a fabricated 0). Headcount = the founder team so revenue/employee is computable;
+ * automation cost + founder rate stay honestly null (HR/config not wired). `listInvoices`/`listPayments` injectable.
  */
-export function makeFinanceOrgMetrics(deps: { listInvoices?: (q: { limit?: number }) => Promise<Array<{ companyId: string | null; amountPaidCents: number; paidAt: Date | null }>>; now?: Date; periodMonths?: number; founders?: string[] } = {}): OrgMetricsProvider {
+export function makeFinanceOrgMetrics(deps: { listInvoices?: (q: { limit?: number }) => Promise<Array<{ id: string; companyId: string | null; status: string }>>; listPayments?: () => Promise<Array<{ invoiceId: string; amountCents: number; createdAt: Date }>>; now?: Date; periodMonths?: number; founders?: string[] } = {}): OrgMetricsProvider {
   return async (scope: AiosValueScope): Promise<AiosOrgMetrics> => {
-    const list = deps.listInvoices ?? (async (q) => (await import("@/lib/finance")).listInvoices(q));
-    const invoices = await list({ limit: 2000 });
+    const listInvoices = deps.listInvoices ?? (async (q) => (await import("@/lib/finance")).listInvoices(q));
+    const listPayments = deps.listPayments ?? (async () => {
+      const { payments } = await import("@/db/schema");
+      return (await getDb().select({ invoiceId: payments.invoiceId, amountCents: payments.amountCents, createdAt: payments.createdAt }).from(payments)) as Array<{ invoiceId: string; amountCents: number; createdAt: Date }>;
+    });
+    const [invoices, payments] = await Promise.all([listInvoices({ limit: 5000 }), listPayments()]);
     const periodMonths = deps.periodMonths ?? 1;
     const since = new Date((deps.now ?? new Date()).getTime() - periodMonths * 30 * 86_400_000);
-    const scoped = invoices.filter((inv) => scope.type !== "client" || inv.companyId === scope.id);
-    const everPaid = scoped.some((inv) => inv.paidAt !== null);
+    // In-scope, NON-VOID invoices only (a payment against a void invoice is not collected revenue).
+    const eligible = new Map(invoices.filter((inv) => !VOID_INVOICE_STATUSES.has(inv.status) && (scope.type !== "client" || inv.companyId === scope.id)).map((inv) => [inv.id, inv]));
+    const eligiblePayments = payments.filter((p) => eligible.has(p.invoiceId));
+    const everPaid = eligiblePayments.length > 0;
     const revenueCents = everPaid
-      ? scoped.filter((inv) => inv.paidAt !== null && inv.paidAt.getTime() >= since.getTime()).reduce((s, inv) => s + Math.max(0, inv.amountPaidCents), 0)
+      ? eligiblePayments.filter((p) => p.createdAt.getTime() >= since.getTime()).reduce((s, p) => s + Math.max(0, p.amountCents), 0)
       : null;
     const founders = deps.founders ?? [];
     return {

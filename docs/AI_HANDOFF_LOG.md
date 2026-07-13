@@ -5201,3 +5201,18 @@ mid-batch (also hit backup earlier). Re-applied + verified green before commit; 
 just-edited files and re-check right before committing.
 
 GATE: typecheck 0 · full unit suite 940/940 (120 files) · build 0 (clean .next) · DB proof x2 · no migration.
+
+## cont.67-fix — AIOS revenue reviewer HIGH + MEDIUM (DO-NOT-SHIP → fixed) — Claude (Opus 4.8)
+
+The cont.67 reviewer returned DO-NOT-SHIP: the revenue provider keyed only on `paidAt`+in-period over the invoice
+cache, so (HIGH) it counted CANCELLED/refunded/written-off money as `verified-financial` revenue, and (MEDIUM) it
+attributed the whole cumulative `amountPaidCents` to the last-payment period (installments overstated MRR). Both
+contradicted the codebase's own canonical revenue rule (domain/finance.ts revenueSummary).
+
+FIXED with the reviewer's recommended approach — compute from the PAYMENTS LEDGER: revenue = sum of `payments.amountCents`
+RECEIVED IN PERIOD (by `payments.createdAt`), joined to in-scope, NON-VOID invoices (excludes cancelled/refunded/
+written_off/draft/needs_approval, mirroring domain/finance.ts). This attributes each payment to the period it was
+actually received (fixes MEDIUM) and never counts void money (fixes HIGH). Revenue stays null when no non-void payment
+has ever been received. Proof rewritten (x2) to prove BOTH: a payment against a cancelled invoice is excluded, and an
+installment counts only its in-period payment (60k), not the cumulative 100k. Unit: 5 cases (payments ledger,
+void-exclusion incl. void-only→null, installment, client scope, headcount). typecheck 0.
