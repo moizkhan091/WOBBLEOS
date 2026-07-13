@@ -4282,3 +4282,20 @@ GATE: typecheck 0 · 842 tests / 103 files · build 0 · no schema/migration.
 
 NEXT: durable autonomy policies + enforcement wiring · Phase 7 selective revision · Phase 8 Dream/Optimizer ·
 Phase 9 Free Audit completion · Phase 10 Media Studio · Phase 11 release gate. Plus Phase 5 UI + Context OS.
+
+## cont.35 — Phase 7: selective artifact revision planner (built + proven)
+
+Mandate: when only some components fail, preserve every approved component + evidence, rerun ONLY the failed
+components (+ their transitive dependents for consistency), invoke ONLY those specialists, run local QA +
+a final global consistency QA, version + rollback. Built `src/lib/domain/selective-revision.ts` (pure):
+`planSelectiveRevision(components, failedIds)` → { rerun (failed + transitive dependents), preserved (approved,
+untouched), specialists (only the reran ones), requiresLocalQa, requiresGlobalConsistencyQa, nextVersions }.
+`applyRevision` bumps ONLY reran components to their next version (preserved keep version + evidence).
+Checkpoint-resume alone is NOT selective revision — this preserves approved work + reruns the exact failed set.
+Proven: 5 unit tests (2/5/8 fail → rerun exactly those + preserve the 7; dependent propagation; nothing-failed
+no-op; local+global QA required; applyRevision version bump only on reran).
+
+GATE: typecheck 0 · 847 tests / 104 files · build 0 · no schema/migration.
+
+NEXT: Phase 8 Dream/Optimizer (governed) · Phase 9 Free Audit completion · Phase 10 Media Studio · Phase 11
+release gate. Plus Phase 5 UI + Context OS + durable autonomy/revision persistence.
