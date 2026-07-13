@@ -75,3 +75,33 @@ Point your domain at the box, then proxy `443 → 127.0.0.1:3000`. Ensure webhoo
 - **Secrets**: never commit `.env`; it's gitignored.
 - **Scaling**: run more `worker` processes to increase job throughput (the queue uses `FOR UPDATE SKIP LOCKED`, so workers don't collide).
 - **Node**: pin Node 20+ (there's no `engines` gate; use nvm/`.nvmrc` if you want to enforce it).
+
+---
+
+## Isolated Docker deployment (app + Postgres on one VPS) — added cont.69
+
+The repo now ships a self-contained isolated stack. Everything provider-independent is DONE; the items marked
+BLOCKED-EXTERNAL need the founder/host to supply a secret/credential/domain.
+
+**Artifacts:** `Dockerfile` (multi-stage, Next.js `output: "standalone"`), `docker-compose.prod.yml` (app + Postgres,
+private network, healthchecks, a `migrate` step that applies drizzle migrations from scratch before `app` starts),
+`.env.production.example` (the secrets template), `.dockerignore`, and `GET /api/health` (public liveness/readiness
+— 200 healthy / 503 when the DB is unreachable; exposes only up/down, never business data).
+
+**Runbook (on the VPS):**
+1. `cp .env.production.example .env.production` and fill the REAL values (see the BLOCKED-EXTERNAL markers):
+   - `POSTGRES_PASSWORD`, `DATABASE_URL` (points at the `db` service), `SESSION_SECRET` (`openssl rand -hex 32`),
+     `SHARED_LOGIN_PASSWORD_HASH_B64` (base64 of a bcrypt hash of the shared login password).
+   - Optional providers: `OPENROUTER_API_KEY` (text — present in dev), `FAL_KEY` (media; absent → Media Studio stays
+     honestly `blocked`), `APIFY_API_KEY` (rich scraping; absent → ingestion falls back to the unblocked http/inline
+     adapters).
+2. `docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`
+   → `db` starts, `migrate` applies all migrations and exits, then `app` starts and its healthcheck goes green.
+3. Put a TLS-terminating reverse proxy (Caddy/nginx) in front of `127.0.0.1:3000` for your domain (BLOCKED-EXTERNAL:
+   domain + DNS + TLS cert). The app binds to loopback; only the proxy is public. The DB has NO published port
+   (reachable only from `app` on the private compose network).
+4. Verify: `curl -fsS http://127.0.0.1:3000/api/health` → `{"status":"healthy","db":"up"}`.
+
+**Validated here:** `docker compose -f docker-compose.prod.yml config` parses cleanly; `GET /api/health` readiness is
+proven (verify:health x2 + unit + a public-200 e2e). **Still BLOCKED-EXTERNAL (only these):** SSH access to the host,
+the production secrets above, and the domain/DNS/TLS. With those supplied, the runbook above completes the deploy.

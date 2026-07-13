@@ -25,17 +25,18 @@ async function main() {
 
   try {
     // Injected-reader shape check (pure) — the aggregation math is exact + fabrication-free.
+    const nowD = new Date("2026-07-14T00:00:00.000Z");
     const pure = await getIntelligenceCockpit({
       orgMetrics: async () => ({ revenueCents: 150_000, revenueEvidenceTier: "verified-financial", revenuePeriodMonths: 1 }),
       listProposals: async () => [{ status: "proposed" }, { status: "active" }, { status: "rejected" }],
-      listActiveGrants: async () => [{}, {}],
-      listOpenEscalations: async () => [{}],
-      listPendingApprovals: async () => [{}, {}, {}],
+      listActiveGrants: async () => [{ effectiveFrom: new Date(nowD.getTime() - 1000), expiresAt: null }, { effectiveFrom: new Date(nowD.getTime() - 1000), expiresAt: new Date(nowD.getTime() - 1) }], // 2 active, 1 expired
+      countOpenEscalations: async () => 1,
+      countPendingApprovals: async () => 3,
       listMediaJobs: async () => [{ status: "queued" }, { status: "blocked" }, { status: "queued" }],
-      now: () => "2026-07-14T00:00:00.000Z",
+      now: () => nowD,
     });
     assert(pure.revenue.revenueCents === 150_000 && pure.optimizer.proposed === 1 && pure.optimizer.active === 1 && pure.optimizer.total === 3, "aggregation shape: revenue + optimizer proposed/active/total are exact");
-    assert(pure.autonomy.activeGrants === 2 && pure.attention.openEscalations === 1 && pure.attention.pendingApprovals === 3 && pure.attention.total === 4, "aggregation shape: autonomy grants + attention (escalations + approvals) are exact");
+    assert(pure.autonomy.activeGrants === 1 && pure.attention.openEscalations === 1 && pure.attention.pendingApprovals === 3 && pure.attention.total === 4, "aggregation shape: only IN-EFFECT grants counted (1 of 2; the expired one excluded) + exact escalation/approval counts");
     assert(pure.media.total === 3 && pure.media.byStatus.queued === 2 && pure.media.byStatus.blocked === 1, "aggregation shape: media byStatus counts are exact (never fabricated)");
 
     // ---- REAL DB: baseline → seed → delta ----

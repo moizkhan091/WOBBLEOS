@@ -53,6 +53,15 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/cockpit")).status()).toBe(401);
   });
 
+  test("the health probe is PUBLIC (200 healthy) — an orchestrator must reach it without a session, and it leaks no data", async ({ request }) => {
+    const res = await request.get("/api/health");
+    expect(res.status()).toBe(200); // reachable without auth (a load balancer / docker healthcheck polls it)
+    const j = (await res.json()) as { status: string; db: string; revenue?: unknown; cockpit?: unknown };
+    expect(j.status).toBe("healthy");
+    expect(j.db).toBe("up");
+    expect(j.revenue).toBeUndefined(); // exposes only up/down — never business data
+  });
+
   test("Media Studio is gated at 401 (an unauthorized user cannot inspect, submit, or control a media job)", async ({ request }) => {
     expect((await request.get("/api/media")).status()).toBe(401);
     expect((await request.post("/api/media", { data: { kind: "image", prompt: "x" } })).status()).toBe(401);

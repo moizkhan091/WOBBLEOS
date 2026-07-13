@@ -5241,3 +5241,36 @@ totals consistent, non-negative) + cockpit unauth 401 gate.
 
 GATE: typecheck 0 · full unit suite 943/943 (123 files) · build 0 (clean .next) · DB proof x2 · no migration
 (read-only aggregation) · Playwright cockpit + full unauth gate green. (Reviewer next.)
+
+---
+
+## cont.69 — Isolated VPS deploy prep (#14) + release-gate (#12) + health endpoint + cockpit reviewer MEDIUMs — Claude (Opus 4.8)
+
+Program order #14 (isolated VPS preparation) — everything provider-independent is DONE; only SSH/secrets/domain are
+BLOCKED-EXTERNAL:
+- `Dockerfile` (multi-stage, Next `output:"standalone"` → small runtime image, non-root, HEALTHCHECK on /api/health).
+- `docker-compose.prod.yml` (app + Postgres on a PRIVATE network — DB has no published port; a `migrate` step applies
+  drizzle migrations from scratch before `app` starts; healthchecks; loopback-bound app for a TLS reverse proxy).
+  Validated: `docker compose config` parses cleanly.
+- `.env.production.example` (secrets template; BLOCKED-EXTERNAL items marked) + `.dockerignore`.
+- NEW `GET /api/health` — PUBLIC liveness/readiness (a real `select 1`): 200 healthy / 503 when the DB is down;
+  exposes only up/down, never business data. `src/lib/health` is the injectable core.
+- `docs/VPS_DEPLOYMENT.md` runbook appended (cp env → compose up → reverse proxy → curl /api/health).
+
+Program order #12 (release-gate hardening): verify:health added to verify:all-db (34 proofs); verify:coverage guard
+confirms every DB proof is wired; `release:full` = coverage+typecheck+test+build + verify:all-db.
+
+Cockpit reviewer (cont.68) MEDIUMs (verdict SHIP) FIXED: (1) the cockpit now uses EXACT counts — `countPendingApprovals`
+(SQL COUNT; the old list() silently capped at 200) + `escalationStatusCounts` — not a capped list length. (2)
+`autonomy.activeGrants` now counts only grants IN EFFECT (effectiveFrom ≤ now < expiresAt), mirroring
+resolveActionAutonomy — a lapsed-but-unswept `active` grant no longer inflates "in force." Proof + unit updated.
+
+PROVEN: verify:health (x2) — real DB → healthy+latency, injected fault → degraded/down (never fakes healthy). Unit:
+tests/health.test.ts (2). Playwright: /api/health is PUBLIC (200, no data leak) + the cockpit gates. verify:cockpit
+(x2) updated for the exact-count + in-effect-grant fixes.
+
+GATE: typecheck 0 · full unit suite 945/945 (125 files) · build 0 (clean .next, standalone server.js produced) ·
+DB proof x2 (health + cockpit) · no migration · Playwright health-public + cockpit + full unauth gate green.
+
+BLOCKED-EXTERNAL (only these remain for #14/#15): SSH to the host, the production secrets, the domain/DNS/TLS. With
+those supplied, the documented runbook completes the isolated deploy.

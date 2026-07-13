@@ -1,0 +1,56 @@
+# WOBBLE OS — isolated production stack (app + Postgres) for a single VPS.
+# Prep:  cp .env.production.example .env.production   # then fill the real secrets (see docs/VPS_DEPLOYMENT.md)
+# Up:    docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# The `migrate` service applies drizzle migrations from scratch, then exits; `app` starts only after it succeeds.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wobble}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-wobble_os}
+    volumes:
+      - wobble_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wobble} -d ${POSTGRES_DB:-wobble_os}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No published port — the DB is reachable ONLY from the app on the private compose network (isolation).
+
+  migrate:
+    build: .
+    command: ["npx", "drizzle-kit", "migrate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env.production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3000:3000" # bind to loopback; put a TLS-terminating reverse proxy (Caddy/nginx) in front
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  wobble_pgdata:

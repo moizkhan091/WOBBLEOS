@@ -20,40 +20,48 @@ export interface IntelligenceCockpit {
 export interface CockpitReaders {
   orgMetrics?: () => Promise<{ revenueCents: number | null; revenueEvidenceTier: string | null; revenuePeriodMonths: number }>;
   listProposals?: () => Promise<Array<{ status: string }>>;
-  listActiveGrants?: () => Promise<unknown[]>;
-  listOpenEscalations?: () => Promise<unknown[]>;
-  listPendingApprovals?: () => Promise<unknown[]>;
+  /** Active grants WITH their effective window — the cockpit counts only those IN EFFECT now (not lapsed). */
+  listActiveGrants?: () => Promise<Array<{ effectiveFrom: Date; expiresAt: Date | null }>>;
+  /** EXACT counts (SQL COUNT), not a capped list length — so a heads-up count never silently under-reports at scale. */
+  countOpenEscalations?: () => Promise<number>;
+  countPendingApprovals?: () => Promise<number>;
   listMediaJobs?: () => Promise<Array<{ status: string }>>;
-  now?: () => string;
+  now?: () => Date;
 }
 
 const count = (rows: Array<{ status: string }>, status: string) => rows.filter((r) => r.status === status).length;
 
 /** Assemble the cockpit. Every reader defaults to the real production store; inject deterministic readers in proofs. */
 export async function getIntelligenceCockpit(readers: CockpitReaders = {}): Promise<IntelligenceCockpit> {
+  const nowFn = readers.now ?? (() => new Date());
+  const now = nowFn();
   const orgMetrics = readers.orgMetrics ?? (async () => {
     const { makeFinanceOrgMetrics } = await import("@/lib/aios-value");
     return makeFinanceOrgMetrics({ founders: [...AUTH_FOUNDERS] })({ type: "company", id: null });
   });
   const listProposals = readers.listProposals ?? (async () => (await import("@/lib/optimizer")).listProposals({ limit: 500 }) as Promise<Array<{ status: string }>>);
   const listActiveGrants = readers.listActiveGrants ?? (async () => (await import("@/lib/autonomy")).listAutonomyPolicies({ status: "active" }));
-  const listOpenEscalations = readers.listOpenEscalations ?? (async () => (await import("@/lib/departments/escalation")).listEscalations({ status: "open", limit: 500 }));
-  const listPendingApprovals = readers.listPendingApprovals ?? (async () => (await import("@/lib/approvals")).listApprovals({ status: "pending", limit: 500 }));
+  const countOpenEscalations = readers.countOpenEscalations ?? (async () => ((await (await import("@/lib/departments/escalation")).escalationStatusCounts())["open"]) ?? 0);
+  const countPendingApprovals = readers.countPendingApprovals ?? (async () => (await import("@/lib/approvals")).countPendingApprovals());
   const listMediaJobs = readers.listMediaJobs ?? (async () => (await import("@/lib/media")).listMediaJobs({ limit: 500 }) as Promise<Array<{ status: string }>>);
 
-  const [org, proposals, grants, escalations, approvals, media] = await Promise.all([
-    orgMetrics(), listProposals(), listActiveGrants(), listOpenEscalations(), listPendingApprovals(), listMediaJobs(),
+  const [org, proposals, grants, openEscalations, pendingApprovals, media] = await Promise.all([
+    orgMetrics(), listProposals(), listActiveGrants(), countOpenEscalations(), countPendingApprovals(), listMediaJobs(),
   ]);
+
+  // Count only grants IN EFFECT now (effectiveFrom ≤ now < expiresAt) — a lapsed but not-yet-swept `active` grant
+  // is NOT in force, so it must not inflate the count (mirrors resolveActionAutonomy's in-effect rule).
+  const activeGrants = grants.filter((g) => g.effectiveFrom.getTime() <= now.getTime() && (g.expiresAt === null || g.expiresAt.getTime() > now.getTime())).length;
 
   const byStatus: CockpitCounts = {};
   for (const j of media) byStatus[j.status] = (byStatus[j.status] ?? 0) + 1;
 
   return {
-    generatedAt: readers.now ? readers.now() : new Date().toISOString(),
+    generatedAt: now.toISOString(),
     revenue: { revenueCents: org.revenueCents, evidenceTier: org.revenueEvidenceTier, periodMonths: org.revenuePeriodMonths },
     optimizer: { proposed: count(proposals, "proposed"), active: count(proposals, "active"), total: proposals.length },
-    autonomy: { activeGrants: grants.length },
-    attention: { openEscalations: escalations.length, pendingApprovals: approvals.length, total: escalations.length + approvals.length },
+    autonomy: { activeGrants },
+    attention: { openEscalations, pendingApprovals, total: openEscalations + pendingApprovals },
     media: { total: media.length, byStatus },
   };
 }
