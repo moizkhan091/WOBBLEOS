@@ -40,4 +40,28 @@ describe("runDreamer", () => {
     expect(s.createdByAgent).toBe("dreamer");
     expect(s.evidenceInsightIds).toEqual(["in_1"]); // ghost dropped
   });
+
+  it("CONTEXT OS: injects the scope's approved trusted-context block as a distinct system message (separate from the untrusted EVIDENCE)", async () => {
+    const insights = [{ id: "in_1", insightType: "competitor_pattern", scope: "wobble", clientId: null, approvalStatus: "approved", freshnessStatus: "current", confidence: "0.8", impactScore: 80, title: "t", summary: "s", recommendation: "r" }];
+    const items = [{ id: "it_1", itemType: "competitor_reel", scope: "wobble", approvalStatus: "approved", title: "reel", summary: "480k" }];
+    const { store, approvalStore } = makeDeps(insights, items);
+    let seen: string[] = [];
+    await runDreamer({ scope: "wobble" }, {
+      store, approvalStore, recordAudit: async () => {},
+      retrieveTrustedContext: async () => "APPROVED WOBBLE CONTEXT: - We never do discounting",
+      runProvider: async (i) => { seen = i.messages.map((m) => String(m.content)); return { text: JSON.stringify({ suggestions: [] }), run: { id: "r" } }; },
+    });
+    expect(seen.some((m) => m.includes("APPROVED WOBBLE CONTEXT"))).toBe(true);
+    // trusted facts and the untrusted EVIDENCE fence are NOT in the same message (no conflation)
+    expect(seen.some((m) => m.includes("APPROVED WOBBLE CONTEXT") && m.includes("EVIDENCE"))).toBe(false);
+  });
+
+  it("CONTEXT OS: no retrieval seam → no trusted-context block (default off)", async () => {
+    const insights = [{ id: "in_1", insightType: "competitor_pattern", scope: "wobble", clientId: null, approvalStatus: "approved", freshnessStatus: "current", confidence: "0.8", impactScore: 80, title: "t", summary: "s", recommendation: "r" }];
+    const items = [{ id: "it_1", itemType: "competitor_reel", scope: "wobble", approvalStatus: "approved", title: "reel", summary: "480k" }];
+    const { store, approvalStore } = makeDeps(insights, items);
+    let seen: string[] = [];
+    await runDreamer({}, { store, approvalStore, recordAudit: async () => {}, runProvider: async (i) => { seen = i.messages.map((m) => String(m.content)); return { text: JSON.stringify({ suggestions: [] }), run: { id: "r" } }; } });
+    expect(seen.some((m) => m.includes("APPROVED"))).toBe(false);
+  });
 });

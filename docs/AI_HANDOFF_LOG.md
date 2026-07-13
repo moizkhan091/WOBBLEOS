@@ -4628,4 +4628,20 @@ fence) when the seam is wired, and absent by default. Context OS internals prove
 STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst generators). Proposal + Daily-Brief
 generators still pending. (The audit-generator expansion 59e62d2 was independently reviewed → SHIP.)
 
-GATE: typecheck 0 · analyst unit tests 16/16 · (build + full suite in this batch).
+GATE: typecheck 0 · analyst-file unit tests 5/5 (analyst+intelligence combined 16) · (build + full suite in this batch).
+
+---
+
+## cont.49 — Context OS retrieval expanded to the DREAMER generator — Claude (Opus 4.8)
+
+Fourth generator wired to Context OS (content + paid-audit + research-analyst + dreamer). `runDreamer`
+(src/lib/intelligence/dreamer.ts) now accepts opt-in `retrieveTrustedContext`; the scope's APPROVED block is
+injected as a DISTINCT system message, kept SEPARATE from the untrusted EVIDENCE fence. Production wiring
+(`runDreamerJobHandler`) retrieves the client scope when client-scoped, else WOBBLE company scope, telemetered.
+Proven by unit tests (block present + separation from EVIDENCE / absent by default). Also fixed a doc imprecision
+in cont.48 (analyst-file tests are 5, not 16). The research-analyst expansion (553ca76) was reviewed → SHIP.
+
+STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst + dreamer). Proposal + Daily-Brief
+generators still pending.
+
+GATE: typecheck 0 - 881 tests/112 files - build 0.
