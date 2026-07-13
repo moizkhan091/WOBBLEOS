@@ -51,6 +51,35 @@ export function emptyOrgMetrics(founders: string[] = []): AiosOrgMetrics {
   };
 }
 
+/**
+ * REAL org metrics from finance — REVENUE is now a measured actual (not honest-null), derived from PAID invoices.
+ * Revenue = the sum of `amountPaidCents` for invoices paid within the period (1 month = MRR), tier `verified-financial`.
+ * If NO invoice has ever been paid, revenue stays null (we have no financial actual yet — never a fabricated 0).
+ * Headcount = the current team (the founders) so revenue/employee is computable; automation cost + founder rate stay
+ * honestly null (HR/config not wired — a documented follow-up). `listInvoices` is injectable for deterministic proofs.
+ */
+export function makeFinanceOrgMetrics(deps: { listInvoices?: (q: { limit?: number }) => Promise<Array<{ companyId: string | null; amountPaidCents: number; paidAt: Date | null }>>; now?: Date; periodMonths?: number; founders?: string[] } = {}): OrgMetricsProvider {
+  return async (scope: AiosValueScope): Promise<AiosOrgMetrics> => {
+    const list = deps.listInvoices ?? (async (q) => (await import("@/lib/finance")).listInvoices(q));
+    const invoices = await list({ limit: 2000 });
+    const periodMonths = deps.periodMonths ?? 1;
+    const since = new Date((deps.now ?? new Date()).getTime() - periodMonths * 30 * 86_400_000);
+    const scoped = invoices.filter((inv) => scope.type !== "client" || inv.companyId === scope.id);
+    const everPaid = scoped.some((inv) => inv.paidAt !== null);
+    const revenueCents = everPaid
+      ? scoped.filter((inv) => inv.paidAt !== null && inv.paidAt.getTime() >= since.getTime()).reduce((s, inv) => s + Math.max(0, inv.amountPaidCents), 0)
+      : null;
+    const founders = deps.founders ?? [];
+    return {
+      ...emptyOrgMetrics(founders),
+      headcount: founders.length > 0 ? founders.length : null, // the team = the founders; null (not 0) when unknown
+      revenueCents,
+      revenuePeriodMonths: periodMonths,
+      revenueEvidenceTier: (revenueCents !== null ? "verified-financial" : null) as AiosEvidenceTier | null,
+    };
+  };
+}
+
 /** A simple in-memory task inventory store — used in tests and as the default until the DB store is wired. */
 export function inMemoryTaskStore(seed: TaskInventoryItem[] = []): TaskInventoryStore {
   const rows = new Map<string, TaskInventoryItem>(seed.map((r) => [r.id, r]));

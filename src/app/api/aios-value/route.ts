@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { addTaskToInventory, getAiosValueSnapshot } from "@/lib/aios-value";
+import { addTaskToInventory, getAiosValueSnapshot, makeFinanceOrgMetrics } from "@/lib/aios-value";
 import { taskInventorySchema, type AiosValueScope } from "@/lib/domain/aios-value";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
+import { AUTH_FOUNDERS } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,9 @@ export async function GET(request: Request) {
   if (!SCOPE_TYPES.includes(type)) return NextResponse.json({ ok: false, error: `invalid scope '${type}'` }, { status: 422 });
   const scope: AiosValueScope = { type, id: u.searchParams.get("id"), label: u.searchParams.get("label") ?? undefined };
   try {
-    const snapshot = await getAiosValueSnapshot(scope);
+    // Revenue is now a REAL measured actual from paid invoices (verified-financial) + headcount from the founder
+    // team, so revenue/employee becomes real; other org metrics stay honestly null until HR/config is wired.
+    const snapshot = await getAiosValueSnapshot(scope, { orgMetrics: makeFinanceOrgMetrics({ founders: [...AUTH_FOUNDERS] }) });
     return NextResponse.json({ ok: true, snapshot });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

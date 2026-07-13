@@ -5179,3 +5179,25 @@ verify:daily-brief still green (no regression from 4→8 providers).
 
 GATE: typecheck 0 · full unit suite green · build 0 (clean .next) · DB proof x2 · no migration (reads existing
 stores) · verify:coverage 31/31.
+
+---
+
+## cont.67 — AIOS Value: REVENUE is now a measured actual from real paid invoices — Claude (Opus 4.8)
+
+Program order #10. AIOS Value had the framework + task_inventory, but org metrics were honest-null (finance not
+wired). Wired REVENUE to real finance: `makeFinanceOrgMetrics` (in `src/lib/aios-value`) computes revenueCents =
+sum of `amountPaidCents` for invoices PAID IN PERIOD (1mo = MRR), tier `verified-financial` (the strongest — real
+paid invoices); invoices paid outside the period are excluded; a client with NO ever-paid invoice keeps revenue
+NULL (no financial actual yet — never a fabricated 0). Headcount = the founder team (so revenue/employee computes);
+automation cost + founder rate stay honestly null (HR/config a documented follow-up). Wired as the default
+orgMetrics on `GET /api/aios-value` with the real AUTH_FOUNDERS.
+
+PROVEN: verify:aios-org-metrics (x2, 3 asserts) — revenue/employee = 150k paid-in-period ÷ 4 = 37,500¢ (out-of-period
+excluded), tier verified-financial + isEstimate=false (a measured actual), and a never-paid client → null. →
+verify:all-db (32). Unit: tests/aios-org-metrics.test.ts (4: in-period sum, never-paid→null, client scope, headcount).
+
+NOTE (env): a background watcher in this shared folder repeatedly REVERTED src/lib/aios-value/* + the route to HEAD
+mid-batch (also hit backup earlier). Re-applied + verified green before commit; watch for external reverts of
+just-edited files and re-check right before committing.
+
+GATE: typecheck 0 · full unit suite 940/940 (120 files) · build 0 (clean .next) · DB proof x2 · no migration.
