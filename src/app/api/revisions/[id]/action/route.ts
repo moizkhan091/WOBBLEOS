@@ -33,10 +33,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       // 2) Re-enqueue the producer bound to the SAME graphRunId so it loads the preserved nodes' checkpoints and
       //    regenerates only the cleared (reran) nodes — this is what makes the preservation actually pay off.
       let reenqueued = false;
-      const re = cycle.reenqueue as { producer?: string; contentTrackId?: string; objective?: string; requestedBy?: string } | null;
-      if (re?.producer === "content.graph" && re.contentTrackId && re.objective) {
+      const re = (cycle.reenqueue ?? {}) as Record<string, unknown>;
+      const rerunKey = `revision_rerun:${id}`;
+      if (re.producer === "content.graph" && re.contentTrackId && re.objective) {
         const { enqueueContentGraphJob } = await import("@/lib/content-graph");
-        await enqueueContentGraphJob({ contentTrackId: re.contentTrackId, requestedBy: re.requestedBy ?? "Moiz", objective: re.objective, graphRunId: cycle.graphRunId, idempotencyKey: `revision_rerun:${id}` });
+        await enqueueContentGraphJob({ contentTrackId: String(re.contentTrackId), requestedBy: String(re.requestedBy ?? "Moiz"), objective: String(re.objective), graphRunId: cycle.graphRunId, idempotencyKey: rerunKey });
+        reenqueued = true;
+      } else if (re.producer === "audit.paid" && re.businessName && re.intakeNotes) {
+        const { enqueuePaidAuditJob } = await import("@/lib/paid-audit-graph");
+        await enqueuePaidAuditJob({ businessName: String(re.businessName), industry: re.industry ? String(re.industry) : undefined, intakeNotes: String(re.intakeNotes), freeAuditSummary: re.freeAuditSummary ? String(re.freeAuditSummary) : undefined, companyId: re.companyId ? String(re.companyId) : undefined, opportunityId: re.opportunityId ? String(re.opportunityId) : undefined, requestedBy: String(re.requestedBy ?? "Moiz"), graphRunId: cycle.graphRunId, idempotencyKey: rerunKey });
         reenqueued = true;
       }
       // 3) Transition planned → reran so a SUBSEQUENT revise of the same run opens a fresh cycle (not the stale plan).

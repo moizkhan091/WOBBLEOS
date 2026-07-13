@@ -3,10 +3,10 @@ import type { JobRow } from "@/lib/domain/jobs";
 import { runContentGenerateJobHandler } from "@/lib/content-worker";
 import { runContentGraphJobHandler, type ContentGraphResult, type ContentGraphQaOutcome } from "@/lib/content-graph";
 import { runQaGate } from "@/lib/qa/gate";
-import { contentQualityBoard, contentBrandBoard, buildContentSubmission } from "@/lib/qa/boards";
+import { contentQualityBoard, contentBrandBoard, buildContentSubmission, paidAuditQaBoard, buildPaidAuditSubmission } from "@/lib/qa/boards";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
 import { runLibraryImportJobHandler } from "@/lib/library";
-import { runPaidAuditJobHandler, type PaidAuditResult } from "@/lib/paid-audit-graph";
+import { runPaidAuditJobHandler, enqueuePaidAuditJob, type PaidAuditResult, type PaidAuditQaOutcome, type RunPaidAuditInput } from "@/lib/paid-audit-graph";
 import { dispatchBusinessAuditToProposal } from "@/lib/departments/verticals/paid-audit";
 import { getAudit } from "@/lib/free-audit";
 import type { PaidAuditReport } from "@/lib/domain/paid-audit-graph";
@@ -33,8 +33,42 @@ const echo: JobHandler = async (job: JobRow) => ({ echoed: job.payload });
  * The origination is best-effort — a dispatch failure (unseeded departments / no DB) is logged and never
  * fails the audit, which has already succeeded.
  */
+/**
+ * LIVE independent audit QA gate + SELECTIVE-REVISION trigger. The paid_audit graph is a linear pipeline of
+ * versioned nodes (discovery → opportunity → prioritization → roadmap → report); the QA board's stages map 1:1
+ * onto those nodes. On a salvageable `revise`, `openAuditRevision` opens a durable revision cycle over the nodes
+ * (the checkpoints are preserved by the graph), and the founder `rerun` re-enqueues the audit bound to the SAME
+ * graphRunId so only the failed stages regenerate.
+ */
+async function livePaidAuditQaGate(artifact: PaidAuditResult, ctx: { workflowId: string; companyId: string | null }): Promise<PaidAuditQaOutcome> {
+  const submission = buildPaidAuditSubmission(artifact, { workflowId: ctx.workflowId, taskId: `${ctx.workflowId}:audit_qa`, clientWorkspaceId: ctx.companyId });
+  const decision = await runQaGate({ boards: [paidAuditQaBoard], submission }, { raiseEscalation: async () => {} });
+  return { released: decision.released, verdict: decision.verdict, failedStages: decision.routingTarget?.failedStages ?? [] };
+}
+
+const AUDIT_GRAPH_NODES = [
+  { key: "discovery", producedBy: "audit_discovery", dependsOn: [] as string[] },
+  { key: "opportunity", producedBy: "audit_opportunity", dependsOn: ["discovery"] },
+  { key: "prioritization", producedBy: "audit_prioritization", dependsOn: ["opportunity"] },
+  { key: "roadmap", producedBy: "audit_roadmap", dependsOn: ["prioritization"] },
+  { key: "report", producedBy: "audit_report", dependsOn: ["roadmap"] },
+];
+
+async function openAuditRevision(input: { graphRunId: string; failedStages: string[]; auditId: string; companyId: string | null; input: RunPaidAuditInput }): Promise<void> {
+  // The audit QA board's stages ARE the node keys (identity mapping); a failed stage reruns it + its downstream.
+  const failedNodes = input.failedStages.filter((s) => AUDIT_GRAPH_NODES.some((n) => n.key === s));
+  if (failedNodes.length === 0) return;
+  const { openRevisionCycle } = await import("@/lib/selective-revision");
+  await openRevisionCycle({
+    artifactKind: "paid_audit", artifactRef: input.auditId, graphRunId: input.graphRunId, triggeredBy: "qa_gate:paid_audit",
+    components: AUDIT_GRAPH_NODES.map((n) => ({ key: n.key, kind: "graph_node", producedBy: n.producedBy, dependsOn: n.dependsOn, version: 1, status: failedNodes.includes(n.key) ? "failed" : "approved" })),
+    failedComponents: failedNodes, clientId: input.companyId,
+    reenqueue: { producer: "audit.paid", businessName: input.input.businessName, industry: input.input.industry, intakeNotes: input.input.intakeNotes, freeAuditSummary: input.input.freeAuditSummary, companyId: input.input.companyId, opportunityId: input.input.opportunityId, requestedBy: input.input.requestedBy },
+  });
+}
+
 async function runPaidAuditWithOriginationJobHandler(job: PaidAuditJobRow): Promise<Record<string, unknown>> {
-  const result = await runPaidAuditJobHandler(job);
+  const result = await runPaidAuditJobHandler(job, { qaGate: livePaidAuditQaGate, onQaRevise: openAuditRevision });
   const p = (job.payload ?? {}) as { businessName?: string; companyId?: string | null };
   const auditId = result.auditId as string | undefined;
   if (auditId && p.businessName) {

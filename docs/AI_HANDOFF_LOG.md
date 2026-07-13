@@ -4523,3 +4523,34 @@ proof x2 (incl. the reuse-loop assertion) · migration 0044 zero drift.
 
 NEXT (live-integration wave): Dream/Optimizer governance loop → Phase 5 remainder → Media Studio durable system →
 Free Audit → extend release gate.
+
+---
+
+## cont.45 — Selective Revision extended to AUDIT REPORTS (operational-scoped → +audit) — Claude (Opus 4.8)
+
+Extended the durable selective-revision model to the paid_audit graph (structurally identical to content: 5
+linear checkpointed nodes discovery→opportunity→prioritization→roadmap→report; the paid_audit QA board's stages
+map 1:1 onto those nodes).
+
+REAL TRIGGER: `runPaidAuditGraph` now accepts opt-in `qaGate` + `onQaRevise` (like content). The production
+`audit.paid` handler (`runPaidAuditWithOriginationJobHandler`) injects `livePaidAuditQaGate` (runs the real
+paid_audit_qa board) + `openAuditRevision`. On a salvageable `revise`, a durable revision cycle
+(artifactKind `paid_audit`) opens over the 5 nodes and the checkpoints are PRESERVED (skip clear). NOTE: the
+graph-internal QA is the REVISION trigger; the existing dispatch-time QA in `dispatchBusinessAuditToProposal` stays
+as the release-to-Proposal gate (two stages, same board — cheap deterministic board, no double escalation since the
+graph gate raises none).
+
+REAL CONSUMER: `runPaidAuditJobHandler` now runs under `payload.graphRunId ?? job.id`; `enqueuePaidAuditJob` already
+carries graphRunId. The founder `rerun` action re-enqueues the `audit.paid` producer bound to the preserved
+graphRunId (idempotencyKey `revision_rerun:<cycle>`) so the re-run reuses the preserved stages.
+
+PROVEN: verify:selective-revision (x2) now includes an AUDIT scenario — a failed `opportunity` reruns opportunity +
+downstream (prioritization/roadmap/report), preserves `discovery`, and carries the `audit.paid` re-enqueue producer.
+Unit: the paid_audit graph `revise` fires onQaRevise + preserves checkpoints. Playwright `selective-revision.spec`
+now has an AUDIT test (inspect plan → selective rerun clears 4 nodes + reenqueued:true → reran → rollback). Founder
+`/api/revisions` is artifact-agnostic (content + audit).
+
+STATUS: Selective Revision = operational-scoped (Content + Audit). Proposal integration is the remaining piece
+(proposal has NO checkpointed graph → needs section-level regeneration or generator checkpointing = next).
+
+GATE: typecheck 0 · paid-audit/content-graph/registry unit tests green · DB proof x2 (incl. audit scenario).

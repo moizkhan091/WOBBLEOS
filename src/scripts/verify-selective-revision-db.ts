@@ -83,6 +83,20 @@ async function main() {
     assert(rolled.components.filter((c) => failed.includes(c.key)).every((c) => c.status === "failed"), "the originally-FAILED components are restored to `failed` — rollback undoes the revision, it does not launder a QA failure");
     assert(rolled.components.filter((c) => !failed.includes(c.key)).every((c) => c.status === "approved"), "the originally-approved components are restored to `approved`");
 
+    // ---- AUDIT-REPORT artifact: the same durable model bound to the paid_audit graph (5 linear nodes) --------
+    const auditRun = `auditrun_${uniq}`;
+    const auditNodes = ["discovery", "opportunity", "prioritization", "roadmap", "report"];
+    const auditCycle = await openRevisionCycle({
+      artifactKind: "paid_audit", artifactRef: `audit_${uniq}`, graphRunId: auditRun, triggeredBy: "qa_gate:paid_audit",
+      components: auditNodes.map((k, i) => ({ key: k, kind: "graph_node", producedBy: `audit_${k}`, dependsOn: i === 0 ? [] : [auditNodes[i - 1]], version: 1, status: k === "opportunity" ? "failed" as const : "approved" as const })),
+      failedComponents: ["opportunity"], clientId: `client_${uniq}`,
+      reenqueue: { producer: "audit.paid", businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz" },
+    }, deps);
+    cycleIds.push(auditCycle.id);
+    assert(auditCycle.plan.rerun.slice().sort().join(",") === "opportunity,prioritization,report,roadmap", "AUDIT: a failed `opportunity` stage reruns opportunity + its downstream (prioritization, roadmap, report)");
+    assert(auditCycle.plan.preserved.length === 1 && auditCycle.plan.preserved[0] === "discovery", "AUDIT: the upstream `discovery` stage is preserved (its evidence + version untouched)");
+    assert((auditCycle.reenqueue as { producer?: string } | null)?.producer === "audit.paid", "AUDIT: the cycle carries the `audit.paid` re-enqueue producer (the founder rerun re-runs the audit bound to the preserved graphRunId)");
+
     console.log("\nALL REAL-DB SELECTIVE REVISION CHECKS PASSED ✅");
   } finally {
     await db.delete(graphCheckpoints).where(eq(graphCheckpoints.graphRunId, graphRunId)).catch(() => {});

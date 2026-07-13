@@ -7,10 +7,15 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
  * (only the reran nodes' checkpoints are cleared), then ROLLS the cycle back.
  */
 const RUN = "e2e_rev_run";
-async function cycle(request: APIRequestContext): Promise<{ id: string; status: string; plan: { rerun: string[]; preserved: string[] }; components: Array<{ key: string; status: string; version: number }> } | null> {
-  const res = await request.get("/api/revisions?artifactKind=content_graph");
-  const json = (await res.json()) as { cycles?: Array<{ id: string; status: string; graphRunId: string; plan: { rerun: string[]; preserved: string[] }; components: Array<{ key: string; status: string; version: number }> }> };
-  return (json.cycles ?? []).find((c) => c.graphRunId === RUN) ?? null;
+const AUDIT_RUN = "e2e_audit_rev_run";
+type Cyc = { id: string; status: string; graphRunId: string; plan: { rerun: string[]; preserved: string[] }; components: Array<{ key: string; status: string; version: number }> };
+async function cycleFor(request: APIRequestContext, artifactKind: string, runId: string): Promise<Cyc | null> {
+  const res = await request.get(`/api/revisions?artifactKind=${artifactKind}`);
+  const json = (await res.json()) as { cycles?: Cyc[] };
+  return (json.cycles ?? []).find((c) => c.graphRunId === runId) ?? null;
+}
+async function cycle(request: APIRequestContext): Promise<Cyc | null> {
+  return cycleFor(request, "content_graph", RUN);
 }
 
 test.describe("Selective Revision — inspect → selective rerun → rollback (real effects)", () => {
@@ -49,5 +54,29 @@ test.describe("Selective Revision — inspect → selective rerun → rollback (
     expect(after!.components.find((x) => x.key === "strategy")!.status).toBe("approved");
     expect(after!.components.find((x) => x.key === "research")!.status).toBe("approved");
     expect(after!.components.find((x) => x.key === "draft")!.status).toBe("failed");
+  });
+
+  test("AUDIT REPORT: same durable revision model — failed `opportunity` reruns downstream, preserves discovery, re-enqueues audit.paid", async ({ request }) => {
+    const c = await cycleFor(request, "paid_audit", AUDIT_RUN);
+    expect(c).not.toBeNull();
+    // opportunity failed → rerun opportunity + downstream (prioritization, roadmap, report); preserve discovery.
+    expect(c!.plan.rerun.slice().sort()).toEqual(["opportunity", "prioritization", "report", "roadmap"]);
+    expect(c!.plan.preserved.slice().sort()).toEqual(["discovery"]);
+
+    // Founder selective rerun clears exactly the 4 reran nodes + RE-ENQUEUES the audit under the preserved graphRunId.
+    const rerun = await request.post(`/api/revisions/${c!.id}/action`, { data: { action: "rerun" } });
+    expect(rerun.status()).toBe(200);
+    const rr = (await rerun.json()) as { cleared: number; preserved: string[]; reenqueued: boolean };
+    expect(rr.cleared).toBe(4);
+    expect(rr.preserved.slice().sort()).toEqual(["discovery"]);
+    expect(rr.reenqueued).toBe(true); // the audit.paid re-run was enqueued under the preserved graphRunId
+    expect((await cycleFor(request, "paid_audit", AUDIT_RUN))!.status).toBe("reran");
+
+    // Rollback restores every stage to its pre-revision snapshot (opportunity back to `failed`).
+    expect((await request.post(`/api/revisions/${c!.id}/action`, { data: { action: "rollback" } })).ok()).toBe(true);
+    const after = await cycleFor(request, "paid_audit", AUDIT_RUN);
+    expect(after!.status).toBe("rolled_back");
+    expect(after!.components.find((x) => x.key === "discovery")!.status).toBe("approved");
+    expect(after!.components.find((x) => x.key === "opportunity")!.status).toBe("failed");
   });
 });

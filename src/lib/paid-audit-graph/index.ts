@@ -49,12 +49,27 @@ export interface NodeRunResult {
   cost?: number;
 }
 
+/** The outcome of the independent QA gate over a finished audit (before it clears checkpoints / routes on). */
+export interface PaidAuditQaOutcome {
+  released: boolean;
+  verdict?: string;
+  failedStages?: string[];
+}
+
 export interface PaidAuditDeps {
   retrieveBrain?: () => Promise<Array<{ title: string; content: string }>>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
   recordAgentRun?: (input: Record<string, unknown>) => Promise<unknown>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   persistAudit?: (row: PaidAuditRow) => Promise<void>;
+  /**
+   * Opt-in INDEPENDENT QA gate over the finished audit. On a salvageable `revise`, `onQaRevise` opens a durable
+   * revision cycle (mapping the audit's QA stages → its 5 graph nodes) and the checkpoints are PRESERVED so a
+   * selective rerun regenerates only the failed stages. Injected by the production job handler; omitted in unit
+   * tests → no gate (behaviour unchanged).
+   */
+  qaGate?: (artifact: PaidAuditResult, ctx: { workflowId: string; companyId: string | null }) => Promise<PaidAuditQaOutcome>;
+  onQaRevise?: (input: { graphRunId: string; failedStages: string[]; auditId: string; companyId: string | null; input: RunPaidAuditInput }) => Promise<void>;
   checkpointStore?: GraphCheckpointStore;
   /** Durable handoff backbone. Injected in tests; in prod the default DB store is used when DATABASE_URL is set. */
   handoffStore?: HandoffStore;
@@ -291,10 +306,23 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
 
     await recordAudit({ eventType: "audit.paid_completed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { agentRunCount: 5, opportunities: fullReport.opportunities.length, phases: fullReport.roadmap.length, modelRunIds } });
 
-    // Success: durably finished — drop this run's checkpoints.
-    if (input.graphRunId) await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
+    const auditResult: PaidAuditResult = { auditId: row.id, agentRunCount: 5, modelRunIds, report: fullReport };
 
-    return { auditId: row.id, agentRunCount: 5, modelRunIds, report: fullReport };
+    // SELECTIVE REVISION trigger: an independent QA gate reviews the finished audit; on a salvageable `revise`,
+    // open a durable revision cycle over the audit's 5 nodes and PRESERVE the checkpoints (the cycle's consumer
+    // clears only the reran nodes) so a re-run reuses the approved stages. Any other outcome → drop checkpoints.
+    let qaOutcome: PaidAuditQaOutcome | undefined;
+    if (deps.qaGate) qaOutcome = await deps.qaGate(auditResult, { workflowId: input.graphRunId ?? entityId, companyId: input.companyId ?? null });
+    const openedRevision = Boolean(qaOutcome && !qaOutcome.released && qaOutcome.verdict === "revise" && input.graphRunId && deps.onQaRevise);
+    if (openedRevision) {
+      await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qaOutcome!.failedStages ?? [], auditId: row.id, companyId: input.companyId ?? null, input }).catch((e) => {
+        recordAudit({ eventType: "audit.paid_revision_trigger_failed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { error: e instanceof Error ? e.message : String(e) } }).catch(() => {});
+      });
+    } else if (input.graphRunId) {
+      await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
+    }
+
+    return auditResult;
   } catch (error) {
     await recordAudit({ eventType: "audit.paid_failed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { reason: error instanceof Error ? error.message : String(error) } });
     throw error;
@@ -306,9 +334,14 @@ export async function enqueuePaidAuditJob(input: RunPaidAuditInput & { idempoten
   return enqueue({ queue: PAID_AUDIT_QUEUE, type: PAID_AUDIT_JOB_TYPE, payload: { ...input }, priority: 5, maxAttempts: 1, idempotencyKey: input.idempotencyKey, linkedModule: PAID_AUDIT_MODULE, linkedEntityType: "audit", linkedEntityId: input.companyId ?? input.businessName });
 }
 
-export async function runPaidAuditJobHandler(job: JobRow): Promise<Record<string, unknown>> {
+export async function runPaidAuditJobHandler(job: JobRow, deps: PaidAuditDeps = {}): Promise<Record<string, unknown>> {
   const p = (job.payload ?? {}) as Partial<RunPaidAuditInput>;
   if (!p.businessName || !p.intakeNotes || !p.requestedBy) throw new Error("audit.paid job requires businessName, intakeNotes, requestedBy");
-  const result = await runPaidAuditGraph({ businessName: p.businessName, industry: p.industry, intakeNotes: p.intakeNotes, freeAuditSummary: p.freeAuditSummary, companyId: p.companyId, opportunityId: p.opportunityId, requestedBy: p.requestedBy, graphRunId: job.id });
+  const result = await runPaidAuditGraph(
+    // A selective-revision rerun binds the PRESERVED graphRunId via the payload so the graph reuses the
+    // preserved nodes' checkpoints; otherwise the job id is the stable per-run id.
+    { businessName: p.businessName, industry: p.industry, intakeNotes: p.intakeNotes, freeAuditSummary: p.freeAuditSummary, companyId: p.companyId, opportunityId: p.opportunityId, requestedBy: p.requestedBy, graphRunId: p.graphRunId ?? job.id },
+    deps,
+  );
   return { auditId: result.auditId, agentRunCount: result.agentRunCount };
 }

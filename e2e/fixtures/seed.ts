@@ -17,8 +17,9 @@ import { buildCompanyRow, buildOpportunityRow } from "@/lib/domain/crm";
 import { buildProposalRow } from "@/lib/domain/proposal";
 import { AGENTS, DECISIONS, E2E_DEPARTMENT, E2E_WORKSPACE, IDS, PROPOSAL, PROVIDER_USAGE_REQ_ID, WF } from "./constants";
 
-/** Fixed graph-run id for the selective-revision fixture (cleaned + reseeded every run). */
+/** Fixed graph-run ids for the selective-revision fixtures (cleaned + reseeded every run). */
 const E2E_REVISION_RUN = "e2e_rev_run";
+const E2E_AUDIT_REVISION_RUN = "e2e_audit_rev_run";
 
 /**
  * Deterministic E2E fixture builder. Every row is written through the REAL domain builders + stores the
@@ -86,15 +87,15 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
   // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
   await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
-  // Selective-revision fixture (cycle + components + version snapshots + the checkpointed run).
-  const revCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(eq(schema.revisionCycles.artifactRef, E2E_REVISION_RUN));
+  // Selective-revision fixtures (content + audit): cycle + components + version snapshots + the checkpointed runs.
+  const revCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(inArray(schema.revisionCycles.artifactRef, [E2E_REVISION_RUN, E2E_AUDIT_REVISION_RUN]));
   if (revCycles.length) {
     const ids = revCycles.map((c) => c.id);
     await db.delete(schema.revisionComponentVersions).where(inArray(schema.revisionComponentVersions.cycleId, ids));
     await db.delete(schema.revisionComponents).where(inArray(schema.revisionComponents.cycleId, ids));
     await db.delete(schema.revisionCycles).where(inArray(schema.revisionCycles.id, ids));
   }
-  await db.delete(schema.graphCheckpoints).where(eq(schema.graphCheckpoints.graphRunId, E2E_REVISION_RUN));
+  await db.delete(schema.graphCheckpoints).where(inArray(schema.graphCheckpoints.graphRunId, [E2E_REVISION_RUN, E2E_AUDIT_REVISION_RUN]));
   // The content.graph job the revision `rerun` action re-enqueues (bound to the preserved graphRunId).
   await db.delete(schema.jobs).where(like(schema.jobs.idempotencyKey, "revision_rerun:%"));
 }
@@ -181,6 +182,18 @@ export async function seedE2E(): Promise<void> {
     failedComponents: ["draft"], clientId: E2E_WORKSPACE,
     // Re-enqueue context so the browser `rerun` action exercises the real re-enqueue-under-preserved-graphRunId hop.
     reenqueue: { producer: "content.graph", contentTrackId: "track_wobble_company", objective: "e2e selective revision", requestedBy: "Moiz" },
+  }, { db, recordAudit: async () => {} });
+
+  // Selective-revision fixture for the AUDIT-REPORT artifact (paid_audit graph, 5 nodes, `opportunity` failed).
+  const AUDIT_NODES = ["discovery", "opportunity", "prioritization", "roadmap", "report"];
+  for (let i = 0; i < AUDIT_NODES.length; i++) {
+    await cpStore.upsertCheckpoint(buildGraphCheckpointRow({ graphRunId: E2E_AUDIT_REVISION_RUN, graph: "paid_audit", nodeSlug: AUDIT_NODES[i], nodeIndex: i, schemaVersion: 1, outputText: `${AUDIT_NODES[i]}-out` }));
+  }
+  await openRevisionCycle({
+    artifactKind: "paid_audit", artifactRef: E2E_AUDIT_REVISION_RUN, graphRunId: E2E_AUDIT_REVISION_RUN, triggeredBy: "qa_gate:paid_audit",
+    components: AUDIT_NODES.map((k, i) => ({ key: k, kind: "graph_node", producedBy: `audit_${k}`, dependsOn: i === 0 ? [] : [AUDIT_NODES[i - 1]], status: k === "opportunity" ? "failed" : "approved" })),
+    failedComponents: ["opportunity"], clientId: E2E_WORKSPACE,
+    reenqueue: { producer: "audit.paid", businessName: "E2E Audit Co", intakeNotes: "misses calls", requestedBy: "Moiz" },
   }, { db, recordAudit: async () => {} });
 }
 

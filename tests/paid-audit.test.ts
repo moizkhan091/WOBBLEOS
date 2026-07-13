@@ -87,6 +87,31 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     expect(rep.roi?.estimatedMonthlyUpsideCents).toBe(1800000);
   });
 
+  it("SELECTIVE REVISION trigger: a `revise` verdict opens an audit revision cycle (onQaRevise) AND preserves checkpoints", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "clinic.", acquisition: [{ step: "ads", detail: "x", tool: "Meta", pain: "y" }], delivery: [{ step: "booking", pain: "manual" }], support: [{ step: "phone", pain: "misses" }], bottlenecks: [{ area: "desk", pain: "misses calls", rootCause: "no cover", severity: "high", businessImpact: "lost" }], keyMetrics: [{ label: "staff", value: "12" }] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "Text-back", area: "desk", service: "missed-call-text-back-system", description: "auto-text", howItWorks: "webhook", expectedOutcome: "recover leads", impact: "high", difficulty: "low", kpis: ["recovered calls"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: ["Text-back"], bigSwings: [], rationale: "instant ROI" }),
+      audit_roadmap: JSON.stringify({ phases: [{ title: "P1", months: "1-2", focus: "leaks", objectives: ["recover"], deliverables: ["text-back live"], items: ["Text-back"], expectedOutcome: "fewer misses" }] }),
+      audit_report: JSON.stringify({ executiveSummary: "recover leads.", situationSummary: "manual.", roi: { estimatedMonthlyUpsideCents: 900000, estimatedImplementationCents: 4500000, paybackMonths: 5, breakdown: [{ area: "desk", monthlyValueCents: 900000 }] }, risks: [{ risk: "adoption", mitigation: "training" }], successMetrics: ["rt<60s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["sign SOW"] }),
+    };
+    const { store, rows } = makeCheckpointStore();
+    let revised: { graphRunId: string; failedStages: string[]; auditId: string } | null = null;
+    await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "co_1", graphRunId: "audit_rev_1" },
+      {
+        retrieveBrain: async () => [], runNode: async (i) => ({ text: canned[i.role], runId: `r_${i.role}` }), recordAudit: async () => {}, persistAudit: async () => {}, checkpointStore: store, now,
+        qaGate: async () => ({ released: false, verdict: "revise", failedStages: ["opportunity"] }),
+        onQaRevise: async (x) => { revised = x; },
+      },
+    );
+    expect(revised).not.toBeNull();
+    expect(revised!.graphRunId).toBe("audit_rev_1");
+    expect(revised!.failedStages).toEqual(["opportunity"]);
+    // checkpoints PRESERVED on revise (the selective rerun reuses the approved nodes)
+    expect(rows.size).toBeGreaterThan(0);
+  });
+
   it("threads a validated structured handoff between every node (client-scoped, with lineage)", async () => {
     const canned: Record<string, string> = {
       audit_discovery: JSON.stringify({ situation: "x", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] }),
