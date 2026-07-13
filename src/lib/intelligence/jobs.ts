@@ -47,11 +47,20 @@ export async function runScoutJobHandler(job: JobRow): Promise<Record<string, un
 
 export async function runAnalyzeJobHandler(job: JobRow): Promise<Record<string, unknown>> {
   const p = job.payload ?? {};
-  const result = await runIntelligenceAnalyst({
-    scope: asScope(p.scope),
-    clientId: typeof p.clientId === "string" ? p.clientId : undefined,
-    limit: typeof p.limit === "number" ? p.limit : undefined,
-  });
+  const clientId = typeof p.clientId === "string" ? p.clientId : undefined;
+  const scope = asScope(p.scope);
+  const result = await runIntelligenceAnalyst(
+    { scope, clientId, limit: typeof p.limit === "number" ? p.limit : undefined },
+    {
+      // Context OS: ground the analyst in the scope's APPROVED trusted context (client scope when client-scoped,
+      // else WOBBLE company scope), telemetered.
+      retrieveTrustedContext: async () => {
+        const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
+        const ctxScope = clientId ? ({ type: "client", id: clientId } as const) : ({ type: "company", id: "wobble" } as const);
+        return retrieveTrustedContextBlock(ctxScope, "intelligence_analysis", { agentSlug: "intelligence_analyst", label: clientId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+      },
+    },
+  );
   return { ...result };
 }
 

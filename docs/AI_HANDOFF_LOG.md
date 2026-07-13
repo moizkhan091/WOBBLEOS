@@ -4611,3 +4611,21 @@ tenant isolation, superseded excluded, telemetry, audit) remain proven by `verif
 STATUS: Context OS = operational-scoped (content + paid-audit generators). Proposal/Research/Daily-Brief still missing.
 
 GATE: typecheck 0 · paid-audit unit tests 11/11 · (build + full suite pending in this batch).
+
+---
+
+## cont.48 — Context OS retrieval expanded to the RESEARCH-ANALYST generator — Claude (Opus 4.8)
+
+Third generator wired to Context OS (after content + paid-audit). `runIntelligenceAnalyst` (src/lib/intelligence/
+analyst.ts) now accepts opt-in `retrieveTrustedContext`; the scope's APPROVED trusted-context block is injected as
+a DISTINCT system message — kept SEPARATE from the untrusted observed data (which stays inside the
+UNTRUSTED_OBSERVED_DATA fence). Production wiring (`runAnalyzeJobHandler`, jobs.ts) retrieves the client scope
+({type:"client", id:clientId}) when client-scoped, else WOBBLE company scope, telemetered.
+
+PROVEN: unit tests — the approved block is injected as a separate system message (NOT folded into the untrusted
+fence) when the seam is wired, and absent by default. Context OS internals proven by verify:context-os.
+
+STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst generators). Proposal + Daily-Brief
+generators still pending. (The audit-generator expansion 59e62d2 was independently reviewed → SHIP.)
+
+GATE: typecheck 0 · analyst unit tests 16/16 · (build + full suite in this batch).
