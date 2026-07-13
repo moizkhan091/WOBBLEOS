@@ -70,6 +70,7 @@ export const MODULES: Record<string, ModuleDef> = {
   approvals: { id: "approvals", label: "Approvals", title: "Approvals", icon: "BadgeCheck", status: "wired", chunk: 4, api: "/api/approvals", tagline: "The single gate. Every output here cleared self-review - your decision is logged with explicit attribution." },
   workers: { id: "workers", label: "Workers", title: "Workers", icon: "Cpu", status: "wired", api: "/api/workers", tagline: "Persistent worker processes running outside the web lifecycle — live heartbeats (online/stale) and a job-queue summary." },
   handoff: { id: "handoff", label: "n8n Handoff", title: "n8n Handoff", icon: "Webhook", status: "wired", api: "/api/n8n", tagline: "The bridge to execution - HMAC-signed, replay-protected, idempotent webhooks with dead-letter recovery. Endpoints + live event log." },
+  comms: { id: "comms", label: "Communications", title: "Communications Outbox", icon: "Send", status: "wired", api: "/api/comms", tagline: "Every outbound message the OS prepares — internal notifications, external comms and proposal-send packages. Earned Autonomy can auto-deliver a low-risk notification or stage a draft ready; the actual external/proposal SEND stays a founder confirm." },
 
   // SYSTEM
   memory: { id: "memory", label: "Memory", title: "Memory", icon: "Database", status: "wired", chunk: 10, api: "/api/memory", tagline: "Long-term recall across the workforce. What WOBBLE remembers, and why." },
@@ -86,7 +87,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
-  { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "skills", "workers", "handoff"] },
+  { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "comms", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["memory", "taste", "costs", "audit", "backup", "settings"] },
 ];
 

@@ -49,6 +49,14 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("the communications outbox is gated at 401 (an unauthorized user cannot prepare, send, or inspect a comm)", async ({ request }) => {
+    // Preparing/sending a notification or external comm is founder-only — an unauthorized caller can neither
+    // stage nor dispatch a communication, nor read the outbox.
+    expect((await request.get("/api/comms")).status()).toBe(401);
+    expect((await request.post("/api/comms", { data: { channel: "internal_notification", kind: "alert", subject: "x", body: "y" } })).status()).toBe(401);
+    expect((await request.post("/api/comms/anything/action", { data: { action: "send" } })).status()).toBe(401);
+  });
+
   test("source deactivation/reactivation is gated at 401 (an unauthorized user cannot disable or restore a source)", async ({ request }) => {
     // Collection control is founder-only — an unauthorized caller can neither stop collection nor rollback.
     expect((await request.post("/api/sources/anything/action", { data: { action: "deactivate", reason: "unauthorized" } })).status()).toBe(401);

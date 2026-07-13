@@ -4835,3 +4835,50 @@ gone from active feed + archived/approved + reactivate→back) and a new unauth-
 
 GATE: typecheck 0 · full unit suite 889/889 (112 files) + 3 new deactivation cases green · build 0 (clean .next) ·
 DB proof x2 · zero migration drift (no schema change) · Playwright: source-deactivation + full unauth gate green.
+
+Reviewer verdict (independent, adversarial): SHIP — all 8 invariants held, all 4 proofs re-run green, no HIGH/MEDIUM.
+Accepted LOWs (documented, not bugs): (1) a deactivated source's ALREADY-EMBEDDED chunks still ground NEW
+generations via `searchSourceChunks` (no status join) — this is the REQUIRED "historical evidence remains
+accessible" behaviour; deactivation stops GROWTH (new collection + new propagation), not the usability of evidence
+already gathered. To quarantine existing influence a founder deletes/purges, which is a separate explicit action.
+(2) route-order (schema/db checks before requireFounder) matches the codebase-wide convention; the unauth gate
+proves 401 with a valid body. (3) chunksPreserved counts up to 5000 (cosmetic). INFO: founders are global, so
+deactivate/reactivate is unscoped (consistent with approve/reject).
+
+---
+
+## cont.57 — Earned Autonomy: the 3 remaining action points (notification / external-comms prep / proposal-send prep) — Claude (Opus 4.8)
+
+Completed the remaining Earned-Autonomy action points as REAL reachable production paths (no dormant handlers),
+each with its confirm-capped counterpart. New durable primitive: a COMMUNICATIONS OUTBOX.
+
+Migration 0047: `communications` (channel, kind, subject, body, audience, status[prepared|ready|sent|cancelled],
+riskLevel, scope[type/company/client/project], relatedEntity, autonomyLevel, autonomyPolicyId, actedAutonomously,
+preparedBy, sentBy, dedupeKey[partial-unique for idempotency], metadata, timestamps). Pure domain
+`src/lib/domain/comms.ts` (channels, transitions, `preparationAction`/`sendAction` → the autonomy category+shape).
+Service `src/lib/comms/index.ts`: `prepareCommunication` (always persists a `prepared` draft first, then Earned
+Autonomy decides), `sendCommunication`, `cancelCommunication`, `listCommunications`.
+
+The autonomy split (the point):
+  - `notification.internal` (low-risk, reversible) → a scope-matched grant RELEASES delivery: prepared → SENT.
+  - `comms.external.prepare` (reversible draft) → a grant RELEASES preparation: prepared → READY (staged), NOT sent.
+  - `proposal.send.prepare` (reversible) → a grant RELEASES the send-package: prepared → READY.
+  - CAPS: `comms.external.send` + `proposal.send` are IRREVERSIBLE → `reversible:false` makes the hard sensitivity
+    cap force a `confirm` ceiling. Even a full `autonomous` grant resolves to `confirm` — never auto-sent; the send
+    only runs through the founder-gated API call. (The existing `proposal.send` autonomy category is reused.)
+Proposal-send prep is wired into the real proposals flow: `prepareProposalSend(id)` assembles a `proposal_send`
+communication from an APPROVED proposal (idempotent per proposal), releasable under `proposal.send.prepare`; the
+actual proposal `send` stays confirm-capped. Exposed as the `prepare_send` action on `/api/proposals/[id]/action`.
+
+Founder surface: `GET/POST /api/comms` + `POST /api/comms/[id]/action` (send/cancel), all founder-gated; a new
+`comms` OS module (Communications Outbox) under OPERATIONS — prepare a comm, see released-vs-held + the autonomy
+level, send/cancel. Idempotent: a repeated prepare with the same dedupeKey returns the existing row (no double-send).
+
+PROVEN: verify:comms-autonomy (x2, 19 asserts) covering ALL required scenarios per action point —
+no-grant→held, active-grant→released (behaviour change), WRONG-TENANT isolation, EXPIRED, REVOKED, audited,
+IDEMPOTENT retries, plus both SENDS confirm-capped under an autonomous grant, and cancel guards. Added to
+verify:all-db (25 proofs). Unit: tests/comms.test.ts (9 cases incl. the confirm-cap via the pure engine).
+Playwright: comms-autonomy.spec (held → grant → released → external send confirm-capped) + a comms unauth 401 gate.
+
+GATE: typecheck 0 · full unit suite 901/901 (113 files) · build 0 (clean .next) · DB proof x2 · migration 0047
+zero drift · Playwright full suite 44 passed. (Reviewer dispatched.)

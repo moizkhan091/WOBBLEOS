@@ -183,6 +183,41 @@ export async function getProposal(id: string, deps: ProposalDeps = {}): Promise<
   return (deps.store ?? defaultStore()).getProposal(id);
 }
 
+/**
+ * PROPOSAL-SEND PREPARATION (Earned-Autonomy action point). Preparing a proposal to send is REVERSIBLE — it
+ * assembles a durable `proposal_send` communication (the send package) from an APPROVED proposal, WITHOUT sending
+ * anything. An earned `proposal.send.prepare` grant RELEASES the preparation (stages the package `ready`); the
+ * actual send stays confirm-capped (`proposal.send`, irreversible → founder in the loop). Idempotent per proposal.
+ * Returns null when the proposal is missing or not `approved` (nothing to prepare a send for yet).
+ */
+export async function prepareProposalSend(id: string, opts: { preparedBy: string }, deps: ProposalDeps & { prepareCommunication?: typeof import("@/lib/comms").prepareCommunication; enforceAutonomy?: boolean } = {}): Promise<{ proposalId: string; prepared: boolean; released: boolean; communicationId: string } | null> {
+  const store = deps.store ?? defaultStore();
+  const prop = await store.getProposal(id);
+  if (!prop) return null;
+  if (prop.status !== "approved") return null; // only an approved proposal is eligible to be prepared for sending
+  const prepare = deps.prepareCommunication ?? (await import("@/lib/comms")).prepareCommunication;
+  const result = await prepare(
+    {
+      channel: "proposal_send",
+      kind: "proposal_delivery",
+      subject: `Proposal: ${prop.title}`,
+      body: prop.scope ? String(prop.scope).slice(0, 8000) : `Proposal ${prop.id} (${prop.pricingCents} cents) ready to send.`,
+      audience: prop.companyId ?? "client",
+      scopeType: prop.companyId ? "client" : "company",
+      companyId: prop.companyId ?? undefined,
+      clientId: prop.companyId ?? undefined,
+      relatedEntityType: "proposal",
+      relatedEntityId: prop.id,
+      preparedBy: opts.preparedBy,
+      dedupeKey: `proposal_send_prep:${prop.id}`,
+      metadata: { opportunityId: prop.opportunityId, pricingCents: prop.pricingCents },
+    },
+    { enforceAutonomy: deps.enforceAutonomy ?? true, now: deps.now },
+  );
+  await audit(deps, { eventType: "proposal.send_prepared", module: PROPOSAL_MODULE, entityType: "proposal", entityId: id, actor: opts.preparedBy, metadata: { communicationId: result.communication.id, released: result.released, deduped: result.deduped } });
+  return { proposalId: id, prepared: true, released: result.released, communicationId: result.communication.id };
+}
+
 export type ProposalAction = "approve" | "send" | "accept" | "reject";
 
 /**

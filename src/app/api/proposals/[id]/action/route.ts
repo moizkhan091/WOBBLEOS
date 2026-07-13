@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { proposalAction } from "@/lib/proposals";
+import { proposalAction, prepareProposalSend } from "@/lib/proposals";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ action: z.enum(["approve", "send", "accept", "reject"]), reason: z.string().trim().min(1).optional() });
+const schema = z.object({ action: z.enum(["approve", "send", "accept", "reject", "prepare_send"]), reason: z.string().trim().min(1).optional() });
 
 /**
  * POST /api/proposals/[id]/action — founder-gated lifecycle. Accepting an opportunity-linked proposal
@@ -24,6 +24,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
+    // Proposal-send PREPARATION (reversible → an earned grant can release it). The actual `send` stays confirm-capped.
+    if (parsed.data.action === "prepare_send") {
+      const prep = await prepareProposalSend(id, { preparedBy: auth }, { enforceAutonomy: true });
+      if (!prep) return NextResponse.json({ ok: false, error: "proposal not found or not approved (nothing to prepare)" }, { status: 409 });
+      return NextResponse.json({ ok: true, ...prep });
+    }
     const result = await proposalAction(id, parsed.data.action, { actor: auth, reason: parsed.data.reason });
     if (!result) return NextResponse.json({ ok: false, error: "proposal not found or invalid transition" }, { status: 409 });
     return NextResponse.json({ ok: true, ...result });

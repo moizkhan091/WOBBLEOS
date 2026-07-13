@@ -96,6 +96,9 @@ export async function cleanupE2E(): Promise<void> {
     await db.delete(schema.sources).where(inArray(schema.sources.id, ids));
   }
   await db.delete(schema.autonomyPolicies).where(and(eq(schema.autonomyPolicies.category, "source.activation"), like(schema.autonomyPolicies.clientId, "e2e_srcauto_%")));
+  // Communications-autonomy spec fixtures: the spec creates comms + grants per run scoped to `e2e_comm_%`.
+  await db.delete(schema.communications).where(like(schema.communications.clientId, "e2e_comm_%"));
+  await db.delete(schema.autonomyPolicies).where(and(inArray(schema.autonomyPolicies.category, ["notification.internal", "comms.external.prepare", "proposal.send.prepare", "comms.external.send", "proposal.send"]), like(schema.autonomyPolicies.clientId, "e2e_comm_%")));
   // Source-deactivation spec fixtures (the spec creates its own source per run under this ownerId prefix).
   const deactSources = await db.select({ id: schema.sources.id }).from(schema.sources).where(like(schema.sources.ownerId, "e2e_srcdeact_%"));
   if (deactSources.length) {

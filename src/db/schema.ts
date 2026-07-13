@@ -2009,6 +2009,44 @@ export const contextRetrievalFailures = pgTable("context_retrieval_failures", {
   index("context_retrieval_failures_created_idx").on(table.createdAt),
 ]);
 
+// ---- COMMUNICATIONS OUTBOX (Phase 6): the durable artifact for the notification + external-comms Earned-Autonomy
+// action points. A communication moves through a lifecycle: PREPARED (a reversible draft) → READY (staged for a
+// founder send) → SENT (dispatched) | CANCELLED. Preparation is reversible → an earned grant can RELEASE it; the
+// SEND of an EXTERNAL comm is externally-visible → it stays confirm-capped (never auto-sent by a policy). An
+// INTERNAL notification is low-risk + reversible, so a grant can release its delivery. ----
+export const communications = pgTable("communications", {
+  id: id(),
+  channel: varchar("channel", { length: 40 }).notNull(), // internal_notification | external_email | external_dm | external_other | proposal_send
+  kind: varchar("kind", { length: 60 }).notNull(),       // alert | digest | reminder | outreach | follow_up | proposal_delivery …
+  subject: varchar("subject", { length: 300 }).notNull(),
+  body: text("body").notNull(),
+  audience: varchar("audience", { length: 200 }),        // internal: role/team/actor; external: a recipient REFERENCE (handle/company), never a raw secret/address
+  status: varchar("status", { length: 24 }).notNull().default("prepared"), // prepared | ready | sent | cancelled
+  riskLevel: varchar("risk_level", { length: 16 }).notNull().default("low"),
+  scopeType: varchar("scope_type", { length: 16 }).notNull().default("company"),
+  companyId: varchar("company_id", { length: 120 }),
+  clientId: varchar("client_id", { length: 120 }),
+  projectId: varchar("project_id", { length: 120 }),
+  relatedEntityType: varchar("related_entity_type", { length: 40 }), // e.g. proposal
+  relatedEntityId: varchar("related_entity_id", { length: 120 }),
+  autonomyLevel: varchar("autonomy_level", { length: 16 }),   // the level resolved at the acting point (observe…autonomous)
+  autonomyPolicyId: varchar("autonomy_policy_id", { length: 120 }), // the policy that released the action (null when founder-driven)
+  actedAutonomously: boolean("acted_autonomously").notNull().default(false), // true when a grant released prepare/deliver without a founder
+  preparedBy: varchar("prepared_by", { length: 120 }).notNull(),
+  sentBy: varchar("sent_by", { length: 120 }),
+  dedupeKey: varchar("dedupe_key", { length: 200 }), // idempotent retries: a repeated prepare with the same key never double-creates
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+}, (table) => [
+  index("communications_status_idx").on(table.status),
+  index("communications_channel_idx").on(table.channel),
+  index("communications_scope_idx").on(table.scopeType, table.companyId),
+  uniqueIndex("communications_dedupe_uidx").on(table.dedupeKey).where(sql`dedupe_key is not null`),
+]);
+
 // ---- EARNED AUTONOMY (Phase 6): durable per-action autonomy policies. A policy GRANTS a level for an action
 // category within a narrow scope + conditions; it is EARNED (founder-approved, versioned, revocable, expirable).
 // There is no global switch — resolution is per action from the matching active policies, with hard caps. ----

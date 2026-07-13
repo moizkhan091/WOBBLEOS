@@ -5104,7 +5104,97 @@ function DepartmentsPage() {
   );
 }
 
+const COMM_STATUS_COLORS: Record<string, string> = { prepared: "#F5C542", ready: C.blue, sent: C.lime, cancelled: C.gray };
+
+function CommsPage() {
+  const [channel, setChannel] = useState("internal_notification");
+  const [kind, setKind] = useState("alert");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const c = useApi<{ communications: Record<string, unknown>[] }>("/api/comms?limit=100");
+  const guard = offlineIf(c);
+
+  async function prepare() {
+    if (!subject.trim() || !body.trim()) { setMsg("Subject and body are required."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const payload: Record<string, unknown> = { channel, kind: kind.trim() || "alert", subject: subject.trim(), body: body.trim(), scopeType: clientId.trim() ? "client" : "company" };
+      if (clientId.trim()) payload.clientId = clientId.trim();
+      const r = await fetch("/api/comms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg("Prepare failed: " + String(j.error ?? r.status)); return; }
+      setMsg(j.released ? (channel === "internal_notification" ? "Released — delivered autonomously (an earned grant)." : "Released — staged ready (an earned grant).") : "Prepared — held for your send/confirm (no grant).");
+      setSubject(""); setBody("");
+      c.reload();
+    } finally { setBusy(false); }
+  }
+  async function act(id: string, action: "send" | "cancel") {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/comms/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg((action === "send" ? "Send" : "Cancel") + " failed: " + String(j.error ?? r.status)); return; }
+      if (action === "send" && j.sendDecision?.capped) setMsg("Sent — this send was confirm-capped (founder in the loop).");
+      c.reload();
+    } finally { setBusy(false); }
+  }
+  if (guard) return guard;
+  const items = c.data?.communications ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ ...card, padding: "16px 17px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={labelStyle}>PREPARE A COMMUNICATION</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select value={channel} onChange={(e) => setChannel(e.target.value)} style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
+            <option value="internal_notification">Internal notification</option>
+            <option value="external_email">External email</option>
+            <option value="external_dm">External DM</option>
+            <option value="proposal_send">Proposal send</option>
+          </select>
+          <input value={kind} onChange={(e) => setKind(e.target.value)} placeholder="kind (alert…)" style={inputStyle} />
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="client id (optional scope)" style={inputStyle} />
+        </div>
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" style={inputStyle} />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Body" rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button disabled={busy} onClick={prepare} style={primaryBtn}>{busy ? "Working…" : "Prepare"}</button>
+          <span style={{ fontSize: 11.5, color: muted }}>Internal notifications can auto-deliver under a grant; external/proposal sends stay a founder confirm.</span>
+        </div>
+        {msg ? <div style={{ fontSize: 11.5, color: C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+      </div>
+      {items.length === 0 ? <StateBlock kind="empty" message="No communications prepared yet." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {items.map((r, i) => {
+            const st = String(r.status ?? "prepared");
+            const sendable = st === "prepared" || st === "ready";
+            return (
+              <div key={String(r.id ?? i)} style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7, alignItems: "center" }}>
+                  <Tag text={String(r.channel ?? "")} color={C.gray} />
+                  <Tag text={st} color={COMM_STATUS_COLORS[st] ?? C.gray} />
+                  {r.autonomyLevel ? <Tag text={"autonomy: " + String(r.autonomyLevel)} color={r.actedAutonomously ? C.lime : C.blue} /> : null}
+                  {r.actedAutonomously ? <Tag text="auto" color={C.lime} /> : null}
+                  <div style={{ flex: 1 }} />
+                  {sendable ? <button disabled={busy} onClick={() => act(String(r.id), "send")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11 }}>Send</button> : null}
+                  {sendable ? <button disabled={busy} onClick={() => act(String(r.id), "cancel")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange }}>Cancel</button> : null}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{String(r.subject ?? "")}</div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(r.body ?? "").slice(0, 160)}</div>
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{String(r.scopeType ?? "company")}{r.clientId ? " / " + String(r.clientId) : ""} · {fmtTime(r.createdAt)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
+  comms: CommsPage,
   departments: DepartmentsPage,
   command: CommandPage,
   learning: LearningPage,
