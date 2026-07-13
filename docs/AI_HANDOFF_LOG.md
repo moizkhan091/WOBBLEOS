@@ -4443,3 +4443,33 @@ green · DB proof x2 · migration 0043 zero drift.
 
 NEXT (live-integration wave): Selective Revision on real artifacts → Dream/Optimizer governance loop → Phase 5
 remainder → Phase 4 dedicated QA E2E → Media Studio durable system → Free Audit → extend release gate.
+
+---
+
+## cont.43 — Phase 4 QA gate BROWSER-PROVEN through a founder surface — Claude (Opus 4.8)
+
+The independent QA gate was already unit- + DB-proven (`verify:qa-gate`), but had no founder-facing surface and
+no browser proof. This batch adds both.
+
+FOUNDER QA API (founder-gated; 401 proven on both):
+- `GET /api/qa/reviews` — tenant-scoped inspection of persisted INDEPENDENT verdicts (+ per-criterion evidence +
+  routing target). Added a `clientWorkspaceId` filter to `QaReviewListQuery` + both stores (in-memory + DB) so a
+  founder inspecting client A never sees client B (tenant isolation).
+- `POST /api/qa/reviews` — run an IMPLEMENTED board over a provided artifact and PERSIST the evidence-backed
+  verdict via the SAME `runQaGate` the live departments use. `RUNNABLE_QA_BOARDS` (in gate.ts) exposes only
+  boards with a real evaluator (proposal technical/commercial, research_validation) — a DECLARED-only board can
+  never be run, so the API can't fake a verdict. A founder-initiated review suppresses the auto-escalation
+  (the founder is already looking at it) → the only side effect is the append-only review row.
+
+PLAYWRIGHT `e2e/tests/qa-gate.spec.ts` (production build, real Postgres) — every branch through the real gate:
+PASS releases; REVISE routes the EXACT failed stage (`solution_design`) while preserving completed work; FAIL
+rejects; BLOCKED when the board cannot assess a missing artifact (no fake pass/fail); a SELF-REVIEW is rejected
+409 with the independence violations and NO review row is written; a DUPLICATE run for the same (board, workflow,
+task) REUSES the review (same id, `firstRelease:false` — no second row); TENANT isolation on the inspection API.
+Unauth 401 gate added for both endpoints; seed cleanup deletes `e2e_qa_%` workflow rows.
+
+GATE: typecheck 0 (tsc + next build) · full unit suite green · Playwright qa-gate + unauth 16/16 green on the
+production build · QA/registry unit tests green. No schema change (reused `qa_reviews`).
+
+NEXT (live-integration wave): Selective Revision on real artifacts → Dream/Optimizer governance loop → Phase 5
+remainder → Media Studio durable system → Free Audit → extend release gate.

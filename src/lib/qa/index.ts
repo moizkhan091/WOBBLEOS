@@ -127,6 +127,8 @@ export interface QaReviewListQuery {
   department?: string;
   verdict?: QaVerdict;
   workflowId?: string;
+  /** Tenant scope: a founder inspecting client A's reviews must never see client B's (tenant isolation). */
+  clientWorkspaceId?: string;
   limit?: number;
 }
 
@@ -160,6 +162,7 @@ export function createInMemoryQaReviewStore(): QaReviewStore {
         .filter((r) => (query.department ? r.department === query.department : true))
         .filter((r) => (query.verdict ? r.verdict === query.verdict : true))
         .filter((r) => (query.workflowId ? r.workflowId === query.workflowId : true))
+        .filter((r) => (query.clientWorkspaceId ? (r.clientWorkspaceId ?? null) === query.clientWorkspaceId : true))
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, query.limit);
     },
@@ -219,6 +222,7 @@ export function createDbQaReviewStore(db: Db = getDb()): QaReviewStore {
       if (query.department) conds.push(eq(qaReviewsTable.department, query.department));
       if (query.verdict) conds.push(eq(qaReviewsTable.verdict, query.verdict));
       if (query.workflowId) conds.push(eq(qaReviewsTable.workflowId, query.workflowId));
+      if (query.clientWorkspaceId) conds.push(eq(qaReviewsTable.clientWorkspaceId, query.clientWorkspaceId));
       const base = db.select().from(qaReviewsTable);
       const rows = await (conds.length ? base.where(and(...conds)) : base).orderBy(desc(qaReviewsTable.createdAt)).limit(query.limit);
       return rows.map(rowToReview);

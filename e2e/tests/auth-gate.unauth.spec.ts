@@ -54,4 +54,11 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.post("/api/autonomy/policies", { data: { category: "content.publish", grantedLevel: "autonomous" } })).status()).toBe(401);
     expect((await request.post("/api/autonomy/policies/anything/action", { data: { action: "revoke" } })).status()).toBe(401);
   });
+
+  test("the QA gate surface is gated at 401 (an unauthorized user cannot inspect verdicts or run a review)", async ({ request }) => {
+    // Independent QA verdicts + the on-demand review runner are founder-only — an unauthorized caller can
+    // neither read other tenants' verdicts nor write a review row.
+    expect((await request.get("/api/qa/reviews")).status()).toBe(401);
+    expect((await request.post("/api/qa/reviews", { data: { boardSlug: "proposal_technical_review", artifact: {}, submission: { authorAgentSlug: "x", workflowId: "unauth_attempt" } } })).status()).toBe(401);
+  });
 });

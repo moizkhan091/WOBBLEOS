@@ -81,6 +81,8 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.contextSources).where(and(eq(schema.contextSources.scopeType, "company"), eq(schema.contextSources.scopeId, "e2e_ctx")));
   // Earned-autonomy policies the autonomy browser spec grants (isolated test category prefix).
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
+  // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
+  await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
 }
 
 export async function seedE2E(): Promise<void> {
