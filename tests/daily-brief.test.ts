@@ -102,6 +102,26 @@ describe("daily-brief service — provider orchestration", () => {
     expect(brief.headline.every((r) => r.signal.scope.type === "department")).toBe(true);
   });
 
+  it("CONTEXT OS: attaches approved trusted-context as GUIDANCE — never as a signal (no fabrication)", async () => {
+    const escalations: SignalFetcher = async (scope) => [draft({ category: "escalation", severity: "critical", scope })];
+    const brief = await buildDailyFounderBrief(deptScope, {
+      providers: { escalations }, now,
+      retrieveTrustedContext: async () => "APPROVED DEPARTMENT CONTEXT: - This quarter's #1 priority is enterprise onboarding",
+    });
+    // the guidance block is attached...
+    expect(brief.trustedContext).toContain("APPROVED DEPARTMENT CONTEXT");
+    // ...but it is NOT a signal: the counts/headline/sections reflect ONLY the real operational signal.
+    expect(brief.totalSignals).toBe(1);
+    expect(brief.headline).toHaveLength(1);
+    expect(brief.headline[0].signal.category).toBe("escalation");
+  });
+
+  it("CONTEXT OS: no retrieval seam → no guidance block (trustedContext null, default off)", async () => {
+    const escalations: SignalFetcher = async (scope) => [draft({ category: "escalation", severity: "high", scope })];
+    const brief = await buildDailyFounderBrief(deptScope, { providers: { escalations }, now });
+    expect(brief.trustedContext).toBeNull();
+  });
+
   it("omits unevidenced drafts (anti-fabrication) and records provider failures as degraded coverage", async () => {
     const financeAlerts: SignalFetcher = async () => {
       throw new Error("finance store unavailable");

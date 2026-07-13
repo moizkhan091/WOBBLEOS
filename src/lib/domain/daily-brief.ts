@@ -254,6 +254,12 @@ export interface FounderBrief {
   degradedCategories: SignalCategory[];
   /** Count of provider signals omitted for missing/invalid evidence (anti-fabrication). */
   omittedSignals: number;
+  /**
+   * APPROVED trusted-context guidance for INTERPRETING the brief (founder-approved standing priorities/facts) —
+   * a DISTINCT block, NOT a signal: it never adds to `totalSignals`, `headline` or `sections`, and never
+   * fabricates operational data. Null when none / not wired.
+   */
+  trustedContext: string | null;
   note: string;
 }
 
@@ -264,6 +270,8 @@ export interface AssembleOptions {
   id?: string;
   degradedCategories?: SignalCategory[];
   omittedSignals?: number;
+  /** APPROVED trusted-context guidance block (distinct from signals; never fabricates operational data). */
+  trustedContext?: string | null;
 }
 
 function highestSeverity(signals: BriefSignal[]): SignalSeverity | null {
@@ -326,6 +334,7 @@ export function assembleFounderBrief(scope: BriefScope, signals: BriefSignal[], 
     lowestConfidence,
     degradedCategories: degraded,
     omittedSignals: omitted,
+    trustedContext: opts.trustedContext ?? null,
     note,
   };
 }

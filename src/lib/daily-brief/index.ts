@@ -70,6 +70,12 @@ export interface DailyBriefDeps {
   halfLifeHours?: number;
   /** Override the cadence-derived lookback if the caller wants a custom window. */
   lookbackMs?: number;
+  /**
+   * Opt-in Context OS retrieval: the scope's APPROVED trusted-context block, attached to the brief as INTERPRETIVE
+   * GUIDANCE (a distinct field — never a signal, never fabricates operational data). Injected by the production
+   * scheduler for the brief's scope, telemetered. Omitted → no guidance block.
+   */
+  retrieveTrustedContext?: () => Promise<string | null>;
 }
 
 /**
@@ -117,12 +123,18 @@ export async function buildDailyFounderBrief(scope: BriefScope, deps: DailyBrief
     }
   }
 
+  // Context OS: APPROVED trusted-context GUIDANCE for interpreting the brief — best-effort, never a signal and
+  // never fabricating operational data; a retrieval failure simply omits the guidance block.
+  let trustedContext: string | null = null;
+  if (deps.retrieveTrustedContext) { try { trustedContext = await deps.retrieveTrustedContext(); } catch { trustedContext = null; } }
+
   return assembleFounderBrief(scope, signals, {
     now,
     topN: deps.topN,
     halfLifeHours: deps.halfLifeHours,
     degradedCategories: dedupeCategories(degraded),
     omittedSignals: omitted,
+    trustedContext,
   });
 }
 
@@ -201,7 +213,16 @@ export interface BuildAndStoreDeps extends DailyBriefDeps {
  */
 export async function buildAndStoreDailyBrief(scope: BriefScope, deps: BuildAndStoreDeps = {}): Promise<FounderBrief> {
   const providers = deps.providers ?? defaultBriefProviders();
-  const brief = await buildDailyFounderBrief(scope, { ...deps, providers });
+  // Context OS: attach the scope's APPROVED trusted-context as INTERPRETIVE guidance (never a signal). Company-wide
+  // briefs (no scope id) read the WOBBLE company scope; scoped briefs read their own client/project/department scope.
+  const retrieveTrustedContext = deps.retrieveTrustedContext ?? (async () => {
+    try {
+      const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
+      const ctxScope = scope.id ? ({ type: scope.type, id: scope.id } as const) : ({ type: "company", id: "wobble" } as const);
+      return await retrieveTrustedContextBlock(ctxScope, "daily_brief", { agentSlug: "founder_brief", label: `APPROVED ${scope.type.toUpperCase()} CONTEXT` });
+    } catch { return null; }
+  });
+  const brief = await buildDailyFounderBrief(scope, { ...deps, providers, retrieveTrustedContext });
   const store = deps.store ?? (process.env.DATABASE_URL ? createDbDailyBriefStore() : undefined);
   if (store) await store.insertBrief(brief);
   return brief;

@@ -4688,3 +4688,26 @@ STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst
 Only the Daily Founder Brief generator remains (+ Free Audit when built).
 
 GATE: typecheck 0 · proposal/consumer unit tests green · build 0 · (full suite in this batch).
+
+---
+
+## cont.52 — Context OS at the DAILY FOUNDER BRIEF → Context OS operational-GLOBAL — Claude (Opus 4.8)
+
+Final founder-listed generator. The Daily Brief is a SIGNAL AGGREGATOR (not an LLM generator), so Context OS here
+is INTERPRETIVE GUIDANCE, never a fabricated signal (the founder's explicit constraint). `FounderBrief` gains a
+DISTINCT `trustedContext: string | null` field (guidance) that never counts toward totalSignals/headline/sections.
+`buildDailyFounderBrief` accepts opt-in `retrieveTrustedContext`; `buildAndStoreDailyBrief` (the cadence trigger's
+unit of work) wires the scope's approved context by default (company-wide → WOBBLE company scope; scoped brief →
+its own client/project/department scope), best-effort (fail-open to null), telemetered. Persisted automatically
+(the brief is stored as jsonb). Proven by unit tests: the guidance block is attached but totalSignals/headline
+reflect ONLY real signals; null by default.
+
+Context OS is now wired into ALL 6 founder-listed active generators (content, paid-audit, research-analyst,
+dreamer, proposal, daily-brief) → **operational-global** (Free Audit wires the same seam when its execution path
+is built). The proposal Context OS expansion (1564b22) was reviewed → SHIP.
+
+DOCUMENTED LOW (reviewer): the fail-open retrieval closures (proposal consumer + daily brief) swallow errors with
+no telemetry — a sustained Context OS outage silently degrades grounding. Observability follow-up (intentional
+fail-open per anti-fabrication).
+
+GATE: typecheck 0 · daily-brief unit tests 10/10 · (build + full suite in this batch).
