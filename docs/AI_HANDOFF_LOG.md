@@ -4588,3 +4588,26 @@ STATUS: Selective Revision now spans Content + Audit + Proposal → toward opera
 deterministic re-assemble, not graph-checkpoint reuse — honest distinction).
 
 GATE: typecheck 0 · affected unit tests green · DB proof x2.
+
+---
+
+## cont.47 — Context OS retrieval expanded to the PAID-AUDIT generator — Claude (Opus 4.8)
+
+Context OS was operational-scoped to the CONTENT generator only. Expanded to the PAID-AUDIT generator.
+
+Added `retrieveTrustedContextBlock(scope, task, opts)` to `src/lib/context-os` — the reusable production helper
+that retrieves APPROVED, scope-isolated assertions + formats a grounding block (or null) + records the retrieval
+(telemetry). Refactored the content helper onto it.
+
+PAID-AUDIT: `runPaidAuditGraph` now accepts opt-in `retrieveTrustedContext` (like content); the discovery node's
+prompt is prepended with the block. The production wiring (`retrieveAuditTrustedContext`, registry) retrieves the
+audited CLIENT's scope (`{type:"client", id:companyId}`, falls back to `{company:wobble}` for internal), telemetered.
+Wired into BOTH the `audit.paid` job handler AND `POST /api/audit/paid`.
+
+PROVEN: unit tests — the client's approved trusted-context block is injected into the discovery prompt when the
+seam is wired, and absent by default (mirrors the content-graph proof). The Context OS internals (approved-only,
+tenant isolation, superseded excluded, telemetry, audit) remain proven by `verify:context-os`.
+
+STATUS: Context OS = operational-scoped (content + paid-audit generators). Proposal/Research/Daily-Brief still missing.
+
+GATE: typecheck 0 · paid-audit unit tests 11/11 · (build + full suite pending in this batch).

@@ -112,6 +112,41 @@ describe("paid audit — orchestrator (mocked agents, no LLM spend)", () => {
     expect(rows.size).toBeGreaterThan(0);
   });
 
+  it("CONTEXT OS: injects the client's approved trusted-context block into the discovery prompt when the retrieval seam is wired", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "clinic.", acquisition: [{ step: "ads", detail: "x", tool: "Meta", pain: "y" }], delivery: [{ step: "booking", pain: "manual" }], support: [{ step: "phone", pain: "misses" }], bottlenecks: [{ area: "desk", pain: "misses calls", rootCause: "no cover", severity: "high", businessImpact: "lost" }], keyMetrics: [{ label: "staff", value: "12" }] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "Text-back", area: "desk", service: "missed-call-text-back-system", description: "auto-text", howItWorks: "webhook", expectedOutcome: "recover leads", impact: "high", difficulty: "low", kpis: ["recovered calls"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: ["Text-back"], bigSwings: [], rationale: "ROI" }),
+      audit_roadmap: JSON.stringify({ phases: [{ title: "P1", months: "1-2", focus: "leaks", objectives: ["recover"], deliverables: ["text-back"], items: ["Text-back"], expectedOutcome: "fewer misses" }] }),
+      audit_report: JSON.stringify({ executiveSummary: "recover.", situationSummary: "manual.", roi: { estimatedMonthlyUpsideCents: 900000, estimatedImplementationCents: 4500000, paybackMonths: 5, breakdown: [{ area: "desk", monthlyValueCents: 900000 }] }, risks: [{ risk: "adoption", mitigation: "training" }], successMetrics: ["rt<60s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["sign SOW"] }),
+    };
+    const seenByRole: Record<string, string[]> = {};
+    const runNode = async (i: { role: string; messages: Array<{ content: string }> }) => { seenByRole[i.role] = i.messages.map((m) => String(m.content)); return { text: canned[i.role], runId: `r_${i.role}` }; };
+    await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "co_ctx" },
+      { retrieveBrain: async () => [], runNode: runNode as never, recordAudit: async () => {}, persistAudit: async () => {}, retrieveTrustedContext: async () => "APPROVED CLIENT CONTEXT: - Their pricing tier is Enterprise", now },
+    );
+    // the discovery node saw the approved trusted-context block (a real generator grounded on approved scoped facts)
+    expect((seenByRole[Object.keys(seenByRole).find((r) => r.includes("discovery")) ?? "audit_discovery"] ?? []).some((m) => m.includes("APPROVED CLIENT CONTEXT"))).toBe(true);
+  });
+
+  it("CONTEXT OS: no retrieval seam → the discovery prompt has no trusted-context block (default off)", async () => {
+    const canned: Record<string, string> = {
+      audit_discovery: JSON.stringify({ situation: "clinic.", acquisition: [{ step: "ads", detail: "x", tool: "Meta", pain: "y" }], delivery: [{ step: "booking", pain: "manual" }], support: [{ step: "phone", pain: "misses" }], bottlenecks: [{ area: "desk", pain: "misses calls", rootCause: "no cover", severity: "high", businessImpact: "lost" }], keyMetrics: [{ label: "staff", value: "12" }] }),
+      audit_opportunity: JSON.stringify({ opportunities: [{ title: "Text-back", area: "desk", service: "missed-call-text-back-system", description: "auto-text", howItWorks: "webhook", expectedOutcome: "recover", impact: "high", difficulty: "low", kpis: ["recovered"] }] }),
+      audit_prioritization: JSON.stringify({ quickWins: ["Text-back"], bigSwings: [], rationale: "ROI" }),
+      audit_roadmap: JSON.stringify({ phases: [{ title: "P1", months: "1-2", focus: "leaks", objectives: ["recover"], deliverables: ["text-back"], items: ["Text-back"], expectedOutcome: "fewer" }] }),
+      audit_report: JSON.stringify({ executiveSummary: "recover.", situationSummary: "manual.", roi: { estimatedMonthlyUpsideCents: 900000, estimatedImplementationCents: 4500000, paybackMonths: 5, breakdown: [{ area: "desk", monthlyValueCents: 900000 }] }, risks: [{ risk: "adoption", mitigation: "training" }], successMetrics: ["rt<60s"], recommendedTechStack: ["Wobble OS"], nextSteps: ["sign SOW"] }),
+    };
+    let sawBlock = false;
+    const runNode = async (i: { role: string; messages: Array<{ content: string }> }) => { if (i.messages.some((m) => String(m.content).includes("APPROVED"))) sawBlock = true; return { text: canned[i.role], runId: `r_${i.role}` }; };
+    await runPaidAuditGraph(
+      { businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "co_ctx" },
+      { retrieveBrain: async () => [], runNode: runNode as never, recordAudit: async () => {}, persistAudit: async () => {}, now },
+    );
+    expect(sawBlock).toBe(false);
+  });
+
   it("threads a validated structured handoff between every node (client-scoped, with lineage)", async () => {
     const canned: Record<string, string> = {
       audit_discovery: JSON.stringify({ situation: "x", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] }),

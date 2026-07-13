@@ -58,6 +58,12 @@ export interface PaidAuditQaOutcome {
 
 export interface PaidAuditDeps {
   retrieveBrain?: () => Promise<Array<{ title: string; content: string }>>;
+  /**
+   * Opt-in Context OS retrieval: returns a system-message block of the APPROVED trusted-context facts for the
+   * audited CLIENT's scope (or null when none / not wired). Injected by the production handler so the audit is
+   * grounded in the client's founder-approved facts (never raw/unapproved, never another tenant's); telemetered.
+   */
+  retrieveTrustedContext?: () => Promise<string | null>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
   recordAgentRun?: (input: Record<string, unknown>) => Promise<unknown>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -165,6 +171,8 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
 
   try {
     const brain = await (deps.retrieveBrain ?? defaultRetrieveBrain)();
+    // Context OS: ground the audit in the CLIENT's APPROVED trusted context (never raw/unapproved), telemetered.
+    const trustedContextBlock = deps.retrieveTrustedContext ? await deps.retrieveTrustedContext() : null;
     const ctx: AuditContext = { businessName: input.businessName, industry: input.industry, intakeNotes: input.intakeNotes, freeAuditSummary: input.freeAuditSummary, brain };
 
     // ---- Structured inter-agent handoff (Phase 2): a validated envelope threads the whole graph,
@@ -232,7 +240,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     // Node 1 — Discovery / current-state map (driven by the entry handoff orchestrator→discovery).
     const { parsed: discoveryParsed, run: dRun } = await consume({
       slug: PAID_AUDIT_AGENTS.discovery, role: PAID_AUDIT_ROLES.discovery, linkedEntityId: entityId,
-      messages: buildDiscoveryPrompt(ctx), parse: (t) => parseJsonObject(t, discoverySchema),
+      messages: trustedContextBlock ? [{ role: "system", content: trustedContextBlock }, ...buildDiscoveryPrompt(ctx)] : buildDiscoveryPrompt(ctx), parse: (t) => parseJsonObject(t, discoverySchema),
       required: true, parseErr: "paid-audit: discovery node returned unparseable output",
       summarize: (dsc) => ({ inputSummary: input.businessName, outputSummary: `${dsc!.bottlenecks.length} bottlenecks` }),
       checkpoint: bindNodeCheckpoint(cpCtx, "discovery", 0),

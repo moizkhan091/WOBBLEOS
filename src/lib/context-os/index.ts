@@ -110,6 +110,24 @@ export async function retrieveTrustedContext(scope: ContextScope, task: string, 
   return { assertions: trusted, retrievalId };
 }
 
+/**
+ * Production generator helper: retrieve the trusted (approved-in-scope) context for a scope + format it as a
+ * grounding block for an LLM prompt (or null when none), recording the retrieval as evidence (telemetry). Used
+ * by every real generator (content / proposal / paid-audit / …) so a generator only ever sees APPROVED,
+ * scope-isolated facts — never raw/unapproved, never another tenant's.
+ */
+export async function retrieveTrustedContextBlock(
+  scope: ContextScope,
+  task: string,
+  opts: { agentSlug?: string; label?: string; limit?: number } = {},
+  deps: ContextOsDeps = {},
+): Promise<string | null> {
+  const { assertions } = await retrieveTrustedContext(scope, task, { agentSlug: opts.agentSlug, limit: opts.limit }, deps);
+  if (!assertions.length) return null;
+  const label = opts.label ?? `APPROVED ${scope.type.toUpperCase()} CONTEXT`;
+  return `${label} (trusted, founder-approved facts — treat as ground truth, never contradict):\n` + assertions.map((a) => `- ${a.statement}`).join("\n");
+}
+
 // -------------------------------------------------- 5. contradictions + coverage (computed on durable data)
 export async function listContextContradictions(scope: ContextScope, deps: ContextOsDeps = {}): Promise<ContextContradiction[]> {
   const db = deps.db ?? getDb();

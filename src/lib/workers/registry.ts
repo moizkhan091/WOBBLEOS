@@ -67,8 +67,17 @@ export async function openAuditRevision(input: { graphRunId: string; failedStage
   });
 }
 
+/** Production audit Context OS retrieval: the audited CLIENT's approved trusted context (falls back to WOBBLE
+ *  company scope for an internal audit), telemetered. Grounds the audit in founder-approved, tenant-isolated facts. */
+export async function retrieveAuditTrustedContext(companyId: string | null): Promise<string | null> {
+  const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
+  const scope = companyId ? ({ type: "client", id: companyId } as const) : ({ type: "company", id: "wobble" } as const);
+  return retrieveTrustedContextBlock(scope, "paid_audit", { agentSlug: "audit_discovery", label: companyId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+}
+
 async function runPaidAuditWithOriginationJobHandler(job: PaidAuditJobRow): Promise<Record<string, unknown>> {
-  const result = await runPaidAuditJobHandler(job, { qaGate: livePaidAuditQaGate, onQaRevise: openAuditRevision });
+  const cid = ((job.payload ?? {}) as { companyId?: string | null }).companyId ?? null;
+  const result = await runPaidAuditJobHandler(job, { qaGate: livePaidAuditQaGate, onQaRevise: openAuditRevision, retrieveTrustedContext: () => retrieveAuditTrustedContext(cid) });
   const p = (job.payload ?? {}) as { businessName?: string; companyId?: string | null };
   const auditId = result.auditId as string | undefined;
   if (auditId && p.businessName) {
@@ -117,10 +126,8 @@ export async function liveContentQaGate(
  * real enforcement point — a production generator retrieves approved scoped context before generating.
  */
 async function retrieveContentTrustedContext(): Promise<string | null> {
-  const { retrieveTrustedContext } = await import("@/lib/context-os");
-  const { assertions } = await retrieveTrustedContext({ type: "company", id: "wobble" }, "social_content", { agentSlug: "content_strategist" });
-  if (!assertions.length) return null;
-  return "APPROVED WOBBLE CONTEXT (trusted onboarding facts — treat as ground truth, never contradict):\n" + assertions.map((a) => `- ${a.statement}`).join("\n");
+  const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
+  return retrieveTrustedContextBlock({ type: "company", id: "wobble" }, "social_content", { agentSlug: "content_strategist", label: "APPROVED WOBBLE CONTEXT" });
 }
 
 /**
