@@ -4314,3 +4314,16 @@ GATE: typecheck 0 · 852 tests / 105 files · build 0 · no schema/migration.
 
 NEXT: Phase 9 Free Audit completion/proof · Phase 10 Media Studio · Phase 11 release gate. Plus durable
 persistence + enforcement wiring for autonomy/revision/optimizer; Phase 5 UI; Context OS.
+
+## cont.37 — Phase 11 (gate): release-coherence CI test (system-wiring guard)
+
+Added a permanent release-coherence guard that runs on every push, so a mis-wire fails CI instead of shipping:
+every ACTIVE department has a registered, non-paused orchestrator (except the human-operated Founder Command
+Centre); every downstreamConsumer references a REAL department (no dangling routes); a self-triggering
+department accepts its OWN product schema (guards the exact research-schema regression from cont.25); every
+implemented QA board reviewer is a registered, non-paused agent. 4 tests.
+
+GATE: typecheck 0 · 856 tests / 106 files · build 0 · no schema/migration.
+
+NEXT: a release-readiness capstone script (runs all DB proofs + gates) · Phase 10 Media Studio provider-
+independent core · durable persistence + enforcement wiring for the Phase 6/7/8 cores · Phase 5 UI · Context OS.
