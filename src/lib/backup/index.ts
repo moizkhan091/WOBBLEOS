@@ -1,8 +1,10 @@
-import { sql } from "drizzle-orm";
+import { sql, inArray } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { getDb, type Db } from "@/db";
+import { writeAuditEvent } from "@/lib/audit";
+import type { AuditEventInput } from "@/lib/domain/audit";
 
-/** Backup & Restore — a real point-in-time export of the business-critical tables. Read-only. */
+/** Backup & Restore — a real point-in-time export + additive, non-destructive restore of business-critical tables. */
 
 // The tables worth snapshotting (business data, not ephemeral job/queue rows).
 const BACKUP_TABLES: Array<{ key: string; table: typeof schema.crmCompanies }> = [
@@ -66,4 +68,97 @@ export async function exportSnapshot(generatedAt: string, deps: { db?: Db } = {}
     }
   }
   return { generatedAt, version: "wobble-os-backup-1", data, truncated };
+}
+
+const BACKUP_TABLE_BY_KEY = new Map(BACKUP_TABLES.map((t) => [t.key, t.table]));
+
+export interface SnapshotValidation {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  version: string | null;
+  tableKeys: string[];
+}
+
+/** Validate a snapshot's shape BEFORE any restore — a malformed / unknown-version / unknown-table payload is rejected. */
+export function validateSnapshot(snapshot: unknown): SnapshotValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const s = snapshot as Partial<BackupSnapshot> | null;
+  if (!s || typeof s !== "object") return { ok: false, errors: ["snapshot is not an object"], warnings, version: null, tableKeys: [] };
+  if (s.version !== "wobble-os-backup-1") errors.push(`unsupported snapshot version: ${String(s.version)}`);
+  if (!s.data || typeof s.data !== "object") { errors.push("snapshot.data is missing or not an object"); return { ok: false, errors, warnings, version: s.version ?? null, tableKeys: [] }; }
+  const tableKeys = Object.keys(s.data);
+  for (const key of tableKeys) {
+    if (!BACKUP_TABLE_BY_KEY.has(key)) { warnings.push(`unknown table '${key}' will be ignored`); continue; }
+    if (!Array.isArray(s.data[key])) errors.push(`table '${key}' is not an array of rows`);
+    else for (const row of s.data[key]) if (!row || typeof (row as { id?: unknown }).id !== "string") { errors.push(`table '${key}' has a row without a string id`); break; }
+  }
+  if (Array.isArray(s.truncated) && s.truncated.length) warnings.push(`snapshot was TRUNCATED for: ${s.truncated.join(", ")} — those tables are incomplete`);
+  return { ok: errors.length === 0, errors, warnings, version: s.version ?? null, tableKeys };
+}
+
+export interface RestoreTableResult {
+  key: string;
+  candidateRows: number;
+  /** Rows whose id is not already present — inserted on apply, or would-be-inserted on dry_run. */
+  newRows: number;
+  /** Rows whose id already exists — ALWAYS skipped (restore is additive; it NEVER overwrites/deletes). */
+  existingRows: number;
+  inserted: number;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  mode: "dry_run" | "apply";
+  errors: string[];
+  warnings: string[];
+  tables: RestoreTableResult[];
+  totalNew: number;
+  totalInserted: number;
+}
+
+/**
+ * RESTORE a snapshot — ADDITIVE and NON-DESTRUCTIVE. It only ever INSERTS rows whose id is missing; it NEVER
+ * deletes or overwrites an existing row (onConflictDoNothing on the PK). `dry_run` (the default) reports exactly
+ * what WOULD be inserted per table without writing; `apply` performs the additive insert. This makes restore safe
+ * to run against a live DB — the worst case is a no-op. Founder-gated at the route.
+ */
+export async function restoreSnapshot(
+  snapshot: BackupSnapshot,
+  opts: { mode?: "dry_run" | "apply"; tables?: string[]; actor?: string },
+  deps: { db?: Db; recordAudit?: (i: AuditEventInput) => Promise<void> } = {},
+): Promise<RestoreResult> {
+  const db = deps.db ?? getDb();
+  const mode = opts.mode ?? "dry_run";
+  const validation = validateSnapshot(snapshot);
+  if (!validation.ok) return { ok: false, mode, errors: validation.errors, warnings: validation.warnings, tables: [], totalNew: 0, totalInserted: 0 };
+
+  const results: RestoreTableResult[] = [];
+  const filter = opts.tables && opts.tables.length ? new Set(opts.tables) : null;
+  for (const [key, rows] of Object.entries(snapshot.data)) {
+    const table = BACKUP_TABLE_BY_KEY.get(key);
+    if (!table || (filter && !filter.has(key))) continue;
+    const candidates = rows as Array<Record<string, unknown>>;
+    if (!candidates.length) { results.push({ key, candidateRows: 0, newRows: 0, existingRows: 0, inserted: 0 }); continue; }
+    const ids = candidates.map((r) => String(r.id));
+    const idCol = (table as unknown as { id: never }).id;
+    const existing = await db.select({ id: idCol }).from(table as never).where(inArray(idCol, ids));
+    const existingIds = new Set((existing as Array<{ id: string }>).map((r) => r.id));
+    const newRows = candidates.filter((r) => !existingIds.has(String(r.id)));
+    let inserted = 0;
+    if (mode === "apply" && newRows.length) {
+      // Additive: onConflictDoNothing means a concurrent insert of the same id is a safe skip, never an overwrite.
+      const out = await db.insert(table as never).values(newRows as never).onConflictDoNothing().returning({ id: idCol });
+      inserted = (out as unknown[]).length;
+    }
+    results.push({ key, candidateRows: candidates.length, newRows: newRows.length, existingRows: candidates.length - newRows.length, inserted });
+  }
+
+  const totalNew = results.reduce((s, r) => s + r.newRows, 0);
+  const totalInserted = results.reduce((s, r) => s + r.inserted, 0);
+  if (mode === "apply") {
+    await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))({ eventType: "backup.restored", module: "backup", entityType: "system", actor: opts.actor ?? "founder", metadata: { totalInserted, tables: results.filter((r) => r.inserted > 0).map((r) => ({ key: r.key, inserted: r.inserted })) } });
+  }
+  return { ok: true, mode, errors: [], warnings: validation.warnings, tables: results, totalNew, totalInserted };
 }

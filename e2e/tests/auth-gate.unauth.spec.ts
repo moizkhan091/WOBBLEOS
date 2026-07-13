@@ -49,6 +49,12 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("backup export + restore are gated at 401 (an unauthorized user cannot exfiltrate or write business data)", async ({ request }) => {
+    // Export is a full business-data dump; restore writes rows — both must be founder-only.
+    expect((await request.get("/api/backup/export")).status()).toBe(401);
+    expect((await request.post("/api/backup/restore", { data: { snapshot: { version: "wobble-os-backup-1", data: {} }, mode: "dry_run" } })).status()).toBe(401);
+  });
+
   test("the self-optimizer is gated at 401 (an unauthorized user cannot trigger a cycle, inspect, or govern a proposal)", async ({ request }) => {
     // Running the optimizer + approving/activating/rolling back an improvement are founder-only — no anonymous
     // caller can trigger a cycle or change the governance state of a proposal.

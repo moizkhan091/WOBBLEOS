@@ -4925,3 +4925,40 @@ governance guard → full approve/activate/monitor/rollback chain) + optimizer u
 
 GATE: typecheck 0 · full unit suite 906/906 (114 files) · build 0 (clean .next) · DB proof x2 · migration 0048
 zero drift · full Playwright 46 passed. (Reviewer dispatched.)
+
+Reviewer verdict (independent, adversarial): SHIP — 6/7 claims fully held incl. the safety heart (no silent
+changes: writes confined to the 6 optimizer tables; no auto-approve/activate; monitor→rollback verified). ONE
+MEDIUM to fix (next batch): the "historical test" gate is TAUTOLOGICAL — candidate = baseline+(1-baseline)*0.5 is
+always > baseline, so `historicalTestPasses` can never fail for an optimizer-generated proposal; framing it as an
+"evidence-backed historical test / validation" is gate-theater. Fix planned: reframe the projected candidate as an
+explicit ESTIMATE (not a backtest) + make the approval gate a REAL evidence-adequacy check that CAN fail
+(sufficient samples + a meaningful below-threshold margin), so a marginal/thin opportunity is surfaced but not
+approvable until the evidence is strong. (No safety breach today — human-in-the-loop at approve+activate, nothing
+actuated, rollback backstop.)
+
+---
+
+## cont.59 — Backup RESTORE: additive, non-destructive, dry-run-first (mandate: backup/restore) — Claude (Opus 4.8)
+
+Backup had EXPORT only (`exportSnapshot`); the mandate names "backup/restore". Added a SAFE restore. No schema change.
+
+Service (`src/lib/backup/index.ts`): `validateSnapshot` (rejects bad version / non-array tables / rows without a
+string id; warns on unknown tables + truncation) + `restoreSnapshot(snapshot, {mode, tables?, actor})`. Restore is
+ADDITIVE + NON-DESTRUCTIVE: it only INSERTS rows whose id is MISSING (checked via a batched id SELECT), using
+`onConflictDoNothing` — it NEVER deletes or overwrites an existing row. `dry_run` (the default) reports exactly what
+WOULD be inserted per table and writes NOTHING; `apply` performs the additive insert + audits `backup.restored`.
+Worst case of a restore is a no-op, so it is safe against a live DB.
+
+Founder surface: `POST /api/backup/restore` (founder-gated, auth-first; dry_run default) + a Restore panel on the
+Backup module — choose a backup JSON, Dry run (preview per-table would-restore vs already-present + warnings), then
+Apply.
+
+PROVEN: verify:backup-restore (x2, 10 asserts) — export captures rows → lose one + modify another → DRY_RUN reports
+the missing row + writes NOTHING → APPLY re-inserts ONLY the missing row and does NOT revert the modified existing
+row (non-destructive) → audited → a 2nd APPLY is idempotent (0 inserts) → an unsupported-version snapshot is
+rejected. → verify:all-db (27). Unit: tests/backup-restore.test.ts (4, pure validation). Playwright:
+backup-restore.spec (export → 422 on invalid → dry_run writes nothing → apply is a safe no-op when all present) +
+a backup export/restore unauth 401 gate.
+
+GATE: typecheck 0 · full unit suite 910/910 (115 files) · build 0 (clean .next) · DB proof x2 · no migration
+(reuses existing tables) · full Playwright 15/15 in the targeted run (backup + full unauth gate). (Reviewer next.)

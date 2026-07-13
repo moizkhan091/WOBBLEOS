@@ -4850,7 +4850,61 @@ function BackupPage() {
         </div>
         {msg ? <div style={{ fontSize: 12, color: msg.includes("failed") ? C.orange : C.lime, marginTop: 10 }}>{msg}</div> : null}
       </Panel>
+      <RestorePanel onDone={() => state.reload()} />
     </div>
+  );
+}
+
+function RestorePanel({ onDone }: { onDone: () => void }) {
+  const [snapshot, setSnapshot] = useState<unknown>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ tables: { key: string; newRows: number; existingRows: number; inserted: number }[]; totalNew: number; totalInserted: number; warnings: string[] } | null>(null);
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return;
+    setMsg(null); setPreview(null);
+    try { const parsed = JSON.parse(await f.text()); setSnapshot(parsed); setFileName(f.name); }
+    catch { setMsg("That file is not valid JSON."); setSnapshot(null); setFileName(null); }
+  }
+  async function restore(mode: "dry_run" | "apply") {
+    if (!snapshot) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/backup/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshot, mode }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg("Restore failed: " + String(j.error ?? (j.errors ? j.errors.join("; ") : r.status))); return; }
+      setPreview({ tables: j.tables, totalNew: j.totalNew, totalInserted: j.totalInserted, warnings: j.warnings ?? [] });
+      setMsg(mode === "dry_run" ? `Dry run: ${j.totalNew} missing row(s) would be restored (nothing was written).` : `Applied: ${j.totalInserted} row(s) restored. Existing rows were never overwritten.`);
+      if (mode === "apply") onDone();
+    } finally { setBusy(false); }
+  }
+  return (
+    <Panel>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Restore from a snapshot</div>
+      <div style={{ fontSize: 11.5, color: faint, marginBottom: 12 }}>Additive + non-destructive: restore only INSERTS rows that are missing (by id). It NEVER overwrites or deletes an existing row. Always dry-run first to preview exactly what would be added.</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white, cursor: "pointer" }}>
+          Choose backup JSON<input type="file" accept="application/json,.json" onChange={onFile} style={{ display: "none" }} />
+        </label>
+        {fileName ? <span style={{ fontSize: 11.5, color: muted }}>{fileName}</span> : null}
+        <button disabled={busy || !snapshot} onClick={() => restore("dry_run")} style={busy || !snapshot ? disabledBtn : primaryBtn}>Dry run</button>
+        <button disabled={busy || !snapshot || !preview} onClick={() => restore("apply")} title={preview ? "" : "Dry-run first"} style={busy || !snapshot || !preview ? disabledBtn : { ...primaryBtn, background: C.lime }}>Apply restore</button>
+      </div>
+      {preview ? (
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 5 }}>
+          {preview.tables.filter((t) => t.newRows > 0 || t.inserted > 0).map((t) => (
+            <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+              <span style={{ fontSize: 12.5, flex: 1, fontFamily: "monospace" }}>{t.key}</span>
+              <span style={{ fontSize: 12, color: C.lime }}>{t.inserted > 0 ? `${t.inserted} restored` : `${t.newRows} would restore`}</span>
+              <span style={{ fontSize: 11, color: faint }}>{t.existingRows} already present</span>
+            </div>
+          ))}
+          {preview.warnings.map((w, i) => <div key={i} style={{ fontSize: 11, color: C.orange }}>⚠ {w}</div>)}
+        </div>
+      ) : null}
+      {msg ? <div style={{ fontSize: 12, color: msg.includes("failed") ? C.orange : C.lime, marginTop: 10 }}>{msg}</div> : null}
+    </Panel>
   );
 }
 
