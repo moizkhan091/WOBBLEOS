@@ -110,6 +110,8 @@ async function main() {
     const realObs = await listObservations(realCyc.cycleId, { store });
     const qaObs = realObs.find((o) => o.signalType === "qa_failure");
     assert(!!qaObs && Number(qaObs.sampleSize) >= 1, "REAL collector: the qa_failure collector read the real qa_reviews table (sampleSize ≥ 1) — evidence is real, not fabricated");
+    const realSignalTypes = new Set(realObs.map((o) => o.signalType));
+    assert(realSignalTypes.size >= 2, `the EXPANDED collector set observed multiple real signal types (${[...realSignalTypes].join(", ")}) — the optimizer reads the full production evidence surface, not one table`);
 
     console.log("\n✅ optimizer DB proof passed");
   } finally {

@@ -4992,3 +4992,28 @@ snapshot can't exceed the PG bind-param ceiling, and a table over a 10k restore 
 
 GATE: typecheck 0 · full unit suite 910/910 (115 files) · build 0 (clean .next) · optimizer DB proof x2 · backup DB
 proof (green) · zero migration drift · Playwright optimizer + backup specs green.
+
+---
+
+## cont.61 — Optimizer evidence surface EXPANDED to the full mandated signal set — Claude (Opus 4.8)
+
+The mandate's evidence list for Dream/Optimizer names ~13 real signals; cont.58 wired 4 (QA / revisions / dead
+letters / provider cost). Added 7 more REAL collectors (no schema change — all read existing production tables):
+- workflow_retry → handoffs.retry_count (first-try delivery rate)
+- tool_failure → provider_usage.status (tool success rate)
+- sales_outcome → crm_opportunities won/lost (win rate)
+- proposal_outcome → proposals accepted/rejected (acceptance rate)
+- delivery_outcome → projects.health_score (avg delivery health)
+- content_outcome → scheduled_posts published/failed (publish success rate)
+- founder_feedback → feedback_events approve/reject (founder approval rate)
+Each has a SIGNAL_TARGET spec (target subsystem + a concrete hypothesis). All normalize to a HIGHER=better health
+metric, guard empty tables (no rows → no observation, never fabricated), and run under the same per-collector
+try/catch. (source_value + AIOS Value are computed, not simple tables → intentionally not wired as raw collectors;
+noted for a future dedicated collector.) DEFAULT_COLLECTORS is now 11.
+
+PROVEN: verify:optimizer (x2) now additionally asserts the expanded set observes MULTIPLE real signal types in one
+real cycle (observed 8: qa_failure, revision_frequency, dead_letter, provider_cost, workflow_retry, tool_failure,
+content_outcome, founder_feedback). Governance/evidence-gate assertions unchanged + green.
+
+GATE: typecheck 0 · full unit suite 910/910 · build 0 (clean .next) · optimizer DB proof x2 · no migration ·
+Playwright optimizer spec green.

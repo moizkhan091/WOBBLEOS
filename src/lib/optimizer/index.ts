@@ -10,6 +10,11 @@ import {
   revisionCycles,
   handoffs,
   providerUsage,
+  crmOpportunities,
+  proposals as proposalsTable,
+  projects as projectsTable,
+  scheduledPosts,
+  feedbackEvents,
 } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
@@ -76,7 +81,74 @@ const providerCostCollector: EvidenceCollector = async ({ db, since }) => {
   return [{ signalType: "provider_cost", metricKey: "cost_efficiency", metricValue: 1 / (1 + avg), sampleSize: total, evidenceRef: { avgCostUsd: Math.round(avg * 10000) / 10000, samples: total } }];
 };
 
-export const DEFAULT_COLLECTORS: EvidenceCollector[] = [qaFailureCollector, revisionFrequencyCollector, deadLetterCollector, providerCostCollector];
+/** Workflow retries: share of handoffs delivered WITHOUT a retry (higher = better). Evidence: retry counts. */
+const workflowRetryCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ retries: handoffs.retryCount }).from(handoffs).where(gte(handoffs.createdAt, since));
+  if (!rows.length) return [];
+  const total = rows.length;
+  const clean = rows.filter((r) => Number(r.retries ?? 0) === 0).length;
+  return [{ signalType: "workflow_retry", metricKey: "first_try_delivery_rate", metricValue: clean / total, sampleSize: total, evidenceRef: { total, retried: total - clean } }];
+};
+
+/** Tool/provider reliability: share of provider calls that SUCCEEDED (higher = better). Evidence: provider_usage. */
+const toolFailureCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ status: providerUsage.status }).from(providerUsage).where(gte(providerUsage.createdAt, since));
+  if (!rows.length) return [];
+  const total = rows.length;
+  const ok = rows.filter((r) => r.status === "succeeded").length;
+  return [{ signalType: "tool_failure", metricKey: "tool_success_rate", metricValue: ok / total, sampleSize: total, evidenceRef: { total, failed: total - ok } }];
+};
+
+/** Sales outcomes: win rate over RESOLVED opportunities (won vs lost; higher = better). Evidence: crm_opportunities. */
+const salesOutcomeCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ status: crmOpportunities.status }).from(crmOpportunities).where(gte(crmOpportunities.createdAt, since));
+  const resolved = rows.filter((r) => r.status === "won" || r.status === "lost");
+  if (!resolved.length) return [];
+  const won = resolved.filter((r) => r.status === "won").length;
+  return [{ signalType: "sales_outcome", metricKey: "win_rate", metricValue: won / resolved.length, sampleSize: resolved.length, evidenceRef: { won, lost: resolved.length - won } }];
+};
+
+/** Proposal outcomes: acceptance rate over DECIDED proposals (accepted vs rejected; higher = better). */
+const proposalOutcomeCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ status: proposalsTable.status }).from(proposalsTable).where(gte(proposalsTable.createdAt, since));
+  const decided = rows.filter((r) => r.status === "accepted" || r.status === "rejected");
+  if (!decided.length) return [];
+  const accepted = decided.filter((r) => r.status === "accepted").length;
+  return [{ signalType: "proposal_outcome", metricKey: "acceptance_rate", metricValue: accepted / decided.length, sampleSize: decided.length, evidenceRef: { accepted, rejected: decided.length - accepted } }];
+};
+
+/** Delivery outcomes: average project health (0..1, higher = better). Evidence: project health scores. */
+const deliveryOutcomeCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ health: projectsTable.healthScore }).from(projectsTable).where(gte(projectsTable.createdAt, since));
+  const scored = rows.filter((r) => r.health !== null && r.health !== undefined);
+  if (!scored.length) return [];
+  const avg = scored.reduce((s, r) => s + num(r.health), 0) / scored.length;
+  return [{ signalType: "delivery_outcome", metricKey: "avg_delivery_health", metricValue: Math.min(1, Math.max(0, avg / 100)), sampleSize: scored.length, evidenceRef: { avgHealthScore: Math.round(avg * 100) / 100, projects: scored.length } }];
+};
+
+/** Content outcomes: share of scheduled posts that PUBLISHED cleanly (higher = better). Evidence: scheduled_posts. */
+const contentOutcomeCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ status: scheduledPosts.status }).from(scheduledPosts).where(gte(scheduledPosts.createdAt, since));
+  const terminal = rows.filter((r) => r.status === "published" || r.status === "failed");
+  if (!terminal.length) return [];
+  const published = terminal.filter((r) => r.status === "published").length;
+  return [{ signalType: "content_outcome", metricKey: "publish_success_rate", metricValue: published / terminal.length, sampleSize: terminal.length, evidenceRef: { published, failed: terminal.length - published } }];
+};
+
+/** Founder feedback: approval rate over DECIDED feedback (approve vs reject; higher = better). Evidence: feedback_events. */
+const founderFeedbackCollector: EvidenceCollector = async ({ db, since }) => {
+  const rows = await db.select({ decision: feedbackEvents.decision }).from(feedbackEvents).where(gte(feedbackEvents.createdAt, since));
+  const decided = rows.filter((r) => r.decision === "approve" || r.decision === "reject");
+  if (!decided.length) return [];
+  const approved = decided.filter((r) => r.decision === "approve").length;
+  return [{ signalType: "founder_feedback", metricKey: "founder_approval_rate", metricValue: approved / decided.length, sampleSize: decided.length, evidenceRef: { approved, rejected: decided.length - approved } }];
+};
+
+export const DEFAULT_COLLECTORS: EvidenceCollector[] = [
+  qaFailureCollector, revisionFrequencyCollector, deadLetterCollector, providerCostCollector,
+  workflowRetryCollector, toolFailureCollector, salesOutcomeCollector, proposalOutcomeCollector,
+  deliveryOutcomeCollector, contentOutcomeCollector, founderFeedbackCollector,
+];
 
 // ---- Opportunity formation ----
 /** A signal below this health threshold (with enough samples) becomes an evidence-backed opportunity. */
@@ -109,6 +181,13 @@ const SIGNAL_TARGET: Record<string, { targetType: string; targetRef: string; ris
   revision_frequency: { targetType: "workflow", targetRef: "selective_revision", risk: "low", costCents: 0, pattern: (o) => `${o.sampleSize} revision cycles in the window (revision health ${o.metricValue.toFixed(2)})`, hypothesis: () => "Add a pre-QA lint pass to catch the common revision triggers before they reach the gate." },
   dead_letter: { targetType: "workflow", targetRef: "handoff_delivery", risk: "medium", costCents: 0, pattern: (o) => `Handoff delivery health ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} handoffs`, hypothesis: () => "Raise the retry ceiling + add a backoff for the most-common failure_reason to reduce dead letters." },
   provider_cost: { targetType: "model", targetRef: "model_role_map", risk: "low", costCents: 0, pattern: (o) => `Cost efficiency ${o.metricValue.toFixed(2)} (avg per-call cost is elevated) over ${o.sampleSize} calls`, hypothesis: () => "Route the cheapest-viable role to a smaller model where QA pass rate is unaffected." },
+  workflow_retry: { targetType: "workflow", targetRef: "handoff_delivery", risk: "low", costCents: 0, pattern: (o) => `First-try delivery ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} handoffs (retries are common)`, hypothesis: () => "Add idempotency + a warm-up/backoff to the most-retried destination so more handoffs land first try." },
+  tool_failure: { targetType: "tool", targetRef: "provider_tools", risk: "medium", costCents: 0, pattern: (o) => `Tool success ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} provider calls`, hypothesis: () => "Add a validation + single retry around the most-failing tool call before it surfaces as an error." },
+  sales_outcome: { targetType: "prompt", targetRef: "sales_playbook", risk: "medium", costCents: 0, pattern: (o) => `Win rate ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} resolved opportunities`, hypothesis: () => "Tighten the qualification + follow-up cadence on the stages where deals are most often lost." },
+  proposal_outcome: { targetType: "prompt", targetRef: "proposal_synthesis", risk: "medium", costCents: 0, pattern: (o) => `Proposal acceptance ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} decided proposals`, hypothesis: () => "Sharpen the ROI framing + scope specificity in the proposal synthesis where proposals are most often rejected." },
+  delivery_outcome: { targetType: "workflow", targetRef: "delivery", risk: "medium", costCents: 0, pattern: (o) => `Average delivery health ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} projects`, hypothesis: () => "Add an earlier at-risk checkpoint + milestone-slip alert so delivery health is corrected before it drops." },
+  content_outcome: { targetType: "workflow", targetRef: "content_publishing", risk: "low", costCents: 0, pattern: (o) => `Publish success ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} scheduled posts`, hypothesis: () => "Add a pre-publish validation (media/link/format) to cut the most-common publish failure." },
+  founder_feedback: { targetType: "prompt", targetRef: "generation_prompts", risk: "low", costCents: 0, pattern: (o) => `Founder approval ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} decisions`, hypothesis: () => "Feed the most-common founder rejection reason back into the generation prompt as an explicit constraint." },
 };
 
 export interface OptimizerStore {
