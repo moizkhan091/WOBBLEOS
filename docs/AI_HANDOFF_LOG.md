@@ -4327,3 +4327,18 @@ GATE: typecheck 0 · 856 tests / 106 files · build 0 · no schema/migration.
 
 NEXT: a release-readiness capstone script (runs all DB proofs + gates) · Phase 10 Media Studio provider-
 independent core · durable persistence + enforcement wiring for the Phase 6/7/8 cores · Phase 5 UI · Context OS.
+
+## cont.38 — Phase 11 (gate): one-command release gate + RELEASE_CHECKLIST
+
+Built the runnable release gate: `npm run release:check` (typecheck+test+build = CI job 1), `npm run
+verify:all-db` (all 17 real-DB proofs chained, each idempotent+repeatable), `npm run release:full` (both).
+`docs/RELEASE_CHECKLIST.md` documents the complete Phase-11 gate (code gate · DB proofs · migration from-scratch
++ zero-drift · Playwright · system coherence · required CI · VPS isolated-deploy steps [external-blocked]).
+
+VERIFIED: `verify:all-db` run end-to-end on live Postgres — ALL 17 proofs PASS (commercial chain · consumer
++ origination · reroute · QA gate · research QA · content gate · content publishing · delivery completion ·
+decision learning · AIOS value · daily brief · granular source-approval · source discovery · source value ·
+intel propagation/isolation · founder taste). Exit 0. Plus code gate: typecheck 0 · 856 tests / 106 files · build 0.
+
+NEXT: Phase 10 Media Studio provider-independent core · durable persistence + enforcement wiring for the
+Phase 6/7/8 cores · Phase 5 UI · Context OS · VPS (external-blocked).
