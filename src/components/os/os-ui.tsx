@@ -4921,31 +4921,82 @@ function RestorePanel({ onDone }: { onDone: () => void }) {
   );
 }
 
+const MEDIA_STATUS_COLORS: Record<string, string> = { queued: "#F5C542", generating: C.blue, succeeded: C.lime, failed: C.orange, canceled: C.gray, blocked: C.orange };
+
 function MediaStudioPage() {
-  const state = useApi<{ generationBuilt: boolean; keySet: boolean; roadmap: { key: string; label: string; note: string }[]; note: string }>("/api/media");
+  const state = useApi<{ pipelineBuilt: boolean; providerConfigured: boolean; provider: string; kinds: string[]; note: string; jobs: Record<string, unknown>[] }>("/api/media?limit=50");
+  const [kind, setKind] = useState("image");
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const guard = offlineIf(state);
+
+  async function submit() {
+    if (!prompt.trim()) { setMsg("A prompt is required."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, prompt: prompt.trim(), estimatedCostCents: 0, budgetCapCents: 500 }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg("Submit failed: " + String(j.error ?? (j.errors ? j.errors.join("; ") : r.status))); return; }
+      setMsg("Job queued. The worker will run it — or hold it as 'blocked' until a provider key is set (never faked).");
+      setPrompt("");
+      state.reload();
+    } finally { setBusy(false); }
+  }
+  async function act(id: string, action: "cancel" | "retry") {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/media/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) { setMsg(action + " failed: " + String(j.error ?? r.status)); return; }
+      state.reload();
+    } finally { setBusy(false); }
+  }
   if (guard) return guard;
   const d = state.data;
+  const jobs = d?.jobs ?? [];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 760 }}>
       <Panel>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#F5C542", background: "rgba(245,197,66,0.12)" }}><Icon name="Clapperboard" size={16} /></span>
+          <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, background: "rgba(126,217,87,0.12)" }}><Icon name="Clapperboard" size={16} /></span>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Media Studio</div>
           <div style={{ flex: 1 }} />
-          <Tag text="roadmap · not built yet" color="#F5C542" />
+          <Tag text={d?.providerConfigured ? "provider: configured" : "provider: blocked (set FAL_KEY)"} color={d?.providerConfigured ? C.lime : "#F5C542"} />
         </div>
-        <div style={{ fontSize: 12.5, color: faint, lineHeight: 1.55, marginBottom: 12 }}>{d?.note ?? "Media generation is on the roadmap — the pipeline isn't built yet, so no media is produced."}</div>
-        <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Planned capabilities</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(d?.roadmap ?? []).map((c) => (
-            <div key={c.key} style={{ ...card, padding: "10px 12px", opacity: 0.75 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.label}</div>
-              <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{c.note}</div>
-            </div>
-          ))}
+        <div style={{ fontSize: 12, color: faint, lineHeight: 1.55, marginBottom: 12 }}>{d?.note}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
+            {(d?.kinds ?? ["image", "video", "audio", "model_3d"]).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Prompt (e.g. 'product hero shot, studio light')" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
+          <button disabled={busy} onClick={submit} style={busy ? disabledBtn : primaryBtn}>{busy ? "Working…" : "Queue generation"}</button>
         </div>
+        {msg ? <div style={{ fontSize: 11.5, color: msg.includes("failed") ? C.orange : C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
       </Panel>
+      {jobs.length === 0 ? <StateBlock kind="empty" message="No media jobs yet. Queue one above — a job is durable and worker-driven, and stays honest ('blocked') when no provider is configured." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {jobs.map((j, i) => {
+            const st = String(j.status ?? "queued");
+            return (
+              <div key={String(j.id ?? i)} style={{ ...card, padding: "11px 13px" }}>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center", marginBottom: 5 }}>
+                  <Tag text={String(j.kind ?? "")} color={C.gray} />
+                  <Tag text={st} color={MEDIA_STATUS_COLORS[st] ?? C.gray} />
+                  <Tag text={String(j.provider ?? "")} color={C.blue} />
+                  {Number(j.attempts ?? 0) > 0 ? <Tag text={`attempt ${String(j.attempts)}/${String(j.maxAttempts ?? 3)}`} color={C.gray} /> : null}
+                  <div style={{ flex: 1 }} />
+                  {(st === "queued" || st === "generating" || st === "blocked") ? <button disabled={busy} onClick={() => act(String(j.id), "cancel")} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11, background: C.gray }}>Cancel</button> : null}
+                  {(st === "failed" || st === "blocked") ? <button disabled={busy} onClick={() => act(String(j.id), "retry")} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11 }}>Retry</button> : null}
+                </div>
+                <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>{String(j.prompt ?? "")}</div>
+                {j.error ? <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>{String(j.error)}</div> : null}
+                {Array.isArray(j.outputRefs) && j.outputRefs.length ? <div style={{ fontSize: 11, color: C.lime, marginTop: 4, fontFamily: "monospace" }}>{(j.outputRefs as string[]).join(", ").slice(0, 120)}</div> : null}
+                <div style={{ fontSize: 10.5, color: faint, marginTop: 5 }}>{fmtTime(j.createdAt)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

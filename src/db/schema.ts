@@ -2191,6 +2191,42 @@ export const optimizerRollbackEvents = pgTable("optimizer_rollback_events", {
   index("optimizer_rollback_events_proposal_idx").on(table.proposalId),
 ]);
 
+// ---- MEDIA STUDIO (Phase 10): a durable media-generation JOB QUEUE. Provider-independent: a job runs through a
+// pluggable provider adapter; when no provider is configured the job is truthfully BLOCKED (never a fake success).
+// Worker-driven with leases (crash-safe reclaim), bounded retries → dead-letter, cancel, and budget-cap enforcement. ----
+export const mediaJobs = pgTable("media_jobs", {
+  id: id(),
+  kind: varchar("kind", { length: 16 }).notNull(),      // image | video | audio | model_3d
+  prompt: text("prompt").notNull(),
+  provider: varchar("provider", { length: 40 }).notNull().default("fal"),
+  params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+  status: varchar("status", { length: 16 }).notNull().default("queued"), // queued | generating | succeeded | failed | canceled | blocked
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  estimatedCostCents: integer("estimated_cost_cents").notNull().default(0),
+  budgetCapCents: integer("budget_cap_cents").notNull().default(0),
+  actualCostCents: integer("actual_cost_cents"),
+  outputRefs: jsonb("output_refs").$type<string[]>().notNull().default([]),
+  error: text("error"),
+  scopeType: varchar("scope_type", { length: 16 }).notNull().default("company"),
+  companyId: varchar("company_id", { length: 120 }),
+  clientId: varchar("client_id", { length: 120 }),
+  projectId: varchar("project_id", { length: 120 }),
+  requestedBy: varchar("requested_by", { length: 120 }).notNull(),
+  leaseOwner: varchar("lease_owner", { length: 120 }),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  dedupeKey: varchar("dedupe_key", { length: 200 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [
+  index("media_jobs_status_idx").on(table.status),
+  index("media_jobs_scope_idx").on(table.scopeType, table.companyId),
+  uniqueIndex("media_jobs_dedupe_uidx").on(table.dedupeKey).where(sql`dedupe_key is not null`),
+]);
+
 // ---- SELECTIVE REVISION (Phase 7): a composite artifact is a graph of versioned COMPONENTS. When only SOME
 // components fail QA we rerun EXACTLY the failed ones + their transitive dependents, PRESERVING every approved
 // component + its evidence. A revision cycle records the plan; component versions snapshot each state for rollback. ----

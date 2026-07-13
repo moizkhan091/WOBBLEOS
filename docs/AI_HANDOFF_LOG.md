@@ -5088,3 +5088,36 @@ rails. Fixed all mandatory findings:
 Proven: verify:ingestion x2 (now +idempotent-re-ingest assert) + 15 unit tests (incl. SSRF host classification +
 the linear-strip DoS guard). typecheck 0. (LOW recorded: apify_social 0-posts has no http fallback — a collection
 gap, not security; a future enhancement.)
+
+---
+
+## cont.64 — Durable MEDIA STUDIO (build-to-boundary; only the live fal.ai call is blocked) — Claude (Opus 4.8)
+
+Program order #7. Media Studio was core-only (pure `domain/media.ts`; the API honestly said `generationBuilt:false`).
+Built the ENTIRE provider-independent pipeline; the ONLY blocked piece is the live fal.ai call (needs FAL_KEY).
+
+Migration 0049 `media_jobs` (durable job: kind/prompt/provider/params/status/attempts/maxAttempts/estimated+budget+
+actual cost/outputRefs/error/scope/requestedBy/lease/dedupeKey/timestamps; partial-unique dedupeKey). Service
+`src/lib/media/index.ts`:
+- Providers: `deterministicMediaProvider` (CI-only, no external call, honest synthetic ref) + `falMediaProvider`
+  (configured() = FAL_KEY present; generate() throws a clear "not wired" — never fabricates).
+- `createMediaJob` (validate + budget-cap + queued, idempotent by dedupeKey), `dispatchOneMediaJob` (LEASE claim →
+  provider: unconfigured → BLOCKED (never faked); error → retry to the cap → dead-letter; success → outputRefs),
+  `dispatchMediaJobs` (worker tick: reclaim stale leases + drain), `cancelMediaJob`, `retryMediaJob`,
+  `mediaPipelineStatus` (honest built-vs-blocked). Atomic claim via `FOR UPDATE SKIP LOCKED`.
+- REAL trigger: the scheduler tick runs `dispatchMediaJobs` every tick (reclaim + drain). Without a key jobs go
+  BLOCKED (honest). Founder API: `GET/POST /api/media` + `POST /api/media/[id]/action` (cancel/retry), founder-gated.
+  UI: MediaStudioPage rebuilt — submit a job, see the queue + status + retry/cancel, honest "provider blocked" banner.
+
+PROVEN: verify:media (x2, 17 asserts) — validate/budget-cap, idempotent create, worker claim + deterministic
+success (real outputs), UNCONFIGURED → blocked (no outputs), retry → dead-letter at the cap, expired-lease CRASH
+RECOVERY (reclaim → queued → tick → succeeded), cancel. → verify:all-db (29). Unit: tests/media-service.test.ts
+(6) + the existing domain test. Playwright: media.spec (submit → scheduler-tick worker → honest BLOCKED → retry →
+cancel) + media unauth 401 gate. Module tagline + status now honest (pipeline built; live provider blocked on FAL_KEY).
+
+BLOCKED-EXTERNAL (documented): the live fal.ai generation call. Everything else (durable queue, worker, leases,
+retries, dead-letter, crash recovery, budget caps, UI, founder controls, proofs) is OPERATIONAL. Supply FAL_KEY +
+wire the fal client in `falMediaProvider.generate` to enable real media.
+
+GATE: typecheck 0 · full unit suite 931/931 (117 files) · build 0 (clean .next) · DB proof x2 · migration 0049 zero
+drift · Playwright media + full unauth + ingestion + proposal-accept regressions green. (Reviewer next.)

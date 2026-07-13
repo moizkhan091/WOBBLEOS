@@ -14,6 +14,7 @@ import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
+import { dispatchMediaJobs } from "@/lib/media";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
@@ -76,6 +77,7 @@ export interface SchedulerResult {
   dailyBriefGenerated: boolean;
   continuousResearchInsights: number;
   optimizerOpportunities: number;
+  mediaJobsDispatched: number;
   maintenanceRan: boolean;
   errors: string[];
 }
@@ -107,7 +109,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, deadLetterAutoRetried: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, optimizerOpportunities: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, deadLetterAutoRetried: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, optimizerOpportunities: 0, mediaJobsDispatched: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -204,6 +206,13 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     result.postsHeldForConfirm = d.heldForConfirm;
   } catch (e) { result.errors.push(`posts: ${e instanceof Error ? e.message : e}`); }
 
+  // 3b. Media Studio worker: reclaim stale (crashed) leases + dispatch queued media jobs. With no provider key a
+  // job is truthfully BLOCKED (never faked); with a provider it generates. This is the real per-tick media worker.
+  try {
+    const m = await dispatchMediaJobs({ now, limit: 10 });
+    result.mediaJobsDispatched = m.dispatched;
+  } catch (e) { result.errors.push(`media: ${e instanceof Error ? e.message : e}`); }
+
   // 4. Daily maintenance (worker gates this to ~once/day via runMaintenance).
   if (deps.runMaintenance) {
     try {
@@ -239,7 +248,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
   }
 
-  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.continuousResearchInsights || result.optimizerOpportunities || result.maintenanceRan || result.errors.length) {
+  if (result.automationsFired || result.scoutsEnqueued || result.postsDispatched || result.stalledReclaimed || result.departmentHandoffsConsumed || result.decisionPoliciesProposed || result.dailyBriefGenerated || result.continuousResearchInsights || result.optimizerOpportunities || result.mediaJobsDispatched || result.maintenanceRan || result.errors.length) {
     await recordAudit({ eventType: "scheduler.tick", module: "scheduler", entityType: "system", actor: "scheduler", metadata: { ...result } }).catch(() => {});
   }
   return result;

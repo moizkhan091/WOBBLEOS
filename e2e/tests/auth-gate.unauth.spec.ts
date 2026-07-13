@@ -49,6 +49,12 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("Media Studio is gated at 401 (an unauthorized user cannot inspect, submit, or control a media job)", async ({ request }) => {
+    expect((await request.get("/api/media")).status()).toBe(401);
+    expect((await request.post("/api/media", { data: { kind: "image", prompt: "x" } })).status()).toBe(401);
+    expect((await request.post("/api/media/anything/action", { data: { action: "cancel" } })).status()).toBe(401);
+  });
+
   test("backup export + restore are gated at 401 (an unauthorized user cannot exfiltrate or write business data)", async ({ request }) => {
     // Export is a full business-data dump; restore writes rows — both must be founder-only.
     expect((await request.get("/api/backup/export")).status()).toBe(401);
