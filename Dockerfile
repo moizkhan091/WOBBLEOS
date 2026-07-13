@@ -2,11 +2,22 @@
 # Build:  docker build -t wobble-os .
 # Run:    via docker-compose.prod.yml (app + postgres), or standalone with DATABASE_URL + SESSION_SECRET set.
 
-# ---- deps: install production + build deps once, cached ----
+# ---- deps: install deps once, cached ----
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# `npm install` (not `npm ci`) so the LINUX/alpine container resolves its OWN platform-specific optional binaries
+# (esbuild, @next/swc, @emnapi, fsevents) — a lockfile generated on a different OS otherwise breaks a strict `npm ci`.
+RUN npm install --no-audit --no-fund
+
+# ---- migrator: a LEAN image that can run drizzle-kit migrate (has the CLI + config + migration files, no Next build) ----
+FROM node:22-alpine AS migrator
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json drizzle.config.ts ./
+COPY src/db ./src/db
+# `drizzle-kit migrate` is ADDITIVE (applies pending migrations only — never push/drop). Reads DATABASE_URL from env.
+CMD ["npx", "drizzle-kit", "migrate"]
 
 # ---- build: compile the Next standalone server ----
 FROM node:22-alpine AS build

@@ -21,8 +21,11 @@ services:
     # No published port — the DB is reachable ONLY from the app on the private compose network (isolation).
 
   migrate:
-    build: .
-    command: ["npx", "drizzle-kit", "migrate"]
+    # Build the LEAN `migrator` stage — it has drizzle-kit + drizzle.config.ts + the migration files (the final
+    # `runner` stage intentionally does not). Applies pending migrations, then exits; `app` waits for success.
+    build:
+      context: .
+      target: migrator
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env.production}
     depends_on:

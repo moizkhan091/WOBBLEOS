@@ -5274,3 +5274,22 @@ DB proof x2 (health + cockpit) · no migration · Playwright health-public + coc
 
 BLOCKED-EXTERNAL (only these remain for #14/#15): SSH to the host, the production secrets, the domain/DNS/TLS. With
 those supplied, the documented runbook completes the isolated deploy.
+
+## cont.69-fix — Deploy reviewer HIGH (migrate stage) + MEDIUM (.env template not committed) — Claude (Opus 4.8)
+
+The cont.69 reviewer returned DO-NOT-SHIP on the deploy stack (app-code health + cockpit fixes were confirmed
+correct/safe). Fixed both blockers:
+- HIGH: the `migrate` compose service built the final `runner` stage, which has NO drizzle-kit CLI / drizzle.config.ts
+  → migrate would fail → app never starts. Added a LEAN `migrator` Dockerfile stage (node_modules + drizzle.config.ts
+  + src/db, no Next build) and pointed the compose `migrate` service at `target: migrator`. PROVEN end-to-end:
+  `docker build --target migrator` succeeds AND `docker run` of it against the real Postgres printed "migrations
+  applied successfully!" (exit 0). Also fixed a PRE-EXISTING cross-platform break: the Windows-generated lockfile
+  desynced `npm ci` on alpine (esbuild/@emnapi/@next-swc per-platform binaries) → the Dockerfile now uses
+  `npm install` so the container resolves its OWN platform binaries (the whole image build was broken before this).
+- MEDIUM: `.env.production.example` was gitignored by `.env.*` and NOT actually committed. Added the
+  `!.env.production.example` negation to .gitignore + committed the template. (LOW: moved its inline comments onto
+  their own lines so an operator can't corrupt a secret with a trailing `# …` under docker `env_file`.)
+
+Security posture reconfirmed by the reviewer: no secret committed, DB not published to the host, app loopback-bound,
+health leaks only up/down. GATE: compose config parses · migrator image builds + runs migrations green · app-code
+proofs unchanged (health + cockpit x2).
