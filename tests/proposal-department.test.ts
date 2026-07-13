@@ -6,7 +6,7 @@ import type { HandoffRow } from "@/lib/domain/handoff-delivery";
 import type { ProposalRow } from "@/lib/domain/proposal";
 import type { ProposalStore } from "@/lib/proposals";
 import { proposalAction } from "@/lib/proposals";
-import { runProposalDepartment, type SolutionSynthesis } from "@/lib/departments/verticals/proposal";
+import { runProposalDepartment, defaultSynthesize, type SolutionSynthesis } from "@/lib/departments/verticals/proposal";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -175,6 +175,23 @@ describe("Proposal department vertical", () => {
     );
 
     expect(audits.some((a) => a.type === "department.escalated")).toBe(true);
+  });
+
+  it("CONTEXT OS: the synthesizer injects the client's approved trusted-context block as a distinct system message when wired", async () => {
+    let seen: Array<{ role: string; content: string }> = [];
+    const provider = async (i: { messages: Array<{ role: string; content: unknown }> }) => { seen = i.messages.map((m) => ({ role: m.role, content: String(m.content) })); return { text: JSON.stringify({ technicalSolution: "x", integrationDesign: "y", roiAssumptions: "z", risks: [] }) }; };
+    await defaultSynthesize({ auditId: "a1", businessName: "Acme", trustedContext: "APPROVED CLIENT CONTEXT: - They are on the Enterprise tier" }, { provider });
+    // the trusted block is present AND it is its own system message (not the base architect prompt)
+    expect(seen.some((m) => m.role === "system" && m.content.includes("APPROVED CLIENT CONTEXT"))).toBe(true);
+    expect(seen.filter((m) => m.role === "system").length).toBe(2); // base prompt + the trusted block
+  });
+
+  it("CONTEXT OS: no trusted context → the synthesizer prompt has no such block (default off)", async () => {
+    let seen: Array<{ role: string; content: string }> = [];
+    const provider = async (i: { messages: Array<{ role: string; content: unknown }> }) => { seen = i.messages.map((m) => ({ role: m.role, content: String(m.content) })); return { text: JSON.stringify({ technicalSolution: "x", integrationDesign: "y", roiAssumptions: "z", risks: [] }) }; };
+    await defaultSynthesize({ auditId: "a1", businessName: "Acme" }, { provider });
+    expect(seen.some((m) => m.content.includes("APPROVED"))).toBe(false);
+    expect(seen.filter((m) => m.role === "system").length).toBe(1); // just the base architect prompt
   });
 
   it("throws (not a silent empty proposal) when the source audit is missing", async () => {

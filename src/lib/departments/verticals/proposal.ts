@@ -1,6 +1,6 @@
 import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
-import { runTextProvider } from "@/lib/providers";
+import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { createProposalFromAudit, type ProposalDeps } from "@/lib/proposals";
 import type { ProposalRow } from "@/lib/domain/proposal";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
@@ -36,7 +36,10 @@ export interface RunProposalDepartmentInput {
 
 export interface RunProposalDepartmentDeps extends RunDepartmentDeps {
   /** The solution architect's judgment step (real LLM by default; injectable/canned in proofs). */
-  synthesize?: (input: { auditId: string; businessName: string; usageContext: import("@/lib/domain/provider-usage").ProviderUsageContext }) => Promise<SolutionSynthesis>;
+  synthesize?: (input: { auditId: string; businessName: string; usageContext: import("@/lib/domain/provider-usage").ProviderUsageContext; trustedContext?: string | null }) => Promise<SolutionSynthesis>;
+  /** Opt-in Context OS retrieval: the CLIENT's APPROVED trusted-context block (or null) grounding the synthesis;
+   *  injected by the production consumer for the client scope, telemetered. Omitted in tests → no block. */
+  retrieveTrustedContext?: () => Promise<string | null>;
   /** Deterministic proposal service deps (store, getAuditRow, draftInvoice, advanceOpportunityToWon). */
   proposalDeps?: ProposalDeps;
   /** An already-claimed inbound handoff envelope (from claimNextDepartmentHandoff) to consume. */
@@ -68,19 +71,24 @@ export interface ProposalQaGate {
   onQaRevise?: (input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string; workflowId: string }) => Promise<void>;
 }
 
-/** Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. */
-export async function defaultSynthesize(input: { auditId: string; businessName: string; usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext }): Promise<SolutionSynthesis> {
+/**
+ * Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. Grounds the
+ * design in the CLIENT's APPROVED Context OS facts (`input.trustedContext`) — a DISTINCT system message, never
+ * fabricating operational signals. `deps.provider` is injectable so the prompt (incl. the trusted block) is
+ * unit-testable without a live LLM.
+ */
+export async function defaultSynthesize(
+  input: { auditId: string; businessName: string; usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext; trustedContext?: string | null },
+  deps: { provider?: (i: { role: string; module: string; maxTokens?: number; messages: ProviderChatMessage[]; usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext }) => Promise<{ text: string }> } = {},
+): Promise<SolutionSynthesis> {
   if (useDeterministicJudgment()) return { technicalSolution: `Deterministic advisory synthesis for ${input.businessName}: integrate the audited systems, sequence the roadmap, and automate the highest-impact workflows first.`, integrationDesign: "Concrete integration across the audited toolchain via the WOBBLE handoff runtime and deterministic services.", roiAssumptions: "ROI grounded in the audited baseline; conservative estimates only.", risks: [] };
-  const r = await runTextProvider({
-    role: "content_strategy",
-    module: "proposals",
-    maxTokens: 1200,
-    messages: [
-      { role: "system", content: "You are a senior AI solution architect at WOBBLE. Given a business audit, design the technical solution. Reply as JSON: {\"technicalSolution\":string,\"integrationDesign\":string,\"roiAssumptions\":string,\"risks\":string[]}." },
-      { role: "user", content: `Design the solution for ${input.businessName} (audit ${input.auditId}). Ground it in the audit's opportunities; be specific about the systems, integrations, sequencing, ROI assumptions and delivery risks.` },
-    ],
-    usageContext: input.usageContext,
-  });
+  const provider = deps.provider ?? runTextProvider;
+  const messages: ProviderChatMessage[] = [
+    { role: "system", content: "You are a senior AI solution architect at WOBBLE. Given a business audit, design the technical solution. Reply as JSON: {\"technicalSolution\":string,\"integrationDesign\":string,\"roiAssumptions\":string,\"risks\":string[]}." },
+    ...(input.trustedContext ? [{ role: "system" as const, content: input.trustedContext }] : []),
+    { role: "user", content: `Design the solution for ${input.businessName} (audit ${input.auditId}). Ground it in the audit's opportunities; be specific about the systems, integrations, sequencing, ROI assumptions and delivery risks.` },
+  ];
+  const r = await provider({ role: "content_strategy", module: "proposals", maxTokens: 1200, messages, usageContext: input.usageContext });
   try {
     const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as SolutionSynthesis;
     return { technicalSolution: String(j.technicalSolution ?? ""), integrationDesign: String(j.integrationDesign ?? ""), roiAssumptions: String(j.roiAssumptions ?? ""), risks: Array.isArray(j.risks) ? j.risks.map(String) : [] };
@@ -128,8 +136,10 @@ export async function runProposalDepartment(input: RunProposalDepartmentInput, d
     // Confirm the department has its solution architect (real membership, not a label).
     if (!api.selectSpecialists({ capability: "solution_design" }).length) api.escalate("proposal has no registered solution architect");
 
+    // Context OS: retrieve the CLIENT's APPROVED trusted context to ground the synthesis (never fabricated), telemetered.
+    const trustedContext = deps.retrieveTrustedContext ? await deps.retrieveTrustedContext() : null;
     // AGENT judgment: synthesize the technical solution + risks from the audit.
-    const synthesis = await synthesize({ auditId: input.auditId, businessName: input.businessName, usageContext: { departmentSlug: "proposal", workflowId, taskId: api.envelope.taskId, companyId: input.companyId ?? null, clientWorkspaceId: input.companyId ?? null } });
+    const synthesis = await synthesize({ auditId: input.auditId, businessName: input.businessName, usageContext: { departmentSlug: "proposal", workflowId, taskId: api.envelope.taskId, companyId: input.companyId ?? null, clientWorkspaceId: input.companyId ?? null }, trustedContext });
 
     // DETERMINISTIC write: map the audit → the versioned proposal artifact (services, timeline, scope,
     // pricing). The architect's synthesis is PERSISTED onto the artifact (metadata.solutionDesign + it

@@ -102,7 +102,19 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
         requestedBy: env.sourceAgent ?? "paid_audit_orchestrator",
         workflowId: env.workflowId,
       },
-      { ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env, qa: deps.proposal?.qa ?? (deps.enableQaGates ? { deps: {}, onQaRevise: openProposalRevision } : undefined) },
+      {
+        ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env,
+        qa: deps.proposal?.qa ?? (deps.enableQaGates ? { deps: {}, onQaRevise: openProposalRevision } : undefined),
+        // Context OS: ground the proposal synthesis in the CLIENT's approved trusted context (else WOBBLE company).
+        // Best-effort: a retrieval failure must NOT fail the proposal — grounding is additive, so fall open to null.
+        retrieveTrustedContext: deps.proposal?.retrieveTrustedContext ?? (async () => {
+          try {
+            const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
+            const scope = env.companyId ? ({ type: "client", id: env.companyId } as const) : ({ type: "company", id: "wobble" } as const);
+            return await retrieveTrustedContextBlock(scope, "proposal_synthesis", { agentSlug: "proposal_solution_architect", label: env.companyId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+          } catch { return null; }
+        }),
+      },
     ),
   sales_crm: (env, deps) =>
     runSalesCrmDepartment(

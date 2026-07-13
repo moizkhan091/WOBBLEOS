@@ -4668,3 +4668,23 @@ round) → still 1; CONCURRENT triggers (Promise.all x3) → still 1 (partial un
 preserved (clientId + companyId carried). Existing content/audit graph idempotency preserved (derived dedupeKey).
 
 GATE: typecheck 0 · affected unit tests 48 · DB proof x2 · migration 0045 zero drift · (build + full suite + Playwright in this batch).
+
+---
+
+## cont.51 — Context OS retrieval expanded to the PROPOSAL generator — Claude (Opus 4.8)
+
+Fifth generator wired (content + paid-audit + research-analyst + dreamer + proposal). The proposal's solution
+architect (`defaultSynthesize`) now takes `input.trustedContext` + an injectable `deps.provider`; the CLIENT's
+APPROVED trusted-context block is injected as a DISTINCT system message (never fabricating operational signals),
+without bypassing the real production path. The proposal vertical retrieves it (opt-in `retrieveTrustedContext`)
+before synthesis; the production department consumer wires the client-scoped retrieval (best-effort — a retrieval
+failure falls open to null so a context hiccup never fails proposal generation), telemetered.
+
+PROVEN: unit tests on defaultSynthesize — the approved block is a distinct system message (2 system messages: base
+architect prompt + the trusted block) when wired, and absent by default (1 system message). Context OS internals
+proven by verify:context-os. The proposal idempotency fix (b46a6ca) was independently reviewed → SHIP.
+
+STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst + dreamer + proposal generators).
+Only the Daily Founder Brief generator remains (+ Free Audit when built).
+
+GATE: typecheck 0 · proposal/consumer unit tests green · build 0 · (full suite in this batch).
