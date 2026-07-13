@@ -16,7 +16,7 @@ import { getDb, closeDb } from "@/db";
 import { revisionCycles, revisionComponents, revisionComponentVersions, graphCheckpoints } from "@/db/schema";
 import { buildGraphCheckpointRow } from "@/lib/domain/graph-checkpoint";
 import { defaultCheckpointStore, loadCheckpointContext } from "@/lib/graph-checkpoint";
-import { openRevisionCycle, driveSelectiveGraphRerun, applyRevisionOutcome, rollbackRevisionCycle, getRevisionCycle } from "@/lib/selective-revision";
+import { openRevisionCycle, driveSelectiveGraphRerun, markRevisionReran, applyRevisionOutcome, rollbackRevisionCycle, getRevisionCycle } from "@/lib/selective-revision";
 
 async function main() {
   const db = getDb();
@@ -64,7 +64,11 @@ async function main() {
     const resumeCtx = await loadCheckpointContext({ graph: "content_graph", graphRunId, schemaVersion: 1 }, { store });
     assert(resumeCtx.cached.size === 1 && resumeCtx.cached.has("c1"), "a re-run under the PRESERVED graphRunId reuses exactly the preserved node (c1) — the reuse loop actually closes, not just the delete");
 
-    // APPLY: the rerun components complete → approved at their next version; preserved untouched.
+    // STATE MACHINE: the rerun is dispatched → planned → reran (so a subsequent revise opens a fresh cycle).
+    assert(await markRevisionReran(cycle.id, deps), "the cycle transitions planned → reran once the rerun is dispatched");
+    assert((await getRevisionCycle(cycle.id, deps))!.status === "reran", "the cycle status is `reran`");
+
+    // APPLY (from reran): the rerun components complete → approved at their next version; preserved untouched.
     await applyRevisionOutcome(cycle.id, cycle.plan.rerun.map((k) => ({ key: k, status: "approved" as const, evidence: { text: `${k}-v2` } })), deps);
     const applied = (await getRevisionCycle(cycle.id, deps))!;
     assert(applied.status === "applied", "the cycle is applied");

@@ -126,13 +126,28 @@ export async function driveSelectiveGraphRerun(cycleId: string, deps: RevisionDe
   return { cleared, rerun: cycle.plan.rerun, preserved: cycle.plan.preserved };
 }
 
+/**
+ * Mark a cycle's selective rerun as DISPATCHED (planned → reran). Called once the reran nodes' checkpoints are
+ * cleared + the producer is re-enqueued, so this cycle no longer satisfies `openRevisionCycle`'s
+ * "reuse an OPEN (planned) cycle" idempotency — a SUBSEQUENT revise of the same run opens a FRESH cycle with the
+ * current plan instead of reusing the stale first-round plan.
+ */
+export async function markRevisionReran(cycleId: string, deps: RevisionDeps = {}): Promise<boolean> {
+  const db = deps.db ?? getDb();
+  const now = deps.now ?? new Date();
+  const cur = (await db.select().from(revisionCycles).where(eq(revisionCycles.id, cycleId)).limit(1))[0];
+  if (!cur || cur.status !== "planned") return false;
+  await db.update(revisionCycles).set({ status: "reran", updatedAt: now }).where(eq(revisionCycles.id, cycleId));
+  return true;
+}
+
 /** Apply the completed revision: each rerun component → the given outcome (approved/failed) at its next version;
  *  preserved components untouched. Snapshots the post-apply state. */
 export async function applyRevisionOutcome(cycleId: string, outcomes: Array<{ key: string; status: "approved" | "failed"; evidence?: Record<string, unknown> }>, deps: RevisionDeps = {}): Promise<RevisionCycleView | null> {
   const db = deps.db ?? getDb();
   const now = deps.now ?? new Date();
   const cycle = (await db.select().from(revisionCycles).where(eq(revisionCycles.id, cycleId)).limit(1))[0];
-  if (!cycle || cycle.status !== "planned") return null;
+  if (!cycle || (cycle.status !== "planned" && cycle.status !== "reran")) return null;
   const byKey = new Map(outcomes.map((o) => [o.key, o]));
   const comps = await db.select().from(revisionComponents).where(eq(revisionComponents.cycleId, cycleId));
   for (const c of comps) {

@@ -95,6 +95,8 @@ export async function cleanupE2E(): Promise<void> {
     await db.delete(schema.revisionCycles).where(inArray(schema.revisionCycles.id, ids));
   }
   await db.delete(schema.graphCheckpoints).where(eq(schema.graphCheckpoints.graphRunId, E2E_REVISION_RUN));
+  // The content.graph job the revision `rerun` action re-enqueues (bound to the preserved graphRunId).
+  await db.delete(schema.jobs).where(like(schema.jobs.idempotencyKey, "revision_rerun:%"));
 }
 
 export async function seedE2E(): Promise<void> {
@@ -177,6 +179,8 @@ export async function seedE2E(): Promise<void> {
       { key: "scoring", kind: "graph_node", producedBy: "content_scorer", dependsOn: ["revise"] },
     ],
     failedComponents: ["draft"], clientId: E2E_WORKSPACE,
+    // Re-enqueue context so the browser `rerun` action exercises the real re-enqueue-under-preserved-graphRunId hop.
+    reenqueue: { producer: "content.graph", contentTrackId: "track_wobble_company", objective: "e2e selective revision", requestedBy: "Moiz" },
   }, { db, recordAudit: async () => {} });
 }
 

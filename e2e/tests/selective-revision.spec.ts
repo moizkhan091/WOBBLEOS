@@ -27,12 +27,16 @@ test.describe("Selective Revision — inspect → selective rerun → rollback (
     expect(strategy.version).toBe(1);
     expect(c!.components.find((x) => x.key === "draft")!.version).toBe(2);
 
-    // Selective rerun: exactly the 3 reran nodes' checkpoints are cleared (strategy + research preserved).
+    // Selective rerun: exactly the 3 reran nodes' checkpoints are cleared (strategy + research preserved), AND
+    // the producer is RE-ENQUEUED bound to the preserved graphRunId (so the re-run reuses the preserved nodes).
     const rerun = await request.post(`/api/revisions/${c!.id}/action`, { data: { action: "rerun" } });
     expect(rerun.status()).toBe(200);
-    const rr = (await rerun.json()) as { cleared: number; rerun: string[]; preserved: string[] };
+    const rr = (await rerun.json()) as { cleared: number; rerun: string[]; preserved: string[]; reenqueued: boolean };
     expect(rr.cleared).toBe(3);
     expect(rr.preserved.slice().sort()).toEqual(["research", "strategy"]);
+    expect(rr.reenqueued).toBe(true); // the content.graph re-run was enqueued under the preserved graphRunId
+    // the cycle transitions planned → reran (so a subsequent revise opens a fresh cycle, not the stale plan)
+    expect((await cycle(request))!.status).toBe("reran");
 
     // Rollback restores every component to its PRE-REVISION snapshot: all back to version 1, the preserved
     // nodes still approved, and the originally-failed `draft` faithfully restored to `failed` (not fabricated

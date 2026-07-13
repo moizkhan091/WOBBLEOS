@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { driveSelectiveGraphRerun, rollbackRevisionCycle, getRevisionCycle } from "@/lib/selective-revision";
+import { driveSelectiveGraphRerun, rollbackRevisionCycle, getRevisionCycle, markRevisionReran } from "@/lib/selective-revision";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
@@ -39,6 +39,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         await enqueueContentGraphJob({ contentTrackId: re.contentTrackId, requestedBy: re.requestedBy ?? "Moiz", objective: re.objective, graphRunId: cycle.graphRunId, idempotencyKey: `revision_rerun:${id}` });
         reenqueued = true;
       }
+      // 3) Transition planned → reran so a SUBSEQUENT revise of the same run opens a fresh cycle (not the stale plan).
+      await markRevisionReran(id);
       return NextResponse.json({ ok: true, ...result, reenqueued });
     }
     const ok = await rollbackRevisionCycle(id);
