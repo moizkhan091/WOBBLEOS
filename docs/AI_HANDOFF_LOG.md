@@ -5156,3 +5156,26 @@ DROPS that field (treats a non-grounded service mention as a hallucination) — 
 structural too, not just prompt-level. LOW (fixed): an empty-but-successful composer output now falls back to the
 deterministic summary (not ""). Unit: +2 cases (groundProse drops a non-grounded service name / keeps neutral +
 grounded text; a hallucinated composer output falls back to the summary). Proof x2 + typecheck green.
+
+---
+
+## cont.66 — Remaining Daily Founder Brief providers (4 honest gaps → wired) — Claude (Opus 4.8)
+
+Program order #9. The Daily Brief had 4 wired providers + 4 HONEST GAPS (provider_health, kpi, crm_movement,
+intelligence). Wired all four to REAL stores (evidence-linked, never fabricated, scope-aware, [] when nothing):
+- `providerHealthProvider` → `getWorkersOverview` — a STALE worker heartbeat (background worker stopped reporting).
+  Company-wide (workers aren't tenant-scoped) → scoped briefs skip it. Evidence: the worker heartbeat.
+- `kpiProvider` → `listTasks` + `isOverdue` — an aggregate "N tasks overdue" signal (work slipping). Evidence: the tasks.
+- `crmMovementProvider` → `listOpportunities({status:open})` — a STALLED deal (next action overdue). Evidence: the opportunity.
+- `intelligenceProvider` → `listIntelligenceItems({approvalStatus:pending})` — validated findings awaiting founder
+  review. Evidence: the items.
+`defaultBriefProviders()` now returns all 8 (no more coverage gaps). Each provider carries a real source id on every
+signal + returns [] when its store is empty (never fabricated).
+
+PROVEN: verify:daily-brief-providers (x2, 9 asserts) — each provider surfaces its seeded real row with the right
+category + an evidence ref; provider_health is company-scoped (client-scope skips it); every signal carries ≥1 real
+evidence ref. → verify:all-db (31). Unit: tests/daily-brief-providers.test.ts (the no-DB scope guard). The original
+verify:daily-brief still green (no regression from 4→8 providers).
+
+GATE: typecheck 0 · full unit suite green · build 0 (clean .next) · DB proof x2 · no migration (reads existing
+stores) · verify:coverage 31/31.
