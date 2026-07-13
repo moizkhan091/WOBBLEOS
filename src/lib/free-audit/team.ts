@@ -1,4 +1,4 @@
-import { diagnose, buildAuditRow, SERVICE_BY_SLUG, FREE_AUDIT_MODULE, type RunAuditInput, type AuditReport, type AuditRow } from "@/lib/domain/free-audit";
+import { diagnose, buildAuditRow, SERVICE_BY_SLUG, WOBBLE_SERVICES, FREE_AUDIT_MODULE, type RunAuditInput, type AuditReport, type AuditRow } from "@/lib/domain/free-audit";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import type { AuditStore } from "@/lib/free-audit";
@@ -69,6 +69,22 @@ async function runRole(deps: FreeAuditTeamDeps, input: FreeAuditProviderInput): 
 }
 
 /**
+ * ANTI-HALLUCINATION on the PROSE (not just the slug list): a prose field that names a Wobble service the diagnosis
+ * did NOT surface is treated as a hallucination and DROPPED (returned ""). This makes the "never an invented service"
+ * guarantee STRUCTURAL for the client-facing text, not just prompt-level. `allowedNames` = the grounded services.
+ */
+export function groundProse(text: string, allowedSlugs: string[]): string {
+  if (!text) return "";
+  const allowed = new Set(allowedSlugs.map((s) => (SERVICE_BY_SLUG.get(s)?.name ?? "").toLowerCase()).filter(Boolean));
+  const lower = text.toLowerCase();
+  for (const svc of WOBBLE_SERVICES) {
+    const name = svc.name.toLowerCase();
+    if (name.length >= 5 && !allowed.has(name) && lower.includes(name)) return ""; // mentions a non-grounded service → drop
+  }
+  return text;
+}
+
+/**
  * Run the free-audit team: deterministic diagnosis → 3-agent enrichment → persist ONE audit row carrying BOTH the
  * grounded report and the enrichment. Returns the persisted row. If the enrichment fails (no/failed provider) the
  * audit still lands with the deterministic report + `enrichment.generated=false` — never blocked, never fabricated.
@@ -81,10 +97,13 @@ export async function runFreeAuditTeam(input: RunAuditInput, deps: FreeAuditTeam
 
   let enrichment: FreeAuditEnrichment;
   try {
-    const framedGaps = await runRole(deps, { role: "free_audit_gap_analyst", module: FREE_AUDIT_MODULE, grounding, prompt: "Frame the 2-3 highest-impact gaps this business has, in the owner's language. One short paragraph." });
-    const opportunityNarrative = await runRole(deps, { role: "free_audit_opportunity_writer", module: FREE_AUDIT_MODULE, grounding, prompt: "For each REAL opportunity above, write one persuasive sentence tying the Wobble service to the gap. Bulleted." });
-    const finalPitch = await runRole(deps, { role: "free_audit_pitch_composer", module: FREE_AUDIT_MODULE, grounding, prompt: `Compose a tight, niche-customized pitch for ${report.businessName} from the framed gaps + opportunity lines. Open with the single biggest win. 120 words max.` });
-    enrichment = { framedGaps, opportunityNarrative, finalPitch, groundedServiceSlugs, generated: Boolean(framedGaps || opportunityNarrative || finalPitch) };
+    // Each prose field is GROUNDED after generation: a field that names a non-diagnosed service is dropped.
+    const framedGaps = groundProse(await runRole(deps, { role: "free_audit_gap_analyst", module: FREE_AUDIT_MODULE, grounding, prompt: "Frame the 2-3 highest-impact gaps this business has, in the owner's language. One short paragraph." }), groundedServiceSlugs);
+    const opportunityNarrative = groundProse(await runRole(deps, { role: "free_audit_opportunity_writer", module: FREE_AUDIT_MODULE, grounding, prompt: "For each REAL opportunity above, write one persuasive sentence tying the Wobble service to the gap. Bulleted." }), groundedServiceSlugs);
+    const composed = groundProse(await runRole(deps, { role: "free_audit_pitch_composer", module: FREE_AUDIT_MODULE, grounding, prompt: `Compose a tight, niche-customized pitch for ${report.businessName} from the framed gaps + opportunity lines. Open with the single biggest win. 120 words max.` }), groundedServiceSlugs);
+    const generated = Boolean(framedGaps || opportunityNarrative || composed);
+    // If the composer produced nothing usable (empty or dropped-for-hallucination), fall back to the honest summary.
+    enrichment = { framedGaps, opportunityNarrative, finalPitch: composed || report.summary, groundedServiceSlugs, generated };
   } catch {
     enrichment = { framedGaps: "", opportunityNarrative: "", finalPitch: report.summary, groundedServiceSlugs, generated: false };
   }

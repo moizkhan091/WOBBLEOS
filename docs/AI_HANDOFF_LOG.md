@@ -5146,3 +5146,13 @@ free-audit-team.spec (enrich → grounded enrichment scoped to real opportunitie
 
 GATE: typecheck 0 · full unit suite 933/933 (118 files) · build 0 (clean .next) · DB proof x2 · no migration ·
 Playwright free-audit-team + full unauth gate green. (Reviewer next.)
+
+## cont.65-fix — Free Audit reviewer MEDIUM (prose anti-hallucination) + LOW — Claude (Opus 4.8)
+
+The cont.65 reviewer (SHIP) flagged a MEDIUM: "never an invented service" was STRUCTURAL for the slug list but only
+PROMPT-enforced for the client-facing PROSE. Closed it: `groundProse` now scans each generated prose field
+(framedGaps / opportunityNarrative / finalPitch) for any Wobble service NAME that the diagnosis did NOT surface and
+DROPS that field (treats a non-grounded service mention as a hallucination) — so the prose guarantee is now
+structural too, not just prompt-level. LOW (fixed): an empty-but-successful composer output now falls back to the
+deterministic summary (not ""). Unit: +2 cases (groundProse drops a non-grounded service name / keeps neutral +
+grounded text; a hallucinated composer output falls back to the summary). Proof x2 + typecheck green.
