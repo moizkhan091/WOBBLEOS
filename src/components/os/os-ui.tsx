@@ -1307,10 +1307,27 @@ function MemoryPage() {
   );
 }
 
-function SourceDetailDrawer({ source, onClose }: { source: Record<string, unknown>; onClose: () => void }) {
+function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<string, unknown>; onClose: () => void; onChanged?: () => void }) {
   const id = String(source.id ?? "");
   const chunks = useApi<{ chunks: Record<string, unknown>[] }>(id ? "/api/sources/" + encodeURIComponent(id) + "/chunks?limit=20" : "/api/sources/no-source/chunks");
   const intake = useApi<{ runs: Record<string, unknown>[] }>(id ? "/api/sources/" + encodeURIComponent(id) + "/intake?limit=20" : "/api/sources/no-source/intake");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const status = String(source.status ?? "active");
+  const approved = source.approvalStatus === "approved";
+  async function sourceAction(action: "deactivate" | "reactivate") {
+    let reason: string | undefined;
+    if (action === "deactivate") { const r = window.prompt("Deactivating stops NEW collection + propagation for this source. Existing evidence is preserved and this is reversible. Reason (optional):"); if (r === null) return; reason = r.trim() || undefined; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/sources/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...(reason ? { reason } : {}) }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) { setMsg((action === "deactivate" ? "Deactivate" : "Reactivate") + " failed: " + String(j.error ?? res.status)); return; }
+      const preserved = j.impact?.chunksPreserved;
+      setMsg(action === "deactivate" ? `Deactivated — collection stopped. ${typeof preserved === "number" ? preserved : 0} evidence chunk(s) preserved (reversible).` : "Reactivated — the source is back in the collection feed.");
+      onChanged?.();
+    } finally { setBusy(false); }
+  }
   return (
     <DetailDrawer
       title={String(source.title ?? "Source")}
@@ -1337,6 +1354,22 @@ function SourceDetailDrawer({ source, onClose }: { source: Record<string, unknow
       raw={source}
       onClose={onClose}
     >
+      {approved ? (
+        <div>
+          <div style={labelStyle}>COLLECTION CONTROL</div>
+          <div style={{ ...card, padding: "12px 13px" }}>
+            <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginBottom: 9 }}>
+              {status === "archived"
+                ? "This source is DEACTIVATED — no new collection or propagation. Existing evidence is preserved. Reactivate to resume."
+                : "Deactivating stops new collection + propagation. Existing evidence stays accessible; the action is reversible."}
+            </div>
+            {status === "archived"
+              ? <button disabled={busy} onClick={() => sourceAction("reactivate")} style={primaryBtn}>{busy ? "Working…" : "Reactivate source"}</button>
+              : <button disabled={busy} onClick={() => sourceAction("deactivate")} style={{ ...primaryBtn, background: C.orange }}>{busy ? "Working…" : "Deactivate source"}</button>}
+            {msg ? <div style={{ fontSize: 11.5, color: C.lime, marginTop: 8, lineHeight: 1.5 }}>{msg}</div> : null}
+          </div>
+        </div>
+      ) : null}
       <div>
         <div style={labelStyle}>SOURCE CHUNKS</div>
         {chunks.loading ? <StateBlock kind="loading" /> : chunks.error ? <StateBlock kind={chunks.status === 503 ? "offline" : "error"} message={chunks.error} /> : (chunks.data?.chunks ?? []).length ? (
@@ -1416,7 +1449,7 @@ function SourcesPage() {
           })}
         </div>
       )}
-      {selected ? <SourceDetailDrawer source={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <SourceDetailDrawer source={selected} onClose={() => setSelected(null)} onChanged={() => { setSelected(null); s.reload(); }} /> : null}
     </div>
   );
 }

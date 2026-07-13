@@ -111,7 +111,7 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
           try {
             const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
             const scope = env.companyId ? ({ type: "client", id: env.companyId } as const) : ({ type: "company", id: "wobble" } as const);
-            return await retrieveTrustedContextBlock(scope, "proposal_synthesis", { agentSlug: "proposal_solution_architect", label: env.companyId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+            return await retrieveTrustedContextBlock(scope, "proposal_synthesis", { agentSlug: "proposal_solution_architect", label: env.companyId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT", correlationId: env.workflowId });
           } catch { return null; }
         }),
       },

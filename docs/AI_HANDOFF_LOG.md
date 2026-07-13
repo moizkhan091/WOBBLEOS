@@ -4794,3 +4794,44 @@ error category + retryability + correlationId + downstreamOutcome (proceeded_ung
 verify:all-db (23 proofs) + release:full.
 
 GATE: typecheck 0 · context-os unit tests green · DB proof x2 · migration 0046 zero drift · (build + full suite + Playwright in this batch).
+
+Follow-up (cont.56): the reviewer's remaining LOW — `correlationId` never threaded from live generators — is now closed.
+The four generator retrieval paths thread a real run id: `intelligence/jobs.ts` (analyst + dreamer → `job.id`),
+`workers/registry.ts` (paid_audit + content → `job.id`), `departments/consumer.ts` (proposal → `env.workflowId`).
+A real Context OS fault in those paths now records a non-NULL `correlationId`, so a failure links back to its
+originating workflow/job. (daily_brief has no per-run id at retrieval time → intentionally left null.)
+
+---
+
+## cont.56 — Source DEACTIVATION: reversible founder collection control (documented gap → closed) — Claude (Opus 4.8)
+
+The documented gap: an auto-activated (or approved) source had NO reachable "turn it off" path — `rejectSource`
+cannot reject from `approved`, so a live source could never be disabled without deletion. Closed with a real
+founder-controlled, REVERSIBLE deactivation path. No schema change (reuses the existing `archived` record status).
+
+Service (`src/lib/sources/index.ts`): `deactivateSource(id, {deactivatedBy, reason})` — loads the source; refuses
+unless `status==="active"`; runs a DEPENDENCY/IMPACT check (counts the chunks that will be PRESERVED via
+`listSourceChunks`); sets `status/processingStatus = "archived"` + stamps who/when/why on `metadata`; KEEPS
+`approvalStatus="approved"` (deactivation is not rejection); audits `source.deactivated {reason, chunksPreserved}`;
+returns the impact. `reactivateSource(id, {reactivatedBy})` — refuses unless it is a deactivated approved source;
+restores `status="active"/processingStatus="ready"`; audits `source.reactivated`.
+
+Why this genuinely stops collection + propagation (not just a flag): `listApprovedSourcesForJobs` filters
+`status="active"` (the collection job feed) → an archived source is dropped; `attachSourceChunks` requires
+`status="active"` → new chunks are REFUSED. Existing chunks are untouched, so HISTORICAL EVIDENCE remains
+accessible + downstream context is NOT deleted. Fully reversible via reactivation.
+
+Founder surface: `POST /api/sources/[id]/action {action:"deactivate"|"reactivate", reason?}` (founder-gated,
+discriminated-union body). UI: the source drawer's new COLLECTION CONTROL block — Deactivate (with a reason prompt +
+impact readout) / Reactivate, reachable for any approved source (the list surfaces archived sources too).
+
+PROVEN: verify:source-deactivation (x2, 20 asserts) — setup active+approved+3 chunks in the feed → deactivate:
+impact=3 preserved, archived, approval preserved, metadata stamped, audit written, DROPPED from the job feed,
+`attachSourceChunks` REFUSED, the 3 chunks untouched → reactivate: active again, back in the feed, propagation
+resumes, audit written; guard rails (double-deactivate refused, missing-source reactivate refused). Unit: +3 cases
+in tests/sources.test.ts (fake store). Playwright: source-deactivation.spec (create→approve→deactivate: impact +
+gone from active feed + archived/approved + reactivate→back) and a new unauth-gate assertion (deactivate/reactivate
+401 without a session). Added verify:source-deactivation to verify:all-db (24 proofs) + release:full.
+
+GATE: typecheck 0 · full unit suite 889/889 (112 files) + 3 new deactivation cases green · build 0 (clean .next) ·
+DB proof x2 · zero migration drift (no schema change) · Playwright: source-deactivation + full unauth gate green.

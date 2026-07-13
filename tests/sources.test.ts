@@ -11,7 +11,9 @@ import {
   approveSource,
   attachSourceChunks,
   createSource,
+  deactivateSource,
   listApprovedSourcesForJobs,
+  reactivateSource,
   rejectSource,
   type SourceFileRow,
   type SourceLibraryStore,
@@ -372,5 +374,53 @@ describe("source library service", () => {
 
     const sources = await listApprovedSourcesForJobs({ store, limit: 10 });
     expect(sources.map((source) => source.id)).toEqual(["source_ok"]);
+  });
+
+  describe("deactivation (reversible founder collection control)", () => {
+    const activeApproved = () => ({
+      ...buildSourceRow({ title: "Active", sourceType: "url", ownerScope: "company", ownerId: "acme" }, { id: "source_live", now }),
+      approvalStatus: "approved" as const,
+      status: "active" as const,
+      processingStatus: "ready" as const,
+    });
+
+    it("deactivates an active source: archived, approval PRESERVED, impact + audit; stops collection", async () => {
+      const { store } = makeSourceStore([activeApproved()]);
+      store.listSourceChunks = async () => buildSourceChunkRows({ sourceId: "source_live", chunks: ["a", "b"] }, { now });
+      const audit: AuditEventInput[] = [];
+      const res = await deactivateSource("source_live", { deactivatedBy: "Moiz", reason: "stale" }, { store, recordAudit: async (e) => { audit.push(e); }, now });
+      expect(res.ok).toBe(true);
+      expect(res.impact?.chunksPreserved).toBe(2); // evidence PRESERVED, founder told the impact
+      const row = await store.getSourceById("source_live");
+      expect(row?.status).toBe("archived");
+      expect(row?.processingStatus).toBe("archived");
+      expect(row?.approvalStatus).toBe("approved"); // not a rejection
+      expect(audit.some((e) => e.eventType === "source.deactivated")).toBe(true);
+      // COLLECTION STOPS: no longer in the job feed.
+      expect((await listApprovedSourcesForJobs({ store, limit: 10 })).map((s) => s.id)).not.toContain("source_live");
+    });
+
+    it("refuses to deactivate a non-active source", async () => {
+      const { store } = makeSourceStore([{ ...activeApproved(), status: "archived" as const }]);
+      const res = await deactivateSource("source_live", { deactivatedBy: "Moiz" }, { store, now });
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/not active/);
+    });
+
+    it("reactivates a deactivated source: back to active + audit; refuses a non-archived source", async () => {
+      const { store } = makeSourceStore([{ ...activeApproved(), status: "archived" as const, processingStatus: "archived" as const }]);
+      const audit: AuditEventInput[] = [];
+      const res = await reactivateSource("source_live", { reactivatedBy: "Moiz" }, { store, recordAudit: async (e) => { audit.push(e); }, now });
+      expect(res.ok).toBe(true);
+      const row = await store.getSourceById("source_live");
+      expect(row?.status).toBe("active");
+      expect(row?.processingStatus).toBe("ready");
+      expect(audit.some((e) => e.eventType === "source.reactivated")).toBe(true);
+      // Re-entered the job feed.
+      expect((await listApprovedSourcesForJobs({ store, limit: 10 })).map((s) => s.id)).toContain("source_live");
+      // A second reactivation (now active) is refused.
+      const again = await reactivateSource("source_live", { reactivatedBy: "Moiz" }, { store, now });
+      expect(again.ok).toBe(false);
+    });
   });
 });

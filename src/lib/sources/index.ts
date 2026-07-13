@@ -316,6 +316,48 @@ export async function rejectSource(input: RejectSourceInput, deps: SourceDeps = 
   return { source: rejectedSource };
 }
 
+export interface SourceDeactivationResult {
+  ok: boolean;
+  error?: string;
+  source?: SourceRow;
+  /** The downstream evidence that REMAINS accessible (never deleted) — the impact of deactivation. */
+  impact?: { chunksPreserved: number };
+}
+
+/**
+ * DEACTIVATE an active, approved source (founder-controlled). Deactivation is REVERSIBLE: the source drops out of
+ * the job feed (`listApprovedSourcesForJobs` filters status=active) and can no longer accept chunks
+ * (`attachSourceChunks` requires active) → NEW collection + propagation STOP. The approval + all existing chunks /
+ * evidence are PRESERVED (historical evidence stays accessible, downstream context is NOT deleted). The impact
+ * (preserved chunk count) is computed for the founder + audited. `reactivateSource` reverses it.
+ */
+export async function deactivateSource(sourceId: string, opts: { deactivatedBy: string; reason?: string }, deps: SourceDeps = {}): Promise<SourceDeactivationResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const source = await store.getSourceById(sourceId);
+  if (!source) return { ok: false, error: "source not found" };
+  if (source.status !== "active") return { ok: false, error: `source is not active (status: ${source.status})` };
+  // Dependency + impact check: the downstream chunks (evidence) that will be PRESERVED (never deleted).
+  const chunksPreserved = store.listSourceChunks ? (await store.listSourceChunks(sourceId, 5000)).length : 0;
+  await store.updateSource(sourceId, { status: "archived", processingStatus: "archived", metadata: { ...source.metadata, deactivatedAt: now.toISOString(), deactivatedBy: opts.deactivatedBy, deactivationReason: opts.reason ?? null }, updatedAt: now });
+  await recordAudit({ eventType: "source.deactivated", module: "source_library", entityType: "source", entityId: sourceId, actor: opts.deactivatedBy, metadata: { reason: opts.reason ?? null, chunksPreserved, ownerScope: source.ownerScope, ownerId: source.ownerId } });
+  return { ok: true, source: { ...source, status: "archived", processingStatus: "archived" }, impact: { chunksPreserved } };
+}
+
+/** REACTIVATE a deactivated source (rollback) — it re-enters the job feed + can accept chunks again. Evidence intact. */
+export async function reactivateSource(sourceId: string, opts: { reactivatedBy: string }, deps: SourceDeps = {}): Promise<SourceDeactivationResult> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  const source = await store.getSourceById(sourceId);
+  if (!source) return { ok: false, error: "source not found" };
+  if (source.status !== "archived" || source.approvalStatus !== "approved") return { ok: false, error: `source is not a deactivated approved source (status: ${source.status}, approval: ${source.approvalStatus})` };
+  await store.updateSource(sourceId, { status: "active", processingStatus: "ready", metadata: { ...source.metadata, reactivatedAt: now.toISOString(), reactivatedBy: opts.reactivatedBy }, updatedAt: now });
+  await recordAudit({ eventType: "source.reactivated", module: "source_library", entityType: "source", entityId: sourceId, actor: opts.reactivatedBy, metadata: { ownerScope: source.ownerScope } });
+  return { ok: true, source: { ...source, status: "active", processingStatus: "ready" } };
+}
+
 export async function attachSourceChunks(
   input: SourceChunksInput,
   deps: SourceDeps = {},

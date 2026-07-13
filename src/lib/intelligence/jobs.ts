@@ -57,7 +57,7 @@ export async function runAnalyzeJobHandler(job: JobRow): Promise<Record<string, 
       retrieveTrustedContext: async () => {
         const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
         const ctxScope = clientId ? ({ type: "client", id: clientId } as const) : ({ type: "company", id: "wobble" } as const);
-        return retrieveTrustedContextBlock(ctxScope, "intelligence_analysis", { agentSlug: "intelligence_analyst", label: clientId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+        return retrieveTrustedContextBlock(ctxScope, "intelligence_analysis", { agentSlug: "intelligence_analyst", label: clientId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT", correlationId: job.id });
       },
     },
   );
@@ -75,7 +75,7 @@ export async function runDreamerJobHandler(job: JobRow): Promise<Record<string, 
       retrieveTrustedContext: async () => {
         const { retrieveTrustedContextBlock } = await import("@/lib/context-os");
         const ctxScope = clientId ? ({ type: "client", id: clientId } as const) : ({ type: "company", id: "wobble" } as const);
-        return retrieveTrustedContextBlock(ctxScope, "intelligence_dreamer", { agentSlug: "intelligence_dreamer", label: clientId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT" });
+        return retrieveTrustedContextBlock(ctxScope, "intelligence_dreamer", { agentSlug: "intelligence_dreamer", label: clientId ? "APPROVED CLIENT CONTEXT" : "APPROVED WOBBLE CONTEXT", correlationId: job.id });
       },
     },
   );

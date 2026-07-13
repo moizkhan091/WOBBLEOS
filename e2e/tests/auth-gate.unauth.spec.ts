@@ -49,6 +49,12 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
+  test("source deactivation/reactivation is gated at 401 (an unauthorized user cannot disable or restore a source)", async ({ request }) => {
+    // Collection control is founder-only — an unauthorized caller can neither stop collection nor rollback.
+    expect((await request.post("/api/sources/anything/action", { data: { action: "deactivate", reason: "unauthorized" } })).status()).toBe(401);
+    expect((await request.post("/api/sources/anything/action", { data: { action: "reactivate" } })).status()).toBe(401);
+  });
+
   test("Earned-autonomy grants are gated at 401 (an unauthorized user cannot grant or revoke autonomy)", async ({ request }) => {
     // Granting/revoking autonomy is the highest-trust founder control — it must never run for an unauthorized caller.
     expect((await request.get("/api/autonomy/policies")).status()).toBe(401);

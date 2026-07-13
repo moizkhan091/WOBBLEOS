@@ -96,6 +96,16 @@ export async function cleanupE2E(): Promise<void> {
     await db.delete(schema.sources).where(inArray(schema.sources.id, ids));
   }
   await db.delete(schema.autonomyPolicies).where(and(eq(schema.autonomyPolicies.category, "source.activation"), like(schema.autonomyPolicies.clientId, "e2e_srcauto_%")));
+  // Source-deactivation spec fixtures (the spec creates its own source per run under this ownerId prefix).
+  const deactSources = await db.select({ id: schema.sources.id }).from(schema.sources).where(like(schema.sources.ownerId, "e2e_srcdeact_%"));
+  if (deactSources.length) {
+    const dids = deactSources.map((s) => s.id);
+    await db.delete(schema.sourceChunks).where(inArray(schema.sourceChunks.sourceId, dids));
+    await db.delete(schema.jobs).where(inArray(schema.jobs.idempotencyKey, dids.map((id) => `source.intake:${id}`)));
+    await db.delete(schema.approvals).where(inArray(schema.approvals.entityId, dids));
+    await db.delete(schema.auditLogs).where(inArray(schema.auditLogs.entityId, dids));
+    await db.delete(schema.sources).where(inArray(schema.sources.id, dids));
+  }
   // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
   await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
   // Selective-revision fixtures (content + audit + proposal): cycle + components + version snapshots + runs.
