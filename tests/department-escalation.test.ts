@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildEscalationRow, isEscalationOverdue, type EscalationRow } from "@/lib/domain/escalation";
-import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, rerouteEscalation, listEscalations, escalationStatusCounts, type EscalationStore } from "@/lib/departments/escalation";
+import { createEscalation, acknowledgeEscalation, resolveEscalation, dismissEscalation, resumeEscalation, terminateEscalation, rerouteEscalation, listEscalations, escalationStatusCounts, escalateDeadLetteredHandoffs, type EscalationStore } from "@/lib/departments/escalation";
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
 import { buildHandoffRow, type HandoffRow } from "@/lib/domain/handoff-delivery";
 import { buildDepartmentRow, type DepartmentRow } from "@/lib/domain/department";
@@ -22,6 +22,52 @@ function makeStore(seed: EscalationRow[] = []) {
 
 const deps = (store: EscalationStore) => ({ store, recordAudit: async () => {}, now });
 const input = (over = {}) => ({ departmentSlug: "paid_audit", workflowId: "wf1", taskId: "t1", reason: "budget_exhausted" as const, severity: "high" as const, requiredDecision: "raise budget or hold", ...over });
+
+describe("workflow.retry earned autonomy — dead-letter sweep", () => {
+  const dead = (over = {}) => ({ id: "h1", department: "paid_audit", workflowId: "wf1", taskId: "t1", clientWorkspaceId: "clientA", sourceAgent: "a", failureReason: "timeout", metadata: {} as Record<string, unknown>, ...over });
+
+  it("a `workflow.retry` grant AUTO-REDRIVES a dead-lettered handoff once (no escalation)", async () => {
+    const { store, rows } = makeStore();
+    const redriven: string[] = [];
+    const r = await escalateDeadLetteredHandoffs({
+      store, recordAudit: async () => {}, now, enforceAutonomy: true,
+      listDeadLettered: async () => [dead()],
+      mayActAutonomously: async (a) => a.category === "workflow.retry" && a.clientId === "clientA",
+      autoRedrive: async (id, _actor, opts) => { redriven.push(`${id}:${opts.markAutoRetried}`); return true; },
+    });
+    expect(r.autoRetried).toBe(1);
+    expect(r.escalated).toBe(0);
+    expect(redriven).toEqual(["h1:true"]); // redriven WITH the bounded-retry marker
+    expect(rows.size).toBe(0); // no escalation raised
+  });
+
+  it("BOUNDED: an already-auto-retried handoff (marker set) ESCALATES instead of auto-retrying again", async () => {
+    const { store } = makeStore();
+    let redriven = 0;
+    const r = await escalateDeadLetteredHandoffs({
+      store, recordAudit: async () => {}, now, enforceAutonomy: true,
+      listDeadLettered: async () => [dead({ metadata: { autoRetriedAt: now.toISOString() } })],
+      mayActAutonomously: async () => true,
+      autoRedrive: async () => { redriven += 1; return true; },
+    });
+    expect(redriven).toBe(0); // NOT auto-retried a second time
+    expect(r.autoRetried).toBe(0);
+    expect(r.escalated).toBe(1); // escalated to the founder instead
+  });
+
+  it("NO grant → escalates (baseline), never auto-retries", async () => {
+    const { store } = makeStore();
+    let redriven = 0;
+    const r = await escalateDeadLetteredHandoffs({
+      store, recordAudit: async () => {}, now, enforceAutonomy: true,
+      listDeadLettered: async () => [dead()],
+      mayActAutonomously: async () => false, // no grant
+      autoRedrive: async () => { redriven += 1; return true; },
+    });
+    expect(redriven).toBe(0);
+    expect(r.escalated).toBe(1);
+  });
+});
 
 describe("escalation domain", () => {
   it("builds an open escalation with an SLA from severity", () => {

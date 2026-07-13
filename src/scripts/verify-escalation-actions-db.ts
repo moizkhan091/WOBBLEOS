@@ -30,7 +30,7 @@ async function main() {
     const dlHandoff = { ...buildHandoffRow(env, { now }), deliveryState: "dead_lettered" as const, deadLetteredAt: now, failureReason: "provider timeout" };
     await db.insert(handoffs).values({ ...dlHandoff, envelope: env as unknown as Record<string, unknown> });
 
-    const created = await escalateDeadLetteredHandoffs({ ...deps, listDeadLettered: async () => [{ id: dlHandoff.id, department: "paid_audit", workflowId: wfResume, taskId: env.taskId, clientWorkspaceId: null, sourceAgent: "a", failureReason: "provider timeout" }] });
+    const created = (await escalateDeadLetteredHandoffs({ ...deps, listDeadLettered: async () => [{ id: dlHandoff.id, department: "paid_audit", workflowId: wfResume, taskId: env.taskId, clientWorkspaceId: null, sourceAgent: "a", failureReason: "provider timeout" }] })).escalated;
     assert(created === 1, "dead-letter sweep raised an escalation linked to the handoff");
     const esc = (await listEscalations({ departmentSlug: "paid_audit", reason: "dead_lettered" }, deps)).find((e) => e.workflowId === wfResume)!;
     assert(esc.handoffId === dlHandoff.id, "escalation is linked to the real handoff id");

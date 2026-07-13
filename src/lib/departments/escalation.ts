@@ -298,22 +298,40 @@ export async function escalationStatusCounts(deps: EscalationDeps = {}): Promise
  * open (dedup is per department/workflow/task/reason). The scheduler calls this so blocked inter-agent
  * work surfaces in the Command Centre without any code path having to remember to escalate.
  */
-export async function escalateDeadLetteredHandoffs(deps: EscalationDeps & { listDeadLettered?: () => Promise<Array<{ id: string; department: string; workflowId: string; taskId: string; clientWorkspaceId: string | null; sourceAgent: string; failureReason: string | null }>> } = {}): Promise<number> {
+export async function escalateDeadLetteredHandoffs(
+  deps: EscalationDeps & {
+    /** When set, an EARNED `workflow.retry` grant (scoped to the handoff's client) AUTO-REDRIVES a dead-lettered
+     *  handoff ONCE (bounded via a durable marker) instead of escalating; with no grant it escalates (baseline). */
+    enforceAutonomy?: boolean;
+    autoRedrive?: (id: string, actor: string, opts: { markAutoRetried: boolean }) => Promise<boolean>;
+    mayActAutonomously?: (action: { category: string; clientId: string | null; reversible: boolean; riskLevel: "low"; qaPassed: boolean }) => Promise<boolean>;
+    listDeadLettered?: () => Promise<Array<{ id: string; department: string; workflowId: string; taskId: string; clientWorkspaceId: string | null; sourceAgent: string; failureReason: string | null; metadata?: Record<string, unknown> }>>;
+  } = {},
+): Promise<{ escalated: number; autoRetried: number }> {
   const list = deps.listDeadLettered ?? (async () => {
     const { listHandoffs } = await import("@/lib/handoff");
     const rows = await listHandoffs({ deliveryState: "dead_lettered", limit: 200 });
-    return rows.map((r) => ({ id: r.id, department: r.department, workflowId: r.workflowId, taskId: r.taskId, clientWorkspaceId: r.clientWorkspaceId, sourceAgent: r.sourceAgent, failureReason: r.failureReason }));
+    return rows.map((r) => ({ id: r.id, department: r.department, workflowId: r.workflowId, taskId: r.taskId, clientWorkspaceId: r.clientWorkspaceId, sourceAgent: r.sourceAgent, failureReason: r.failureReason, metadata: r.metadata }));
   });
+  const mayAct = deps.enforceAutonomy ? (deps.mayActAutonomously ?? (async (a) => (await import("@/lib/autonomy")).mayActAutonomously(a as never))) : null;
+  const redrive = deps.autoRedrive ?? (async (id, actor, opts) => (await import("@/lib/handoff")).redriveHandoff(id, actor, {}, opts));
+
   const dead = await list();
   let created = 0;
+  let autoRetried = 0;
   for (const h of dead) {
+    // EARNED AUTONOMY (workflow.retry): auto-redrive ONCE under a scoped grant. A handoff already auto-retried
+    // (durable marker) is never auto-retried again → it escalates, keeping a persistent failure founder-visible.
+    if (mayAct && !(h.metadata && h.metadata.autoRetriedAt) && await mayAct({ category: "workflow.retry", clientId: h.clientWorkspaceId, reversible: true, riskLevel: "low", qaPassed: true })) {
+      if (await redrive(h.id, "autonomy:earned", { markAutoRetried: true })) { autoRetried += 1; continue; }
+    }
     const r = await createEscalation(
       { departmentSlug: h.department, workflowId: h.workflowId, taskId: h.taskId, clientWorkspaceId: h.clientWorkspaceId, sourceAgent: h.sourceAgent, reason: "dead_lettered", severity: "high", handoffId: h.id, requiredDecision: "Dead-lettered handoff: resume (redrive), reroute, or terminate this workflow step.", evidence: { handoffId: h.id, failureReason: h.failureReason }, attemptedRecoveries: ["automatic retries exhausted → dead-lettered"] },
       deps,
     );
     if (!r.deduped) created += 1;
   }
-  return created;
+  return { escalated: created, autoRetried };
 }
 
 export function defaultStore(db: Db = getDb()): EscalationStore {

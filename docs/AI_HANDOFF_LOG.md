@@ -4737,3 +4737,29 @@ STATUS: Earned Autonomy = operational-scoped (content.publish HELD/released + so
 workflow.retry, low-risk notification, external-comms prep, proposal-send prep.
 
 GATE: typecheck 0 · source unit tests 14 · DB proof x2 · (build + full suite + Playwright in this batch).
+
+---
+
+## cont.54 — Earned Autonomy expanded to workflow.retry (3rd action point) — Claude (Opus 4.8)
+
+Third Earned-Autonomy action point (after content.publish + source.activation). The dead-letter sweep
+(escalateDeadLetteredHandoffs — the scheduler's 60s trigger) now, when an earned `workflow.retry` grant applies
+(scoped to the handoff's client), AUTO-REDRIVES a dead-lettered handoff ONCE instead of raising a founder
+escalation. Re-running an internal, idempotent workflow step is REVERSIBLE → the grant releases it.
+
+BOUNDED loop-safety: `redriveHandoff(..., {markAutoRetried:true})` sets a DURABLE `metadata.autoRetriedAt` marker
+atomically with the redrive; a handoff already carrying the marker is NEVER auto-retried again → it escalates,
+so a persistently-failing step stays founder-visible. The sweep returns {escalated, autoRetried}; the scheduler
+surfaces `deadLetterAutoRetried`.
+
+PROVEN: verify:workflow-retry (x2) — NO grant → escalate (dead_lettered kept); grant → auto-redrive once (→
+delivered + marker), no escalation; BOUNDED (marker set → escalate, no 2nd retry); TENANT isolation (client A's
+grant never retries client B's handoff); REVOKED → escalate; EXPIRED → escalate. Unit tests (3) on the sweep
+logic (grant→redrive-with-marker / marker→escalate / no-grant→escalate). Added verify:workflow-retry to
+verify:all-db (22 proofs) + release:full. Founder control via the existing autonomy policy API (Playwright-tested).
+
+STATUS: Earned Autonomy = operational-scoped (3 action points: content.publish, source.activation, workflow.retry).
+Next: low-risk internal notification, external-comms prep, proposal-send prep. The source.activation reviewer
+flagged a LOW: no shipped "deactivate an active source" endpoint yet (data-layer reversible; UX follow-up).
+
+GATE: typecheck 0 · escalation/handoff unit tests green · DB proof x2 · (build + full suite in this batch).

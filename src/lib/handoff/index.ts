@@ -184,14 +184,18 @@ export async function reclaimExpiredHandoffLeases(deps: HandoffDeps = {}): Promi
 
 /** Manual redrive: put a dead-lettered (or failed) handoff back into delivery, resetting retries. Refused
  *  for states that can't legally reach `delivered` (completed/cancelled/created/acknowledged/already-delivered). */
-export async function redriveHandoff(id: string, actor: string, deps: HandoffDeps = {}): Promise<boolean> {
+export async function redriveHandoff(id: string, actor: string, deps: HandoffDeps = {}, opts: { markAutoRetried?: boolean } = {}): Promise<boolean> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
   const row = await store.getById(id);
   if (!row) return false;
   if (!canTransitionHandoff(row.deliveryState, "delivered")) return false; // e.g. redriving a completed handoff
-  const ok = await store.transition(id, row.deliveryState, { deliveryState: "delivered", retryCount: 0, runAfter: null, failureReason: null, deliveredAt: now, updatedAt: now });
-  if (ok) await audit(deps, { eventType: "handoff.redriven", module: "handoff", entityType: "handoff", entityId: id, actor, metadata: auditMeta(row) });
+  // Earned-autonomy auto-retry sets a DURABLE marker so a subsequent dead-letter is NOT auto-retried a second
+  // time (bounded to one autonomous redrive per handoff → it escalates to the founder instead).
+  const fields: Partial<HandoffRow> = { deliveryState: "delivered", retryCount: 0, runAfter: null, failureReason: null, deliveredAt: now, updatedAt: now };
+  if (opts.markAutoRetried) fields.metadata = { ...row.metadata, autoRetriedAt: now.toISOString() };
+  const ok = await store.transition(id, row.deliveryState, fields);
+  if (ok) await audit(deps, { eventType: opts.markAutoRetried ? "handoff.auto_retried" : "handoff.redriven", module: "handoff", entityType: "handoff", entityId: id, actor, metadata: auditMeta(row) });
   return ok;
 }
 

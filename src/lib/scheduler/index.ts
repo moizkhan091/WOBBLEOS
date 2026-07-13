@@ -68,6 +68,7 @@ export interface SchedulerResult {
   scoutsEnqueued: number;
   postsDispatched: number;
   postsHeldForConfirm: number;
+  deadLetterAutoRetried: number;
   stalledReclaimed: number;
   departmentHandoffsConsumed: number;
   decisionPoliciesProposed: number;
@@ -104,7 +105,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, deadLetterAutoRetried: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -141,10 +142,11 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   } catch (e) {
     result.errors.push(`budget-expiry: ${e instanceof Error ? e.message : e}`);
   }
-  // Surface blocked inter-agent work: raise an escalation for every dead-lettered handoff (deduped) so it
-  // appears in the Founder Command Centre for a decision.
+  // Surface blocked inter-agent work: an earned `workflow.retry` grant AUTO-REDRIVES a dead-lettered handoff once
+  // (bounded); otherwise raise a founder escalation (deduped) so it appears in the Command Centre for a decision.
   try {
-    await escalateDeadLetteredHandoffs({ now });
+    const dl = await escalateDeadLetteredHandoffs({ now, enforceAutonomy: true });
+    result.deadLetterAutoRetried = dl.autoRetried;
   } catch (e) {
     result.errors.push(`dead-letter-escalation: ${e instanceof Error ? e.message : e}`);
   }

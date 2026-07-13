@@ -52,7 +52,7 @@ async function main() {
   // 4. Dead-letter → escalation sweep.
   const env2 = buildHandoffEnvelope({ workflowId: wf, department: slug, sourceAgent: "a", destinationAgent: "b", objective: "o", requestedAction: "r", expectedOutputSchema: "current_state_map", confidence: 0.8, authorizedMemoryScopes: ["company"], idempotencyKey: `${wf}:dl` }, { now });
   await db.insert(handoffs).values({ ...buildHandoffRow(env2, { now }), deliveryState: "dead_lettered", deadLetteredAt: now, failureReason: "provider timeout", envelope: env2 as unknown as Record<string, unknown> });
-  const created = await escalateDeadLetteredHandoffs({ store: escStore(db), recordAudit: async () => {}, now, listDeadLettered: async () => [{ id: "h1", department: slug, workflowId: wf, taskId: "dl_task", clientWorkspaceId: null, sourceAgent: "a", failureReason: "provider timeout" }] });
+  const created = (await escalateDeadLetteredHandoffs({ store: escStore(db), recordAudit: async () => {}, now, listDeadLettered: async () => [{ id: "h1", department: slug, workflowId: wf, taskId: "dl_task", clientWorkspaceId: null, sourceAgent: "a", failureReason: "provider timeout" }] })).escalated;
   assert(created === 1, "the dead-letter sweep raised a dead_lettered escalation");
   const dl = await listEscalations({ departmentSlug: slug, reason: "dead_lettered" }, { store: escStore(db) });
   assert(dl.length === 1, "the dead_lettered escalation is visible");
