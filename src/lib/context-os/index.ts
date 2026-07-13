@@ -1,5 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
-import { contextAssertions, contextRetrievals, contextSources } from "@/db/schema";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { contextAssertions, contextRetrievals, contextRetrievalFailures, contextSources } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -119,13 +119,63 @@ export async function retrieveTrustedContext(scope: ContextScope, task: string, 
 export async function retrieveTrustedContextBlock(
   scope: ContextScope,
   task: string,
-  opts: { agentSlug?: string; label?: string; limit?: number } = {},
+  opts: { agentSlug?: string; label?: string; limit?: number; correlationId?: string } = {},
   deps: ContextOsDeps = {},
 ): Promise<string | null> {
-  const { assertions } = await retrieveTrustedContext(scope, task, { agentSlug: opts.agentSlug, limit: opts.limit }, deps);
-  if (!assertions.length) return null;
-  const label = opts.label ?? `APPROVED ${scope.type.toUpperCase()} CONTEXT`;
-  return `${label} (trusted, founder-approved facts — treat as ground truth, never contradict):\n` + assertions.map((a) => `- ${a.statement}`).join("\n");
+  try {
+    const { assertions } = await retrieveTrustedContext(scope, task, { agentSlug: opts.agentSlug, limit: opts.limit }, deps);
+    if (!assertions.length) return null;
+    const label = opts.label ?? `APPROVED ${scope.type.toUpperCase()} CONTEXT`;
+    return `${label} (trusted, founder-approved facts — treat as ground truth, never contradict):\n` + assertions.map((a) => `- ${a.statement}`).join("\n");
+  } catch (error) {
+    // FAIL-OPEN, BUT NEVER SILENT: the generator proceeds WITHOUT grounding (never fabricated), and the failure is
+    // recorded EXPLICITLY so a sustained Context OS fault is founder-visible (Command Centre health), not invisible.
+    await recordContextRetrievalFailure({ scope, task, generator: opts.agentSlug ?? null, correlationId: opts.correlationId ?? null, error }, deps);
+    return null;
+  }
+}
+
+const RETRYABLE_ERROR_CATEGORIES = new Set(["db_unavailable", "timeout"]);
+/** Classify a retrieval error into a stable category + whether a retry could plausibly succeed. */
+export function classifyRetrievalError(error: unknown): { category: string; retryable: boolean } {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const code = (error as { code?: string } | undefined)?.code;
+  let category = "unknown";
+  if (code === "ECONNREFUSED" || code === "ETIMEDOUT" || /connect|econnrefused|connection|terminat|shutdown|too many clients/.test(msg)) category = "db_unavailable";
+  else if (/timeout|timed out/.test(msg)) category = "timeout";
+  else if (/column|relation|syntax|operator|type|invalid input/.test(msg)) category = "query_error";
+  return { category, retryable: RETRYABLE_ERROR_CATEGORIES.has(category) };
+}
+
+/** Record a trusted-context retrieval FAILURE (best-effort — never throws). Downstream: the generator proceeded ungrounded. */
+export async function recordContextRetrievalFailure(
+  input: { scope: ContextScope; task: string; generator?: string | null; correlationId?: string | null; error: unknown; downstreamOutcome?: string },
+  deps: ContextOsDeps = {},
+): Promise<void> {
+  try {
+    const db = deps.db ?? getDb();
+    const now = deps.now ?? new Date();
+    const { category, retryable } = classifyRetrievalError(input.error);
+    await db.insert(contextRetrievalFailures).values({
+      id: newId("ctxfail"), generator: input.generator ?? null, task: input.task, scopeType: input.scope.type, scopeId: input.scope.id,
+      errorCategory: category, errorMessage: (input.error instanceof Error ? input.error.message : String(input.error)).slice(0, 500),
+      correlationId: input.correlationId ?? null, retryable, downstreamOutcome: input.downstreamOutcome ?? "proceeded_ungrounded", createdAt: now,
+    } as typeof contextRetrievalFailures.$inferInsert);
+    await audit(deps, { eventType: "context.retrieval_failed", module: CONTEXT_MODULE, entityType: "context_scope", entityId: `${input.scope.type}:${input.scope.id}`, actor: input.generator ?? "system", metadata: { task: input.task, errorCategory: category, retryable } });
+  } catch { /* telemetry is best-effort — a failure to record a failure must never fail the generator */ }
+}
+
+/** Founder health view: recent trusted-context retrieval FAILURES (a sustained fault surfaces here, never silently). */
+export async function listContextRetrievalFailures(filter: { scopeType?: string; scopeId?: string; sinceMs?: number; limit?: number } = {}, deps: ContextOsDeps = {}): Promise<{ failures: Array<typeof contextRetrievalFailures.$inferSelect>; total: number }> {
+  const db = deps.db ?? getDb();
+  const now = deps.now ?? new Date();
+  const conds = [];
+  if (filter.scopeType) conds.push(eq(contextRetrievalFailures.scopeType, filter.scopeType));
+  if (filter.scopeId) conds.push(eq(contextRetrievalFailures.scopeId, filter.scopeId));
+  if (filter.sinceMs) conds.push(gte(contextRetrievalFailures.createdAt, new Date(now.getTime() - filter.sinceMs)));
+  const base = db.select().from(contextRetrievalFailures);
+  const rows = await (conds.length ? base.where(and(...conds)) : base).orderBy(desc(contextRetrievalFailures.createdAt)).limit(Math.min(filter.limit ?? 100, 500));
+  return { failures: rows, total: rows.length };
 }
 
 // -------------------------------------------------- 5. contradictions + coverage (computed on durable data)

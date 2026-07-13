@@ -84,6 +84,7 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.contextRetrievals).where(and(eq(schema.contextRetrievals.scopeType, "company"), eq(schema.contextRetrievals.scopeId, "e2e_ctx")));
   await db.delete(schema.contextAssertions).where(and(eq(schema.contextAssertions.scopeType, "company"), eq(schema.contextAssertions.scopeId, "e2e_ctx")));
   await db.delete(schema.contextSources).where(and(eq(schema.contextSources.scopeType, "company"), eq(schema.contextSources.scopeId, "e2e_ctx")));
+  await db.delete(schema.contextRetrievalFailures).where(and(eq(schema.contextRetrievalFailures.scopeType, "company"), eq(schema.contextRetrievalFailures.scopeId, "e2e_ctx")));
   // Earned-autonomy policies the autonomy browser spec grants (isolated test category prefix).
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
   // Source-activation autonomy fixtures (sources + their approvals + intake jobs + the scoped grants).
@@ -215,6 +216,9 @@ export async function seedE2E(): Promise<void> {
   // the founder `rerun` action's re-assemble runs against real rows.
   await db.insert(schema.audits).values({ id: E2E_PROPOSAL_AUDIT_ID, kind: "paid", companyId: E2E_WORKSPACE, businessName: "E2E Proposal Co", status: "complete", report: { opportunities: [{ title: "Text-back", description: "auto-text" }], roadmap: [{ title: "P1", months: "1-2", focus: "leaks" }], roi: { estimatedImplementationCents: 4500000 }, executiveSummary: "Recover leads." }, createdBy: "Moiz" } as typeof schema.audits.$inferInsert);
   const { createProposalFromAudit } = await import("@/lib/proposals");
+  // Context OS retrieval-failure fixture (the context health browser spec reads this back).
+  await db.insert(schema.contextRetrievalFailures).values({ id: "e2e_ctxfail_1", generator: "content_strategist", task: "social_content", scopeType: "company", scopeId: "e2e_ctx", errorCategory: "db_unavailable", errorMessage: "connection terminated unexpectedly", correlationId: "e2e_corr_1", retryable: true, downstreamOutcome: "proceeded_ungrounded", createdAt: new Date() } as typeof schema.contextRetrievalFailures.$inferInsert);
+
   const { openProposalRevision } = await import("@/lib/proposals/revision");
   const seededProposal = await createProposalFromAudit(E2E_PROPOSAL_AUDIT_ID, { createdBy: "Moiz", enrichment: { technicalSolution: "S".repeat(200), integrationDesign: "I".repeat(80), roiAssumptions: "R".repeat(50), risks: ["adoption"] } }, {});
   if (seededProposal) {

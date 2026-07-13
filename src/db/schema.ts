@@ -1988,6 +1988,27 @@ export const contextRetrievals = pgTable("context_retrievals", {
   index("context_retrievals_created_idx").on(table.createdAt),
 ]);
 
+// A trusted-context retrieval that FAILED (fail-open: the generator proceeded WITHOUT grounding rather than
+// fabricating context or crashing). Recorded EXPLICITLY so a sustained Context OS fault is founder-visible in the
+// Command Centre (health), never silently degrading grounding. Captures generator + scope/tenant + error class +
+// retryability + correlation + the downstream outcome.
+export const contextRetrievalFailures = pgTable("context_retrieval_failures", {
+  id: id(),
+  generator: varchar("generator", { length: 120 }),  // the agent that requested grounding (content_strategist, audit_discovery…)
+  task: varchar("task", { length: 80 }).notNull(),    // the retrieval task (social_content, paid_audit, proposal_synthesis…)
+  scopeType: varchar("scope_type", { length: 16 }).notNull(), // the tenant scope: company | client | project | founder | department
+  scopeId: varchar("scope_id", { length: 200 }).notNull(),
+  errorCategory: varchar("error_category", { length: 40 }).notNull(), // db_unavailable | query_error | timeout | unknown
+  errorMessage: text("error_message"),
+  correlationId: varchar("correlation_id", { length: 120 }),
+  retryable: boolean("retryable").notNull().default(true),
+  downstreamOutcome: varchar("downstream_outcome", { length: 40 }).notNull().default("proceeded_ungrounded"),
+  createdAt: createdAt(),
+}, (table) => [
+  index("context_retrieval_failures_scope_idx").on(table.scopeType, table.scopeId),
+  index("context_retrieval_failures_created_idx").on(table.createdAt),
+]);
+
 // ---- EARNED AUTONOMY (Phase 6): durable per-action autonomy policies. A policy GRANTS a level for an action
 // category within a narrow scope + conditions; it is EARNED (founder-approved, versioned, revocable, expirable).
 // There is no global switch — resolution is per action from the matching active policies, with hard caps. ----

@@ -4773,3 +4773,24 @@ but a future non-idempotent/irreversible consumer would be auto-redriven uncappe
 research_intelligence — the vetted, dedup-guarded consumers). A handoff for any department NOT in the set ESCALATES
 even under a grant. Adding a new department REQUIRES first proving its consumer idempotent. Proven: verify:workflow-retry
 (x2) now asserts a non-vetted department escalates under a grant; +1 unit test. This makes the safety invariant explicit + cap-safe.
+
+---
+
+## cont.55 — Context OS fail-open retrieval FAILURE telemetry (documented LOW → closed) — Claude (Opus 4.8)
+
+The reviewer's LOW: the Context OS fail-open closures swallowed retrieval errors with no telemetry — a sustained
+fault would silently degrade grounding. Closed with explicit, founder-visible telemetry.
+
+Migration 0046: `context_retrieval_failures` (generator, task, scopeType/scopeId = tenant, errorCategory,
+errorMessage, correlationId, retryable, downstreamOutcome, createdAt). `retrieveTrustedContextBlock` now catches
+its OWN errors → `recordContextRetrievalFailure` (best-effort, never throws) → returns null (fail-open, NEVER
+fabricated). `classifyRetrievalError` buckets db_unavailable/timeout (retryable) vs query_error/unknown (not).
+Founder surface: `GET /api/context/health` (founder-gated) — recent failures + byCategory counts, tenant-filterable.
+
+PROVEN: verify:context-failure (x2) — a fault is RECORDED (never silent) with generator + task + scope/tenant +
+error category + retryability + correlationId + downstreamOutcome (proceeded_ungrounded); the block returns null
+(never fabricated); a HEALTHY empty retrieval records NO failure; classification correct. Playwright context-os.spec
+(founder health surfaces the seeded failure) + unauth 401 on /api/context/health. Added verify:context-failure to
+verify:all-db (23 proofs) + release:full.
+
+GATE: typecheck 0 · context-os unit tests green · DB proof x2 · migration 0046 zero drift · (build + full suite + Playwright in this batch).

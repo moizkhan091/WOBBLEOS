@@ -30,4 +30,19 @@ test.describe("Context OS — intake → approval → trusted retrieval (real ef
     expect(approve.ok()).toBe(true);
     await expect.poll(() => trustedIds(request), { timeout: 15_000 }).toContain(id);
   });
+
+  test("Context OS HEALTH surfaces a retrieval FAILURE to the founder (fail-open is never silent)", async ({ request }) => {
+    // The fixture seeds one retrieval failure for company:e2e_ctx — the founder health view surfaces it with the
+    // generator, error category, retryability + correlation, so a sustained Context OS fault is visible.
+    const res = await request.get("/api/context/health?scopeType=company&scopeId=e2e_ctx&windowHours=24");
+    expect(res.ok()).toBe(true);
+    const json = (await res.json()) as { failureCount: number; byCategory: Record<string, number>; failures: Array<{ generator: string; errorCategory: string; retryable: boolean; correlationId: string; downstreamOutcome: string }> };
+    expect(json.failureCount).toBeGreaterThanOrEqual(1);
+    const f = json.failures.find((x) => x.correlationId === "e2e_corr_1")!;
+    expect(f.generator).toBe("content_strategist");
+    expect(f.errorCategory).toBe("db_unavailable");
+    expect(f.retryable).toBe(true);
+    expect(f.downstreamOutcome).toBe("proceeded_ungrounded"); // never fabricated context
+    expect(json.byCategory.db_unavailable).toBeGreaterThanOrEqual(1);
+  });
 });

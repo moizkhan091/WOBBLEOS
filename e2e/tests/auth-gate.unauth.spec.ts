@@ -43,9 +43,10 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.post("/api/scheduler/tick?consumers=true", { data: {} })).status()).toBe(401);
   });
 
-  test("Context OS intake + approval are gated at 401 (an unauthorized user cannot inject or trust context)", async ({ request }) => {
+  test("Context OS intake + approval + health are gated at 401 (an unauthorized user cannot inject/trust/inspect context)", async ({ request }) => {
     expect((await request.post("/api/context/sources", { data: { kind: "manual", content: "x", scope: { type: "company", id: "e2e_ctx" } } })).status()).toBe(401);
     expect((await request.post("/api/context/assertions/anything/action", { data: { action: "approve" } })).status()).toBe(401);
+    expect((await request.get("/api/context/health")).status()).toBe(401);
   });
 
   test("Earned-autonomy grants are gated at 401 (an unauthorized user cannot grant or revoke autonomy)", async ({ request }) => {
