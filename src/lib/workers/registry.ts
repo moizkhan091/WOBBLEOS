@@ -105,7 +105,7 @@ const CONTENT_GRAPH_NODES = [
 ];
 const CONTENT_STAGE_TO_NODES: Record<string, string[]> = { strategy: ["strategy"], research: ["research"], copywriting: ["draft", "revise"], scoring: ["scoring"] };
 
-async function openContentRevision(input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null }): Promise<void> {
+async function openContentRevision(input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null; objective: string; requestedBy: string }): Promise<void> {
   const failedNodes = [...new Set(input.failedStages.flatMap((s) => CONTENT_STAGE_TO_NODES[s] ?? []))];
   if (failedNodes.length === 0) return; // no mappable stage → nothing to selectively rerun
   const { openRevisionCycle } = await import("@/lib/selective-revision");
@@ -113,6 +113,9 @@ async function openContentRevision(input: { graphRunId: string; failedStages: st
     artifactKind: "content_graph", artifactRef: input.graphRunId, graphRunId: input.graphRunId, triggeredBy: "qa_gate:content",
     components: CONTENT_GRAPH_NODES.map((n) => ({ key: n.key, kind: "graph_node", producedBy: n.producedBy, dependsOn: n.dependsOn, version: 1, status: failedNodes.includes(n.key) ? "failed" : "approved" })),
     failedComponents: failedNodes, clientId: input.clientId,
+    // Re-enqueue context: the founder `rerun` action re-runs content.graph bound to this SAME graphRunId so the
+    // preserved nodes' checkpoints are reused and only the cleared (reran) nodes regenerate.
+    reenqueue: { producer: "content.graph", contentTrackId: input.trackId, objective: input.objective, requestedBy: input.requestedBy },
   });
 }
 

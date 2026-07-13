@@ -104,7 +104,7 @@ export interface ContentGraphDeps {
    * checkpoints are preserved. Injected by the production job handler (maps QA stages → graph nodes + opens the
    * cycle); omitted in unit tests → no cycle (behaviour unchanged, the pack is simply not released).
    */
-  onQaRevise?: (input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null }) => Promise<void>;
+  onQaRevise?: (input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null; objective: string; requestedBy: string }) => Promise<void>;
   retrieve?: (query: string) => Promise<{ notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }>;
   retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
@@ -446,7 +446,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     // approved nodes. On any other outcome the run is durably finished — drop its checkpoints for a clean re-run.
     const openedRevision = Boolean(qa && !qa.released && qa.verdict === "revise" && input.graphRunId && deps.onQaRevise);
     if (openedRevision) {
-      await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qa!.failedStages ?? [], trackId: track.id, clientId: track.id }).catch((e) => {
+      await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qa!.failedStages ?? [], trackId: track.id, clientId: track.id, objective: input.objective, requestedBy: input.requestedBy }).catch((e) => {
         recordAudit({ eventType: "content_graph.revision_trigger_failed", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { error: e instanceof Error ? e.message : String(e) } }).catch(() => {});
       });
     } else if (input.graphRunId) {
@@ -496,6 +496,9 @@ export async function enqueueContentGraphJob(
       objective: input.objective,
       platformFocus: input.platformFocus,
       formatFocus: input.formatFocus,
+      // When set (a selective-revision RE-RUN), the graph runs under the PRESERVED graphRunId so it loads the
+      // preserved nodes' checkpoints and regenerates only the cleared (reran) nodes.
+      graphRunId: input.graphRunId,
     },
     priority: 5,
     maxAttempts: 2,
@@ -518,7 +521,9 @@ export async function runContentGraphJobHandler(job: JobRow, deps: ContentGraphD
       objective: payload.objective,
       platformFocus: payload.platformFocus,
       formatFocus: payload.formatFocus,
-      graphRunId: job.id, // stable across retries -> completed nodes resume instead of re-charging
+      // A selective-revision rerun binds the PRESERVED graphRunId via the payload so the graph reuses the
+      // preserved nodes' checkpoints; otherwise the job id is the stable per-run id (retries resume).
+      graphRunId: payload.graphRunId ?? job.id,
     },
     deps, // the composition root injects the live independent QA gate (content_quality + content_brand boards)
   );

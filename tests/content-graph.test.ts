@@ -150,6 +150,16 @@ describe("content-graph idempotency (double-click spend guard)", () => {
     );
     expect(enqueued[0].idempotencyKey).toBe("explicit-123");
   });
+
+  it("a selective-revision rerun binds the PRESERVED graphRunId into the payload (so the re-run reuses preserved nodes)", async () => {
+    const enqueued: Array<{ payload: Record<string, unknown> }> = [];
+    await enqueueContentGraphJob(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "x", graphRunId: "preserved_run_1", idempotencyKey: "revision_rerun:cyc1" },
+      { enqueueJob: async (i) => { enqueued.push(i as { payload: Record<string, unknown> }); return {}; } },
+    );
+    // the payload carries the preserved graphRunId → the handler runs the graph under it → preserved checkpoints load
+    expect((enqueued[0].payload as { graphRunId?: string }).graphRunId).toBe("preserved_run_1");
+  });
 });
 
 describe("runContentGraph", () => {

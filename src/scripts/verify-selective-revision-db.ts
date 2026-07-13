@@ -15,7 +15,7 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb, closeDb } from "@/db";
 import { revisionCycles, revisionComponents, revisionComponentVersions, graphCheckpoints } from "@/db/schema";
 import { buildGraphCheckpointRow } from "@/lib/domain/graph-checkpoint";
-import { defaultCheckpointStore } from "@/lib/graph-checkpoint";
+import { defaultCheckpointStore, loadCheckpointContext } from "@/lib/graph-checkpoint";
 import { openRevisionCycle, driveSelectiveGraphRerun, applyRevisionOutcome, rollbackRevisionCycle, getRevisionCycle } from "@/lib/selective-revision";
 
 async function main() {
@@ -59,6 +59,10 @@ async function main() {
     assert(rr.cleared === 7, "exactly the 7 rerun nodes' checkpoints were cleared");
     const remaining = await store.listCheckpoints(graphRunId);
     assert(remaining.length === 1 && remaining[0].nodeSlug === "c1", "ONLY the preserved node's (c1) checkpoint survives — a re-run reuses it and regenerates exactly the rerun nodes");
+    // THE PAYOFF: a re-run bound to the SAME graphRunId reuses the preserved node's cached output and regenerates
+    // the rest — i.e. loadCheckpointContext offers exactly c1 for reuse (the reran nodes are absent → regenerated).
+    const resumeCtx = await loadCheckpointContext({ graph: "content_graph", graphRunId, schemaVersion: 1 }, { store });
+    assert(resumeCtx.cached.size === 1 && resumeCtx.cached.has("c1"), "a re-run under the PRESERVED graphRunId reuses exactly the preserved node (c1) — the reuse loop actually closes, not just the delete");
 
     // APPLY: the rerun components complete → approved at their next version; preserved untouched.
     await applyRevisionOutcome(cycle.id, cycle.plan.rerun.map((k) => ({ key: k, status: "approved" as const, evidence: { text: `${k}-v2` } })), deps);

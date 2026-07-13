@@ -4507,8 +4507,19 @@ survives), applies to next version, rolls back to the pre-revision snapshot. Pla
 `revise` verdict fires onQaRevise + preserves checkpoints; a pass still clears. Added verify:selective-revision to
 verify:all-db (20 proofs) + release:full.
 
+INDEPENDENT-REVIEW FIX (adversarial reviewer, post-commit 4e7f3eb): the reviewer confirmed the trigger fires + the
+cycle/rollback/selective-clear are real, but caught a HIGH over-claim — the REUSE loop didn't close: content.graph
+used `graphRunId = job.id` (random per enqueue), so a later run got a new id and never found the preserved
+checkpoints (they'd be purged; all 5 nodes would regenerate anyway). FIXED (commit <next>): the content.graph
+handler now runs under `payload.graphRunId ?? job.id`; `enqueueContentGraphJob` carries `graphRunId`; `onQaRevise`
+passes objective/requestedBy and the cycle stores a `reenqueue` context; the founder `rerun` action now RE-ENQUEUES
+content.graph bound to the SAME preserved graphRunId (idempotencyKey `revision_rerun:<cycle>`), so the re-run loads
+the preserved nodes' checkpoints and regenerates only the cleared ones. Proven: verify:selective-revision now asserts
+`loadCheckpointContext` under the preserved graphRunId offers exactly the preserved node for reuse (the loop closes,
+not just the delete); a unit test asserts the rerun binds the preserved graphRunId into the payload.
+
 GATE: typecheck 0 · content-graph/graph-checkpoint/paid-audit/registry/release-coherence unit tests green · DB
-proof x2 · migration 0044 zero drift.
+proof x2 (incl. the reuse-loop assertion) · migration 0044 zero drift.
 
 NEXT (live-integration wave): Dream/Optimizer governance loop → Phase 5 remainder → Media Studio durable system →
 Free Audit → extend release gate.

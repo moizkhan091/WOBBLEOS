@@ -48,6 +48,9 @@ export interface OpenRevisionInput {
   companyId?: string | null;
   clientId?: string | null;
   createdBy?: string | null;
+  /** Context needed to RE-ENQUEUE the artifact's producer bound to the SAME graphRunId (so the rerun reuses the
+   *  preserved nodes). For content_graph: { contentTrackId, objective, requestedBy }. */
+  reenqueue?: Record<string, unknown>;
 }
 
 export interface RevisionCycleView {
@@ -59,6 +62,8 @@ export interface RevisionCycleView {
   triggeredBy: string;
   failedComponents: string[];
   plan: RevisionPlan;
+  /** Context to re-enqueue the producer bound to the same graphRunId (content_graph: track/objective/requestedBy). */
+  reenqueue: Record<string, unknown> | null;
   components: Array<{ key: string; kind: string; producedBy: string; dependsOn: string[]; version: number; status: string }>;
 }
 
@@ -85,7 +90,8 @@ export async function openRevisionCycle(input: OpenRevisionInput, deps: Revision
   await db.insert(revisionCycles).values({
     id: cycleId, artifactKind: input.artifactKind, artifactRef: input.artifactRef, graphRunId: input.graphRunId ?? null,
     status: "planned", triggeredBy: input.triggeredBy, failedComponents: input.failedComponents, plan: plan as unknown as Record<string, unknown>,
-    companyId: input.companyId ?? null, clientId: input.clientId ?? null, createdBy: input.createdBy ?? null, metadata: {}, createdAt: now, updatedAt: now,
+    companyId: input.companyId ?? null, clientId: input.clientId ?? null, createdBy: input.createdBy ?? null,
+    metadata: input.reenqueue ? { reenqueue: input.reenqueue } : {}, createdAt: now, updatedAt: now,
   } as typeof revisionCycles.$inferInsert);
 
   for (const c of input.components) {
@@ -162,9 +168,10 @@ export async function getRevisionCycle(cycleId: string, deps: RevisionDeps = {})
   const cycle = (await db.select().from(revisionCycles).where(eq(revisionCycles.id, cycleId)).limit(1))[0];
   if (!cycle) return null;
   const comps = await db.select().from(revisionComponents).where(eq(revisionComponents.cycleId, cycleId));
+  const reenqueue = ((cycle.metadata ?? {}) as { reenqueue?: Record<string, unknown> }).reenqueue ?? null;
   return {
     id: cycle.id, artifactKind: cycle.artifactKind, artifactRef: cycle.artifactRef, graphRunId: cycle.graphRunId, status: cycle.status,
-    triggeredBy: cycle.triggeredBy, failedComponents: (cycle.failedComponents ?? []) as string[], plan: cycle.plan as unknown as RevisionPlan,
+    triggeredBy: cycle.triggeredBy, failedComponents: (cycle.failedComponents ?? []) as string[], plan: cycle.plan as unknown as RevisionPlan, reenqueue,
     components: comps.map((c) => ({ key: c.componentKey, kind: c.kind, producedBy: c.producedBy, dependsOn: (c.dependsOn ?? []) as string[], version: c.version, status: c.status })).sort((a, b) => a.key.localeCompare(b.key)),
   };
 }

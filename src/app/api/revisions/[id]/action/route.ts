@@ -28,8 +28,18 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (!cycle) return NextResponse.json({ ok: false, error: "revision cycle not found" }, { status: 404 });
     if (parsed.data.action === "rerun") {
       if (!cycle.graphRunId) return NextResponse.json({ ok: false, error: "cycle is not bound to a graph run" }, { status: 409 });
+      // 1) Clear ONLY the reran nodes' checkpoints (preserved nodes' cached outputs survive).
       const result = await driveSelectiveGraphRerun(id);
-      return NextResponse.json({ ok: true, ...result });
+      // 2) Re-enqueue the producer bound to the SAME graphRunId so it loads the preserved nodes' checkpoints and
+      //    regenerates only the cleared (reran) nodes — this is what makes the preservation actually pay off.
+      let reenqueued = false;
+      const re = cycle.reenqueue as { producer?: string; contentTrackId?: string; objective?: string; requestedBy?: string } | null;
+      if (re?.producer === "content.graph" && re.contentTrackId && re.objective) {
+        const { enqueueContentGraphJob } = await import("@/lib/content-graph");
+        await enqueueContentGraphJob({ contentTrackId: re.contentTrackId, requestedBy: re.requestedBy ?? "Moiz", objective: re.objective, graphRunId: cycle.graphRunId, idempotencyKey: `revision_rerun:${id}` });
+        reenqueued = true;
+      }
+      return NextResponse.json({ ok: true, ...result, reenqueued });
     }
     const ok = await rollbackRevisionCycle(id);
     if (!ok) return NextResponse.json({ ok: false, error: "cycle not found or already rolled back" }, { status: 409 });
