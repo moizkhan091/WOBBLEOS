@@ -168,3 +168,43 @@ Lead owns §2. Spawn 3–4 implementation subagents on independent verticals (ea
 - 2026-07-12: **Content vertical** landed (706 tests, real-DB proven twice). content_orchestrator now genuinely driven by the department runtime; content_pack routes to Publishing; L1 usage attribution threaded through the content graph. CI green `d409a7e`.
 - 2026-07-12: **Research & Intelligence vertical** landed (710 tests, real-DB proven twice). scout→analyst→dreamer wired as a department policy; approval-gated intelligence routes to the Founder Command Centre; L1 usage attribution threaded through analyst + dreamer. 5 active departments.
 - 2026-07-12: **Commercial Operating Unit + autonomous consumer loop + independent-reviewer fixes** landed (724 tests / 96 files, real-DB proven twice for both new proofs). Parallel wave: 3 implementation subagents (Commercial / Playwright-E2E / QA-boards) + 1 independent reviewer, in-tree with exclusive file ownership (worktrees rejected — Node `node_modules` cost; single Postgres → DB proofs run serially by the lead). Merged **Commercial (B)** + the keystone consumer-loop fix + reviewer HIGH/MED fixes. **QA boards (Workstream C)** and **Playwright E2E (Workstream A)** are code-complete and pending their own gated merges (C needs a `qa_reviews` migration; A needs CI Postgres wiring). 8 active departments. NEXT: proposal-accept origination migration (§6), then merge C (QA boards) + A (Playwright/CI), then Phases 4–10.
+
+---
+
+## PROGRAM STATUS — all unblocked items COMPLETE (as of 2026-07-14, HEAD 54c47a5)
+
+Every item in the active program order (1–14) is OPERATIONAL, proven (real-DB proof ×2 each), and independently
+adversarially reviewed — every reviewer verdict resolved to SHIP after fixes; every HIGH and MEDIUM finding fixed.
+34 DB proofs are wired into `verify:all-db` (verify:coverage enforces it). Unit suite 945+, build green (standalone),
+migrations through 0049 apply from scratch with zero drift, Playwright green.
+
+| # | Item | Status | Proof |
+|---|------|--------|-------|
+| 1 | Context OS fail-open telemetry | operational | verify:context-failure |
+| 2 | Source deactivation/reactivation | operational | verify:source-deactivation |
+| 3 | Earned-Autonomy remaining action points | operational | verify:comms-autonomy |
+| 4 | Dream/Optimizer | operational | verify:optimizer (+expanded evidence) |
+| 5 | Continuous Research ingestion adapters | operational (SSRF/DoS-hardened) | verify:ingestion |
+| 6 | Continuous Research founder UI + Playwright | operational | ingestion.spec + re-ingest control |
+| 7 | Durable Media Studio | operational-to-boundary; live fal.ai blocked-external | verify:media |
+| 8 | Multi-agent Free Audit | operational (grounded, prose anti-hallucination) | verify:free-audit-team |
+| 9 | Remaining Daily Brief providers | operational (all 8 wired) | verify:daily-brief-providers |
+| 10 | AIOS Value metrics | operational (revenue = payments-ledger measured actual) | verify:aios-org-metrics |
+| 11 | Visual Intelligence Cockpit | operational | verify:cockpit |
+| 12 | Final release-gate hardening | operational (verify:coverage + verify:health + release:full) | — |
+| 13 | Backup and restore | operational (additive, non-destructive) | verify:backup-restore |
+| 14 | Isolated VPS preparation | COMPLETE (Docker/compose/health/migrate proven) | verify:health + migrator run |
+| 15 | Production deployment | **BLOCKED-EXTERNAL** | needs SSH + secrets + domain |
+
+### The ONLY remaining requirement: #15 production deployment (BLOCKED-EXTERNAL)
+Provider-independent prep is 100% done + validated (Dockerfile multi-stage, docker-compose.prod.yml, the `migrator`
+stage proven to run `drizzle-kit migrate` end-to-end against real Postgres, GET /api/health readiness, the secrets
+template, the runbook in docs/VPS_DEPLOYMENT.md). Missing (founder/host must supply): SSH access to the VPS, the
+production secrets (POSTGRES_PASSWORD, SESSION_SECRET, SHARED_LOGIN_PASSWORD_HASH_B64), and the domain/DNS/TLS cert.
+
+EXACT next command once those exist (run on the VPS, in the repo):
+```
+cp .env.production.example .env.production   # fill the BLOCKED-EXTERNAL values
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# then front 127.0.0.1:3000 with a TLS reverse proxy for the domain; verify: curl -fsS http://127.0.0.1:3000/api/health
+```
