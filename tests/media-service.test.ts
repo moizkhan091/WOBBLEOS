@@ -20,6 +20,7 @@ function makeStore(seed: MediaJobRow[] = []) {
     getByDedupeKey: async (k) => [...rows.values()].find((x) => x.dedupeKey === k) ?? null,
     list: async (q) => [...rows.values()].filter((x) => (q.status ? x.status === q.status : true)).slice(0, q.limit),
     update: async (id, f) => { const c = rows.get(id); if (c) rows.set(id, { ...c, ...f } as MediaJobRow); },
+    updateOwned: async (id, owner, f) => { const c = rows.get(id); if (!c || c.leaseOwner !== owner) return false; rows.set(id, { ...c, ...f } as MediaJobRow); return true; },
     claim: async (owner, exp, now) => {
       const j = [...rows.values()].filter((x) => x.status === "queued" || (x.status === "generating" && x.leaseExpiresAt !== null && x.leaseExpiresAt < now)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
       if (!j) return null;

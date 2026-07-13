@@ -46,8 +46,11 @@ export const falMediaProvider: MediaProvider = {
   },
 };
 
+/** The PRODUCTION registry contains ONLY real providers. `deterministicMediaProvider` is intentionally NOT here — it
+ *  fabricates a synthetic ref and is available ONLY via explicit injection (tests/proofs), so a founder request can
+ *  never get a synthetic "success" in production; an unknown provider is truthfully BLOCKED. */
 export function defaultProviderRegistry(): Record<string, MediaProvider> {
-  return { fal: falMediaProvider, deterministic: deterministicMediaProvider };
+  return { fal: falMediaProvider };
 }
 
 // ---- Store ----
@@ -66,6 +69,9 @@ export interface MediaStore {
   getByDedupeKey(key: string): Promise<MediaJobRow | null>;
   list(q: { status?: string; limit: number }): Promise<MediaJobRow[]>;
   update(id: string, fields: Partial<MediaJobRow>): Promise<void>;
+  /** Terminal write guarded by lease ownership (compare-and-set): only applies if THIS worker still owns the lease.
+   *  Returns false if the lease was lost (reclaimed + re-claimed by another worker) → prevents a double-write/spend. */
+  updateOwned(id: string, leaseOwner: string, fields: Partial<MediaJobRow>): Promise<boolean>;
   /** Atomically claim the oldest queued job (or an expired-lease generating job) → generating + lease. */
   claim(leaseOwner: string, leaseExpiresAt: Date, now: Date): Promise<MediaJobRow | null>;
   /** Reclaim generating jobs whose lease has expired → back to queued. Returns count. */
@@ -132,13 +138,16 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
 
   const provider = providers[job.provider];
   if (!provider || !provider.configured()) {
-    await store.update(job.id, { status: "blocked", error: `media provider '${job.provider}' is not configured — generation blocked (no credentials)`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
+    await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `media provider '${job.provider}' is not configured — generation blocked (no credentials)`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
     await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider } });
     return { claimed: true, jobId: job.id, status: "blocked" };
   }
   try {
     const result = await provider.generate({ kind: job.kind, prompt: job.prompt, params: job.params });
-    await store.update(job.id, { status: "succeeded", outputRefs: result.outputRefs, actualCostCents: result.actualCostCents ?? job.estimatedCostCents, error: null, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
+    // Compare-and-set: only write the terminal result if THIS worker still owns the lease (a slow generation that
+    // outlived its lease could have been reclaimed + re-claimed — never double-write / double-spend).
+    const owned = await store.updateOwned(job.id, leaseOwner, { status: "succeeded", outputRefs: result.outputRefs, actualCostCents: result.actualCostCents ?? job.estimatedCostCents, error: null, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
+    if (!owned) return { claimed: true, jobId: job.id, status: "generating" }; // lost the lease → another worker owns it
     await audit(deps, { eventType: "media.job_succeeded", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: provider.slug, outputs: result.outputRefs.length } });
     return { claimed: true, jobId: job.id, status: "succeeded" };
   } catch (error) {
@@ -146,11 +155,11 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
     const attempts = job.attempts + 1;
     const willRetry = canRetryMediaJob({ status: "failed", attempts, maxAttempts: job.maxAttempts });
     if (willRetry) {
-      await store.update(job.id, { status: "queued", attempts, error: msg, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
+      await store.updateOwned(job.id, leaseOwner, { status: "queued", attempts, error: msg, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
       await audit(deps, { eventType: "media.job_retry", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { attempts, maxAttempts: job.maxAttempts, error: msg } });
       return { claimed: true, jobId: job.id, status: "queued" };
     }
-    await store.update(job.id, { status: "failed", attempts, error: msg, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
+    await store.updateOwned(job.id, leaseOwner, { status: "failed", attempts, error: msg, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
     await audit(deps, { eventType: "media.job_failed", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { attempts, error: msg } });
     return { claimed: true, jobId: job.id, status: "failed" };
   }
@@ -231,6 +240,10 @@ export function defaultStore(db: Db = getDb()): MediaStore {
       return rows as MediaJobRow[];
     },
     async update(id, fields) { await db.update(mediaJobs).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() } as never).where(eq(mediaJobs.id, id)); },
+    async updateOwned(id, leaseOwner, fields) {
+      const res = await db.update(mediaJobs).set({ ...fields, updatedAt: fields.updatedAt ?? new Date() } as never).where(and(eq(mediaJobs.id, id), eq(mediaJobs.leaseOwner, leaseOwner))).returning({ id: mediaJobs.id });
+      return (res as unknown[]).length > 0;
+    },
     async claim(leaseOwner, leaseExpiresAt, now) {
       // Atomic claim: pick the oldest queued job (or a generating job whose lease expired) and lock it in one UPDATE.
       const claimed = await db.execute(sql`
