@@ -4473,3 +4473,42 @@ production build · QA/registry unit tests green. No schema change (reused `qa_r
 
 NEXT (live-integration wave): Selective Revision on real artifacts → Dream/Optimizer governance loop → Phase 5
 remainder → Media Studio durable system → Free Audit → extend release gate.
+
+---
+
+## cont.44 — Selective Revision OPERATIONAL (core-only → operational) — Claude (Opus 4.8)
+
+Migration 0044: revision_cycles + revision_components + revision_component_versions (durable, founder-inspectable
+revision of a composite artifact's versioned COMPONENTS).
+
+SERVICE (src/lib/selective-revision/index.ts): openRevisionCycle (persists components, snapshots each pre_revision
+for rollback, runs the pure planSelectiveRevision → reruns the failed components + their transitive dependents,
+PRESERVES the approved rest + their evidence, marks reran components `rerun` at their NEXT version, re-invokes ONLY
+the failed specialists — never a full-team regeneration) / driveSelectiveGraphRerun / applyRevisionOutcome /
+rollbackRevisionCycle / getRevisionCycle / listRevisionCycles.
+
+REAL CONSUMER: added `deleteNodeCheckpoints(graphRunId, nodeSlugs)` + `clearNodeCheckpoints` to the graph-checkpoint
+store. driveSelectiveGraphRerun clears ONLY the reran nodes' checkpoints so a re-run of the (deterministic)
+graphRunId regenerates exactly those nodes and REUSES every preserved node's cached output. (Interface extension
+rippled to the in-memory test stores — all updated.)
+
+REAL TRIGGER: the production content.graph handler (registry.ts) now injects `onQaRevise` — on a salvageable QA
+`revise`, it maps the content QA stages (strategy/research/copywriting/scoring) → the graph nodes
+(strategy/research/draft/revise/scoring) and opens a revision cycle; the content-graph completion path PRESERVES the
+checkpoints when a cycle opens (so the selective rerun can reuse the approved nodes) instead of clearing them.
+
+FOUNDER API (founder-gated; 401 proven): GET /api/revisions (inspect cycles + rerun/preserve plan + component
+versions), POST /api/revisions/[id]/action (rerun → selective checkpoint clear; rollback → restore pre-revision snapshot).
+
+PROVEN: verify:selective-revision (x2) — the 2/5/8-fail scenario reruns the failed + transitive-dependent components,
+preserves the upstream approved one, clears EXACTLY the reran nodes' checkpoints (preserved node's checkpoint
+survives), applies to next version, rolls back to the pre-revision snapshot. Playwright selective-revision.spec
+(inspect plan → founder selective rerun clears 3 nodes → rollback restores) + unauth 401 gate. Unit: content-graph
+`revise` verdict fires onQaRevise + preserves checkpoints; a pass still clears. Added verify:selective-revision to
+verify:all-db (20 proofs) + release:full.
+
+GATE: typecheck 0 · content-graph/graph-checkpoint/paid-audit/registry/release-coherence unit tests green · DB
+proof x2 · migration 0044 zero drift.
+
+NEXT (live-integration wave): Dream/Optimizer governance loop → Phase 5 remainder → Media Studio durable system →
+Free Audit → extend release gate.

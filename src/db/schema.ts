@@ -2016,3 +2016,57 @@ export const autonomyPolicies = pgTable("autonomy_policies", {
 }, (table) => [
   index("autonomy_policies_category_status_idx").on(table.category, table.status),
 ]);
+
+// ---- SELECTIVE REVISION (Phase 7): a composite artifact is a graph of versioned COMPONENTS. When only SOME
+// components fail QA we rerun EXACTLY the failed ones + their transitive dependents, PRESERVING every approved
+// component + its evidence. A revision cycle records the plan; component versions snapshot each state for rollback. ----
+export const revisionCycles = pgTable("revision_cycles", {
+  id: id(),
+  artifactKind: varchar("artifact_kind", { length: 40 }).notNull(), // content_graph | proposal | audit_report | content_pack
+  artifactRef: varchar("artifact_ref", { length: 200 }).notNull(),  // the real artifact id
+  graphRunId: varchar("graph_run_id", { length: 200 }),             // set when bound to a checkpointed graph run (selective node clear)
+  status: varchar("status", { length: 24 }).notNull().default("planned"), // planned | applied | rolled_back
+  triggeredBy: varchar("triggered_by", { length: 120 }).notNull(),  // e.g. qa_gate:content_quality
+  failedComponents: jsonb("failed_components").$type<string[]>().notNull().default([]),
+  plan: jsonb("plan").$type<Record<string, unknown>>().notNull().default({}), // { rerun, preserved, specialists, nextVersions, requiresGlobalConsistencyQa }
+  companyId: varchar("company_id", { length: 120 }),
+  clientId: varchar("client_id", { length: 120 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("revision_cycles_artifact_idx").on(table.artifactKind, table.artifactRef),
+  index("revision_cycles_status_idx").on(table.status),
+]);
+
+export const revisionComponents = pgTable("revision_components", {
+  id: id(),
+  cycleId: varchar("cycle_id", { length: 60 }).notNull(),
+  componentKey: varchar("component_key", { length: 120 }).notNull(), // stage / graph-node key
+  kind: varchar("kind", { length: 60 }).notNull(),
+  producedBy: varchar("produced_by", { length: 120 }).notNull(),     // the specialist re-invoked on a rerun
+  dependsOn: jsonb("depends_on").$type<string[]>().notNull().default([]),
+  version: integer("version").notNull().default(1),
+  status: varchar("status", { length: 20 }).notNull().default("approved"), // approved | failed | pending | rerun
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("revision_components_cycle_key_uq").on(table.cycleId, table.componentKey),
+]);
+
+export const revisionComponentVersions = pgTable("revision_component_versions", {
+  id: id(),
+  cycleId: varchar("cycle_id", { length: 60 }).notNull(),
+  componentKey: varchar("component_key", { length: 120 }).notNull(),
+  version: integer("version").notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  snapshotReason: varchar("snapshot_reason", { length: 40 }).notNull(), // pre_revision | post_apply
+  createdAt: createdAt(),
+}, (table) => [
+  index("revision_component_versions_cycle_idx").on(table.cycleId, table.componentKey),
+]);

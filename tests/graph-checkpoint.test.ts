@@ -27,6 +27,7 @@ function makeCheckpointStore() {
     // Upsert on (graphRunId, nodeSlug) — models ON CONFLICT DO UPDATE, so duplicate workers/retries can't dupe.
     upsertCheckpoint: async (row) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
     deleteCheckpoints: async (rid) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+    deleteNodeCheckpoints: async (rid, slugs) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid && slugs.includes(r.nodeSlug)) { rows.delete(k); n += 1; } return n; },
     deleteExpiredCheckpoints: async (before) => { let n = 0; for (const [k, r] of rows) if (r.createdAt < before) { rows.delete(k); n += 1; } return n; },
   };
   return { store, rows };
@@ -67,7 +68,7 @@ describe("graph-checkpoint service", () => {
   it("a read failure degrades gracefully (runs the graph fresh, no throw)", async () => {
     const brokenStore: GraphCheckpointStore = {
       listCheckpoints: async () => { throw new Error("db down"); },
-      upsertCheckpoint: async () => {}, deleteCheckpoints: async () => 0, deleteExpiredCheckpoints: async () => 0,
+      upsertCheckpoint: async () => {}, deleteCheckpoints: async () => 0, deleteNodeCheckpoints: async () => 0, deleteExpiredCheckpoints: async () => 0,
     };
     const ctx = await loadCheckpointContext({ graph: "content_graph", graphRunId: "j1", schemaVersion: 1 }, { store: brokenStore });
     expect(ctx.cached.size).toBe(0); // no cache, but did not throw
@@ -76,7 +77,7 @@ describe("graph-checkpoint service", () => {
   it("a save failure never throws (node just re-runs on resume)", async () => {
     const brokenStore: GraphCheckpointStore = {
       listCheckpoints: async () => [], upsertCheckpoint: async () => { throw new Error("write failed"); },
-      deleteCheckpoints: async () => 0, deleteExpiredCheckpoints: async () => 0,
+      deleteCheckpoints: async () => 0, deleteNodeCheckpoints: async () => 0, deleteExpiredCheckpoints: async () => 0,
     };
     const ctx = await loadCheckpointContext({ graph: "content_graph", graphRunId: "j1", schemaVersion: 1 }, { store: brokenStore });
     await expect(ctx.save({ nodeSlug: "strategy", nodeIndex: 0, outputText: "x" })).resolves.toBeUndefined();

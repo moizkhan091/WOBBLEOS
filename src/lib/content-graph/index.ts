@@ -98,6 +98,13 @@ export interface ContentGraphDeps {
    * unit tests → no block (behaviour unchanged).
    */
   retrieveTrustedContext?: () => Promise<string | null>;
+  /**
+   * Opt-in SELECTIVE REVISION trigger: on a salvageable `revise` verdict, open a durable revision cycle over
+   * the content graph's nodes so ONLY the failed stages (+ their downstream) are reran and the approved nodes'
+   * checkpoints are preserved. Injected by the production job handler (maps QA stages → graph nodes + opens the
+   * cycle); omitted in unit tests → no cycle (behaviour unchanged, the pack is simply not released).
+   */
+  onQaRevise?: (input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null }) => Promise<void>;
   retrieve?: (query: string) => Promise<{ notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }>;
   retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
@@ -434,8 +441,17 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       },
     });
 
-    // Success: the run is durably finished — drop its checkpoints (a fresh re-run should start clean).
-    if (input.graphRunId) await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
+    // SELECTIVE REVISION trigger: on a salvageable `revise`, open a durable revision cycle bound to this graph
+    // run and PRESERVE the checkpoints (the cycle's consumer clears only the reran nodes) so a re-run reuses the
+    // approved nodes. On any other outcome the run is durably finished — drop its checkpoints for a clean re-run.
+    const openedRevision = Boolean(qa && !qa.released && qa.verdict === "revise" && input.graphRunId && deps.onQaRevise);
+    if (openedRevision) {
+      await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qa!.failedStages ?? [], trackId: track.id, clientId: track.id }).catch((e) => {
+        recordAudit({ eventType: "content_graph.revision_trigger_failed", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { error: e instanceof Error ? e.message : String(e) } }).catch(() => {});
+      });
+    } else if (input.graphRunId) {
+      await clearGraphCheckpoints(input.graphRunId, { store: deps.checkpointStore });
+    }
 
     return {
       contentTrackId: track.id,

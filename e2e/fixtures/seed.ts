@@ -17,6 +17,9 @@ import { buildCompanyRow, buildOpportunityRow } from "@/lib/domain/crm";
 import { buildProposalRow } from "@/lib/domain/proposal";
 import { AGENTS, DECISIONS, E2E_DEPARTMENT, E2E_WORKSPACE, IDS, PROPOSAL, PROVIDER_USAGE_REQ_ID, WF } from "./constants";
 
+/** Fixed graph-run id for the selective-revision fixture (cleaned + reseeded every run). */
+const E2E_REVISION_RUN = "e2e_rev_run";
+
 /**
  * Deterministic E2E fixture builder. Every row is written through the REAL domain builders + stores the
  * app uses in production (buildHandoffEnvelope → buildHandoffRow → handoff store; buildEscalationRow →
@@ -83,6 +86,15 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
   // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
   await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
+  // Selective-revision fixture (cycle + components + version snapshots + the checkpointed run).
+  const revCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(eq(schema.revisionCycles.artifactRef, E2E_REVISION_RUN));
+  if (revCycles.length) {
+    const ids = revCycles.map((c) => c.id);
+    await db.delete(schema.revisionComponentVersions).where(inArray(schema.revisionComponentVersions.cycleId, ids));
+    await db.delete(schema.revisionComponents).where(inArray(schema.revisionComponents.cycleId, ids));
+    await db.delete(schema.revisionCycles).where(inArray(schema.revisionCycles.id, ids));
+  }
+  await db.delete(schema.graphCheckpoints).where(eq(schema.graphCheckpoints.graphRunId, E2E_REVISION_RUN));
 }
 
 export async function seedE2E(): Promise<void> {
@@ -145,6 +157,27 @@ export async function seedE2E(): Promise<void> {
     latencyMs: 850,
     context: { departmentSlug: E2E_DEPARTMENT, workflowId: WF.budget, taskId: `${WF.budget}_task`, clientWorkspaceId: E2E_WORKSPACE, role: "audit_report", module: "departments" },
   });
+
+  // Selective-revision fixture: a real content-graph revision cycle (opened exactly as the production `revise`
+  // trigger does) bound to a checkpointed run, so the browser spec can inspect the plan + drive rerun/rollback.
+  const cpStore = (await import("@/lib/graph-checkpoint")).defaultCheckpointStore(db);
+  const { buildGraphCheckpointRow } = await import("@/lib/domain/graph-checkpoint");
+  const REV_NODES = ["strategy", "research", "draft", "revise", "scoring"];
+  for (let i = 0; i < REV_NODES.length; i++) {
+    await cpStore.upsertCheckpoint(buildGraphCheckpointRow({ graphRunId: E2E_REVISION_RUN, graph: "content_graph", nodeSlug: REV_NODES[i], nodeIndex: i, schemaVersion: 1, outputText: `${REV_NODES[i]}-out` }));
+  }
+  const { openRevisionCycle } = await import("@/lib/selective-revision");
+  await openRevisionCycle({
+    artifactKind: "content_graph", artifactRef: E2E_REVISION_RUN, graphRunId: E2E_REVISION_RUN, triggeredBy: "qa_gate:content",
+    components: [
+      { key: "strategy", kind: "graph_node", producedBy: "content_strategist", dependsOn: [] },
+      { key: "research", kind: "graph_node", producedBy: "content_researcher", dependsOn: ["strategy"] },
+      { key: "draft", kind: "graph_node", producedBy: "content_copywriter", dependsOn: ["research"], status: "failed" },
+      { key: "revise", kind: "graph_node", producedBy: "content_editor", dependsOn: ["draft"] },
+      { key: "scoring", kind: "graph_node", producedBy: "content_scorer", dependsOn: ["revise"] },
+    ],
+    failedComponents: ["draft"], clientId: E2E_WORKSPACE,
+  }, { db, recordAudit: async () => {} });
 }
 
 async function main(): Promise<void> {

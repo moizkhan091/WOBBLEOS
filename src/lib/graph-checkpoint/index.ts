@@ -1,4 +1,4 @@
-import { eq, lt } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { graphCheckpoints } from "@/db/schema";
 import {
@@ -29,6 +29,9 @@ export interface GraphCheckpointStore {
   /** Upsert on (graph_run_id, node_slug) so duplicate workers / retries can't create duplicate rows. */
   upsertCheckpoint(row: GraphCheckpointRow): Promise<void>;
   deleteCheckpoints(graphRunId: string): Promise<number>;
+  /** Drop ONLY the named nodes' checkpoints (SELECTIVE revision): a re-run regenerates exactly those
+   *  nodes + reuses every preserved node's cached output. Returns rows removed. */
+  deleteNodeCheckpoints(graphRunId: string, nodeSlugs: string[]): Promise<number>;
   deleteExpiredCheckpoints(before: Date): Promise<number>;
 }
 
@@ -132,6 +135,14 @@ export async function purgeExpiredGraphCheckpoints(before: Date, deps: Checkpoin
   return store.deleteExpiredCheckpoints(before);
 }
 
+/** SELECTIVE clear: drop only the named nodes' checkpoints so the next graph run regenerates exactly those
+ *  nodes (their transitive dependents included by the caller) and reuses every preserved node's cached output. */
+export async function clearNodeCheckpoints(graphRunId: string, nodeSlugs: string[], deps: CheckpointDeps = {}): Promise<number> {
+  if (nodeSlugs.length === 0) return 0;
+  const store = deps.store ?? defaultCheckpointStore();
+  return store.deleteNodeCheckpoints(graphRunId, nodeSlugs);
+}
+
 export const GRAPH_CHECKPOINT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 // ---------------------------------------------------------------- default store (DB)
@@ -162,6 +173,14 @@ export function defaultCheckpointStore(db: Db = getDb()): GraphCheckpointStore {
     },
     async deleteCheckpoints(graphRunId) {
       const deleted = await db.delete(graphCheckpoints).where(eq(graphCheckpoints.graphRunId, graphRunId)).returning({ id: graphCheckpoints.id });
+      return deleted.length;
+    },
+    async deleteNodeCheckpoints(graphRunId, nodeSlugs) {
+      if (nodeSlugs.length === 0) return 0;
+      const deleted = await db
+        .delete(graphCheckpoints)
+        .where(and(eq(graphCheckpoints.graphRunId, graphRunId), inArray(graphCheckpoints.nodeSlug, nodeSlugs)))
+        .returning({ id: graphCheckpoints.id });
       return deleted.length;
     },
     async deleteExpiredCheckpoints(before) {

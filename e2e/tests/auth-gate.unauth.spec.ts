@@ -61,4 +61,11 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.get("/api/qa/reviews")).status()).toBe(401);
     expect((await request.post("/api/qa/reviews", { data: { boardSlug: "proposal_technical_review", artifact: {}, submission: { authorAgentSlug: "x", workflowId: "unauth_attempt" } } })).status()).toBe(401);
   });
+
+  test("the selective-revision surface is gated at 401 (an unauthorized user cannot inspect or drive a revision)", async ({ request }) => {
+    // Revision cycles (rerun/preserve plan + rollback) are founder-only — an unauthorized caller can neither
+    // inspect them nor trigger a selective rerun / rollback.
+    expect((await request.get("/api/revisions")).status()).toBe(401);
+    expect((await request.post("/api/revisions/anything/action", { data: { action: "rollback" } })).status()).toBe(401);
+  });
 });

@@ -62,6 +62,7 @@ function memCheckpointStore() {
     listCheckpoints: async (rid: string) => [...rows.values()].filter((r) => r.graphRunId === rid),
     upsertCheckpoint: async (row: import("@/lib/domain/graph-checkpoint").GraphCheckpointRow) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
     deleteCheckpoints: async (rid: string) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+    deleteNodeCheckpoints: async (rid: string, slugs: string[]) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid && slugs.includes(r.nodeSlug)) { rows.delete(k); n += 1; } return n; },
     deleteExpiredCheckpoints: async () => 0,
   };
 }

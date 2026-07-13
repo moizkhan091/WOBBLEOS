@@ -10,6 +10,7 @@ function makeCheckpointStore() {
     listCheckpoints: async (rid) => [...rows.values()].filter((r) => r.graphRunId === rid),
     upsertCheckpoint: async (row) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
     deleteCheckpoints: async (rid) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+    deleteNodeCheckpoints: async (rid, slugs) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid && slugs.includes(r.nodeSlug)) { rows.delete(k); n += 1; } return n; },
     deleteExpiredCheckpoints: async () => 0,
   };
   return { store, rows };

@@ -89,8 +89,36 @@ async function retrieveContentTrustedContext(): Promise<string | null> {
   return "APPROVED WOBBLE CONTEXT (trusted onboarding facts — treat as ground truth, never contradict):\n" + assertions.map((a) => `- ${a.statement}`).join("\n");
 }
 
-/** Production content.graph handler: run the graph with the LIVE QA gate + Context OS trusted-context retrieval. */
-const contentGraphHandler: JobHandler = (job: JobRow) => runContentGraphJobHandler(job, { qaGate: liveContentQaGate, retrieveTrustedContext: retrieveContentTrustedContext });
+/**
+ * Production SELECTIVE-REVISION trigger for content. The content graph is a linear pipeline of versioned nodes
+ * (strategy → research → draft → revise → scoring); the QA boards judge STAGES that map onto those nodes. On a
+ * salvageable `revise`, open a durable revision cycle over the nodes so ONLY the failed stages (+ their
+ * downstream) rerun and the approved nodes' checkpoints are preserved — the deterministic graphRunId means the
+ * next content run for the same track reuses the preserved nodes and regenerates exactly the cleared ones.
+ */
+const CONTENT_GRAPH_NODES = [
+  { key: "strategy", producedBy: "content_strategist", dependsOn: [] as string[] },
+  { key: "research", producedBy: "content_researcher", dependsOn: ["strategy"] },
+  { key: "draft", producedBy: "content_copywriter", dependsOn: ["research"] },
+  { key: "revise", producedBy: "content_editor", dependsOn: ["draft"] },
+  { key: "scoring", producedBy: "content_scorer", dependsOn: ["revise"] },
+];
+const CONTENT_STAGE_TO_NODES: Record<string, string[]> = { strategy: ["strategy"], research: ["research"], copywriting: ["draft", "revise"], scoring: ["scoring"] };
+
+async function openContentRevision(input: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null }): Promise<void> {
+  const failedNodes = [...new Set(input.failedStages.flatMap((s) => CONTENT_STAGE_TO_NODES[s] ?? []))];
+  if (failedNodes.length === 0) return; // no mappable stage → nothing to selectively rerun
+  const { openRevisionCycle } = await import("@/lib/selective-revision");
+  await openRevisionCycle({
+    artifactKind: "content_graph", artifactRef: input.graphRunId, graphRunId: input.graphRunId, triggeredBy: "qa_gate:content",
+    components: CONTENT_GRAPH_NODES.map((n) => ({ key: n.key, kind: "graph_node", producedBy: n.producedBy, dependsOn: n.dependsOn, version: 1, status: failedNodes.includes(n.key) ? "failed" : "approved" })),
+    failedComponents: failedNodes, clientId: input.clientId,
+  });
+}
+
+/** Production content.graph handler: run the graph with the LIVE QA gate + Context OS trusted-context retrieval
+ *  + the selective-revision trigger (a `revise` opens a durable cycle instead of a silent full regeneration). */
+const contentGraphHandler: JobHandler = (job: JobRow) => runContentGraphJobHandler(job, { qaGate: liveContentQaGate, retrieveTrustedContext: retrieveContentTrustedContext, onQaRevise: openContentRevision });
 
 export const generalRegistry: JobHandlerRegistry = {
   noop,

@@ -309,6 +309,44 @@ describe("runContentGraph — independent QA gate (approval release)", () => {
     expect((completed.metadata as { qaBlockingBoard: string }).qaBlockingBoard).toBe("content_brand_review");
   });
 
+  it("SELECTIVE REVISION trigger: a `revise` verdict opens a revision cycle (onQaRevise) AND preserves the graph checkpoints", async () => {
+    const { deps } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const rows = new Map<string, import("@/lib/domain/graph-checkpoint").GraphCheckpointRow>();
+    const checkpointStore = {
+      listCheckpoints: async (rid: string) => [...rows.values()].filter((r) => r.graphRunId === rid),
+      upsertCheckpoint: async (row: import("@/lib/domain/graph-checkpoint").GraphCheckpointRow) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
+      deleteCheckpoints: async (rid: string) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+      deleteNodeCheckpoints: async (rid: string, slugs: string[]) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid && slugs.includes(r.nodeSlug)) { rows.delete(k); n += 1; } return n; },
+      deleteExpiredCheckpoints: async () => 0,
+    };
+    let revised: { graphRunId: string; failedStages: string[]; trackId: string; clientId: string | null } | null = null;
+    await runContentGraph(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "x", graphRunId: "grun_rev1" },
+      { ...deps, checkpointStore, qaGate: async () => ({ released: false, verdict: "revise", failedStages: ["copywriting"] }), onQaRevise: async (i) => { revised = i; } },
+    );
+    // the revise trigger fired with the exact failed stages + the run id
+    expect(revised).not.toBeNull();
+    expect(revised!.graphRunId).toBe("grun_rev1");
+    expect(revised!.failedStages).toEqual(["copywriting"]);
+    // checkpoints are PRESERVED (not cleared) so the selective rerun can reuse the approved nodes
+    expect([...rows.values()].length).toBeGreaterThan(0);
+  });
+
+  it("no revise trigger supplied → a completed run still clears its checkpoints (unchanged)", async () => {
+    const { deps } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const rows = new Map<string, import("@/lib/domain/graph-checkpoint").GraphCheckpointRow>();
+    const checkpointStore = {
+      listCheckpoints: async (rid: string) => [...rows.values()].filter((r) => r.graphRunId === rid),
+      upsertCheckpoint: async (row: import("@/lib/domain/graph-checkpoint").GraphCheckpointRow) => { rows.set(`${row.graphRunId}::${row.nodeSlug}`, row); },
+      deleteCheckpoints: async (rid: string) => { let n = 0; for (const [k, r] of rows) if (r.graphRunId === rid) { rows.delete(k); n += 1; } return n; },
+      deleteNodeCheckpoints: async () => 0,
+      deleteExpiredCheckpoints: async () => 0,
+    };
+    // released (pass) → the run is finished → checkpoints cleared for a clean re-run
+    await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x", graphRunId: "grun_ok1" }, { ...deps, checkpointStore, qaGate: async () => ({ released: true, verdict: "pass" }) });
+    expect([...rows.values()].length).toBe(0);
+  });
+
   it("no gate supplied → unchanged (approval driven by the graph quality gate alone)", async () => {
     const { deps, getPacket } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
     const result = await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, deps);
