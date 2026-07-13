@@ -4359,3 +4359,19 @@ GATE: typecheck 0 · 863 tests / 107 files · build 0 · no schema/migration.
 NEXT: durable persistence + enforcement wiring for the Phase 6/7/8/10 cores · Phase 5 UI · Context OS · VPS
 (external-blocked). The pure decision cores of Phases 6–10 are built + tested; production integration (DB
 tables + action-point wiring + UI) is the remaining layer per capability.
+
+## cont.40 — Context OS onboarding→trusted-context core (built + proven)
+
+Mandate: never dump raw imported info into trusted memory — raw intake → extracted assertions (pending) →
+approval → versioned trusted context → scoped retrieval; strict tenant isolation; contradictions recorded not
+overwritten. Built `src/lib/domain/context-os.ts` (pure): `trustedContext` (ONLY approved assertions in the
+exact scope — raw + extracted never returned); `canApproveAssertion`/`approveAssertion` (only path from
+extracted→approved; supersede bumps version + marks prior superseded, history preserved);
+`detectContextContradictions` (approved assertions sharing an entity but differing — never across scopes);
+`contextCoverage`. Proven: 6 unit tests (raw/extracted/other-scope excluded from trusted; approval-gate;
+versioned supersede; contradiction; cross-scope isolation; coverage).
+
+GATE: typecheck 0 · 869 tests / 108 files · build 0 · no schema/migration.
+
+NEXT: durable persistence + action-point enforcement wiring for the pure cores (autonomy/revision/optimizer/
+media/context-os) · Phase 5 continuous-research UI · VPS (external-blocked).
