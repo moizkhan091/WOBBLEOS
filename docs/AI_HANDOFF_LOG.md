@@ -4266,3 +4266,19 @@ GATE: typecheck 0 · 832 tests / 102 files · build 0 · DB proof x2 · no schem
 
 NEXT: per-action earned autonomy (Phase 6) · Phase 7 selective revision · Phase 8 Dream/Optimizer · Phase 9
 Free Audit completion · Phase 10 Media Studio · Phase 11 release gate + VPS. Plus Phase 5 UI + Context OS.
+
+## cont.34 — Phase 6: earned-autonomy policy engine (built + proven)
+
+Mandate: per-action autonomy on the ladder Observe→Inform→Recommend→Confirm→Autonomous — NEVER a global
+switch; high-risk/irreversible/financial actions stay confirm-only. Built `src/lib/domain/autonomy.ts`
+(pure): `resolveAutonomyLevel(action, policies)` — baseline `recommend` (never silent autonomy without a
+grant); an active, condition-matched policy raises up to its grantedLevel; HARD CAPS no policy can exceed —
+an irreversible, high/critical-risk, money-moving, or not-QA-passed action is capped at `confirm`. Policies
+narrow by category + actor/company/client/project + maxRisk + maxFinancial + requiresQaPass; each action
+resolves INDEPENDENTLY (no global switch). Proven: 10 unit tests (baseline / grant / per-scope isolation /
+irreversible-cap / risk-cap / financial-cap / no-QA-cap / policy-void / revoked / independent resolution).
+
+GATE: typecheck 0 · 842 tests / 103 files · build 0 · no schema/migration.
+
+NEXT: durable autonomy policies + enforcement wiring · Phase 7 selective revision · Phase 8 Dream/Optimizer ·
+Phase 9 Free Audit completion · Phase 10 Media Studio · Phase 11 release gate. Plus Phase 5 UI + Context OS.
