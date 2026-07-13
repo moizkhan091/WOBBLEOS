@@ -2,6 +2,22 @@
 
 _The single source of truth for the final-build wave. Resumable in one command. Update continuously._
 
+## 0z. IMPLEMENTATION MATRIX — honest status of the new cores (as of HEAD 04c8a63)
+Legend: **operational** (durable state + trigger + enforcement + consumer + founder surface + proofs) · **partial** (some live wiring, gaps) · **core-only** (pure domain + unit tests only, NOT wired) · **blocked-external** (needs a credential/host) · **missing**.
+
+| Capability | pure domain | persistence/migration | DB store | prod trigger | enforcement | consumer | founder API | founder UI | DB proof | Playwright | STATUS |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Context OS | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Earned Autonomy | ✅ | ❌ | ❌ | ❌ | ❌ | n/a | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Selective Revision | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Dream/Optimizer | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Media Studio | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** (real fal.ai = blocked-external) |
+| Founder Taste scoping | ✅ | ✅ (`taste_profiles`) | ✅ | ⚠️ feedback API exists | ❌ generators don't retrieve scoped taste pre-gen | n/a | ⚠️ | ❌ | ✅ | ❌ | **partial** |
+| Release coherence | n/a | n/a | n/a | ✅ CI test | ✅ | n/a | n/a | n/a | n/a | n/a | **operational** |
+| Release scripts | n/a | n/a | n/a | ✅ | n/a | n/a | n/a | n/a | ✅ (all 17) | n/a | **operational** |
+
+**Build order (live-integration wave):** Context OS → Earned Autonomy enforcement → Selective Revision → Dream/Optimizer → Phase 5 remainder → Phase 4 dedicated QA E2E → Media Studio → Free Audit → extend release gate. None of the core-only rows may be called "closed" until they reach **operational**.
+
 ## 0. Resume in one command
 ```
 cd "C:\Wobble OS" && git pull && git rev-parse --short HEAD && ls src/db/migrations/*.sql | tail -1 && npx tsc --noEmit -p tsconfig.json && npx vitest run 2>&1 | tail -3
