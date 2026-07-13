@@ -4252,3 +4252,17 @@ GATE: typecheck 0 · 832 tests / 102 files · build 0 · no schema/migration.
 
 Phase 5 remaining: source registry field enrichment · richer ingestion (transcript/video-frame/visual) ·
 continuous-research UI + Playwright. Then Context OS; Phases 6–11.
+
+## cont.33 — Phase 6: Founder Taste scoped-learning invariant proven
+
+Mandate: one correction must NEVER become a global/other-scope preference; every generator retrieves the
+correct SCOPED profile. Founder Taste already has scoped `taste_profiles` (brand/founder/client/project) with
+per-key feedback (`recordFeedbackEvent` applies ONLY to the event`s explicit profileKeys). `verify-founder-taste-db`
+(x2) proves on live Postgres: feedback scoped to client A updates ONLY A`s signals (client B unchanged — no
+leak to another scope); approve vs reject moves the right counter + confidence grows; getTasteProfile retrieves
+the correct scoped profile, never another`s.
+
+GATE: typecheck 0 · 832 tests / 102 files · build 0 · DB proof x2 · no schema/migration.
+
+NEXT: per-action earned autonomy (Phase 6) · Phase 7 selective revision · Phase 8 Dream/Optimizer · Phase 9
+Free Audit completion · Phase 10 Media Studio · Phase 11 release gate + VPS. Plus Phase 5 UI + Context OS.
