@@ -51,6 +51,18 @@ export interface OpenRevisionInput {
   /** Context needed to RE-ENQUEUE the artifact's producer bound to the SAME graphRunId (so the rerun reuses the
    *  preserved nodes). For content_graph: { contentTrackId, objective, requestedBy }. */
   reenqueue?: Record<string, unknown>;
+  /**
+   * Stable natural key for this revision ROUND — the idempotency backstop. When omitted it is derived from the
+   * graphRunId (`<kind>:<graphRunId>:<triggeredBy>`), which is stable across a graph RETRY. For an artifact with
+   * NO graph run (proposal) the caller MUST supply one built from the stable revision identity (workflow + task +
+   * failed-stage set) so a reclaimed/duplicated handoff retry reuses the one open cycle instead of spawning more.
+   */
+  dedupeKey?: string;
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  const code = (e as { code?: string; cause?: { code?: string } })?.code ?? (e as { cause?: { code?: string } })?.cause?.code;
+  return code === "23505";
 }
 
 export interface RevisionCycleView {
@@ -76,23 +88,33 @@ export async function openRevisionCycle(input: OpenRevisionInput, deps: Revision
   const db = deps.db ?? getDb();
   const now = deps.now ?? new Date();
 
-  // Idempotency: a re-trigger for the same graph run + trigger reuses the still-open cycle (no duplicate reruns).
-  if (input.graphRunId) {
-    const existing = (await db.select().from(revisionCycles).where(and(eq(revisionCycles.graphRunId, input.graphRunId), eq(revisionCycles.triggeredBy, input.triggeredBy), eq(revisionCycles.status, "planned"))).orderBy(desc(revisionCycles.createdAt)).limit(1))[0];
-    if (existing) return getRevisionCycle(existing.id, deps) as Promise<RevisionCycleView>;
-  }
+  // Idempotency backstop: a stable natural key for this revision round (derived from the graphRunId for graph
+  // artifacts, or supplied by the caller for graph-less ones). A duplicated/reclaimed handoff RETRY reuses the
+  // one OPEN (planned) cycle for this key rather than spawning more; a partial unique index makes it concurrent-safe.
+  const dedupeKey = input.dedupeKey ?? (input.graphRunId ? `${input.artifactKind}:${input.graphRunId}:${input.triggeredBy}` : null);
+  const findOpen = async () => (dedupeKey
+    ? (await db.select({ id: revisionCycles.id }).from(revisionCycles).where(and(eq(revisionCycles.dedupeKey, dedupeKey), eq(revisionCycles.status, "planned"))).orderBy(desc(revisionCycles.createdAt)).limit(1))[0]
+    : undefined);
+  const pre = await findOpen();
+  if (pre) return (await getRevisionCycle(pre.id, deps))!;
 
   const components: ArtifactComponent[] = input.components.map((c) => ({ id: c.key, kind: c.kind, version: c.version ?? 1, status: c.status ?? "approved", producedBy: c.producedBy, dependsOn: c.dependsOn ?? [] }));
   const plan = planSelectiveRevision(components, input.failedComponents);
   const rerun = new Set(plan.rerun);
   const cycleId = newId("revcyc");
 
-  await db.insert(revisionCycles).values({
-    id: cycleId, artifactKind: input.artifactKind, artifactRef: input.artifactRef, graphRunId: input.graphRunId ?? null,
-    status: "planned", triggeredBy: input.triggeredBy, failedComponents: input.failedComponents, plan: plan as unknown as Record<string, unknown>,
-    companyId: input.companyId ?? null, clientId: input.clientId ?? null, createdBy: input.createdBy ?? null,
-    metadata: input.reenqueue ? { reenqueue: input.reenqueue } : {}, createdAt: now, updatedAt: now,
-  } as typeof revisionCycles.$inferInsert);
+  try {
+    await db.insert(revisionCycles).values({
+      id: cycleId, artifactKind: input.artifactKind, artifactRef: input.artifactRef, graphRunId: input.graphRunId ?? null, dedupeKey,
+      status: "planned", triggeredBy: input.triggeredBy, failedComponents: input.failedComponents, plan: plan as unknown as Record<string, unknown>,
+      companyId: input.companyId ?? null, clientId: input.clientId ?? null, createdBy: input.createdBy ?? null,
+      metadata: input.reenqueue ? { reenqueue: input.reenqueue } : {}, createdAt: now, updatedAt: now,
+    } as typeof revisionCycles.$inferInsert);
+  } catch (e) {
+    // A CONCURRENT duplicate trigger won the race → reuse the one open cycle it created (no duplicate round).
+    if (isUniqueViolation(e)) { const winner = await findOpen(); if (winner) return (await getRevisionCycle(winner.id, deps))!; }
+    throw e;
+  }
 
   for (const c of input.components) {
     const isRerun = rerun.has(c.key);

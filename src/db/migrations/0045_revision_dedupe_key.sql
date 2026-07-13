@@ -1,0 +1,2 @@
+ALTER TABLE "revision_cycles" ADD COLUMN "dedupe_key" varchar(200);--> statement-breakpoint
+CREATE UNIQUE INDEX "revision_cycles_dedupe_planned_uq" ON "revision_cycles" USING btree ("dedupe_key") WHERE status = 'planned' and dedupe_key is not null;

@@ -2025,8 +2025,12 @@ export const revisionCycles = pgTable("revision_cycles", {
   artifactKind: varchar("artifact_kind", { length: 40 }).notNull(), // content_graph | proposal | audit_report | content_pack
   artifactRef: varchar("artifact_ref", { length: 200 }).notNull(),  // the real artifact id
   graphRunId: varchar("graph_run_id", { length: 200 }),             // set when bound to a checkpointed graph run (selective node clear)
-  status: varchar("status", { length: 24 }).notNull().default("planned"), // planned | applied | rolled_back
+  status: varchar("status", { length: 24 }).notNull().default("planned"), // planned | reran | applied | rolled_back
   triggeredBy: varchar("triggered_by", { length: 120 }).notNull(),  // e.g. qa_gate:content_quality
+  // Durable natural-key idempotency backstop: a stable key for this revision ROUND (graph: run+trigger;
+  // proposal: workflow+task+failed-stage set). A partial unique index enforces ONE OPEN (planned) cycle per key
+  // so a duplicate/reclaimed handoff RETRY cannot spawn multiple live cycles for the same revision round.
+  dedupeKey: varchar("dedupe_key", { length: 200 }),
   failedComponents: jsonb("failed_components").$type<string[]>().notNull().default([]),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull().default({}), // { rerun, preserved, specialists, nextVersions, requiresGlobalConsistencyQa }
   companyId: varchar("company_id", { length: 120 }),
@@ -2040,6 +2044,9 @@ export const revisionCycles = pgTable("revision_cycles", {
 }, (table) => [
   index("revision_cycles_artifact_idx").on(table.artifactKind, table.artifactRef),
   index("revision_cycles_status_idx").on(table.status),
+  // At most ONE OPEN (planned) cycle per dedupe key — the transaction-safe idempotency backstop against
+  // concurrent duplicate triggers. Once a cycle leaves `planned`, a genuinely new round can open a fresh one.
+  uniqueIndex("revision_cycles_dedupe_planned_uq").on(table.dedupeKey).where(sql`status = 'planned' and dedupe_key is not null`),
 ]);
 
 export const revisionComponents = pgTable("revision_components", {

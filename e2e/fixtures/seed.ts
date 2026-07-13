@@ -209,7 +209,7 @@ export async function seedE2E(): Promise<void> {
   const { openProposalRevision } = await import("@/lib/proposals/revision");
   const seededProposal = await createProposalFromAudit(E2E_PROPOSAL_AUDIT_ID, { createdBy: "Moiz", enrichment: { technicalSolution: "S".repeat(200), integrationDesign: "I".repeat(80), roiAssumptions: "R".repeat(50), risks: ["adoption"] } }, {});
   if (seededProposal) {
-    await openProposalRevision({ proposalId: seededProposal.id, auditId: E2E_PROPOSAL_AUDIT_ID, failedStages: ["assemble"], companyId: E2E_WORKSPACE, requestedBy: "Moiz" }, { db, recordAudit: async () => {} });
+    await openProposalRevision({ proposalId: seededProposal.id, auditId: E2E_PROPOSAL_AUDIT_ID, failedStages: ["assemble"], companyId: E2E_WORKSPACE, requestedBy: "Moiz", workflowId: "e2e_prop_wf" }, { db, recordAudit: async () => {} });
   }
 }
 

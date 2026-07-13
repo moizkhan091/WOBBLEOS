@@ -65,7 +65,7 @@ export interface ProposalQaGate {
    * `assemble` failed (preserving the expensive LLM solution-design), or re-synthesizes when solution_design
    * failed. Injected by the production consumer; omitted in tests → no cycle (the run still hard-blocks).
    */
-  onQaRevise?: (input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string }) => Promise<void>;
+  onQaRevise?: (input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string; workflowId: string }) => Promise<void>;
 }
 
 /** Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. */
@@ -157,7 +157,7 @@ export async function runProposalDepartment(input: RunProposalDepartmentInput, d
         // founder can selectively rerun (reusing the passed solution-design when only `assemble` failed). A
         // fail/blocked verdict is NOT salvageable → block without a cycle.
         if (decision.verdict === "revise" && deps.qa.onQaRevise) {
-          await deps.qa.onQaRevise({ proposalId: proposal.id, auditId: input.auditId, failedStages: decision.routingTarget?.failedStages ?? [], companyId: input.companyId ?? null, requestedBy: input.requestedBy }).catch(() => {});
+          await deps.qa.onQaRevise({ proposalId: proposal.id, auditId: input.auditId, failedStages: decision.routingTarget?.failedStages ?? [], companyId: input.companyId ?? null, requestedBy: input.requestedBy, workflowId }).catch(() => {});
         }
         throw new QaGateBlockedError(decision);
       }

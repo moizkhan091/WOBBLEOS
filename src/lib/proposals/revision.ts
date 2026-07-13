@@ -18,15 +18,19 @@ const PROPOSAL_COMPONENTS = [
   { key: "assemble", producedBy: "proposal_orchestrator", dependsOn: ["solution_design"] },
 ];
 
-/** TRIGGER: on a proposal QA `revise`, open a durable revision cycle over the proposal's 2 components. */
+/** TRIGGER: on a proposal QA `revise`, open a durable revision cycle over the proposal's 2 components. Idempotent
+ *  per (workflow + audit + failed-stage set) so a duplicated/reclaimed handoff RETRY — which re-runs the department
+ *  and mints a fresh proposal id each time — reuses the ONE open cycle for this revision round (see the dedupeKey). */
 export async function openProposalRevision(
-  input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string },
+  input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string; workflowId: string },
   deps: RevisionDeps = {},
 ): Promise<void> {
   const failed = input.failedStages.filter((s) => PROPOSAL_COMPONENTS.some((c) => c.key === s));
   if (failed.length === 0) return;
+  // Stable across retries: the proposalId changes each retry, so key on the workflow + source audit + failed set.
+  const dedupeKey = `proposal:${input.workflowId}:${input.auditId}:${[...failed].sort().join(",")}`.slice(0, 200);
   await openRevisionCycle({
-    artifactKind: "proposal", artifactRef: input.proposalId, graphRunId: null, triggeredBy: "qa_gate:proposal",
+    artifactKind: "proposal", artifactRef: input.proposalId, graphRunId: null, triggeredBy: "qa_gate:proposal", dedupeKey,
     components: PROPOSAL_COMPONENTS.map((c) => ({ key: c.key, kind: "proposal_section", producedBy: c.producedBy, dependsOn: c.dependsOn, version: 1, status: failed.includes(c.key) ? "failed" : "approved" })),
     failedComponents: failed, clientId: input.companyId,
     reenqueue: { producer: "proposal", proposalId: input.proposalId, auditId: input.auditId, companyId: input.companyId, requestedBy: input.requestedBy },

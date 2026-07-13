@@ -11,7 +11,7 @@
  *
  * ISOLATED + finally-cleanup. Run:  DATABASE_URL=... npx tsx src/scripts/verify-selective-revision-db.ts
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb, closeDb } from "@/db";
 import { revisionCycles, revisionComponents, revisionComponentVersions, graphCheckpoints } from "@/db/schema";
 import { buildGraphCheckpointRow } from "@/lib/domain/graph-checkpoint";
@@ -112,8 +112,24 @@ async function main() {
     assert(!!oldProposal && (oldProposal.metadata as { solutionDesign?: unknown }).solutionDesign !== undefined, "PROPOSAL: the initial proposal persists the solution-design synthesis under metadata");
 
     // assemble-only failure → rerun [assemble], PRESERVE [solution_design].
-    await openProposalRevision({ proposalId: oldProposal!.id, auditId, failedStages: ["assemble"], companyId: `client_${uniq}`, requestedBy: "Moiz" }, deps);
-    const pcycle = (await db.select({ id: revisionCycles.id }).from(revisionCycles).where(eq(revisionCycles.artifactRef, oldProposal!.id)))[0];
+    const wf = `wf_${uniq}`;
+    const dedupeKey = `proposal:${wf}:${auditId}:assemble`;
+    const plannedCount = async () => (await db.select({ id: revisionCycles.id }).from(revisionCycles).where(and(eq(revisionCycles.dedupeKey, dedupeKey), eq(revisionCycles.status, "planned")))).length;
+    const openProp = (proposalId: string) => openProposalRevision({ proposalId, auditId, failedStages: ["assemble"], companyId: `client_${uniq}`, requestedBy: "Moiz", workflowId: wf }, deps);
+
+    await openProp(oldProposal!.id);
+    assert((await plannedCount()) === 1, "PROPOSAL idempotency: the first trigger opens exactly ONE live revision cycle");
+
+    // DUPLICATE trigger — a reclaimed handoff RETRY re-runs the department and mints a FRESH proposal id, same
+    // workflow + audit + failed set → must NOT create a second live cycle.
+    await openProp(`${oldProposal!.id}_retry`);
+    assert((await plannedCount()) === 1, "PROPOSAL idempotency: a DUPLICATE trigger (new proposal id, same round) still yields ONE live cycle");
+
+    // CONCURRENT duplicate triggers — the partial unique index makes it race-safe.
+    await Promise.all([openProp(`${oldProposal!.id}_c1`), openProp(`${oldProposal!.id}_c2`), openProp(`${oldProposal!.id}_c3`)]);
+    assert((await plannedCount()) === 1, "PROPOSAL idempotency: CONCURRENT duplicate triggers still yield ONE live cycle (partial unique index)");
+
+    const pcycle = (await db.select({ id: revisionCycles.id }).from(revisionCycles).where(and(eq(revisionCycles.dedupeKey, dedupeKey), eq(revisionCycles.status, "planned"))).limit(1))[0];
     cycleIds.push(pcycle.id);
     const pv = (await getRevisionCycle(pcycle.id, deps))!;
     assert(pv.plan.rerun.length === 1 && pv.plan.rerun[0] === "assemble", "PROPOSAL: an assemble-only failure reruns ONLY `assemble`");
@@ -129,6 +145,12 @@ async function main() {
     // The OLD proposal still exists (retained) → the founder can compare versions.
     assert(!!(await getProposal(oldProposal!.id, pDeps)), "PROPOSAL: the OLD proposal is retained (founder comparison)");
     assert((await getRevisionCycle(pcycle.id, deps))!.status === "reran", "PROPOSAL: the cycle transitioned planned → reran");
+
+    // GENUINELY NEW ROUND: now that the first cycle left `planned` (→ reran), the SAME dedupe key can open a fresh
+    // cycle for a new revision round — the completed/reran cycle is NOT incorrectly reused.
+    await openProp(`${oldProposal!.id}_round2`);
+    assert((await plannedCount()) === 1, "PROPOSAL idempotency: after the cycle left `planned`, a genuinely NEW round opens ONE fresh cycle (the reran one is not reused)");
+    for (const c of await db.select({ id: revisionCycles.id }).from(revisionCycles).where(eq(revisionCycles.dedupeKey, dedupeKey))) if (!cycleIds.includes(c.id)) cycleIds.push(c.id);
 
     console.log("\nALL REAL-DB SELECTIVE REVISION CHECKS PASSED ✅");
   } finally {

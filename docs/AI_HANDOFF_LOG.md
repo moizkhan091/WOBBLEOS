@@ -4645,3 +4645,26 @@ STATUS: Context OS = operational-scoped (content + paid-audit + research-analyst
 generators still pending.
 
 GATE: typecheck 0 - 881 tests/112 files - build 0.
+
+---
+
+## cont.50 — FIX: Proposal Selective Revision retry idempotency (documented LOW → closed) — Claude (Opus 4.8)
+
+The reviewer's LOW: proposal revision cycles were not idempotent under handoff RETRY (graphRunId null → the old
+idempotency guard was bypassed; each retry mints a fresh proposal id → a new cycle). Fixed with a durable
+natural-key backstop.
+
+Migration 0045: `revision_cycles.dedupe_key` + a PARTIAL UNIQUE INDEX `(dedupe_key) WHERE status='planned' AND
+dedupe_key IS NOT NULL` — at most ONE OPEN (planned) cycle per key (transaction-safe against concurrent triggers).
+Service: `openRevisionCycle` now derives/accepts a `dedupeKey` (graph artifacts: `<kind>:<graphRunId>:<triggeredBy>`,
+backward-compatible with the prior graphRunId idempotency; graph-less artifacts supply their own), reuses an
+existing planned cycle for the key, and on a concurrent unique-violation (23505) re-queries + reuses the winner.
+`openProposalRevision` keys on `proposal:<workflowId>:<auditId>:<sorted failedStages>` — STABLE across retries
+(the proposalId changes each retry, so it is deliberately NOT in the key). Threaded workflowId through the vertical.
+
+PROVEN: verify:selective-revision (x2) — first trigger → 1 live cycle; DUPLICATE trigger (new proposal id, same
+round) → still 1; CONCURRENT triggers (Promise.all x3) → still 1 (partial unique index); after the cycle leaves
+`planned` (→ reran) a genuinely NEW round opens 1 fresh cycle (the reran one is NOT reused). Tenant/artifact scope
+preserved (clientId + companyId carried). Existing content/audit graph idempotency preserved (derived dedupeKey).
+
+GATE: typecheck 0 · affected unit tests 48 · DB proof x2 · migration 0045 zero drift · (build + full suite + Playwright in this batch).
