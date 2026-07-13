@@ -298,6 +298,16 @@ export async function escalationStatusCounts(deps: EscalationDeps = {}): Promise
  * open (dedup is per department/workflow/task/reason). The scheduler calls this so blocked inter-agent
  * work surfaces in the Command Centre without any code path having to remember to escalate.
  */
+/**
+ * Consumers whose re-run is KNOWN-IDEMPOTENT — the ONLY handoffs eligible for `workflow.retry` auto-redrive. Each
+ * of these department consumers dedups its downstream writes (Finance reuses the invoice by opportunity, Delivery
+ * reuses the project by opportunity, proposal-accept origination is exactly-once, etc. — proven by the real-DB
+ * proofs), and NONE performs an irreversible external effect in the handoff-consumer path (social publishing goes
+ * through the separate content.publish gate, not here). A handoff for ANY department not in this set ESCALATES
+ * instead of auto-redriving. Adding a NEW department here REQUIRES first proving its consumer is idempotent.
+ */
+export const WORKFLOW_RETRY_IDEMPOTENT_DEPARTMENTS = new Set(["paid_audit", "proposal", "sales_crm", "finance", "delivery", "content", "research_intelligence"]);
+
 export async function escalateDeadLetteredHandoffs(
   deps: EscalationDeps & {
     /** When set, an EARNED `workflow.retry` grant (scoped to the handoff's client) AUTO-REDRIVES a dead-lettered
@@ -322,7 +332,12 @@ export async function escalateDeadLetteredHandoffs(
   for (const h of dead) {
     // EARNED AUTONOMY (workflow.retry): auto-redrive ONCE under a scoped grant. A handoff already auto-retried
     // (durable marker) is never auto-retried again → it escalates, keeping a persistent failure founder-visible.
-    if (mayAct && !(h.metadata && h.metadata.autoRetriedAt) && await mayAct({ category: "workflow.retry", clientId: h.clientWorkspaceId, reversible: true, riskLevel: "low", qaPassed: true })) {
+    // SAFETY: only KNOWN-IDEMPOTENT consumers are auto-redriveable (re-running the step cannot double-charge /
+    // double-publish). This makes the invariant EXPLICIT — a NEW consumer must be added to the allow-list after
+    // its idempotency is proven, so a future irreversible/non-idempotent consumer is never silently auto-redriven
+    // (it escalates to the founder instead). The gate passes reversible:true only for these vetted consumers.
+    const autoRetriable = WORKFLOW_RETRY_IDEMPOTENT_DEPARTMENTS.has(h.department);
+    if (mayAct && autoRetriable && !(h.metadata && h.metadata.autoRetriedAt) && await mayAct({ category: "workflow.retry", clientId: h.clientWorkspaceId, reversible: true, riskLevel: "low", qaPassed: true })) {
       if (await redrive(h.id, "autonomy:earned", { markAutoRetried: true })) { autoRetried += 1; continue; }
     }
     const r = await createEscalation(

@@ -4763,3 +4763,13 @@ Next: low-risk internal notification, external-comms prep, proposal-send prep. T
 flagged a LOW: no shipped "deactivate an active source" endpoint yet (data-layer reversible; UX follow-up).
 
 GATE: typecheck 0 · escalation/handoff unit tests green · DB proof x2 · (build + full suite in this batch).
+
+## cont.54b — workflow.retry MEDIUM fix (idempotency allow-list) — Claude (Opus 4.8)
+
+Independent reviewer SHIP'd workflow.retry but flagged a MEDIUM: the gate hardcoded reversible:true/riskLevel:low
+for EVERY dead-lettered handoff, so the sensitivity cap could never fire — safe today (all consumers idempotent),
+but a future non-idempotent/irreversible consumer would be auto-redriven uncapped. FIXED: added an explicit
+`WORKFLOW_RETRY_IDEMPOTENT_DEPARTMENTS` allow-list (paid_audit/proposal/sales_crm/finance/delivery/content/
+research_intelligence — the vetted, dedup-guarded consumers). A handoff for any department NOT in the set ESCALATES
+even under a grant. Adding a new department REQUIRES first proving its consumer idempotent. Proven: verify:workflow-retry
+(x2) now asserts a non-vetted department escalates under a grant; +1 unit test. This makes the safety invariant explicit + cap-safe.

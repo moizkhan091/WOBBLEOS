@@ -55,6 +55,19 @@ describe("workflow.retry earned autonomy — dead-letter sweep", () => {
     expect(r.escalated).toBe(1); // escalated to the founder instead
   });
 
+  it("SAFETY: a handoff for a NON-idempotent-allow-listed department escalates even WITH a grant", async () => {
+    const { store } = makeStore();
+    let redriven = 0;
+    const r = await escalateDeadLetteredHandoffs({
+      store, recordAudit: async () => {}, now, enforceAutonomy: true,
+      listDeadLettered: async () => [dead({ department: "some_future_department" })],
+      mayActAutonomously: async () => true, // grant would apply, but the department isn't vetted-idempotent
+      autoRedrive: async () => { redriven += 1; return true; },
+    });
+    expect(redriven).toBe(0); // never auto-redriven (cap-safe against a future irreversible consumer)
+    expect(r.escalated).toBe(1);
+  });
+
   it("NO grant → escalates (baseline), never auto-retries", async () => {
     const { store } = makeStore();
     let redriven = 0;

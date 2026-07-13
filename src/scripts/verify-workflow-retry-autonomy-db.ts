@@ -30,8 +30,8 @@ async function main() {
   const policyIds: string[] = [];
 
   // Seed a DEAD-LETTERED handoff for a client scope. Returns its id.
-  const seedDead = async (clientId: string, tag: string, metadata: Record<string, unknown> = {}) => {
-    const env = buildHandoffEnvelope({ workflowId: `wf_${tag}_${uniq}`, department: "paid_audit", sourceAgent: "a", destinationAgent: "b", objective: "x", requestedAction: "x", expectedOutputSchema: "current_state_map", confidence: 0.7, clientWorkspaceId: clientId, companyId: clientId, authorizedMemoryScopes: ["company"], idempotencyKey: `${tag}_${uniq}:in` }, { now });
+  const seedDead = async (clientId: string, tag: string, metadata: Record<string, unknown> = {}, department = "paid_audit") => {
+    const env = buildHandoffEnvelope({ workflowId: `wf_${tag}_${uniq}`, department, sourceAgent: "a", destinationAgent: "b", objective: "x", requestedAction: "x", expectedOutputSchema: "current_state_map", confidence: 0.7, clientWorkspaceId: clientId, companyId: clientId, authorizedMemoryScopes: ["company"], idempotencyKey: `${tag}_${uniq}:in` }, { now });
     const row = { ...buildHandoffRow(env, { now }), deliveryState: "dead_lettered" as const, deadLetteredAt: now, failureReason: "provider timeout", metadata, envelope: env as unknown as Record<string, unknown> };
     await db.insert(handoffs).values(row as never);
     handoffIds.push(row.id);
@@ -83,6 +83,13 @@ async function main() {
     const h6 = await seedDead(clientA, "expired");
     const r6 = await sweep(h6);
     assert(r6.autoRetried === 0 && r6.escalated === 1, "an EXPIRED grant does not auto-retry (the handoff escalates)");
+
+    // SAFETY ALLOW-LIST: a handoff for a NON-vetted department is NEVER auto-redriven even WITH a grant — it
+    // escalates. This makes the "only known-idempotent consumers auto-retry" invariant explicit + cap-safe.
+    await grant(clientA);
+    const h7 = await seedDead(clientA, "notvetted", {}, "some_future_department");
+    const r7 = await sweep(h7);
+    assert(r7.autoRetried === 0 && r7.escalated === 1 && (await stateOf(h7)) === "dead_lettered", "SAFETY: a handoff for a NON-idempotent-allow-listed department ESCALATES even under a grant (a future irreversible consumer is never silently auto-redriven)");
 
     console.log("\nALL REAL-DB WORKFLOW-RETRY AUTONOMY CHECKS PASSED ✅");
   } finally {
