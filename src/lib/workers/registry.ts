@@ -77,8 +77,20 @@ export async function liveContentQaGate(
   };
 }
 
-/** Production content.graph handler: run the graph with the LIVE independent QA gate enabled. */
-const contentGraphHandler: JobHandler = (job: JobRow) => runContentGraphJobHandler(job, { qaGate: liveContentQaGate });
+/**
+ * Production content-generator Context OS retrieval: pulls WOBBLE's APPROVED trusted-context facts (company
+ * scope) and formats them as a grounding block, recording the retrieval as evidence (telemetry). This is the
+ * real enforcement point — a production generator retrieves approved scoped context before generating.
+ */
+async function retrieveContentTrustedContext(): Promise<string | null> {
+  const { retrieveTrustedContext } = await import("@/lib/context-os");
+  const { assertions } = await retrieveTrustedContext({ type: "company", id: "wobble" }, "social_content", { agentSlug: "content_strategist" });
+  if (!assertions.length) return null;
+  return "APPROVED WOBBLE CONTEXT (trusted onboarding facts — treat as ground truth, never contradict):\n" + assertions.map((a) => `- ${a.statement}`).join("\n");
+}
+
+/** Production content.graph handler: run the graph with the LIVE QA gate + Context OS trusted-context retrieval. */
+const contentGraphHandler: JobHandler = (job: JobRow) => runContentGraphJobHandler(job, { qaGate: liveContentQaGate, retrieveTrustedContext: retrieveContentTrustedContext });
 
 export const generalRegistry: JobHandlerRegistry = {
   noop,

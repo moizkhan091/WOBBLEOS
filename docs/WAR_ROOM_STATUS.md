@@ -7,7 +7,7 @@ Legend: **operational** (durable state + trigger + enforcement + consumer + foun
 
 | Capability | pure domain | persistence/migration | DB store | prod trigger | enforcement | consumer | founder API | founder UI | DB proof | Playwright | STATUS |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Context OS | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Context OS | ✅ | ✅ (`0042`) | ✅ | ✅ intake API | ✅ content graph retrieves trusted ctx | ✅ generator + GET API | ✅ | ⚠️ API-level | ✅ (`verify:context-os`) | ✅ | **operational** |
 | Earned Autonomy | ✅ | ❌ | ❌ | ❌ | ❌ | n/a | ❌ | ❌ | ❌ | ❌ | **core-only** |
 | Selective Revision | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
 | Dream/Optimizer | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |

@@ -316,4 +316,23 @@ describe("runContentGraph — independent QA gate (approval release)", () => {
     expect(result.approvalId).toBe("ap_1");
     expect(result.qa).toBeUndefined();
   });
+
+  it("injects the Context OS trusted-context block into the strategy prompt when the retrieval seam is wired", async () => {
+    const { deps } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const seenMessages: string[] = [];
+    const capturingRunNode: NonNullable<ContentGraphDeps["runNode"]> = async (input) => { seenMessages.push(...input.messages.map((m) => String(m.content))); return deps.runNode!(input); };
+    await runContentGraph(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "get more calls" },
+      { ...deps, runNode: capturingRunNode, retrieveTrustedContext: async () => "APPROVED WOBBLE CONTEXT: - Pricing is $99/mo" },
+    );
+    expect(seenMessages.some((m) => m.includes("APPROVED WOBBLE CONTEXT"))).toBe(true); // a real generator retrieved approved scoped context
+  });
+
+  it("no trusted-context seam → the strategy prompt has no such block (default off)", async () => {
+    const { deps } = makeDeps([STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]);
+    const seenMessages: string[] = [];
+    const capturingRunNode: NonNullable<ContentGraphDeps["runNode"]> = async (input) => { seenMessages.push(...input.messages.map((m) => String(m.content))); return deps.runNode!(input); };
+    await runContentGraph({ contentTrackId: "ct1", requestedBy: "Moiz", objective: "x" }, { ...deps, runNode: capturingRunNode });
+    expect(seenMessages.some((m) => m.includes("APPROVED WOBBLE CONTEXT"))).toBe(false);
+  });
 });

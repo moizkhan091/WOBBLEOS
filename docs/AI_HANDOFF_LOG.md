@@ -4375,3 +4375,28 @@ GATE: typecheck 0 · 869 tests / 108 files · build 0 · no schema/migration.
 
 NEXT: durable persistence + action-point enforcement wiring for the pure cores (autonomy/revision/optimizer/
 media/context-os) · Phase 5 continuous-research UI · VPS (external-blocked).
+
+## cont.41 — Context OS made OPERATIONAL (durable pipeline + generator retrieval + founder surface)
+
+Took Context OS from core-only to operational. Migration `0042_context_os` (context_sources / context_assertions
+/ context_retrievals). Service `src/lib/context-os` — immutable raw intake → `extractAssertions` (PENDING) →
+`approveContextAssertion` (the ONLY path to trusted; supersede bumps version + marks prior superseded) →
+`retrieveTrustedContext` (approved-in-scope ONLY, records the exact assertion ids as evidence) →
+contradictions/coverage (computed on durable data) → export/delete. Founder API: POST /api/context/sources
+(intake+extract), POST /api/context/assertions/[id]/action (approve/reject), GET /api/context (trusted +
+coverage + contradictions). ENFORCEMENT: the production content.graph handler now injects Context OS retrieval
+(WOBBLE company scope) into the strategy prompt — a real generator retrieves approved scoped context before
+generating, telemetered (registry.ts `retrieveContentTrustedContext` + content-graph `retrieveTrustedContext`
+seam, default-off so existing tests/proofs unchanged).
+
+Proven: `verify-context-os-db` (12 checks, x2) — raw never auto-trusted; approval required; retrieval returns
+exactly approved-in-scope + records evidence; tenant isolation (client B never leaks into A); superseded not
+current; contradiction surfaced; export + deletion. Playwright `context-os.spec.ts` (founder: intake→not-
+trusted→approve→trusted) + unauth 401 gate. 2 content-graph unit tests (block injected when wired / absent by
+default). content-gate + content-vertical DB proofs re-run green. Migration from-scratch (0042) + zero drift.
+
+GATE: typecheck 0 · 876 tests / 111 files · build 0 · 25 Playwright tests · DB proof x2 · from-scratch + zero drift.
+
+NEXT (live-integration wave): Earned Autonomy enforcement at real action points → Selective Revision on real
+artifacts → Dream/Optimizer governance loop → Phase 5 remainder → Phase 4 dedicated QA E2E → Media Studio
+durable system → Free Audit → extend release gate.

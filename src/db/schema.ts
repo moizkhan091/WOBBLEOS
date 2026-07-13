@@ -1932,3 +1932,58 @@ export const dailyBriefs = pgTable("daily_briefs", {
   index("daily_briefs_scope_generated_idx").on(table.scopeType, table.scopeId, table.generatedAt),
   index("daily_briefs_generated_idx").on(table.generatedAt),
 ]);
+
+// ---- CONTEXT OS (onboarding → trusted context). Raw intake is IMMUTABLE; extracted assertions are PENDING
+// until an explicit founder approval makes them trusted; retrieval is scope-isolated + telemetered. Raw is
+// never trusted directly. ----
+export const contextSources = pgTable("context_sources", {
+  id: id(),
+  kind: varchar("kind", { length: 40 }).notNull(), // questionnaire | interview | manual | document | url | api | webhook | transcript | chatgpt_export | claude_export | drive | notion | crm
+  content: text("content").notNull(),
+  scopeType: varchar("scope_type", { length: 16 }).notNull(), // company | founder | client | project | department
+  scopeId: varchar("scope_id", { length: 200 }).notNull(),
+  classification: varchar("classification", { length: 32 }).notNull().default("internal"),
+  importedBy: varchar("imported_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("context_sources_scope_idx").on(table.scopeType, table.scopeId),
+  index("context_sources_created_idx").on(table.createdAt),
+]);
+
+export const contextAssertions = pgTable("context_assertions", {
+  id: id(),
+  sourceId: text("source_id").notNull(), // provenance → the immutable raw source
+  statement: text("statement").notNull(),
+  entities: jsonb("entities").$type<string[]>().notNull().default([]),
+  scopeType: varchar("scope_type", { length: 16 }).notNull(),
+  scopeId: varchar("scope_id", { length: 200 }).notNull(),
+  classification: varchar("classification", { length: 32 }).notNull().default("internal"),
+  trust: numeric("trust", { precision: 4, scale: 3 }).notNull().default("0.5"),
+  status: varchar("status", { length: 16 }).notNull().default("extracted"), // extracted | approved | rejected | superseded
+  version: integer("version").notNull().default(1),
+  supersedes: text("supersedes"),
+  extractedByAgent: varchar("extracted_by_agent", { length: 120 }),
+  approvedBy: varchar("approved_by", { length: 120 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("context_assertions_scope_status_idx").on(table.scopeType, table.scopeId, table.status),
+  index("context_assertions_source_idx").on(table.sourceId),
+]);
+
+export const contextRetrievals = pgTable("context_retrievals", {
+  id: id(),
+  scopeType: varchar("scope_type", { length: 16 }).notNull(),
+  scopeId: varchar("scope_id", { length: 200 }).notNull(),
+  task: varchar("task", { length: 80 }).notNull(),
+  agentSlug: varchar("agent_slug", { length: 120 }),
+  // The exact approved assertion ids returned to the generator (the evidence of what shaped the output).
+  assertionIds: jsonb("assertion_ids").$type<string[]>().notNull().default([]),
+  createdAt: createdAt(),
+}, (table) => [
+  index("context_retrievals_scope_idx").on(table.scopeType, table.scopeId),
+  index("context_retrievals_created_idx").on(table.createdAt),
+]);

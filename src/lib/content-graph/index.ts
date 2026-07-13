@@ -91,6 +91,13 @@ export interface ContentGraphDeps {
     ctx: { workflowId: string; taskId: string | null; clientWorkspaceId: string | null },
   ) => Promise<ContentGraphQaOutcome>;
   retrieveBrain?: () => Promise<Array<{ title: string; content: string }>>;
+  /**
+   * Opt-in Context OS retrieval: returns a system-message block of the APPROVED trusted-context facts for this
+   * content's scope (or null when none / not wired). Injected by the production job handler so a real generator
+   * retrieves approved scoped context before generating; the retrieval is telemetered by Context OS. Omitted in
+   * unit tests → no block (behaviour unchanged).
+   */
+  retrieveTrustedContext?: () => Promise<string | null>;
   retrieve?: (query: string) => Promise<{ notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }>;
   retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   runNode?: (input: { role: string; module: string; messages: ProviderMessage[]; linkedEntityId: string }) => Promise<NodeRunResult>;
@@ -269,11 +276,14 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     };
 
     // ---- Node 1: STRATEGY (creative brief) ----
-    const [brain, stratKnowledge, intel] = await Promise.all([
+    const [brain, stratKnowledge, intel, trustedContextBlock] = await Promise.all([
       (deps.retrieveBrain ?? defaultRetrieveBrain)(),
       retrieve(input.objective),
       (deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("social_content")))(),
+      (deps.retrieveTrustedContext ?? (async () => null))(),
     ]);
+    // Extra system context blocks folded into the brief: live approved intelligence + approved Context OS facts.
+    const contextBlocks = [intel.block, trustedContextBlock].filter((b): b is string => Boolean(b));
     const strategyMessages = buildStrategyPrompt({
       objective: input.objective,
       track: trackCtx,
@@ -288,7 +298,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
         slug: CONTENT_GRAPH_AGENTS.strategy,
         role: CONTENT_GRAPH_ROLES.strategy,
         linkedEntityId: track.id,
-        messages: intel.block ? [strategyMessages[0], { role: "system" as const, content: intel.block }, ...strategyMessages.slice(1)] : strategyMessages,
+        messages: contextBlocks.length ? [strategyMessages[0], ...contextBlocks.map((content) => ({ role: "system" as const, content })), ...strategyMessages.slice(1)] : strategyMessages,
         parse: (t) => parseJsonObject(t, creativeBriefSchema),
         required: true,
         parseErr: "content-graph: strategist returned an unparseable brief",
