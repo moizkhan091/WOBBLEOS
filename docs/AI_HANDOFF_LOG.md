@@ -4342,3 +4342,20 @@ intel propagation/isolation · founder taste). Exit 0. Plus code gate: typecheck
 
 NEXT: Phase 10 Media Studio provider-independent core · durable persistence + enforcement wiring for the
 Phase 6/7/8 cores · Phase 5 UI · Context OS · VPS (external-blocked).
+
+## cont.39 — Phase 10: Media Studio provider-independent core (built + proven)
+
+Mandate: complete everything independent of provider credentials; missing creds block ONLY the real external
+generation. Built `src/lib/domain/media.ts` (pure): MediaGenerationRequest model + `validateMediaRequest`
+(prompt/kind/budget-cap — rejects over-budget before any spend) + `resolveMediaProvider`/`dispatchDecision`
+(a request with no CONFIGURED provider is BLOCKED — truthful degraded, never a fake success) + the job status
+lifecycle (queued→generating→succeeded/failed/canceled/blocked, guarded retries) + `falConfigured` which
+resolves the FAL_KEY vs FAL_API_KEY split (either canonical env var). The real fal.ai adapter plugs in at the
+edge (credential-gated). Proven: 7 unit tests (validation+budget; configured→dispatch vs unconfigured/unknown
+→blocked; legal transitions; attempt-bounded retry; FAL key resolution).
+
+GATE: typecheck 0 · 863 tests / 107 files · build 0 · no schema/migration.
+
+NEXT: durable persistence + enforcement wiring for the Phase 6/7/8/10 cores · Phase 5 UI · Context OS · VPS
+(external-blocked). The pure decision cores of Phases 6–10 are built + tested; production integration (DB
+tables + action-point wiring + UI) is the remaining layer per capability.
