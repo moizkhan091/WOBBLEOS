@@ -36,4 +36,27 @@ test.describe("Earned autonomy — grant → inspect → revoke (real effects)",
     const after = await policiesFor(request, category);
     expect(after.find((p) => p.id === id)?.status).toBe("revoked");
   });
+
+  test("SOURCE ACTIVATION: a `source.activation` grant AUTO-ACTIVATES a new source (reversible → a grant releases it); no grant → pending", async ({ request }) => {
+    const stamp = Date.now();
+    const grantedClient = `e2e_srcauto_g_${stamp}`, ungrantedClient = `e2e_srcauto_u_${stamp}`;
+
+    // Founder grants source.activation autonomy scoped to ONE client.
+    const grant = await request.post("/api/autonomy/policies", { data: { category: "source.activation", grantedLevel: "autonomous", clientId: grantedClient, maxRiskLevel: "low" } });
+    expect(grant.status()).toBe(201);
+
+    // A source added for the GRANTED client AUTO-ACTIVATES (skips the founder approval).
+    const s1 = await request.post("/api/sources", { data: { title: `E2E granted src ${stamp}`, sourceType: "url", ownerScope: "client", ownerId: grantedClient } });
+    expect(s1.status()).toBe(201);
+    const b1 = (await s1.json()) as { autoActivated?: boolean; source: { approvalStatus: string } };
+    expect(b1.autoActivated).toBe(true);
+    expect(b1.source.approvalStatus).toBe("approved");
+
+    // A source for a DIFFERENT client (no grant) stays PENDING — tenant-scoped, never silently activated.
+    const s2 = await request.post("/api/sources", { data: { title: `E2E ungranted src ${stamp}`, sourceType: "url", ownerScope: "client", ownerId: ungrantedClient } });
+    expect(s2.status()).toBe(201);
+    const b2 = (await s2.json()) as { autoActivated?: boolean; source: { approvalStatus: string } };
+    expect(b2.autoActivated ?? false).toBe(false);
+    expect(b2.source.approvalStatus).toBe("pending");
+  });
 });

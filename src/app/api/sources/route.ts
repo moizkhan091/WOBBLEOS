@@ -64,7 +64,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await createSource(parsed.data);
+    // EARNED AUTONOMY: a source.activation grant (scoped) AUTO-ACTIVATES the source instead of holding it for a
+    // founder approval — source activation is reversible, so a grant genuinely releases it. No grant → pending.
+    const result = await createSource(parsed.data, { enforceAutonomy: true });
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

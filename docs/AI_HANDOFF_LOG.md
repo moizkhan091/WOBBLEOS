@@ -4711,3 +4711,29 @@ no telemetry — a sustained Context OS outage silently degrades grounding. Obse
 fail-open per anti-fabrication).
 
 GATE: typecheck 0 · daily-brief unit tests 10/10 · (build + full suite in this batch).
+
+---
+
+## cont.53 — Earned Autonomy expanded to source.activation (2nd action point) — Claude (Opus 4.8)
+
+Earned Autonomy enforced only content.publish. Added the SOURCE.ACTIVATION action point — the first REVERSIBLE
+action where a grant genuinely RELEASES the action (content.publish is capped at confirm; source activation is
+reversible → a scoped autonomous grant auto-activates).
+
+`createSource` gains opt-in `enforceAutonomy`: after opening the founder approval, it checks
+`mayActAutonomously({category:"source.activation", clientId: source's client scope, reversible:true, riskLevel:"low",
+qaPassed:true})`. With a scope-matched autonomous grant the source AUTO-ACTIVATES (via approveSource — the atomic
+approval flip + activation + intake enqueue) and records `source.auto_activated`; with none it stays PENDING
+(baseline). Enabled in production at `POST /api/sources` (the real founder trigger). Money/pricing/irreversible
+categories are untouched — this is source activation only.
+
+PROVEN: verify:source-autonomy (x2) — NO policy → pending; an earned grant → AUTO-ACTIVATES (approved + ready);
+TENANT isolation (client A's grant does not activate client B's source); REVOKED grant → pending; EXPIRED grant →
+pending. Playwright autonomy.spec adds a founder flow (grant source.activation for a client → add a source → it is
+auto-approved; a different client without a grant stays pending). Added verify:source-autonomy to verify:all-db
+(21 proofs) + release:full.
+
+STATUS: Earned Autonomy = operational-scoped (content.publish HELD/released + source.activation released). Next:
+workflow.retry, low-risk notification, external-comms prep, proposal-send prep.
+
+GATE: typecheck 0 · source unit tests 14 · DB proof x2 · (build + full suite + Playwright in this batch).

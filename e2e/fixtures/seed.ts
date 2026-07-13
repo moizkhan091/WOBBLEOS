@@ -86,6 +86,15 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.contextSources).where(and(eq(schema.contextSources.scopeType, "company"), eq(schema.contextSources.scopeId, "e2e_ctx")));
   // Earned-autonomy policies the autonomy browser spec grants (isolated test category prefix).
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
+  // Source-activation autonomy fixtures (sources + their approvals + intake jobs + the scoped grants).
+  const autoSources = await db.select({ id: schema.sources.id }).from(schema.sources).where(like(schema.sources.ownerId, "e2e_srcauto_%"));
+  if (autoSources.length) {
+    const ids = autoSources.map((s) => s.id);
+    await db.delete(schema.jobs).where(inArray(schema.jobs.idempotencyKey, ids.map((id) => `source.intake:${id}`)));
+    await db.delete(schema.approvals).where(inArray(schema.approvals.entityId, ids));
+    await db.delete(schema.sources).where(inArray(schema.sources.id, ids));
+  }
+  await db.delete(schema.autonomyPolicies).where(and(eq(schema.autonomyPolicies.category, "source.activation"), like(schema.autonomyPolicies.clientId, "e2e_srcauto_%")));
   // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
   await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
   // Selective-revision fixtures (content + audit + proposal): cycle + components + version snapshots + runs.

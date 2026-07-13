@@ -72,6 +72,13 @@ export interface SourceDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   /** Atomic flip+effect (transactional outbox). Injectable for tests; defaults to the DB implementation. */
   claimAndRecordEffect?: (input: { approvalId: string; approvedBy: string; effect: { approvalId: string; effectType: string; entityType: string; entityId: string; payload?: Record<string, unknown>; actor?: string | null } }) => Promise<{ claimed: boolean; effectId: string | null }>;
+  /**
+   * EARNED AUTONOMY: when set, `createSource` checks a `source.activation` policy for the source's scope. Source
+   * activation is REVERSIBLE (a source can be deactivated), so an earned autonomous grant genuinely RELEASES it —
+   * the source AUTO-ACTIVATES instead of waiting on the founder approval. With no grant it stays pending (baseline).
+   * Injected true by the production intake path; default off (existing tests/proofs unchanged).
+   */
+  enforceAutonomy?: boolean;
   now?: Date;
 }
 
@@ -123,6 +130,8 @@ export interface CreateSourceResult {
   source: SourceRow;
   file: SourceFileRow | null;
   approval: ApprovalRow;
+  /** True when an earned `source.activation` grant AUTO-ACTIVATED the source (skipping the founder approval). */
+  autoActivated?: boolean;
 }
 
 export async function createSource(input: CreateSourceInput, deps: SourceDeps = {}): Promise<CreateSourceResult> {
@@ -178,7 +187,24 @@ export async function createSource(input: CreateSourceInput, deps: SourceDeps = 
     { store: deps.approvalStore, recordAudit, now },
   );
 
-  return { source, file, approval };
+  // EARNED AUTONOMY at the source.activation action point (reversible → a grant can release it). With an earned,
+  // scope-matched autonomous grant the source AUTO-ACTIVATES (skips the founder approval); with none it stays
+  // pending (baseline). Money/pricing/irreversible categories are unaffected — this is source activation only.
+  let autoActivated = false;
+  if (deps.enforceAutonomy) {
+    const { mayActAutonomously } = await import("@/lib/autonomy");
+    const granted = await mayActAutonomously(
+      { category: "source.activation", clientId: source.ownerScope === "client" ? source.ownerId : null, reversible: true, riskLevel: "low", qaPassed: true },
+      { now },
+    );
+    if (granted) {
+      await approveSource({ sourceId: source.id, approvalId: approval.id, approvedBy: "autonomy:earned", trustLevel: source.trustLevel }, deps);
+      autoActivated = true;
+      await recordAudit({ eventType: "source.auto_activated", module: "source_library", entityType: "source", entityId: source.id, actor: "autonomy:earned", metadata: { category: "source.activation", ownerScope: source.ownerScope, ownerId: source.ownerId } });
+    }
+  }
+
+  return { source: autoActivated ? { ...source, approvalStatus: "approved", status: "active" } : source, file, approval, autoActivated };
 }
 
 export interface ApproveSourceInput {
