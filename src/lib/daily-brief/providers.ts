@@ -66,6 +66,7 @@ export const approvalsDueProvider: SignalFetcher = async (scope) => {
 
 /** Delivery risks — projects that are off-track (status or a low computed health score). */
 export const deliveryRisksProvider: SignalFetcher = async (scope) => {
+  if (scope.type === "client" && !scope.id) return []; // a client scope with no id must NEVER list all tenants' projects
   const companyId = scope.type === "client" ? scope.id ?? undefined : undefined;
   const rows = await listProjects({ companyId, limit: 300 });
   const AT_RISK_STATUSES = new Set(["at_risk", "paused", "cancelled", "waiting_on_client"]);
@@ -138,6 +139,7 @@ export const providerHealthProvider: SignalFetcher = async (scope, ctx) => {
 
 /** KPI — overdue tasks (work slipping past its due date). One aggregate signal with the overdue tasks as evidence. */
 export const kpiProvider: SignalFetcher = async (scope, ctx) => {
+  if (scope.type === "client" && !scope.id) return []; // a client scope with no id must NEVER list all tenants' tasks
   const companyId = scope.type === "client" ? scope.id ?? undefined : undefined;
   const rows = await listTasks({ companyId, limit: 500 });
   const overdue = rows.filter((t) => isOverdue(t, ctx.now));
@@ -181,6 +183,7 @@ export const crmMovementProvider: SignalFetcher = async (scope, ctx) => {
 
 /** Intelligence — validated findings awaiting the founder's review (pending approval). One aggregate signal. */
 export const intelligenceProvider: SignalFetcher = async (scope) => {
+  if (scope.type === "client" && !scope.id) return []; // a client scope with no id must NEVER list all tenants' intelligence
   const clientId = scope.type === "client" ? scope.id ?? undefined : undefined;
   const rows = await listIntelligenceItems({ approvalStatus: "pending", clientId, limit: 100 });
   if (!rows.length) return [];
