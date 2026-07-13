@@ -5121,3 +5121,28 @@ wire the fal client in `falMediaProvider.generate` to enable real media.
 
 GATE: typecheck 0 · full unit suite 931/931 (117 files) · build 0 (clean .next) · DB proof x2 · migration 0049 zero
 drift · Playwright media + full unauth + ingestion + proposal-accept regressions green. (Reviewer next.)
+
+---
+
+## cont.65 — Multi-agent FREE AUDIT enrichment (grounded, anti-hallucination) — Claude (Opus 4.8)
+
+Program order #8. The Free Audit was a deterministic single-pass diagnosis (the code itself said "multi-agent LLM
+enrichment is a later layer"). Built that layer: `src/lib/free-audit/team.ts` `runFreeAuditTeam`.
+- The deterministic `diagnose` GROUNDS the team in the REAL Wobble opportunities (anti-hallucination — the team may
+  ONLY speak to opportunities the diagnosis surfaced; `groundedServiceSlugs` = exactly the report's service slugs).
+- Three DISTINCT agent roles run over that grounding via an INJECTABLE provider: gap_analyst → opportunity_writer →
+  pitch_composer. Default provider = the real OpenRouter text model in prod; a CI deterministic-adapter branch
+  (WOBBLE_JUDGMENT_ADAPTER=deterministic, never a real deploy) returns grounded text so browser E2E runs the real
+  path with NO paid call; proofs/units inject their own deterministic provider.
+- A provider FAILURE DEGRADES to the deterministic report (`enrichment.generated=false`, falls back to the summary)
+  — the free audit is never blocked, never fabricated. Enrichment persists onto the existing `report` jsonb (no
+  migration). Founder API: `POST /api/audit/free { enrich: true }` (founder-gated) runs the team; default is the
+  fast deterministic diagnosis.
+
+PROVEN: verify:free-audit-team (x2, 8 asserts) — persisted, 3 distinct roles ran, enrichment GROUNDED in the real
+diagnosis, ANTI-HALLUCINATION scoped to exactly the real service slugs, audited, and a provider failure degrades
+honestly to the summary. → verify:all-db (30). Unit: tests/free-audit-team.test.ts (2). Playwright:
+free-audit-team.spec (enrich → grounded enrichment scoped to real opportunities, via the CI adapter).
+
+GATE: typecheck 0 · full unit suite 933/933 (118 files) · build 0 (clean .next) · DB proof x2 · no migration ·
+Playwright free-audit-team + full unauth gate green. (Reviewer next.)

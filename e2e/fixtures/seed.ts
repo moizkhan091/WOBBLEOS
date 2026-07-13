@@ -98,6 +98,8 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.autonomyPolicies).where(and(eq(schema.autonomyPolicies.category, "source.activation"), like(schema.autonomyPolicies.clientId, "e2e_srcauto_%")));
   // Media Studio spec fixtures: the spec creates media jobs (test DB → clear them so counts stay deterministic).
   await db.delete(schema.mediaJobs);
+  // Free-audit-team spec fixtures: the spec creates audits under this businessName prefix.
+  await db.delete(schema.audits).where(like(schema.audits.businessName, "E2E FreeAudit%"));
   // Self-optimizer spec fixtures: the spec triggers real cycles that persist. This is a test DB, so clear the
   // optimizer's own tables each run (child rows first) so counts + governance stay deterministic across runs.
   await db.delete(schema.optimizerMonitoring);

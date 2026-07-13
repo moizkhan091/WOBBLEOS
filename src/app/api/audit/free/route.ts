@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runFreeAudit, listAudits } from "@/lib/free-audit";
+import { runFreeAuditTeam } from "@/lib/free-audit/team";
 import { runAuditSchema } from "@/lib/domain/free-audit";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
@@ -22,12 +23,17 @@ export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 }); }
+  const enrich = (body as { enrich?: unknown })?.enrich === true;
   const parsed = runAuditSchema.omit({ createdBy: true }).safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: "validation failed", issues: parsed.error.issues }, { status: 422 });
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
-    const audit = await runFreeAudit({ ...parsed.data, createdBy: auth });
+    // `enrich:true` runs the MULTI-AGENT team (grounded diagnosis → gap/opportunity/pitch enrichment, real LLM);
+    // otherwise the fast deterministic diagnosis. Both persist an audit row.
+    const audit = enrich
+      ? await runFreeAuditTeam({ ...parsed.data, createdBy: auth })
+      : await runFreeAudit({ ...parsed.data, createdBy: auth });
     return NextResponse.json({ ok: true, audit }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
