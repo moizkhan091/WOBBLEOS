@@ -1987,3 +1987,32 @@ export const contextRetrievals = pgTable("context_retrievals", {
   index("context_retrievals_scope_idx").on(table.scopeType, table.scopeId),
   index("context_retrievals_created_idx").on(table.createdAt),
 ]);
+
+// ---- EARNED AUTONOMY (Phase 6): durable per-action autonomy policies. A policy GRANTS a level for an action
+// category within a narrow scope + conditions; it is EARNED (founder-approved, versioned, revocable, expirable).
+// There is no global switch — resolution is per action from the matching active policies, with hard caps. ----
+export const autonomyPolicies = pgTable("autonomy_policies", {
+  id: id(),
+  category: varchar("category", { length: 80 }).notNull(), // e.g. content.publish | source.activation | proposal.send
+  grantedLevel: varchar("granted_level", { length: 16 }).notNull(), // observe | inform | recommend | confirm | autonomous
+  status: varchar("status", { length: 16 }).notNull().default("active"), // active | revoked
+  actor: varchar("actor", { length: 120 }),
+  companyId: varchar("company_id", { length: 120 }),
+  clientId: varchar("client_id", { length: 120 }),
+  projectId: varchar("project_id", { length: 120 }),
+  maxRiskLevel: varchar("max_risk_level", { length: 16 }), // low | medium | high | critical
+  maxFinancialCents: integer("max_financial_cents"),
+  requiresQaPass: boolean("requires_qa_pass").notNull().default(false),
+  successThreshold: numeric("success_threshold", { precision: 4, scale: 3 }), // historical success ratio required to earn
+  historicalSampleSize: integer("historical_sample_size"),
+  approvedBy: varchar("approved_by", { length: 120 }).notNull(),
+  effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  version: integer("version").notNull().default(1),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("autonomy_policies_category_status_idx").on(table.category, table.status),
+]);

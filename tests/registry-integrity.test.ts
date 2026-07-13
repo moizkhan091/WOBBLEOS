@@ -8,7 +8,6 @@ import { KNOWLEDGE_COMPILER_AGENT_SLUG, KNOWLEDGE_COMPILE_JOB_TYPE } from "@/lib
 import { CONTENT_GENERATE_JOB_TYPE } from "@/lib/domain/content-worker";
 import { CONTENT_GRAPH_JOB_TYPE } from "@/lib/domain/content-graph";
 import { PAID_AUDIT_JOB_TYPE } from "@/lib/domain/paid-audit-graph";
-import { PUBLISHING_DISPATCH_JOB_TYPE } from "@/lib/domain/library";
 import { DEFAULT_CAPABILITIES } from "@/lib/domain/ask";
 import { generalRegistry, knownJobTypes, hasHandler } from "@/lib/workers/registry";
 
@@ -75,7 +74,6 @@ const ENQUEUED_JOB_TYPES = [
   CONTENT_GRAPH_JOB_TYPE,
   KNOWLEDGE_COMPILE_JOB_TYPE,
   PAID_AUDIT_JOB_TYPE,
-  PUBLISHING_DISPATCH_JOB_TYPE,
   "library.import",
   "intelligence.scout",
   "intelligence.analyze",

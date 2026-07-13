@@ -4400,3 +4400,46 @@ GATE: typecheck 0 · 876 tests / 111 files · build 0 · 25 Playwright tests · 
 NEXT (live-integration wave): Earned Autonomy enforcement at real action points → Selective Revision on real
 artifacts → Dream/Optimizer governance loop → Phase 5 remainder → Phase 4 dedicated QA E2E → Media Studio
 durable system → Free Audit → extend release gate.
+
+---
+
+## cont.42 — Earned Autonomy OPERATIONAL (core-only → operational) — Claude (Opus 4.8)
+
+Second live-integration wave capability. Migration `0043_autonomy_policies`: durable, founder-approved,
+versioned, revocable/expirable PER-ACTION grants (category, grantedLevel, scope company/client/project, hard
+caps maxRiskLevel/maxFinancialCents/requiresQaPass, effectiveFrom/expiresAt/revokedAt, approvedBy notNull).
+
+Service `src/lib/autonomy/index.ts`: `createAutonomyPolicy` / `listAutonomyPolicies` / `revokeAutonomyPolicy` /
+`resolveActionAutonomy` (loads ONLY active + in-effect policies for the action's category, maps rows → the pure
+`AutonomyPolicy`, resolves through `resolveAutonomyLevel` — hard safety caps apply) / `mayActAutonomously`.
+
+REAL ACTION-POINT ENFORCEMENT ON THE LIVE TRIGGER: the 60s scheduler tick (`runScheduledTick`, src/workers/worker.ts
+→ src/lib/scheduler/index.ts step 3) now calls `dispatchDuePosts({enforceAutonomy:true})`. The gate evaluates
+`mayActAutonomously({category:"content.publish", clientId: content-track owner, reversible:true, riskLevel:"medium",
+qaPassed: asset.sourceType==="content_pack"})` BEFORE the real publish. NO grant → HELD for a founder confirm
+(`heldForConfirm`); an earned, condition-matched `content.publish` autonomous grant (scoped to the track,
+maxRiskLevel ≥ medium) → the post FIRES; an un-QA'd (imported) asset is hard-capped and held even under a grant.
+`dispatchDuePosts` stays default-off so the existing content-publishing DB proof (asserts a configured provider
+auto-publishes when enforcement is not requested) is unchanged.
+
+INDEPENDENT REVIEW FIX (adversarial reviewer, pre-commit): the first cut wired enforcement into the `publishing.dispatch`
+job handler — but that job is NEVER enqueued (`enqueuePublishingDispatchJob` had zero callers), so the LIVE cadence
+(`dispatchDuePosts({now})`) bypassed the gate and would auto-publish ungated. Fixed: enforcement moved onto the live
+scheduler; the dead `publishing.dispatch` handler + enqueuer + job-type + registry registration + registry-integrity
+entry were REMOVED so there is exactly ONE real trigger (no wired-but-unreachable path). Also modelled publish honestly
+(reversible:true + riskLevel medium + provenance-derived qaPassed) so an earned grant genuinely RELEASES a post rather
+than being a vacuous always-hold.
+
+Founder API (all founder-gated; 401 proven): `GET/POST /api/autonomy/policies`, `POST /api/autonomy/policies/[id]/action`
+(revoke). Proof `verify:autonomy` (x2): resolver — no policy → `recommend`, earned autonomous grant → `autonomous`,
+IRREVERSIBLE + FINANCIAL actions stay capped at `confirm`, revocation + expiry fall back to baseline; action-point
+(one dispatch over three due posts) — the granted+QA'd post is DISPATCHED (adapter fires), the no-grant post is HELD,
+the un-QA'd granted post is HELD (a policy flips a real post held → published; caps hold). Playwright `autonomy.spec.ts`
+(founder grant → inspect active → revoke) + unauth 401 gate for all 3 autonomy endpoints. Added `verify:autonomy` to
+`verify:all-db` (now 19 proofs) + `release:full`.
+
+GATE: typecheck 0 · 871 tests / 112 files · build 0 (autonomy routes present) · Playwright autonomy+unauth 9/9
+green · DB proof x2 · migration 0043 zero drift.
+
+NEXT (live-integration wave): Selective Revision on real artifacts → Dream/Optimizer governance loop → Phase 5
+remainder → Phase 4 dedicated QA E2E → Media Studio durable system → Free Audit → extend release gate.

@@ -10,8 +10,6 @@ import { newId } from "@/lib/ids";
  */
 
 export const LIBRARY_MODULE = "library";
-export const PUBLISHING_DISPATCH_JOB_TYPE = "publishing.dispatch";
-export const PUBLISHING_QUEUE = "general";
 
 export const ASSET_KINDS = ["reel", "image", "carousel", "video", "story", "text"] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];

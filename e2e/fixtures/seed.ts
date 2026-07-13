@@ -3,7 +3,7 @@ loadDotEnv(); // must precede the first `@/db` import so getPool() sees DATABASE
 
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { getDb, closeDb, schema } from "@/db";
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
 import { buildHandoffRow, type HandoffRow, type HandoffDeliveryState } from "@/lib/domain/handoff-delivery";
@@ -79,6 +79,8 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.contextRetrievals).where(and(eq(schema.contextRetrievals.scopeType, "company"), eq(schema.contextRetrievals.scopeId, "e2e_ctx")));
   await db.delete(schema.contextAssertions).where(and(eq(schema.contextAssertions.scopeType, "company"), eq(schema.contextAssertions.scopeId, "e2e_ctx")));
   await db.delete(schema.contextSources).where(and(eq(schema.contextSources.scopeType, "company"), eq(schema.contextSources.scopeId, "e2e_ctx")));
+  // Earned-autonomy policies the autonomy browser spec grants (isolated test category prefix).
+  await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
 }
 
 export async function seedE2E(): Promise<void> {

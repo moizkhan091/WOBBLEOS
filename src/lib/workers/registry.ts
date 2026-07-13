@@ -5,7 +5,7 @@ import { runContentGraphJobHandler, type ContentGraphResult, type ContentGraphQa
 import { runQaGate } from "@/lib/qa/gate";
 import { contentQualityBoard, contentBrandBoard, buildContentSubmission } from "@/lib/qa/boards";
 import { runKnowledgeCompileJobHandler } from "@/lib/knowledge";
-import { runLibraryImportJobHandler, runPublishingDispatchJobHandler } from "@/lib/library";
+import { runLibraryImportJobHandler } from "@/lib/library";
 import { runPaidAuditJobHandler, type PaidAuditResult } from "@/lib/paid-audit-graph";
 import { dispatchBusinessAuditToProposal } from "@/lib/departments/verticals/paid-audit";
 import { getAudit } from "@/lib/free-audit";
@@ -98,7 +98,6 @@ export const generalRegistry: JobHandlerRegistry = {
   "content.generate": runContentGenerateJobHandler,
   "content.graph": contentGraphHandler,
   "knowledge.compile": runKnowledgeCompileJobHandler,
-  "publishing.dispatch": runPublishingDispatchJobHandler,
   "library.import": runLibraryImportJobHandler,
   "audit.paid": runPaidAuditWithOriginationJobHandler,
   "intelligence.scout": runScoutJobHandler,

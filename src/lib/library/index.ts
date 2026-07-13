@@ -6,8 +6,6 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { getContentPacketDetail } from "@/lib/content";
 import {
   LIBRARY_MODULE,
-  PUBLISHING_DISPATCH_JOB_TYPE,
-  PUBLISHING_QUEUE,
   assetInputFromPacket,
   buildContentAssetRow,
   buildScheduledPostRow,
@@ -353,8 +351,15 @@ export async function markAssetPostedOnPlatform(
   return post;
 }
 
-/** Fire all due posts through their publisher. Manual posts are left for the human to confirm. */
-export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispatched: number; deferred: number; failed: number }> {
+/**
+ * Fire all due posts through their publisher. Manual posts are left for the human to confirm.
+ * EARNED AUTONOMY: when `enforceAutonomy` is on (the live scheduler enables it), an auto-publisher post fires
+ * autonomously ONLY when the earned-autonomy policy for `content.publish` resolves to `autonomous` for that
+ * asset; otherwise it is HELD (`heldForConfirm`) for a founder confirm — the OS never silently auto-posts to an
+ * external audience without an earned, condition-matched grant. Default off so direct callers (and the existing
+ * content-publishing proof) keep the pre-enforcement behaviour.
+ */
+export async function dispatchDuePosts(deps: LibraryDeps & { enforceAutonomy?: boolean } = {}): Promise<{ dispatched: number; deferred: number; failed: number; heldForConfirm: number }> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
   const registry = deps.publishers ?? defaultPublisherRegistry();
@@ -362,6 +367,8 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
   let dispatched = 0;
   let deferred = 0;
   let failed = 0;
+  let heldForConfirm = 0;
+  const autonomyGrants = deps.enforceAutonomy ? (await import("@/lib/autonomy")).mayActAutonomously : null;
   for (const post of due) {
     const asset = await store.getAssetById(post.assetId);
     if (!asset) {
@@ -372,6 +379,15 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
     const publisher = resolvePublisher(post.publisher, registry);
     if (publisher.slug === "manual") {
       deferred += 1; // leave scheduled; the founder posts + marks done
+      continue;
+    }
+    // Earned-autonomy gate: publishing to an external audience is a medium-risk, public action. It fires
+    // autonomously ONLY when the founder has granted an explicit, condition-matched `content.publish` policy
+    // (scoped to the track, maxRiskLevel ≥ medium); with no grant it defaults to HELD for a founder confirm.
+    // `qaPassed` is derived from real provenance — only pack-sourced content cleared the content QA gate, so
+    // manually imported/uploaded assets are un-QA'd → hard-capped at confirm (held) regardless of any policy.
+    if (autonomyGrants && !(await autonomyGrants({ category: "content.publish", clientId: (asset.ownerScope === "content_track" ? asset.ownerId : null), reversible: true, riskLevel: "medium", qaPassed: asset.sourceType === "content_pack" }, { now }))) {
+      heldForConfirm += 1; // stays scheduled — the founder confirms + marks it posted
       continue;
     }
     if (post.publisherRef) {
@@ -401,7 +417,7 @@ export async function dispatchDuePosts(deps: LibraryDeps = {}): Promise<{ dispat
       failed += 1;
     }
   }
-  return { dispatched, deferred, failed };
+  return { dispatched, deferred, failed, heldForConfirm };
 }
 
 /**
@@ -489,15 +505,6 @@ export async function applyFeedPlan(
   return { scheduled, errors };
 }
 
-export async function enqueuePublishingDispatchJob(deps: LibraryDeps = {}): Promise<unknown> {
-  const enqueue = deps.enqueueJob ?? enqueueJob;
-  return enqueue({ queue: PUBLISHING_QUEUE, type: PUBLISHING_DISPATCH_JOB_TYPE, payload: {}, priority: 6, maxAttempts: 1, linkedModule: LIBRARY_MODULE });
-}
-
-export async function runPublishingDispatchJobHandler(_job: JobRow): Promise<Record<string, unknown>> {
-  const result = await dispatchDuePosts();
-  return { ...result };
-}
 
 export async function runLibraryImportJobHandler(job: JobRow): Promise<Record<string, unknown>> {
   const packetId = (job.payload as { packetId?: string } | undefined)?.packetId;

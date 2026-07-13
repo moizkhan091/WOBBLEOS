@@ -47,4 +47,11 @@ test.describe("Auth gate — unauthenticated", () => {
     expect((await request.post("/api/context/sources", { data: { kind: "manual", content: "x", scope: { type: "company", id: "e2e_ctx" } } })).status()).toBe(401);
     expect((await request.post("/api/context/assertions/anything/action", { data: { action: "approve" } })).status()).toBe(401);
   });
+
+  test("Earned-autonomy grants are gated at 401 (an unauthorized user cannot grant or revoke autonomy)", async ({ request }) => {
+    // Granting/revoking autonomy is the highest-trust founder control — it must never run for an unauthorized caller.
+    expect((await request.get("/api/autonomy/policies")).status()).toBe(401);
+    expect((await request.post("/api/autonomy/policies", { data: { category: "content.publish", grantedLevel: "autonomous" } })).status()).toBe(401);
+    expect((await request.post("/api/autonomy/policies/anything/action", { data: { action: "revoke" } })).status()).toBe(401);
+  });
 });

@@ -67,6 +67,7 @@ export interface SchedulerResult {
   automationsFired: number;
   scoutsEnqueued: number;
   postsDispatched: number;
+  postsHeldForConfirm: number;
   stalledReclaimed: number;
   departmentHandoffsConsumed: number;
   decisionPoliciesProposed: number;
@@ -103,7 +104,7 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   const now = deps.now ?? new Date();
   const enqueue = deps.enqueue ?? (async (i) => { const r = await enqueueJob(i); return { job: { id: r.job.id } }; });
   const recordAudit = deps.recordAudit ?? ((i: Parameters<typeof writeAuditEvent>[0]) => writeAuditEvent(i));
-  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
+  const result: SchedulerResult = { automationsFired: 0, scoutsEnqueued: 0, postsDispatched: 0, postsHeldForConfirm: 0, stalledReclaimed: 0, departmentHandoffsConsumed: 0, decisionPoliciesProposed: 0, dailyBriefGenerated: false, continuousResearchInsights: 0, maintenanceRan: false, errors: [] };
 
   // 0. Crash recovery: a worker that died mid-job leaves it 'active' forever. Reclaim stalled jobs
   // every tick (active > 5 min) so a peer crash self-heals in minutes instead of never.
@@ -190,10 +191,13 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     }
   } catch (e) { result.errors.push(`research-targets: ${e instanceof Error ? e.message : e}`); }
 
-  // 3. Scheduled posts that are due.
+  // 3. Scheduled posts that are due. EARNED-AUTONOMY ENFORCED on the live cadence: an external post fires
+  // autonomously only under an explicit `content.publish` grant; otherwise it is HELD for a founder confirm
+  // (never silently auto-posted). This is the real production trigger for the autonomy gate.
   try {
-    const d = await dispatchDuePosts({ now });
+    const d = await dispatchDuePosts({ now, enforceAutonomy: true });
     result.postsDispatched = d.dispatched;
+    result.postsHeldForConfirm = d.heldForConfirm;
   } catch (e) { result.errors.push(`posts: ${e instanceof Error ? e.message : e}`); }
 
   // 4. Daily maintenance (worker gates this to ~once/day via runMaintenance).

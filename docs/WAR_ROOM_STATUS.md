@@ -8,7 +8,7 @@ Legend: **operational** (durable state + trigger + enforcement + consumer + foun
 | Capability | pure domain | persistence/migration | DB store | prod trigger | enforcement | consumer | founder API | founder UI | DB proof | Playwright | STATUS |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Context OS | ✅ | ✅ (`0042`) | ✅ | ✅ intake API | ✅ content graph retrieves trusted ctx | ✅ generator + GET API | ✅ | ⚠️ API-level | ✅ (`verify:context-os`) | ✅ | **operational** |
-| Earned Autonomy | ✅ | ❌ | ❌ | ❌ | ❌ | n/a | ❌ | ❌ | ❌ | ❌ | **core-only** |
+| Earned Autonomy | ✅ | ✅ (`0043`) | ✅ live scheduler | ✅ grant API | ✅ publish dispatch: grant→fires, else held | ✅ list/revoke API | ✅ | ⚠️ API-level | ✅ (`verify:autonomy`) | ✅ | **operational** |
 | Selective Revision | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
 | Dream/Optimizer | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** |
 | Media Studio | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **core-only** (real fal.ai = blocked-external) |
@@ -16,7 +16,9 @@ Legend: **operational** (durable state + trigger + enforcement + consumer + foun
 | Release coherence | n/a | n/a | n/a | ✅ CI test | ✅ | n/a | n/a | n/a | n/a | n/a | **operational** |
 | Release scripts | n/a | n/a | n/a | ✅ | n/a | n/a | n/a | n/a | ✅ (all 17) | n/a | **operational** |
 
-**Build order (live-integration wave):** Context OS → Earned Autonomy enforcement → Selective Revision → Dream/Optimizer → Phase 5 remainder → Phase 4 dedicated QA E2E → Media Studio → Free Audit → extend release gate. None of the core-only rows may be called "closed" until they reach **operational**.
+**Build order (live-integration wave):** ~~Context OS~~ ✅ → ~~Earned Autonomy enforcement~~ ✅ → Selective Revision → Dream/Optimizer → Phase 5 remainder → Phase 4 dedicated QA E2E → Media Studio → Free Audit → extend release gate. None of the core-only rows may be called "closed" until they reach **operational**.
+
+**Earned Autonomy — operational (this batch):** migration `0043_autonomy_policies` (durable, founder-approved, versioned, revocable/expirable per-action grants). Service `src/lib/autonomy/index.ts`: `createAutonomyPolicy`/`listAutonomyPolicies`/`revokeAutonomyPolicy`/`resolveActionAutonomy` (loads only ACTIVE, in-effect policies; the pure engine applies hard safety caps). **Real action-point enforcement on the LIVE trigger:** the 60-second scheduler tick (`runScheduledTick` → `dispatchDuePosts({enforceAutonomy:true})`) evaluates `mayActAutonomously({category:"content.publish", clientId, reversible:true, riskLevel:"medium", qaPassed: asset.sourceType==="content_pack"})` BEFORE the real publish. With NO grant → the post is HELD for a founder confirm (`heldForConfirm`); with an earned, condition-matched `content.publish` autonomous grant (scoped to the track, maxRiskLevel ≥ medium) → it FIRES; an un-QA'd (manually imported) asset is hard-capped and held even under a grant. (The former dead `publishing.dispatch` job handler/enqueuer was removed — the scheduler is now the single, real trigger.) Founder API: `POST/GET /api/autonomy/policies`, `POST /api/autonomy/policies/[id]/action` (revoke) — all founder-gated (401 proven). Proof `verify:autonomy` (x2): resolver — no policy → `recommend`, earned autonomous grant → `autonomous`, irreversible + financial actions stay capped at `confirm`, revocation + expiry fall back to baseline; **action-point (one dispatch, three due posts)** — the granted+QA'd post is DISPATCHED, the no-grant post is HELD, the un-QA'd granted post is HELD (a policy flips a real post held → published; caps hold). Playwright `autonomy.spec` (grant → inspect active → revoke) + unauth 401 gate.
 
 ## 0. Resume in one command
 ```
