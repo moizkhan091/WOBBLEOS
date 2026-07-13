@@ -135,13 +135,15 @@ const contentOutcomeCollector: EvidenceCollector = async ({ db, since }) => {
   return [{ signalType: "content_outcome", metricKey: "publish_success_rate", metricValue: published / terminal.length, sampleSize: terminal.length, evidenceRef: { published, failed: terminal.length - published } }];
 };
 
-/** Founder feedback: approval rate over DECIDED feedback (approve vs reject; higher = better). Evidence: feedback_events. */
+/** Founder feedback: approval rate over decisive feedback (higher = better). REJECT and ARCHIVE both count as
+ *  dissatisfaction — consistent with the taste engine's `decisionSign` (both are −1) — so archiving bad output
+ *  correctly lowers the rate. Ambiguous decisions (edit/regenerate/needs_review) are excluded. Evidence: feedback_events. */
 const founderFeedbackCollector: EvidenceCollector = async ({ db, since }) => {
   const rows = await db.select({ decision: feedbackEvents.decision }).from(feedbackEvents).where(gte(feedbackEvents.createdAt, since));
-  const decided = rows.filter((r) => r.decision === "approve" || r.decision === "reject");
+  const decided = rows.filter((r) => r.decision === "approve" || r.decision === "reject" || r.decision === "archive");
   if (!decided.length) return [];
   const approved = decided.filter((r) => r.decision === "approve").length;
-  return [{ signalType: "founder_feedback", metricKey: "founder_approval_rate", metricValue: approved / decided.length, sampleSize: decided.length, evidenceRef: { approved, rejected: decided.length - approved } }];
+  return [{ signalType: "founder_feedback", metricKey: "founder_approval_rate", metricValue: approved / decided.length, sampleSize: decided.length, evidenceRef: { approved, dissatisfied: decided.length - approved } }];
 };
 
 export const DEFAULT_COLLECTORS: EvidenceCollector[] = [

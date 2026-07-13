@@ -5017,3 +5017,21 @@ content_outcome, founder_feedback). Governance/evidence-gate assertions unchange
 
 GATE: typecheck 0 · full unit suite 910/910 · build 0 (clean .next) · optimizer DB proof x2 · no migration ·
 Playwright optimizer spec green.
+
+Consolidation checkpoint: `npm run verify:all-db` runs ALL 27 real-DB proofs green end-to-end (exit 0) — no
+cross-batch regression across the whole operational surface after cont.55–61.
+
+---
+
+## cont.62 — Release-gate hardening: verify-coverage guard — Claude (Opus 4.8)
+
+Encodes a real lesson (a proof wired to its own `verify:*` script but forgotten from `verify:all-db` silently
+stops running in the release gate). New `scripts/check-verify-coverage.mjs` (`verify:coverage`) asserts every named
+`verify:*` DB-proof script is referenced in `verify:all-db`; added to `release:check` (runs first, cheap). Verified
+it passes (27/27 wired) AND catches a dropped proof (negative test → exit 1). Tooling-only (no app/schema/route
+change). Does NOT force a 1:1 file↔script map (several proofs are driven by other aggregate scripts / run ad hoc).
+
+Also folds the cont.61 evidence-expansion reviewer's LOW (verdict SHIP; all 7 collectors verified correct — directions,
+normalizations, empty-set guards all green live): `founder_feedback` now counts ARCHIVE as dissatisfaction alongside
+REJECT (consistent with the taste engine's `decisionSign`, which scores both -1), so archiving bad output correctly
+lowers the approval rate. edit/regenerate/needs_review remain excluded (ambiguous). Optimizer proof still green.
