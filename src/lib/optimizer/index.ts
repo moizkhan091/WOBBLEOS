@@ -18,8 +18,6 @@ import { newId } from "@/lib/ids";
 import type { RiskTier } from "@/lib/domain/autonomy";
 import {
   scoreProposal,
-  historicalTestPasses,
-  canApprove,
   canActivate,
   shouldRollback,
   type ImprovementProposal,
@@ -84,8 +82,27 @@ export const DEFAULT_COLLECTORS: EvidenceCollector[] = [qaFailureCollector, revi
 /** A signal below this health threshold (with enough samples) becomes an evidence-backed opportunity. */
 const OPPORTUNITY_HEALTH_THRESHOLD = 0.8;
 const MIN_SAMPLE_SIZE = 3;
-/** The projected improvement a candidate targets (an ESTIMATE, never a realized actual): close part of the gap to 1.0. */
+/** The projected TARGET an improvement aims for — an ESTIMATE, never a realized actual and NOT a backtest: it just
+ *  quantifies the gap worth closing so proposals can be ranked. It is deliberately not used as an approval gate. */
 const PROJECTED_GAP_CLOSURE = 0.5;
+
+// ---- Historical EVIDENCE evaluation (the real approval gate — it CAN fail) ----
+// Approval requires the underlying evidence to be STRONG: enough samples that the signal is not noise, AND a
+// problem that is CLEARLY below the health threshold (a meaningful margin, not a borderline blip). A marginal or
+// thin opportunity is still surfaced as `proposed` so the founder sees it, but it is NOT approvable until the
+// evidence is strong enough to justify a change. This is a genuine gate — unlike the projected target, it can fail.
+const APPROVAL_MIN_SAMPLE = 8;
+const APPROVAL_MARGIN = 0.05; // baseline must be at least this far BELOW the threshold to be "clearly" a problem
+
+export interface EvidenceEvaluation { passed: boolean; reason: string; minSample: number; marginThreshold: number }
+
+/** Evaluate whether a proposal's HISTORICAL EVIDENCE is strong enough to justify approval. Deterministic; can fail. */
+export function evaluateEvidence(input: { baseline: number; sampleSize: number }): EvidenceEvaluation {
+  const marginThreshold = OPPORTUNITY_HEALTH_THRESHOLD - APPROVAL_MARGIN;
+  if (input.sampleSize < APPROVAL_MIN_SAMPLE) return { passed: false, reason: `insufficient evidence: ${input.sampleSize} samples < ${APPROVAL_MIN_SAMPLE} required to approve`, minSample: APPROVAL_MIN_SAMPLE, marginThreshold };
+  if (input.baseline > marginThreshold) return { passed: false, reason: `marginal signal: health ${input.baseline.toFixed(2)} is only just below the ${OPPORTUNITY_HEALTH_THRESHOLD} threshold (needs ≤ ${marginThreshold.toFixed(2)})`, minSample: APPROVAL_MIN_SAMPLE, marginThreshold };
+  return { passed: true, reason: `strong evidence: ${input.sampleSize} samples, health ${input.baseline.toFixed(2)} clearly below ${marginThreshold.toFixed(2)}`, minSample: APPROVAL_MIN_SAMPLE, marginThreshold };
+}
 
 const SIGNAL_TARGET: Record<string, { targetType: string; targetRef: string; risk: RiskTier; costCents: number; hypothesis: (o: Observation) => string; pattern: (o: Observation) => string }> = {
   qa_failure: { targetType: "qa_rubric", targetRef: "qa.gate", risk: "medium", costCents: 0, pattern: (o) => `QA pass rate is ${(o.metricValue * 100).toFixed(0)}% over ${o.sampleSize} reviews`, hypothesis: () => "Tighten the upstream generation prompt + add a targeted self-check for the most-failed criterion to lift pass rate." },
@@ -175,17 +192,21 @@ export async function runOptimizerCycle(opts: { trigger?: "scheduled" | "manual"
     if (o.sampleSize < MIN_SAMPLE_SIZE) continue;
     if (o.metricValue >= OPPORTUNITY_HEALTH_THRESHOLD) continue; // healthy enough — no opportunity (never fabricate one)
     const baseline = o.metricValue;
-    const candidate = Math.min(1, baseline + (1 - baseline) * PROJECTED_GAP_CLOSURE); // ESTIMATE (projection), > baseline
-    const estimatedValue = Math.round((candidate - baseline) * 100 * 100) / 100; // 0..100 value from the projected gap closed
+    // A projected TARGET (estimate, NOT a backtest): close part of the gap to 1.0. Used only to rank proposals.
+    const projectedTarget = Math.min(1, baseline + (1 - baseline) * PROJECTED_GAP_CLOSURE);
+    const estimatedValue = Math.round((projectedTarget - baseline) * 100 * 100) / 100; // 0..100 value from the gap worth closing
+    // The REAL gate: is the historical evidence strong enough to justify a change? (can fail — marginal/thin → no approval)
+    const evaluation = evaluateEvidence({ baseline, sampleSize: o.sampleSize });
     const proposalId = newId("optprop");
     const score = scoreProposal({ estimatedValue, estimatedCostCents: spec.costCents, riskLevel: spec.risk });
     await store.insertProposal({
       id: proposalId, cycleId, pattern: spec.pattern(o), hypothesis: spec.hypothesis(o), targetType: spec.targetType, targetRef: spec.targetRef,
       evidence: [o.id], estimatedValue: String(estimatedValue), estimatedCostCents: spec.costCents, riskLevel: spec.risk, score: String(score),
-      historicalBaselineMetric: String(baseline), historicalCandidateMetric: String(candidate), historicalSampleSize: o.sampleSize,
+      historicalBaselineMetric: String(baseline), historicalCandidateMetric: String(projectedTarget), historicalSampleSize: o.sampleSize,
+      metadata: { evaluation, projectedTarget, estimateNote: "projectedTarget is an estimate of the gap worth closing — NOT a backtest of the change" },
       status: "proposed", version: 1, createdAt: now, updatedAt: now,
     });
-    await audit(deps, { eventType: "optimizer.opportunity_proposed", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: proposalId, actor: "optimizer", metadata: { signalType: o.signalType, targetType: spec.targetType, estimatedValue, score, baseline, candidate } });
+    await audit(deps, { eventType: "optimizer.opportunity_proposed", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: proposalId, actor: "optimizer", metadata: { signalType: o.signalType, targetType: spec.targetType, estimatedValue, score, baseline, projectedTarget, evaluationPassed: evaluation.passed } });
     proposalIds.push(proposalId);
   }
 
@@ -205,16 +226,23 @@ function toDomain(row: Record<string, unknown>): ImprovementProposal {
   };
 }
 
-/** APPROVE a proposed improvement (founder). Governed: only proposed + a PASSING historical test → approved. */
+/**
+ * APPROVE a proposed improvement (founder). Governed: the proposal must be `proposed` AND its historical EVIDENCE
+ * evaluation must PASS (strong enough evidence — enough samples + a clearly-below-threshold problem). This is a
+ * REAL gate that can fail: a marginal or thin opportunity is surfaced but cannot be approved until the evidence is
+ * strong. (The projected target is only an estimate for ranking — it is NOT used as an approval precondition.)
+ */
 export async function approveProposal(id: string, opts: { approvedBy: string }, deps: OptimizerDeps = {}): Promise<{ ok: boolean; error?: string }> {
   const store = deps.store ?? defaultStore(deps.db ?? getDb());
   const now = deps.now ?? new Date();
   const row = await store.getProposal(id);
   if (!row) return { ok: false, error: "proposal not found" };
-  const p = toDomain(row);
-  if (!canApprove(p)) return { ok: false, error: `cannot approve a '${p.status}' proposal (needs proposed + a passing historical test)` };
+  if (row.status !== "proposed") return { ok: false, error: `cannot approve a '${row.status}' proposal (must be proposed)` };
+  // Re-evaluate the evidence from the persisted metrics (don't trust a possibly-stale stored flag).
+  const evaluation = evaluateEvidence({ baseline: num(row.historicalBaselineMetric), sampleSize: Number(row.historicalSampleSize ?? 0) });
+  if (!evaluation.passed) return { ok: false, error: `cannot approve — ${evaluation.reason}` };
   await store.updateProposal(id, { status: "approved", approvedBy: opts.approvedBy, approvedAt: now, updatedAt: now });
-  await audit(deps, { eventType: "optimizer.proposal_approved", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: id, actor: opts.approvedBy, metadata: { historicalPassed: historicalTestPasses(p) } });
+  await audit(deps, { eventType: "optimizer.proposal_approved", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: id, actor: opts.approvedBy, metadata: { evaluation: evaluation.reason } });
   return { ok: true };
 }
 

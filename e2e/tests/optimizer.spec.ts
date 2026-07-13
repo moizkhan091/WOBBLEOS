@@ -18,17 +18,18 @@ test.describe("Self-Optimizer — cycle + governed lifecycle (real effects)", ()
     // INSPECT — the cycle is durably listed for the founder.
     const view = await request.get("/api/optimizer?limit=10");
     expect(view.ok()).toBe(true);
-    const viewBody = (await view.json()) as { cycles: Array<{ id: string; status: string }>; proposals: Array<{ id: string; status: string; historicalBaselineMetric: string; historicalCandidateMetric: string }> };
+    const viewBody = (await view.json()) as { cycles: Array<{ id: string; status: string }>; proposals: Array<{ id: string; status: string; metadata: { evaluation?: { passed?: boolean } } }> };
     expect(viewBody.cycles.length).toBeGreaterThanOrEqual(1);
 
     // GOVERNANCE guard: the action route refuses an unknown proposal (409) — proving it is wired + governed.
     const bogus = await request.post("/api/optimizer/proposals/does_not_exist/action", { data: { action: "approve" } });
     expect(bogus.status()).toBe(409);
 
-    // If the cycle proposed an opportunity, drive the FULL governed chain (approve → activate → monitor → rollback).
-    // Cycle proposals always have a passing historical test (candidate > baseline), so approval is deterministic.
-    if (runBody.proposalIds.length > 0) {
-      const id = runBody.proposalIds[0];
+    // Drive the FULL governed chain on a proposal whose EVIDENCE evaluation passes (a strong-evidence opportunity).
+    // The evidence gate is REAL, so only an approvable proposal can proceed — approve → activate → monitor → rollback.
+    const approvable = viewBody.proposals.find((p) => p.status === "proposed" && p.metadata?.evaluation?.passed === true);
+    if (approvable) {
+      const id = approvable.id;
       const approve = await request.post(`/api/optimizer/proposals/${id}/action`, { data: { action: "approve" } });
       expect(approve.ok()).toBe(true);
       const activate = await request.post(`/api/optimizer/proposals/${id}/action`, { data: { action: "activate" } });

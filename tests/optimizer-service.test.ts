@@ -58,26 +58,32 @@ describe("optimizer service — cycle + governance + rollback (no IO)", () => {
     expect(Number(p.historicalCandidateMetric)).toBe(0.75); // projected, > baseline
   });
 
-  it("governance: approve needs a passing historical test; activate needs approved; only path to active", async () => {
+  it("governance: approve needs STRONG evidence; activate needs approved; only path to active", async () => {
     const { store, proposals } = makeStore();
     const collectors: EvidenceCollector[] = [collector([{ signalType: "qa_failure", metricKey: "qa_pass_rate", metricValue: 0.4, sampleSize: 12, evidenceRef: {} }])];
     const res = await runOptimizerCycle({ trigger: "manual" }, { store, recordAudit: noAudit, collectors });
     const id = res.proposalIds[0];
     // cannot activate before approval
     expect((await activateProposal(id, { activatedBy: "Moiz" }, { store, recordAudit: noAudit })).ok).toBe(false);
-    // approve (passing test) then activate
+    // approve (strong evidence: 12 samples, health 0.4 clearly below threshold) then activate
     expect((await approveProposal(id, { approvedBy: "Moiz" }, { store, recordAudit: noAudit })).ok).toBe(true);
     const act = await activateProposal(id, { activatedBy: "Moiz" }, { store, recordAudit: noAudit });
     expect(act.ok).toBe(true);
     expect(proposals.get(id)!.status).toBe("active");
   });
 
-  it("a failing historical test cannot be approved", async () => {
+  it("the evidence gate is REAL (can fail): a thin or marginal opportunity cannot be approved", async () => {
     const { store } = makeStore();
-    await store.insertProposal({ id: "p_fail", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "proposed", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1, historicalBaselineMetric: "0.9", historicalCandidateMetric: "0.8", historicalSampleSize: 10 });
-    const r = await approveProposal("p_fail", { approvedBy: "Moiz" }, { store, recordAudit: noAudit });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/historical test/);
+    // Thin: too few samples.
+    await store.insertProposal({ id: "p_thin", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "proposed", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1, historicalBaselineMetric: "0.4", historicalCandidateMetric: "0.7", historicalSampleSize: 4 });
+    const thin = await approveProposal("p_thin", { approvedBy: "Moiz" }, { store, recordAudit: noAudit });
+    expect(thin.ok).toBe(false);
+    expect(thin.error).toMatch(/insufficient evidence/);
+    // Marginal: well-sampled but only just below the threshold.
+    await store.insertProposal({ id: "p_marg", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "proposed", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1, historicalBaselineMetric: "0.78", historicalCandidateMetric: "0.89", historicalSampleSize: 20 });
+    const marg = await approveProposal("p_marg", { approvedBy: "Moiz" }, { store, recordAudit: noAudit });
+    expect(marg.ok).toBe(false);
+    expect(marg.error).toMatch(/marginal/);
   });
 
   it("monitoring below baseline auto-rolls-back; a rollback event is recorded", async () => {

@@ -22,35 +22,45 @@ async function main() {
   const proposalIds: string[] = [];
   const qaIds: string[] = [];
 
-  // Deterministic injected collectors: one actionable (below threshold, well-sampled), one healthy (no opportunity),
-  // one below-threshold but UNDER-sampled (no opportunity — never fabricate one from thin evidence).
+  // Deterministic injected collectors:
+  //  - qa_failure 0.5 / 10 samples → an opportunity with STRONG evidence (approvable)
+  //  - provider_cost 0.95 → healthy, no opportunity
+  //  - dead_letter 0.4 / 1 sample → below threshold but UNDER-sampled → no opportunity at all (thin evidence)
+  //  - revision_frequency 0.78 / 12 samples → an opportunity but MARGINAL (only just below 0.8) → proposed but NOT approvable
   const injected: EvidenceCollector[] = [async (): Promise<Observation[]> => [
     { signalType: "qa_failure", metricKey: "qa_pass_rate", metricValue: 0.5, sampleSize: 10, evidenceRef: { total: 10, passed: 5 } },
     { signalType: "provider_cost", metricKey: "cost_efficiency", metricValue: 0.95, sampleSize: 20, evidenceRef: {} },
     { signalType: "dead_letter", metricKey: "handoff_delivery_health", metricValue: 0.4, sampleSize: 1, evidenceRef: {} },
+    { signalType: "revision_frequency", metricKey: "revision_health", metricValue: 0.78, sampleSize: 12, evidenceRef: {} },
   ]];
 
   try {
-    // ---- CYCLE: observe → propose (evidence-backed, historically-tested); never auto-approve/activate ----
+    // ---- CYCLE: observe → propose (evidence-backed); never auto-approve/activate ----
     const cyc = await runOptimizerCycle({ trigger: "manual" }, { store, collectors: injected });
     cycleIds.push(cyc.cycleId);
     proposalIds.push(...cyc.proposalIds);
-    assert(cyc.observations === 3, "the cycle recorded ALL 3 observations (real evidence, persisted)");
-    assert(cyc.opportunities === 1, "only the below-threshold, well-sampled signal became an opportunity (healthy + under-sampled signals did NOT — never fabricated)");
+    assert(cyc.observations === 4, "the cycle recorded ALL 4 observations (real evidence, persisted)");
+    assert(cyc.opportunities === 2, "the two below-threshold, well-sampled signals became opportunities (the healthy + the under-sampled signals did NOT — never fabricated)");
     const obs = await listObservations(cyc.cycleId, { store });
-    assert(obs.length === 3, "observations are durably persisted + inspectable by the founder");
+    assert(obs.length === 4, "observations are durably persisted + inspectable by the founder");
     const prop = await store.getProposal(cyc.proposalIds[0]);
     assert(!!prop && prop.status === "proposed", "the opportunity is PROPOSED — the cycle NEVER auto-approves (no silent change)");
-    assert(Number(prop!.historicalBaselineMetric) === 0.5 && Number(prop!.historicalCandidateMetric) === 0.75, "the HISTORICAL TEST is recorded: baseline 0.50 → projected candidate 0.75 (a passing, evidence-backed estimate)");
+    assert(Number(prop!.historicalBaselineMetric) === 0.5 && Number(prop!.historicalCandidateMetric) === 0.75, "the projected TARGET is recorded as an ESTIMATE: health 0.50 → projected target 0.75 (a projection for ranking, NOT a backtest)");
+    assert((prop!.metadata as { evaluation?: { passed?: boolean } }).evaluation?.passed === true, "the strong-evidence opportunity (10 samples, health 0.50) PASSES the evidence evaluation → approvable");
     assert(Array.isArray(prop!.evidence) && (prop!.evidence as string[]).length === 1, "the proposal cites its evidence (the observation id) — auditable basis");
 
-    // ---- GOVERNANCE: approval requires a PASSING historical test; activation only from approved ----
-    // A proposal whose historical test FAILS (candidate <= baseline) can NOT be approved.
-    const failId = newId("optprop");
-    await store.insertProposal({ id: failId, cycleId: cyc.cycleId, pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], estimatedValue: "5", estimatedCostCents: 0, riskLevel: "low", status: "proposed", version: 1, historicalBaselineMetric: "0.8", historicalCandidateMetric: "0.7", historicalSampleSize: 10, createdAt: new Date(), updatedAt: new Date() });
-    proposalIds.push(failId);
-    const badApprove = await approveProposal(failId, { approvedBy: "Moiz" }, { store });
-    assert(!badApprove.ok && /historical test/.test(badApprove.error ?? ""), "GOVERNANCE: a proposal with a FAILING historical test CANNOT be approved");
+    // ---- The EVIDENCE gate is REAL (can fail): a MARGINAL opportunity is proposed but NOT approvable ----
+    const marginal = await store.getProposal(cyc.proposalIds[1]);
+    assert(!!marginal && marginal.status === "proposed" && (marginal.metadata as { evaluation?: { passed?: boolean } }).evaluation?.passed === false, "the MARGINAL opportunity (health 0.78, only just below threshold) is PROPOSED but its evidence evaluation does NOT pass");
+    const marginalApprove = await approveProposal(cyc.proposalIds[1], { approvedBy: "Moiz" }, { store });
+    assert(!marginalApprove.ok && /marginal/.test(marginalApprove.error ?? ""), "GOVERNANCE: the marginal opportunity CANNOT be approved — the evidence gate is a REAL filter, not tautological");
+
+    // ---- GOVERNANCE: a thin-evidence proposal (too few samples) also cannot be approved ----
+    const thinId = newId("optprop");
+    await store.insertProposal({ id: thinId, cycleId: cyc.cycleId, pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], estimatedValue: "5", estimatedCostCents: 0, riskLevel: "low", status: "proposed", version: 1, historicalBaselineMetric: "0.4", historicalCandidateMetric: "0.7", historicalSampleSize: 4, createdAt: new Date(), updatedAt: new Date() });
+    proposalIds.push(thinId);
+    const badApprove = await approveProposal(thinId, { approvedBy: "Moiz" }, { store });
+    assert(!badApprove.ok && /insufficient evidence/.test(badApprove.error ?? ""), "GOVERNANCE: a THIN-evidence proposal (4 samples < 8) CANNOT be approved");
 
     // Cannot activate a merely-proposed (not-yet-approved) proposal.
     const earlyActivate = await activateProposal(cyc.proposalIds[0], { activatedBy: "Moiz" }, { store });
@@ -83,7 +93,7 @@ async function main() {
     assert(!deadActivation, "the activation is no longer active after rollback");
 
     // reject flow.
-    const rej = await rejectProposal(failId, { rejectedBy: "Moiz", reason: "not worth it" }, { store });
+    const rej = await rejectProposal(thinId, { rejectedBy: "Moiz", reason: "not worth it" }, { store });
     assert(rej.ok, "a proposed proposal can be REJECTED by the founder");
 
     // Audit trail exists for the governed lifecycle.

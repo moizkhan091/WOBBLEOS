@@ -5290,8 +5290,9 @@ function OptimizerPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {proposals.map((p, i) => {
             const st = String(p.status ?? "proposed");
-            const base = Number(p.historicalBaselineMetric ?? 0), cand = Number(p.historicalCandidateMetric ?? 0);
-            const passing = cand > base;
+            const base = Number(p.historicalBaselineMetric ?? 0), target = Number(p.historicalCandidateMetric ?? 0);
+            const evalPassed = ((p.metadata as { evaluation?: { passed?: boolean } })?.evaluation?.passed) === true;
+            const evalReason = String((p.metadata as { evaluation?: { reason?: string } })?.evaluation?.reason ?? "");
             return (
               <div key={String(p.id ?? i)} style={{ ...card, padding: "13px 15px" }}>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7, alignItems: "center" }}>
@@ -5299,8 +5300,9 @@ function OptimizerPage() {
                   <Tag text={st} color={OPT_STATUS_COLORS[st] ?? C.gray} />
                   <Tag text={"risk " + String(p.riskLevel ?? "low")} color={C.blue} />
                   <Tag text={"score " + String(p.score ?? "0")} color={C.blue} />
+                  {st === "proposed" ? <Tag text={evalPassed ? "evidence ✓" : "evidence ✗"} color={evalPassed ? C.lime : C.orange} /> : null}
                   <div style={{ flex: 1 }} />
-                  {st === "proposed" ? <button disabled={busy || !passing} title={passing ? "" : "historical test must pass"} onClick={() => act(String(p.id), "approve")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, opacity: passing ? 1 : 0.5 }}>Approve</button> : null}
+                  {st === "proposed" ? <button disabled={busy || !evalPassed} title={evalPassed ? "" : evalReason} onClick={() => act(String(p.id), "approve")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, opacity: evalPassed ? 1 : 0.5 }}>Approve</button> : null}
                   {st === "proposed" ? <button disabled={busy} onClick={() => act(String(p.id), "reject", { reason: "not now" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.gray }}>Reject</button> : null}
                   {st === "approved" ? <button disabled={busy} onClick={() => act(String(p.id), "activate")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11 }}>Activate</button> : null}
                   {st === "active" ? <button disabled={busy} onClick={() => act(String(p.id), "rollback", { reason: "founder rollback" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange }}>Roll back</button> : null}
@@ -5308,7 +5310,7 @@ function OptimizerPage() {
                 <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{String(p.pattern ?? "")}</div>
                 <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(p.hypothesis ?? "")}</div>
                 <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>
-                  historical test: baseline {base.toFixed(2)} → candidate {cand.toFixed(2)} {passing ? "✓ passing" : "✗ not passing"} · est. value {String(p.estimatedValue ?? 0)} · {fmtTime(p.createdAt)}
+                  evidence: health {base.toFixed(2)} → projected target {target.toFixed(2)} (estimate) · {evalReason || "—"} · est. value {String(p.estimatedValue ?? 0)} · {fmtTime(p.createdAt)}
                 </div>
               </div>
             );

@@ -26,6 +26,9 @@ const BACKUP_TABLES: Array<{ key: string; table: typeof schema.crmCompanies }> =
 ];
 
 const PER_TABLE_CAP = 10_000;
+/** Restore-side guards: cap rows per table (matches the export cap) + chunk id lookups under the PG param ceiling. */
+const PER_TABLE_RESTORE_CAP = 10_000;
+const ID_QUERY_CHUNK = 1_000;
 
 export interface BackupOverview {
   tables: Array<{ key: string; rows: number }>;
@@ -135,22 +138,32 @@ export async function restoreSnapshot(
   if (!validation.ok) return { ok: false, mode, errors: validation.errors, warnings: validation.warnings, tables: [], totalNew: 0, totalInserted: 0 };
 
   const results: RestoreTableResult[] = [];
+  const warnings = [...validation.warnings];
   const filter = opts.tables && opts.tables.length ? new Set(opts.tables) : null;
   for (const [key, rows] of Object.entries(snapshot.data)) {
     const table = BACKUP_TABLE_BY_KEY.get(key);
     if (!table || (filter && !filter.has(key))) continue;
     const candidates = rows as Array<Record<string, unknown>>;
     if (!candidates.length) { results.push({ key, candidateRows: 0, newRows: 0, existingRows: 0, inserted: 0 }); continue; }
+    if (candidates.length > PER_TABLE_RESTORE_CAP) { warnings.push(`table '${key}' has ${candidates.length} rows (> ${PER_TABLE_RESTORE_CAP} cap) — skipped`); continue; }
     const ids = candidates.map((r) => String(r.id));
     const idCol = (table as unknown as { id: never }).id;
-    const existing = await db.select({ id: idCol }).from(table as never).where(inArray(idCol, ids));
-    const existingIds = new Set((existing as Array<{ id: string }>).map((r) => r.id));
+    // CHUNK the existence check so a large snapshot can't exceed Postgres's bind-parameter ceiling (~65k).
+    const existingIds = new Set<string>();
+    for (let i = 0; i < ids.length; i += ID_QUERY_CHUNK) {
+      const chunk = ids.slice(i, i + ID_QUERY_CHUNK);
+      const existing = await db.select({ id: idCol }).from(table as never).where(inArray(idCol, chunk));
+      for (const r of existing as Array<{ id: string }>) existingIds.add(r.id);
+    }
     const newRows = candidates.filter((r) => !existingIds.has(String(r.id)));
     let inserted = 0;
     if (mode === "apply" && newRows.length) {
       // Additive: onConflictDoNothing means a concurrent insert of the same id is a safe skip, never an overwrite.
       const out = await db.insert(table as never).values(newRows as never).onConflictDoNothing().returning({ id: idCol });
       inserted = (out as unknown[]).length;
+      // Honesty: if fewer rows inserted than were "new" by id, a SECONDARY unique constraint (e.g. invoice number)
+      // blocked them — surface it so the gap between newRows and inserted is never silent. Existing data is untouched.
+      if (inserted < newRows.length) warnings.push(`table '${key}': ${newRows.length - inserted} missing row(s) were NOT restored — blocked by a unique constraint other than id (existing data unchanged)`);
     }
     results.push({ key, candidateRows: candidates.length, newRows: newRows.length, existingRows: candidates.length - newRows.length, inserted });
   }
@@ -160,5 +173,5 @@ export async function restoreSnapshot(
   if (mode === "apply") {
     await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))({ eventType: "backup.restored", module: "backup", entityType: "system", actor: opts.actor ?? "founder", metadata: { totalInserted, tables: results.filter((r) => r.inserted > 0).map((r) => ({ key: r.key, inserted: r.inserted })) } });
   }
-  return { ok: true, mode, errors: [], warnings: validation.warnings, tables: results, totalNew, totalInserted };
+  return { ok: true, mode, errors: [], warnings, tables: results, totalNew, totalInserted };
 }

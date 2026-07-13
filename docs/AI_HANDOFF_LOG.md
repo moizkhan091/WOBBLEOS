@@ -4962,3 +4962,33 @@ a backup export/restore unauth 401 gate.
 
 GATE: typecheck 0 · full unit suite 910/910 (115 files) · build 0 (clean .next) · DB proof x2 · no migration
 (reuses existing tables) · full Playwright 15/15 in the targeted run (backup + full unauth gate). (Reviewer next.)
+
+Reviewer verdict (independent, adversarial): SHIP — all 5 claims held, safety heart AIRTIGHT (no update/delete path;
+onConflictDoNothing only; dry-run-first; auth-first). Applied its two safe-direction LOWs (below).
+
+---
+
+## cont.60 — Reviewer follow-ups: optimizer MEDIUM (evidence gate) + backup LOW×2 — Claude (Opus 4.8)
+
+**Optimizer MEDIUM (from cont.58 review) — the approval "historical test" was TAUTOLOGICAL.** The projected
+candidate = baseline+(1-baseline)*0.5 is always > baseline, so the domain `historicalTestPasses` could NEVER fail
+for an optimizer-generated proposal — gate theater framed as validation. FIXED honestly: the projected target is
+now explicitly an ESTIMATE (renamed/reworded in code, UI tagline, DB-proof text; stored `metadata.evaluation` +
+`estimateNote`), and it is NO LONGER an approval precondition. The REAL approval gate is `evaluateEvidence`
+(new, in the optimizer service): approval requires STRONG evidence — `sampleSize >= 8` AND the health is CLEARLY
+below threshold (`baseline <= 0.75`, a meaningful margin). A marginal (just-below-0.8) or thin (<8 samples)
+opportunity is still surfaced as `proposed` but is NOT approvable. This gate genuinely CAN fail (proven). No safety
+regression: still no auto-approve/activate; approve → activate → monitor → rollback unchanged. UI now shows an
+"evidence ✓/✗" tag + disables Approve until the evidence is strong, with the reason on hover.
+Proof updated: verify:optimizer (x2) now forms 2 opportunities (a strong one + a MARGINAL one), asserts the marginal
+one is proposed-but-refused, and asserts a THIN proposal is refused with "insufficient evidence". Unit + e2e updated
+(the e2e drives the chain only on an evidence-passing proposal).
+
+**Backup LOW-1 — a SECONDARY unique constraint (e.g. invoices.invoice_number) could silently skip a "would-restore"
+row** (newRows > inserted with no signal). FIXED: on apply, when `inserted < newRows.length`, a warning is surfaced
+("N missing row(s) were NOT restored — blocked by a unique constraint other than id; existing data unchanged").
+**Backup LOW-2 — no restore-side bound.** FIXED: the existence check is now CHUNKED (1,000 ids/query) so a large
+snapshot can't exceed the PG bind-param ceiling, and a table over a 10k restore cap is skipped with a warning.
+
+GATE: typecheck 0 · full unit suite 910/910 (115 files) · build 0 (clean .next) · optimizer DB proof x2 · backup DB
+proof (green) · zero migration drift · Playwright optimizer + backup specs green.
