@@ -79,4 +79,26 @@ test.describe("Selective Revision — inspect → selective rerun → rollback (
     expect(after!.components.find((x) => x.key === "discovery")!.status).toBe("approved");
     expect(after!.components.find((x) => x.key === "opportunity")!.status).toBe("failed");
   });
+
+  test("PROPOSAL: an assemble-only failure reruns assemble, PRESERVES solution_design, and re-assembles a new proposal reusing the synthesis", async ({ request }) => {
+    const list = (await (await request.get("/api/revisions?artifactKind=proposal")).json()) as { cycles?: Cyc[] };
+    const c = (list.cycles ?? []).find((x) => x.triggeredBy === "qa_gate:proposal" || x.plan.rerun.includes("assemble"));
+    expect(c).toBeTruthy();
+    // assemble failed → rerun ONLY assemble; PRESERVE solution_design (the expensive LLM synthesis).
+    expect(c!.plan.rerun).toEqual(["assemble"]);
+    expect(c!.plan.preserved).toEqual(["solution_design"]);
+
+    // Founder rerun re-assembles a NEW proposal REUSING the synthesis (no LLM re-pay).
+    const rerun = await request.post(`/api/revisions/${c!.id}/action`, { data: { action: "rerun" } });
+    expect(rerun.status()).toBe(200);
+    const rr = (await rerun.json()) as { newProposalId?: string; reusedSynthesis?: boolean; reenqueued?: boolean };
+    expect(rr.reusedSynthesis).toBe(true);
+    expect(rr.newProposalId).toBeTruthy();
+    // the cycle transitioned planned → reran
+    const afterRerun = ((await (await request.get("/api/revisions?artifactKind=proposal")).json()) as { cycles: Cyc[] }).cycles.find((x) => x.id === c!.id);
+    expect(afterRerun?.status).toBe("reran");
+
+    // Rollback restores the components (assemble back to failed).
+    expect((await request.post(`/api/revisions/${c!.id}/action`, { data: { action: "rollback" } })).ok()).toBe(true);
+  });
 });

@@ -444,7 +444,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
     // SELECTIVE REVISION trigger: on a salvageable `revise`, open a durable revision cycle bound to this graph
     // run and PRESERVE the checkpoints (the cycle's consumer clears only the reran nodes) so a re-run reuses the
     // approved nodes. On any other outcome the run is durably finished — drop its checkpoints for a clean re-run.
-    const openedRevision = Boolean(qa && !qa.released && qa.verdict === "revise" && input.graphRunId && deps.onQaRevise);
+    const openedRevision = Boolean(qa && !qa.released && qa.verdict === "revise" && (qa.failedStages?.length ?? 0) > 0 && input.graphRunId && deps.onQaRevise);
     if (openedRevision) {
       await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qa!.failedStages ?? [], trackId: track.id, clientId: track.id, objective: input.objective, requestedBy: input.requestedBy }).catch((e) => {
         recordAudit({ eventType: "content_graph.revision_trigger_failed", module: CONTENT_GRAPH_MODULE, entityType: "content_track", entityId: track.id, actor, metadata: { error: e instanceof Error ? e.message : String(e) } }).catch(() => {});

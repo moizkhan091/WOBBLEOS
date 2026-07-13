@@ -27,6 +27,16 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const cycle = await getRevisionCycle(id);
     if (!cycle) return NextResponse.json({ ok: false, error: "revision cycle not found" }, { status: 404 });
     if (parsed.data.action === "rerun") {
+      const reProducer = (cycle.reenqueue as { producer?: string } | null)?.producer;
+      // PROPOSAL: no graph checkpoints — the rerun re-assembles a NEW proposal version, REUSING the persisted
+      // synthesis when only `assemble` reran (the old proposal is retained for founder comparison).
+      if (reProducer === "proposal") {
+        const { rerunProposalRevision } = await import("@/lib/proposals/revision");
+        const { defaultSynthesize } = await import("@/lib/departments/verticals/proposal");
+        const out = await rerunProposalRevision(id, { synthesize: defaultSynthesize });
+        if (!out) return NextResponse.json({ ok: false, error: "proposal cycle not rerunnable (not planned, or missing proposal/audit)" }, { status: 409 });
+        return NextResponse.json({ ok: true, ...out, reenqueued: true });
+      }
       if (!cycle.graphRunId) return NextResponse.json({ ok: false, error: "cycle is not bound to a graph run" }, { status: 409 });
       // 1) Clear ONLY the reran nodes' checkpoints (preserved nodes' cached outputs survive).
       const result = await driveSelectiveGraphRerun(id);

@@ -59,10 +59,17 @@ export interface ProposalQaGate {
   authorAgentSlug?: string;
   /** Explicit off switch (default on when this config is present). */
   enabled?: boolean;
+  /**
+   * Opt-in SELECTIVE REVISION trigger: on a salvageable `revise` verdict, open a durable revision cycle over the
+   * proposal's components (solution_design → assemble). The founder rerun REUSES the persisted synthesis when only
+   * `assemble` failed (preserving the expensive LLM solution-design), or re-synthesizes when solution_design
+   * failed. Injected by the production consumer; omitted in tests → no cycle (the run still hard-blocks).
+   */
+  onQaRevise?: (input: { proposalId: string; auditId: string; failedStages: string[]; companyId: string | null; requestedBy: string }) => Promise<void>;
 }
 
 /** Default synthesizer: a real solution-architect LLM call, attributed for actual budget settlement. */
-async function defaultSynthesize(input: { auditId: string; businessName: string; usageContext: import("@/lib/domain/provider-usage").ProviderUsageContext }): Promise<SolutionSynthesis> {
+export async function defaultSynthesize(input: { auditId: string; businessName: string; usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext }): Promise<SolutionSynthesis> {
   if (useDeterministicJudgment()) return { technicalSolution: `Deterministic advisory synthesis for ${input.businessName}: integrate the audited systems, sequence the roadmap, and automate the highest-impact workflows first.`, integrationDesign: "Concrete integration across the audited toolchain via the WOBBLE handoff runtime and deterministic services.", roiAssumptions: "ROI grounded in the audited baseline; conservative estimates only.", risks: [] };
   const r = await runTextProvider({
     role: "content_strategy",
@@ -145,7 +152,15 @@ export async function runProposalDepartment(input: RunProposalDepartmentInput, d
         { now, recordAudit: deps.recordAudit, escalationStore: deps.escalationStore, ...deps.qa.deps },
       );
       qaReviewIds = decision.reviews.map((r) => r.id);
-      if (!decision.released) throw new QaGateBlockedError(decision);
+      if (!decision.released) {
+        // SELECTIVE REVISION: on a salvageable `revise`, open a durable revision cycle before hard-blocking so a
+        // founder can selectively rerun (reusing the passed solution-design when only `assemble` failed). A
+        // fail/blocked verdict is NOT salvageable → block without a cycle.
+        if (decision.verdict === "revise" && deps.qa.onQaRevise) {
+          await deps.qa.onQaRevise({ proposalId: proposal.id, auditId: input.auditId, failedStages: decision.routingTarget?.failedStages ?? [], companyId: input.companyId ?? null, requestedBy: input.requestedBy }).catch(() => {});
+        }
+        throw new QaGateBlockedError(decision);
+      }
     }
 
     return {

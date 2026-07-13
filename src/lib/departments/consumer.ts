@@ -13,6 +13,7 @@ import { listDepartments } from "@/lib/departments/registry";
 import type { DepartmentRow } from "@/lib/domain/department";
 import type { RunDepartmentDeps, DepartmentRunResult } from "@/lib/departments/orchestrator";
 import { runProposalDepartment, type RunProposalDepartmentDeps } from "@/lib/departments/verticals/proposal";
+import { openProposalRevision } from "@/lib/proposals/revision";
 import { runSalesCrmDepartment, type RunSalesCrmDepartmentDeps } from "@/lib/departments/verticals/sales-crm";
 import { runFinanceDepartment, type RunFinanceDepartmentDeps } from "@/lib/departments/verticals/finance";
 import { runDeliveryDepartment, type RunDeliveryDepartmentDeps } from "@/lib/departments/verticals/delivery";
@@ -101,7 +102,7 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
         requestedBy: env.sourceAgent ?? "paid_audit_orchestrator",
         workflowId: env.workflowId,
       },
-      { ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env, qa: deps.proposal?.qa ?? (deps.enableQaGates ? { deps: {} } : undefined) },
+      { ...deps, ...deps.proposal, handoffStore: deps.handoffStore, inboundEnvelope: env, qa: deps.proposal?.qa ?? (deps.enableQaGates ? { deps: {}, onQaRevise: openProposalRevision } : undefined) },
     ),
   sales_crm: (env, deps) =>
     runSalesCrmDepartment(

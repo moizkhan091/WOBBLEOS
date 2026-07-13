@@ -40,7 +40,7 @@ const echo: JobHandler = async (job: JobRow) => ({ echoed: job.payload });
  * (the checkpoints are preserved by the graph), and the founder `rerun` re-enqueues the audit bound to the SAME
  * graphRunId so only the failed stages regenerate.
  */
-async function livePaidAuditQaGate(artifact: PaidAuditResult, ctx: { workflowId: string; companyId: string | null }): Promise<PaidAuditQaOutcome> {
+export async function livePaidAuditQaGate(artifact: PaidAuditResult, ctx: { workflowId: string; companyId: string | null }): Promise<PaidAuditQaOutcome> {
   const submission = buildPaidAuditSubmission(artifact, { workflowId: ctx.workflowId, taskId: `${ctx.workflowId}:audit_qa`, clientWorkspaceId: ctx.companyId });
   const decision = await runQaGate({ boards: [paidAuditQaBoard], submission }, { raiseEscalation: async () => {} });
   return { released: decision.released, verdict: decision.verdict, failedStages: decision.routingTarget?.failedStages ?? [] };
@@ -54,7 +54,7 @@ const AUDIT_GRAPH_NODES = [
   { key: "report", producedBy: "audit_report", dependsOn: ["roadmap"] },
 ];
 
-async function openAuditRevision(input: { graphRunId: string; failedStages: string[]; auditId: string; companyId: string | null; input: RunPaidAuditInput }): Promise<void> {
+export async function openAuditRevision(input: { graphRunId: string; failedStages: string[]; auditId: string; companyId: string | null; input: RunPaidAuditInput }): Promise<void> {
   // The audit QA board's stages ARE the node keys (identity mapping); a failed stage reruns it + its downstream.
   const failedNodes = input.failedStages.filter((s) => AUDIT_GRAPH_NODES.some((n) => n.key === s));
   if (failedNodes.length === 0) return;

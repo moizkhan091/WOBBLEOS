@@ -313,7 +313,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     // clears only the reran nodes) so a re-run reuses the approved stages. Any other outcome → drop checkpoints.
     let qaOutcome: PaidAuditQaOutcome | undefined;
     if (deps.qaGate) qaOutcome = await deps.qaGate(auditResult, { workflowId: input.graphRunId ?? entityId, companyId: input.companyId ?? null });
-    const openedRevision = Boolean(qaOutcome && !qaOutcome.released && qaOutcome.verdict === "revise" && input.graphRunId && deps.onQaRevise);
+    const openedRevision = Boolean(qaOutcome && !qaOutcome.released && qaOutcome.verdict === "revise" && (qaOutcome.failedStages?.length ?? 0) > 0 && input.graphRunId && deps.onQaRevise);
     if (openedRevision) {
       await deps.onQaRevise!({ graphRunId: input.graphRunId!, failedStages: qaOutcome!.failedStages ?? [], auditId: row.id, companyId: input.companyId ?? null, input }).catch((e) => {
         recordAudit({ eventType: "audit.paid_revision_trigger_failed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { error: e instanceof Error ? e.message : String(e) } }).catch(() => {});

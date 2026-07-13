@@ -4554,3 +4554,37 @@ STATUS: Selective Revision = operational-scoped (Content + Audit). Proposal inte
 (proposal has NO checkpointed graph → needs section-level regeneration or generator checkpointing = next).
 
 GATE: typecheck 0 · paid-audit/content-graph/registry unit tests green · DB proof x2 (incl. audit scenario).
+
+---
+
+## cont.46 — Selective Revision +PROPOSAL + audit-review fixes (Content+Audit+Proposal) — Claude (Opus 4.8)
+
+PROPOSAL selective revision (the 3rd + final artifact). A proposal is a 2-component artifact: solution_design
+(the LLM synthesis, persisted under proposal.metadata.solutionDesign) → assemble (the DETERMINISTIC audit→proposal
+map; depends on solution_design). Module `src/lib/proposals/revision.ts`:
+- openProposalRevision (TRIGGER) — on a proposal QA `revise`, opens a durable cycle over the 2 components.
+- rerunProposalRevision (CONSUMER) — when only `assemble` reran, REUSES the persisted synthesis (no LLM re-pay)
+  and re-runs the deterministic assemble into a NEW proposal (the old is retained for founder comparison); when
+  solution_design reran, re-synthesizes. Transitions the cycle planned→reran.
+
+REAL TRIGGER: the proposal vertical's QA gate now, on a salvageable `revise`, calls deps.qa.onQaRevise BEFORE
+hard-blocking; the production department consumer (consumer.ts, enableQaGates) injects openProposalRevision.
+REAL CONSUMER: the founder `rerun` action (producer "proposal") calls rerunProposalRevision (no graphRunId — the
+proposal isn't a checkpointed graph; the synthesis reuse IS the preservation).
+
+AUDIT-REVIEW FIXES (adversarial reviewer on the audit batch 600f3e0 → SHIP-with-followups):
+- MEDIUM (reachability): POST /api/audit/paid ran the graph DIRECTLY (gate-blind). Now injects livePaidAuditQaGate
+  + openAuditRevision + a stable graphRunId (parity with /api/content/graph) so the dedicated audit product route
+  opens a revision cycle on a revise. (livePaidAuditQaGate + openAuditRevision exported from registry.)
+- LOW (orphan checkpoints): a `revise` with empty failedStages took the openedRevision branch (skip clear) but
+  opened no cycle → orphan checkpoints. Fixed in BOTH content + audit graphs: openedRevision now requires
+  failedStages.length > 0 (else clear).
+
+PROVEN: verify:selective-revision (x2) now covers Content + Audit + PROPOSAL (assemble-only rerun reuses the
+synthesis, creates a new proposal, old retained). Playwright selective-revision.spec adds a PROPOSAL test
+(inspect → rerun reusedSynthesis:true → reran → rollback). Unit: 48 affected tests green.
+
+STATUS: Selective Revision now spans Content + Audit + Proposal → toward operational-global (Proposal rerun is
+deterministic re-assemble, not graph-checkpoint reuse — honest distinction).
+
+GATE: typecheck 0 · affected unit tests green · DB proof x2.

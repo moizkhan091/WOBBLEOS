@@ -20,6 +20,7 @@ import { AGENTS, DECISIONS, E2E_DEPARTMENT, E2E_WORKSPACE, IDS, PROPOSAL, PROVID
 /** Fixed graph-run ids for the selective-revision fixtures (cleaned + reseeded every run). */
 const E2E_REVISION_RUN = "e2e_rev_run";
 const E2E_AUDIT_REVISION_RUN = "e2e_audit_rev_run";
+const E2E_PROPOSAL_AUDIT_ID = "e2e_prop_audit";
 
 /**
  * Deterministic E2E fixture builder. Every row is written through the REAL domain builders + stores the
@@ -87,15 +88,19 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.autonomyPolicies).where(like(schema.autonomyPolicies.category, "e2e.autonomy.%"));
   // QA reviews the Phase 4 QA-gate browser spec runs (isolated workflow-id prefix).
   await db.delete(schema.qaReviews).where(like(schema.qaReviews.workflowId, "e2e_qa_%"));
-  // Selective-revision fixtures (content + audit): cycle + components + version snapshots + the checkpointed runs.
-  const revCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(inArray(schema.revisionCycles.artifactRef, [E2E_REVISION_RUN, E2E_AUDIT_REVISION_RUN]));
-  if (revCycles.length) {
-    const ids = revCycles.map((c) => c.id);
+  // Selective-revision fixtures (content + audit + proposal): cycle + components + version snapshots + runs.
+  // Proposal cycles are keyed by the (dynamic) proposal id, so collect them by kind+tenant as well.
+  const graphCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(inArray(schema.revisionCycles.artifactRef, [E2E_REVISION_RUN, E2E_AUDIT_REVISION_RUN]));
+  const propCycles = await db.select({ id: schema.revisionCycles.id }).from(schema.revisionCycles).where(and(eq(schema.revisionCycles.artifactKind, "proposal"), eq(schema.revisionCycles.clientId, E2E_WORKSPACE)));
+  const ids = [...graphCycles, ...propCycles].map((c) => c.id);
+  if (ids.length) {
     await db.delete(schema.revisionComponentVersions).where(inArray(schema.revisionComponentVersions.cycleId, ids));
     await db.delete(schema.revisionComponents).where(inArray(schema.revisionComponents.cycleId, ids));
     await db.delete(schema.revisionCycles).where(inArray(schema.revisionCycles.id, ids));
   }
   await db.delete(schema.graphCheckpoints).where(inArray(schema.graphCheckpoints.graphRunId, [E2E_REVISION_RUN, E2E_AUDIT_REVISION_RUN]));
+  await db.delete(schema.proposals).where(eq(schema.proposals.auditId, E2E_PROPOSAL_AUDIT_ID));
+  await db.delete(schema.audits).where(eq(schema.audits.id, E2E_PROPOSAL_AUDIT_ID));
   // The content.graph job the revision `rerun` action re-enqueues (bound to the preserved graphRunId).
   await db.delete(schema.jobs).where(like(schema.jobs.idempotencyKey, "revision_rerun:%"));
 }
@@ -195,6 +200,17 @@ export async function seedE2E(): Promise<void> {
     failedComponents: ["opportunity"], clientId: E2E_WORKSPACE,
     reenqueue: { producer: "audit.paid", businessName: "E2E Audit Co", intakeNotes: "misses calls", requestedBy: "Moiz" },
   }, { db, recordAudit: async () => {} });
+
+  // Selective-revision fixture for the PROPOSAL artifact (no graph checkpoints; the rerun re-assembles a NEW
+  // proposal REUSING the persisted synthesis when only `assemble` failed). A real audit + proposal are seeded so
+  // the founder `rerun` action's re-assemble runs against real rows.
+  await db.insert(schema.audits).values({ id: E2E_PROPOSAL_AUDIT_ID, kind: "paid", companyId: E2E_WORKSPACE, businessName: "E2E Proposal Co", status: "complete", report: { opportunities: [{ title: "Text-back", description: "auto-text" }], roadmap: [{ title: "P1", months: "1-2", focus: "leaks" }], roi: { estimatedImplementationCents: 4500000 }, executiveSummary: "Recover leads." }, createdBy: "Moiz" } as typeof schema.audits.$inferInsert);
+  const { createProposalFromAudit } = await import("@/lib/proposals");
+  const { openProposalRevision } = await import("@/lib/proposals/revision");
+  const seededProposal = await createProposalFromAudit(E2E_PROPOSAL_AUDIT_ID, { createdBy: "Moiz", enrichment: { technicalSolution: "S".repeat(200), integrationDesign: "I".repeat(80), roiAssumptions: "R".repeat(50), risks: ["adoption"] } }, {});
+  if (seededProposal) {
+    await openProposalRevision({ proposalId: seededProposal.id, auditId: E2E_PROPOSAL_AUDIT_ID, failedStages: ["assemble"], companyId: E2E_WORKSPACE, requestedBy: "Moiz" }, { db, recordAudit: async () => {} });
+  }
 }
 
 async function main(): Promise<void> {

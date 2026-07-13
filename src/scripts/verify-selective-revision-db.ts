@@ -17,6 +17,9 @@ import { revisionCycles, revisionComponents, revisionComponentVersions, graphChe
 import { buildGraphCheckpointRow } from "@/lib/domain/graph-checkpoint";
 import { defaultCheckpointStore, loadCheckpointContext } from "@/lib/graph-checkpoint";
 import { openRevisionCycle, driveSelectiveGraphRerun, markRevisionReran, applyRevisionOutcome, rollbackRevisionCycle, getRevisionCycle } from "@/lib/selective-revision";
+import { createProposalFromAudit, getProposal } from "@/lib/proposals";
+import { openProposalRevision, rerunProposalRevision } from "@/lib/proposals/revision";
+import { proposals as proposalsTable } from "@/db/schema";
 
 async function main() {
   const db = getDb();
@@ -25,6 +28,7 @@ async function main() {
   const graphRunId = `revrun_${uniq}`;
   const deps = { db, recordAudit: async () => {} };
   const cycleIds: string[] = [];
+  let proposalAuditId: string | null = null;
 
   // An 8-node linear-ish artifact: c1..c8, each depends on the previous (a change cascades downstream).
   const keys = Array.from({ length: 8 }, (_, i) => `c${i + 1}`);
@@ -97,6 +101,35 @@ async function main() {
     assert(auditCycle.plan.preserved.length === 1 && auditCycle.plan.preserved[0] === "discovery", "AUDIT: the upstream `discovery` stage is preserved (its evidence + version untouched)");
     assert((auditCycle.reenqueue as { producer?: string } | null)?.producer === "audit.paid", "AUDIT: the cycle carries the `audit.paid` re-enqueue producer (the founder rerun re-runs the audit bound to the preserved graphRunId)");
 
+    // ---- PROPOSAL artifact: 2 components (solution_design → assemble); no graph checkpoints. The rerun REUSES
+    //      the persisted synthesis when only `assemble` failed, and creates a NEW proposal (old retained). --------
+    const auditId = `aud_${uniq}`;
+    const stubAudit = async () => ({ id: auditId, businessName: `Acme ${uniq}`, companyId: `client_${uniq}`, opportunityId: null, report: { opportunities: [{ title: "Text-back", description: "auto-text" }], roadmap: [{ title: "P1", months: "1-2", focus: "leaks" }], roi: { estimatedImplementationCents: 4500000 }, executiveSummary: "Recover leads." } });
+    const pDeps = { getAuditRow: stubAudit };
+    const synthesis = { technicalSolution: "S".repeat(200), integrationDesign: "I".repeat(80), roiAssumptions: "R".repeat(50), risks: ["adoption"] };
+    const oldProposal = await createProposalFromAudit(auditId, { createdBy: "Moiz", enrichment: synthesis }, pDeps);
+    proposalAuditId = auditId;
+    assert(!!oldProposal && (oldProposal.metadata as { solutionDesign?: unknown }).solutionDesign !== undefined, "PROPOSAL: the initial proposal persists the solution-design synthesis under metadata");
+
+    // assemble-only failure → rerun [assemble], PRESERVE [solution_design].
+    await openProposalRevision({ proposalId: oldProposal!.id, auditId, failedStages: ["assemble"], companyId: `client_${uniq}`, requestedBy: "Moiz" }, deps);
+    const pcycle = (await db.select({ id: revisionCycles.id }).from(revisionCycles).where(eq(revisionCycles.artifactRef, oldProposal!.id)))[0];
+    cycleIds.push(pcycle.id);
+    const pv = (await getRevisionCycle(pcycle.id, deps))!;
+    assert(pv.plan.rerun.length === 1 && pv.plan.rerun[0] === "assemble", "PROPOSAL: an assemble-only failure reruns ONLY `assemble`");
+    assert(pv.plan.preserved.includes("solution_design"), "PROPOSAL: `solution_design` (the expensive LLM synthesis) is PRESERVED");
+
+    // Rerun REUSES the persisted synthesis (no re-synthesize) and creates a NEW proposal (old retained).
+    const rerunOut = await rerunProposalRevision(pcycle.id, { proposalDeps: pDeps, db, recordAudit: async () => {} });
+    assert(!!rerunOut && rerunOut.reusedSynthesis === true, "PROPOSAL: the rerun REUSED the passed synthesis (no LLM re-pay) for an assemble-only revision");
+    const newProposal = await getProposal(rerunOut!.newProposalId, pDeps);
+    assert(!!newProposal && newProposal.id !== oldProposal!.id, "PROPOSAL: the rerun produced a NEW proposal (the old one is retained for comparison)");
+    const newSyn = (newProposal!.metadata as { solutionDesign?: { technicalSolution?: string; integrationDesign?: string } }).solutionDesign;
+    assert(newSyn?.technicalSolution === synthesis.technicalSolution && newSyn?.integrationDesign === synthesis.integrationDesign, "PROPOSAL: the new proposal carries the SAME (reused) solution-design synthesis (not re-generated)");
+    // The OLD proposal still exists (retained) → the founder can compare versions.
+    assert(!!(await getProposal(oldProposal!.id, pDeps)), "PROPOSAL: the OLD proposal is retained (founder comparison)");
+    assert((await getRevisionCycle(pcycle.id, deps))!.status === "reran", "PROPOSAL: the cycle transitioned planned → reran");
+
     console.log("\nALL REAL-DB SELECTIVE REVISION CHECKS PASSED ✅");
   } finally {
     await db.delete(graphCheckpoints).where(eq(graphCheckpoints.graphRunId, graphRunId)).catch(() => {});
@@ -105,6 +138,7 @@ async function main() {
       await db.delete(revisionComponents).where(inArray(revisionComponents.cycleId, cycleIds)).catch(() => {});
       await db.delete(revisionCycles).where(inArray(revisionCycles.id, cycleIds)).catch(() => {});
     }
+    if (proposalAuditId) await db.delete(proposalsTable).where(eq(proposalsTable.auditId, proposalAuditId)).catch(() => {});
   }
 }
 

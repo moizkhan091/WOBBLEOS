@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { runPaidAuditGraph } from "@/lib/paid-audit-graph";
+import { livePaidAuditQaGate, openAuditRevision } from "@/lib/workers/registry";
 import { listAudits } from "@/lib/free-audit";
+import { newId } from "@/lib/ids";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
@@ -41,7 +43,11 @@ export async function POST(request: Request) {
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
-    const result = await runPaidAuditGraph({ ...parsed.data, requestedBy: auth });
+    // Engage the LIVE QA gate + selective-revision trigger on the dedicated audit route (parity with
+    // /api/content/graph): a checkpointed run under a stable graphRunId, so a `revise` opens a durable revision
+    // cycle the founder can inspect + selectively rerun — the audit product path is not gate-blind.
+    const graphRunId = newId("auditrun");
+    const result = await runPaidAuditGraph({ ...parsed.data, requestedBy: auth, graphRunId }, { qaGate: livePaidAuditQaGate, onQaRevise: openAuditRevision });
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
