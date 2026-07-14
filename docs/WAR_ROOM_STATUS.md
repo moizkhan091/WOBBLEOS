@@ -173,10 +173,19 @@ Lead owns §2. Spawn 3–4 implementation subagents on independent verticals (ea
 
 ## PROGRAM STATUS — all unblocked items COMPLETE (as of 2026-07-14, HEAD 54c47a5)
 
+> **CORRECTION (2026-07-14, post independent Codex audit — see docs/DEPLOYMENT_READINESS_REMEDIATION.md).**
+> The earlier claim that "only SSH + secrets + domain remain" was **wrong**. The Codex audit found real
+> INTERNAL deployment blockers (production DB had no pgvector, workers absent from the stack + unrunnable,
+> revoked sessions accepted on 28 routes, public n8n surface, failing release gate, broken strict install,
+> image leaked local storage, no real DR). Those are now fixed and verified on branch
+> `fix/deployment-readiness`. Production deployment is still blocked-external (VPS/secrets/domain), but it
+> is **no longer** the only thing standing between this repo and a real deploy. Status below is updated.
+
 Every item in the active program order (1–14) is OPERATIONAL, proven (real-DB proof ×2 each), and independently
-adversarially reviewed — every reviewer verdict resolved to SHIP after fixes; every HIGH and MEDIUM finding fixed.
-34 DB proofs are wired into `verify:all-db` (verify:coverage enforces it). Unit suite 945+, build green (standalone),
-migrations through 0049 apply from scratch with zero drift, Playwright green.
+adversarially reviewed. After the Codex audit, **55 of 58 DB proofs run in the integrated gate**
+(`verify:all-db` is now the filesystem-driven runner; `verify:coverage` enforces that every proof is either run
+or explicitly deferred with a reason — WOB-AUD-015). Unit suite 1000+, build green (standalone), migrations apply
+from scratch with zero drift on **pgvector** (WOB-AUD-001), Playwright green.
 
 | # | Item | Status | Proof |
 |---|------|--------|-------|
@@ -191,16 +200,19 @@ migrations through 0049 apply from scratch with zero drift, Playwright green.
 | 9 | Remaining Daily Brief providers | operational (all 8 wired) | verify:daily-brief-providers |
 | 10 | AIOS Value metrics | operational (revenue = payments-ledger measured actual) | verify:aios-org-metrics |
 | 11 | Visual Intelligence Cockpit | operational | verify:cockpit |
-| 12 | Final release-gate hardening | operational (verify:coverage + verify:health + release:full) | — |
-| 13 | Backup and restore | operational (additive, non-destructive) | verify:backup-restore |
-| 14 | Isolated VPS preparation | COMPLETE (Docker/compose/health/migrate proven) | verify:health + migrator run |
-| 15 | Production deployment | **BLOCKED-EXTERNAL** | needs SSH + secrets + domain |
+| 12 | Final release-gate hardening | operational; release gate now GREEN + filesystem-driven (WOB-AUD-006/015) | verify:coverage + release:full |
+| 13 | Backup and restore | limited JSON export/import; real DB+media DR added (WOB-AUD-007) | verify:backup-restore + dr-drill.sh |
+| 14 | Isolated VPS preparation | COMPLETE on pgvector + workers + durable storage (WOB-AUD-001/003/017) | migrator + worker runtime proofs |
+| 15 | Production deployment | **BLOCKED-EXTERNAL** (after internal blockers closed) | needs SSH + secrets + domain |
 
-### The ONLY remaining requirement: #15 production deployment (BLOCKED-EXTERNAL)
-Provider-independent prep is 100% done + validated (Dockerfile multi-stage, docker-compose.prod.yml, the `migrator`
-stage proven to run `drizzle-kit migrate` end-to-end against real Postgres, GET /api/health readiness, the secrets
-template, the runbook in docs/VPS_DEPLOYMENT.md). Missing (founder/host must supply): SSH access to the VPS, the
-production secrets (POSTGRES_PASSWORD, SESSION_SECRET, SHARED_LOGIN_PASSWORD_HASH_B64), and the domain/DNS/TLS cert.
+### #15 production deployment (BLOCKED-EXTERNAL) — after the internal blockers were closed
+The audited internal blockers are fixed + verified (see docs/DEPLOYMENT_READINESS_REMEDIATION.md): production
+Compose now uses digest-pinned **pgvector**, runs the general + media **workers** (scheduler is a singleton via a
+Postgres advisory lock), mounts a **durable storage volume**, the image no longer leaks local data, `npm ci` is
+reproducible, the release gate is green, revoked sessions are rejected on every mutation, the n8n surface is
+authenticated, and real **DB+media disaster recovery** exists with a proven restore drill. Still missing
+(founder/host must supply): SSH access to the VPS, the production secrets (POSTGRES_PASSWORD, SESSION_SECRET,
+SHARED_LOGIN_PASSWORD_HASH_B64), and the domain/DNS/TLS cert.
 
 EXACT next command once those exist (run on the VPS, in the repo):
 ```

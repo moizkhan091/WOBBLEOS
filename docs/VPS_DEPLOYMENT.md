@@ -1,6 +1,15 @@
 # WOBBLE OS — VPS Deployment Guide
 
-Everything you need to move WOBBLE OS from the dev laptop to a Linux VPS. The app is production-ready: full migrations, honest empty states, founder-gated mutations, HMAC-verified webhooks (fail-closed), and a job queue with a stalled-job reaper.
+Everything you need to move WOBBLE OS from the dev laptop to a Linux VPS.
+
+> **Status (2026-07-14):** the internal deployment blockers found by the independent Codex audit are
+> fixed + verified on `fix/deployment-readiness` (pgvector production DB, workers + singleton scheduler,
+> reproducible `npm ci`, image content safety, revoked-session enforcement, authenticated n8n surface,
+> green release gate, real DB+media disaster recovery — see docs/DEPLOYMENT_READINESS_REMEDIATION.md).
+> Remaining before a real deploy is **external only**: a VPS, the production secrets, and a domain/DNS/TLS
+> cert. The **recommended** path is the isolated Docker Compose stack below (`docker-compose.prod.yml`),
+> which runs the web app + pgvector + general/media workers with a durable storage volume in one command.
+> `scripts/deploy.sh` performs it and gates on `/api/health/ready`.
 
 ## 1. Server prerequisites
 
