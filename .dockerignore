@@ -1,11 +1,29 @@
-node_modules
-.next
-.git
-.env
-.env.*
-!.env.production.example
-e2e/.artifacts
-npm-debug.log*
-*.log
-coverage
-.DS_Store
+# WOBBLE OS build context — DENY BY DEFAULT.
+#
+# The image must contain ONLY the inputs the Next standalone build + the drizzle migrator stage
+# need. Everything else — machine-local `storage/` media, design zips, videos, docs, tests, e2e
+# fixtures, logs, .env* secrets, audit artifacts — is excluded, and NEW top-level files are excluded
+# unless explicitly allow-listed below. This is the fix for WOB-AUD-002: image contents no longer
+# depend on what happens to sit in the working tree, and local business media can never be embedded
+# in a pushed image. `scripts/check-docker-image.mjs` re-verifies the built image against a denylist.
+*
+
+# --- Allow-list: exactly the build inputs ---
+!package.json
+!package-lock.json
+!next.config.ts
+!next-env.d.ts
+!tsconfig.json
+!drizzle.config.ts
+!src
+!public
+!scripts
+
+# --- Defense in depth: re-exclude nested non-runtime material under allow-listed dirs ---
+**/node_modules
+**/.next
+**/*.log
+**/.DS_Store
+**/.env
+**/.env.*
+scripts/*.sh
