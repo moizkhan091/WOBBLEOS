@@ -37,13 +37,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Use `npm install` (not `npm ci`) so a slightly out-of-sync
-      # package-lock.json cannot hard-fail the whole pipeline. This keeps CI
-      # resilient while multiple AI builders edit package.json. Once the lock
-      # is regenerated cleanly (`npm install` locally, commit package-lock.json),
-      # this can switch back to `npm ci` for stricter reproducibility.
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      # Strict clean install from the committed lockfile (WOB-AUD-008). The lock is generated with the
+      # same npm that ships in Node 22 and records every platform's optional binaries, so `npm ci` is
+      # reproducible on Linux CI, Windows dev, and the alpine Docker build alike.
+      - name: Install dependencies (strict)
+        run: npm ci --no-audit --no-fund
+
+      - name: DB-proof coverage guard (static)
+        run: npm run verify:coverage
 
       - name: Typecheck
         run: npm run typecheck
@@ -84,7 +85,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
       - run: npm run db:migrate
       - run: npm run db:seed
@@ -98,3 +99,49 @@ jobs:
             e2e/.artifacts/html-report
             e2e/.artifacts/test-results
           retention-days: 14
+
+  db-proofs:
+    name: integrated DB-proof gate (all proofs vs pgvector)
+    runs-on: ubuntu-latest
+    # Runs the FILESYSTEM-DRIVEN proof runner (WOB-AUD-015) against a fresh pgvector DB — the previously
+    # unexercised release-gate lane. Every src/scripts/verify-*-db.ts runs (minus the manifest deferrals).
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: wobble, POSTGRES_PASSWORD: wobble, POSTGRES_DB: wobble_ci }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wobble -d wobble_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://wobble:wobble@127.0.0.1:5432/wobble_ci
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: Migrate + seed (fresh pgvector)
+        run: npm run db:migrate && npm run db:seed
+      - name: All DB proofs (integrated gate)
+        run: npm run verify:all-db
+
+  docker-safety:
+    name: docker image content safety + worker runtime
+    runs-on: ubuntu-latest
+    # Proves the image no longer leaks local storage/docs/tests (WOB-AUD-002) and the worker image can run
+    # the tsx entrypoints (WOB-AUD-003) — neither was checked by the old CI.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build runner image
+        run: docker build --target runner -t wobble-os:ci .
+      - name: Image content guard (no storage/docs/tests/.env; required runtime paths present)
+        run: node scripts/check-docker-image.mjs wobble-os:ci
+      - name: Build worker image + assert tsx entrypoints run
+        run: |
+          docker build --target worker -t wobble-worker:ci .
+          docker run --rm --entrypoint sh wobble-worker:ci -c "node_modules/.bin/tsx --version"
+          # both worker commands must reach app logic (NOT 'tsx: not found')
+          docker run --rm wobble-worker:ci npm run worker 2>&1 | grep -q "DATABASE_URL is not set"
