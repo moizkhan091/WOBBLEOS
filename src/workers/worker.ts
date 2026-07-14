@@ -2,6 +2,8 @@ import { runWorker } from "@/lib/workers/runtime";
 import { generalRegistry } from "@/lib/workers/registry";
 import { writeHeartbeat, writeHeartbeatFile } from "@/lib/workers/heartbeat";
 import { runScheduledTick } from "@/lib/scheduler";
+import { createSchedulerLock } from "@/lib/scheduler/leader";
+import { assertRuntimeConfig } from "@/lib/config/validate";
 import { closeDb } from "@/db";
 
 /**
@@ -41,20 +43,42 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Fail fast on missing critical config in production (WOB-AUD-017).
+  assertRuntimeConfig(process.env, { context: "worker" });
+
   console.log(`[worker:${WORKER_NAME}] starting`);
 
   // THE SCHEDULER — fires all due cadence work (automations, research scouts, scheduled posts,
   // daily maintenance) every 60s. Without this, every "runs on its own" feature is inert.
+  //
+  // SINGLETON: exactly ONE general worker fleet-wide runs the tick, elected via a Postgres advisory
+  // lock (see scheduler/leader.ts). Scaling `worker` adds job consumers WITHOUT double-firing cadence
+  // work. A follower promotes itself if the current leader dies (its lock auto-releases).
+  const schedulerLock = createSchedulerLock();
+  const becameLeader = await schedulerLock.tryAcquire();
+  console.log(`[worker:${WORKER_NAME}] scheduler leadership: ${becameLeader ? "LEADER (running the tick)" : "follower (job consumer only)"}`);
+
   let lastMaintenance = 0;
+  let ticking = false;
   const SCHEDULE_INTERVAL_MS = 60_000;
   const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60_000;
   const scheduleTimer = setInterval(() => {
-    const runMaintenance = Date.now() - lastMaintenance >= MAINTENANCE_INTERVAL_MS;
-    if (runMaintenance) lastMaintenance = Date.now();
-    // runDepartmentConsumers: drive the autonomous inter-department chain (claim + run routed handoffs).
-    runScheduledTick({ runMaintenance, runDepartmentConsumers: true })
-      .then((r) => { if (r.automationsFired || r.scoutsEnqueued || r.postsDispatched || r.departmentHandoffsConsumed || r.maintenanceRan) console.log(`[scheduler] fired`, r); })
-      .catch((e) => console.error("[scheduler] tick failed:", e instanceof Error ? e.message : e));
+    // Re-check/attempt leadership each tick (promotes a follower if the previous leader died), then only
+    // the leader runs the tick. `ticking` guards against overlapping ticks on a slow cycle.
+    if (ticking) return;
+    ticking = true;
+    schedulerLock
+      .tryAcquire()
+      .then(async (isLeader) => {
+        if (!isLeader) return;
+        const runMaintenance = Date.now() - lastMaintenance >= MAINTENANCE_INTERVAL_MS;
+        if (runMaintenance) lastMaintenance = Date.now();
+        // runDepartmentConsumers: drive the autonomous inter-department chain (claim + run routed handoffs).
+        const r = await runScheduledTick({ runMaintenance, runDepartmentConsumers: true });
+        if (r.automationsFired || r.scoutsEnqueued || r.postsDispatched || r.departmentHandoffsConsumed || r.maintenanceRan) console.log(`[scheduler] fired`, r);
+      })
+      .catch((e) => console.error("[scheduler] tick failed:", e instanceof Error ? e.message : e))
+      .finally(() => { ticking = false; });
   }, SCHEDULE_INTERVAL_MS);
   scheduleTimer.unref?.();
 
@@ -66,6 +90,7 @@ async function main(): Promise<void> {
   });
 
   clearInterval(scheduleTimer);
+  await schedulerLock.release();
   await closeDb();
   console.log(`[worker:${WORKER_NAME}] stopped after processing ${processedCount} job(s)`);
   process.exit(0);

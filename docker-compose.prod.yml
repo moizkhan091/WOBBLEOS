@@ -1,12 +1,20 @@
-# WOBBLE OS — isolated production stack (app + Postgres) for a single VPS.
+# WOBBLE OS — isolated production stack for a single VPS.
+#   web app + Postgres/pgvector + general worker (scheduler leader) + media/video worker.
 # Prep:  cp .env.production.example .env.production   # then fill the real secrets (see docs/VPS_DEPLOYMENT.md)
 # Up:    docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-# The `migrate` service applies drizzle migrations from scratch, then exits; `app` starts only after it succeeds.
+# The `migrate` service applies drizzle migrations from scratch, then exits; app + workers start only after it succeeds.
+
+x-restart: &restart unless-stopped
+x-security: &hardening
+  security_opt:
+    - no-new-privileges:true
 
 services:
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    # pgvector-enabled Postgres 16 pinned by digest (WOB-AUD-001). Plain postgres:16-alpine cannot run
+    # `CREATE EXTENSION vector`, which migration 0000 requires — so the schema could never be created.
+    image: pgvector/pgvector:pg16@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+    restart: *restart
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-wobble}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
@@ -18,11 +26,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    # No published port — the DB is reachable ONLY from the app on the private compose network (isolation).
+    # Least privilege (WOB-AUD-018): drop all caps, then re-add only what the postgres entrypoint's
+    # gosu user-drop + data-dir chown need. no-new-privileges blocks privilege escalation.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 2g, pids: 512 }
+    # No published port — the DB is reachable ONLY from app/workers on the private compose network (isolation).
 
   migrate:
     # Build the LEAN `migrator` stage — it has drizzle-kit + drizzle.config.ts + the migration files (the final
-    # `runner` stage intentionally does not). Applies pending migrations, then exits; `app` waits for success.
+    # `runner` stage intentionally does not). Applies pending migrations (incl. CREATE EXTENSION vector), then
+    # exits; app + workers wait for success.
     build:
       context: .
       target: migrator
@@ -32,15 +50,23 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+    <<: *hardening
+    cap_drop: ["ALL"]
 
   app:
-    build: .
-    restart: unless-stopped
+    build:
+      context: .
+      target: runner
+    restart: *restart
     env_file: .env.production
     environment:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+      # Durable media/storage lives on the mounted volume — NEVER baked into the image (WOB-AUD-002/017).
+      STORAGE_ROOT: /app/storage
+    volumes:
+      - wobble_storage:/app/storage
     depends_on:
       db:
         condition: service_healthy
@@ -49,11 +75,85 @@ services:
     ports:
       - "127.0.0.1:3000:3000" # bind to loopback; put a TLS-terminating reverse proxy (Caddy/nginx) in front
     healthcheck:
+      # Liveness — shallow web+DB check. Aggregate readiness (workers/scheduler/storage) is /api/health/ready.
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       start_period: 40s
       retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1500m, pids: 512 }
+
+  worker:
+    # General worker + SCHEDULER LEADER. Runs OUTSIDE Next as its own Node process (tsx runtime). Exactly one
+    # instance holds the Postgres advisory-lock scheduler leadership; scaling `worker` adds job consumers without
+    # double-firing cadence work (WOB-AUD-003). Heartbeats to the shared storage volume for /api/health/worker.
+    build:
+      context: .
+      target: worker
+    command: ["npm", "run", "worker"]
+    restart: *restart
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      STORAGE_ROOT: /app/storage
+    volumes:
+      - wobble_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Fresh heartbeat file (written every loop) → healthy. Missing/stale → unhealthy → restart.
+      test: ["CMD", "node", "scripts/worker-heartbeat-healthcheck.mjs", "worker-heartbeat.json"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1g, pids: 512 }
+
+  worker-video:
+    # Media/video worker — separate service so heavy media work has its own resource + restart budget and cannot
+    # starve the general worker. Same image, different entrypoint.
+    build:
+      context: .
+      target: worker
+    command: ["npm", "run", "worker:video"]
+    restart: *restart
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      STORAGE_ROOT: /app/storage
+    volumes:
+      - wobble_storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "scripts/worker-heartbeat-healthcheck.mjs", "video-worker-heartbeat.json"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "1.5", memory: 1g, pids: 512 }
 
 volumes:
   wobble_pgdata:
+  wobble_storage:
