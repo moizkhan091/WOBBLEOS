@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAgent, listAgentRuns, recordAgentRun } from "@/lib/agents";
 import { recordAgentRunSchema } from "@/lib/domain/agents";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 function dbUnavailable() {
@@ -24,6 +25,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 /** POST /api/agents/[id]/runs - record an agent run (internal/integration). */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { id } = await context.params;
   let body: unknown;
   try {

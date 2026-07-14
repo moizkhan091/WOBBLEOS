@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { INTELLIGENCE_SCOPES, INTELLIGENCE_TASKS } from "@/lib/domain/intelligence";
 import { buildApprovedIntelligenceContext } from "@/lib/intelligence";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,8 @@ const contextRequestSchema = z.object({
 
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   let body: unknown;
   try {

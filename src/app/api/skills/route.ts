@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createPromptSkill, listPromptSkills } from "@/lib/prompt-skills";
 import { createPromptSkillSchema, PROMPT_SKILL_STATUSES } from "@/lib/domain/prompt-skills";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export async function GET(request: Request) {
 /** POST /api/skills - create a new skill (version 1, draft) + approval. */
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   let body: unknown;
   try {

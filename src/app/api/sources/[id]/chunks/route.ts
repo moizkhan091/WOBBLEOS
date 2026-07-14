@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { attachSourceChunks, listSourceChunks } from "@/lib/sources";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   const { id } = await context.params;
 

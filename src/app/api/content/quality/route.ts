@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { gateContentPacket } from "@/lib/quality";
 import type { ExcellenceRules } from "@/lib/domain/content-excellence";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ const bodySchema = z.object({
  * quality_reviews row and updates the packet's qualityStatus.
  */
 export async function POST(request: Request) {
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   let body: unknown;
   try {
     body = await request.json();

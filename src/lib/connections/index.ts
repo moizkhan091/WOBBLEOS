@@ -6,6 +6,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   buildConnectionRow,
   connectionGuardSchema,
+  credentialEnvForSlug,
   evaluateConnectionGuard,
   extractJobConnectionSlugs,
   sanitizeConnection,
@@ -118,6 +119,12 @@ export async function registerConnection(input: RegisterConnectionInput, deps: C
   const now = deps.now ?? new Date();
 
   const row = buildConnectionRow(input, { now });
+  // WOB-AUD-010: for a KNOWN provider slug, the credential env var is server-authoritative — a caller
+  // cannot point it at an unrelated secret (which the health probe could then leak to a third party).
+  const pinnedEnv = credentialEnvForSlug(row.slug);
+  if (pinnedEnv && row.credentialKeyName !== pinnedEnv) {
+    throw new Error(`connection '${row.slug}' credential is fixed to env '${pinnedEnv}' and cannot be set to '${row.credentialKeyName}'`);
+  }
   const existing = await store.getConnectionBySlug(row.slug);
   if (existing) return existing;
 
@@ -159,6 +166,12 @@ export async function updateConnection(
   const parsed = updateConnectionSchema.parse(input);
   const row = (await store.getConnectionById(idOrSlug)) ?? (await store.getConnectionBySlug(idOrSlug));
   if (!row) throw new Error(`connection '${idOrSlug}' not found`);
+
+  // WOB-AUD-010: never let an update re-point a known provider's credential to an unrelated env var.
+  const pinnedEnv = credentialEnvForSlug(row.slug);
+  if (pinnedEnv && parsed.credentialKeyName !== undefined && parsed.credentialKeyName !== pinnedEnv) {
+    throw new Error(`connection '${row.slug}' credential is fixed to env '${pinnedEnv}' and cannot be changed`);
+  }
 
   const fields: Partial<ConnectionRow> = { ...parsed, updatedAt: now };
   await store.updateConnection(row.id, fields);

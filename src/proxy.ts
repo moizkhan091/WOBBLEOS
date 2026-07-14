@@ -8,12 +8,20 @@ import { readCookie, SESSION_COOKIE, verifyJwtOnly } from "@/lib/auth/edge";
  * Node route handlers via verifySession.
  */
 
-// /api/webhooks + /api/n8n are HMAC-verified inside their handlers — external callers have no
-// session cookie, so they must be public at the gate (they enforce their own signatures).
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/webhooks", "/api/n8n", "/api/public/media", "/_next", "/favicon", "/robots", "/manifest", "/icon"];
+// Public route prefixes matched with a STRICT slash boundary (exact path or a real sub-path). A sibling
+// like `/api/n8nSomething` is NOT made public by `/api/n8n/callback` (WOB-AUD-020).
+// Only the n8n CALLBACK is public — it is timestamped-HMAC verified for external callers with no session
+// cookie. The n8n registry (`/api/n8n`) and outbound handoff trigger are NOT public: they require a
+// founder session + DB-backed authorization in their handlers (WOB-AUD-005). /api/webhooks/* are
+// raw-body HMAC verified for external senders.
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/api/webhooks", "/api/n8n/callback", "/api/public/media", "/_next"];
+// Static assets served as files (favicon.ico, robots.txt, manifest.webmanifest, icon-*.png). Matched as
+// filename prefixes because they are concrete files, not route trees.
+const PUBLIC_FILE_PREFIXES = ["/favicon", "/robots", "/manifest", "/icon", "/apple-icon", "/sitemap"];
 
-function isPublic(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p));
+export function isPublic(pathname: string): boolean {
+  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
+  return PUBLIC_FILE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
 }
 
 export async function proxy(req: NextRequest) {

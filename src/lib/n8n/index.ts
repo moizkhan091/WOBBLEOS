@@ -22,6 +22,10 @@ import {
   type WebhookEventRow,
 } from "@/lib/domain/n8n-handoff";
 import { signWebhookPayload, verifyWebhookSignature } from "@/lib/security/webhooks";
+import { assertFetchableUrl } from "@/lib/security/url-guard";
+
+/** Outbound handoff dispatch timeout — a slow/unreachable endpoint must not hold a request/worker open. */
+const N8N_OUTBOUND_TIMEOUT_MS = 10_000;
 
 export interface WebhookEndpointRow {
   id: string;
@@ -109,10 +113,16 @@ function defaultGetSecret(secretRefName: string): string | undefined {
 }
 
 async function defaultTransport(url: string, request: N8nTransportRequest): Promise<N8nTransportResponse> {
-  const response = await fetch(url, {
+  // SSRF guard: the endpoint URL comes from DB config, but validate it is http(s) and not an internal /
+  // metadata target before dispatching (WOB-AUD-005). Bound the call with a timeout so a hung endpoint
+  // can't pin a worker/request open.
+  const safe = await assertFetchableUrl(url);
+  const response = await fetch(safe.toString(), {
     method: request.method,
     headers: request.headers,
     body: request.body,
+    redirect: "manual",
+    signal: AbortSignal.timeout(N8N_OUTBOUND_TIMEOUT_MS),
   });
 
   const contentType = response.headers.get("content-type") ?? "";
