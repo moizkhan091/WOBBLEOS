@@ -139,6 +139,12 @@ function deps(overrides: Partial<AskWobbleDeps> = {}): AskWobbleDeps {
     retrieveBrain: async () => brain,
     retrieveMemory: async () => memory,
     retrieveSources: async () => sources,
+    // Stub the live system snapshot (WOB-AUD-006): without this, when a real DATABASE_URL is present the
+    // default `retrieveSystemSnapshot` pulls SEEDED system data into the evidence, which flips the
+    // thin-evidence assertion and made `release:check`/`release:full` fail non-deterministically. A unit
+    // test must not depend on ambient DB state.
+    retrieveSystemSnapshot: async () => undefined,
+    retrieveIntelligence: async () => ({ block: "", itemIds: [] as string[], insightIds: [] as string[], gaps: [] as string[], hasIntelligence: false }),
     runProvider: async () => ({ text: "Here is the answer [1].", run: { id: "modelrun_1" } }),
     recordAudit: async () => {},
     ...overrides,

@@ -1,33 +1,29 @@
 import { NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { applyZernioPostEvent, type ZernioPostEvent } from "@/lib/library";
+import { readCappedRawBody, verifyRawBodySignature } from "@/lib/security/webhooks";
 
 /**
  * POST /api/webhooks/zernio — Zernio delivery endpoint.
  *
  * This is how a scheduled post AUTO-MOVES to Posted: Zernio calls us on post.published/failed/
  * cancelled and we flip the matching local post (found by publisher_ref). Public route (Zernio has
- * no session) but HMAC-verified via X-Zernio-Signature when ZERNIO_WEBHOOK_SECRET is set.
- * At-least-once delivery -> applyZernioPostEvent is idempotent.
+ * no session), HMAC-verified via X-Zernio-Signature when ZERNIO_WEBHOOK_SECRET is set, now with a
+ * pre-parse body-size cap (WOB-AUD-011). Zernio is an EXTERNAL provider, so the signing scheme is
+ * Zernio's raw-body HMAC — we cannot impose our timestamp envelope on it; replay is bounded by
+ * `applyZernioPostEvent` being idempotent (at-least-once delivery → safe re-apply).
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function verify(rawBody: string, signature: string | null, secret: string): boolean {
-  if (!signature) return false;
-  const computed = createHmac("sha256", secret).update(rawBody).digest("hex");
-  const a = Buffer.from(computed);
-  const b = Buffer.from(signature);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
-  const raw = await request.text();
+  const body = await readCappedRawBody(request);
+  if (!body.ok) return NextResponse.json({ ok: false, error: body.error }, { status: body.status });
+  const raw = body.raw;
   const secret = process.env.ZERNIO_WEBHOOK_SECRET;
   // Fail CLOSED: public route — with no secret set, anyone could flip post status. Require it.
   if (!secret) return NextResponse.json({ ok: false, error: "webhook disabled — set ZERNIO_WEBHOOK_SECRET" }, { status: 503 });
-  if (!verify(raw, request.headers.get("X-Zernio-Signature"), secret)) {
+  if (!verifyRawBodySignature(raw, request.headers.get("X-Zernio-Signature"), secret)) {
     return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
   }
 
