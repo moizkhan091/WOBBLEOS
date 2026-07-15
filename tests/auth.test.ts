@@ -257,7 +257,15 @@ describe("per-founder session control", () => {
   });
 });
 
-describe("password change", () => {
+/**
+ * bcrypt is DELIBERATELY slow, and these tests exercise the real production cost factor (12) rather
+ * than a weakened one: changePassword hashes at cost 12, and each subsequent login runs a cost-12
+ * compare against it. That is ~1.5-2s of intentional crypto per test before any load, which overran
+ * vitest's 5s default on a busy machine. The timeout is raised — the assertions are unchanged, and the
+ * cost factor is NOT lowered, because "the rotated credential really is hashed at production strength"
+ * is part of what this suite is proving.
+ */
+describe("password change", { timeout: 30_000 }, () => {
   it("requires the current password", async () => {
     const { store } = makeStore();
     await expect(

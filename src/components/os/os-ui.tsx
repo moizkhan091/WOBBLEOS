@@ -548,10 +548,39 @@ function Kpi({ label, value, icon, color, sub }: { label: string; value: string;
   );
 }
 
+interface Readiness {
+  status: string;
+  checks: { name: string; ok: boolean; critical: boolean }[];
+}
+
+/**
+ * Readiness needs its own fetch rather than `useApi`: /api/health/ready deliberately answers 503 when a
+ * critical subsystem is down (it is an orchestrator gate), and useApi discards the body on any non-2xx.
+ * Reusing it would surface "Unknown" for the one case the tile exists to report — and, worse, fall back
+ * to a subtitle implying everything was fine. Here the body is parsed on BOTH 200 and 503, so a degraded
+ * system can name exactly what is down.
+ */
+function useReadiness(): { loading: boolean; data: Readiness | null } {
+  const [s, setS] = useState<{ loading: boolean; data: Readiness | null }>({ loading: true, data: null });
+  useEffect(() => {
+    let on = true;
+    fetch("/api/health/ready")
+      .then(async (r) => {
+        const j = (await r.json().catch(() => null)) as Readiness | null;
+        if (on) setS({ loading: false, data: j && Array.isArray(j.checks) ? j : null });
+      })
+      .catch(() => { if (on) setS({ loading: false, data: null }); });
+    return () => { on = false; };
+  }, []);
+  return s;
+}
+
 function CommandPage() {
   const ap = useApi<{ pendingCount: number }>("/api/approvals?status=pending&limit=1");
   const co = useApi<{ summary: Record<string, unknown> }>("/api/costs?limit=1");
   const au = useApi<{ events: Record<string, unknown>[] }>("/api/audit?limit=6");
+  // Aggregate readiness (db + storage + both workers). Public probe, so it never 401s.
+  const rd = useReadiness();
   const anyLoading = ap.loading || co.loading || au.loading;
   const offline = ap.status === 503 || co.status === 503 || au.status === 503;
   if (offline) return <StateBlock kind="offline" />;
@@ -559,13 +588,35 @@ function CommandPage() {
   const pending = ap.data?.pendingCount ?? 0;
   const today = fmtMoney((co.data?.summary as Record<string, unknown> | undefined)?.today);
   const events = au.data?.events ?? [];
+  // DERIVED from the registry + the WIRED component map — not a hand-typed number. Previously these
+  // two tiles were the string literals "9"/"of 26 modules" and "17"/"CI passing", which were both
+  // stale and unverifiable from the running system.
+  const total = Object.keys(MODULES).length;
+  const wired = Object.keys(MODULES).filter((id) => MODULES[id].status === "wired" && id in WIRED).length;
+  // Readiness is a live probe; while it is in flight (or unreachable) say so rather than implying health.
+  const ready = rd.data?.status === "ready";
+  const failing = (rd.data?.checks ?? []).filter((c) => !c.ok);
+  const systemValue = rd.loading ? "…" : !rd.data ? "Unknown" : ready ? "Ready" : "Degraded";
+  const systemSub = rd.loading
+    ? "checking…"
+    : !rd.data
+      ? "probe unreachable"
+      : failing.length
+        ? `${failing.map((c) => c.name).join(", ")} down`
+        : "db · storage · workers";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 14 }}>
         <Kpi label="Approvals pending" value={String(pending)} icon="BadgeCheck" color={pending > 0 ? C.orange : C.lime} sub="awaiting a founder" />
         <Kpi label="Spend · today" value={today} icon="Receipt" color={C.lime} sub="real model_runs" />
-        <Kpi label="Live pages wired" value="9" icon="PlugZap" color={C.blue} sub="of 26 modules" />
-        <Kpi label="Backend chunks green" value="17" icon="CircleCheck" color={C.lime} sub="CI passing" />
+        <Kpi label="Live pages wired" value={String(wired)} icon="PlugZap" color={C.blue} sub={`of ${total} modules`} />
+        <Kpi
+          label="System"
+          value={systemValue}
+          icon={ready ? "CircleCheck" : "TriangleAlert"}
+          color={rd.loading ? C.blue : ready ? C.lime : C.orange}
+          sub={systemSub}
+        />
       </div>
       <Panel style={{ padding: "8px 10px" }}>
         <div style={{ padding: "13px 14px 10px", fontSize: 10.5, letterSpacing: "0.08em", color: faint, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>RECENT ACTIVITY (audit log)</div>
