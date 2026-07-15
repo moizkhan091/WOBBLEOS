@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { driveSelectiveGraphRerun, rollbackRevisionCycle, getRevisionCycle, markRevisionReran } from "@/lib/selective-revision";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
+import { killSwitchResponse } from "@/lib/security-governance/enforcement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (!ok) return NextResponse.json({ ok: false, error: "cycle not found or already rolled back" }, { status: 409 });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    // A kill switch is deliberate containment, not a server fault — 409, never 500 (WOB-UAT-034).
+    const blocked = killSwitchResponse(error);
+    if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
   }
 }

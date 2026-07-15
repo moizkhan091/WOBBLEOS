@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { enqueueJob, processNextJob, type JobStore, type JobDeps } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
 import type { AuditEventInput } from "@/lib/domain/audit";
-import { AGENT_JOB_TYPES, blockedJobType, blockedJobTypes, loadEngagedSwitches, assertNotKilled, KillSwitchEngagedError } from "@/lib/security-governance/enforcement";
+import { AGENT_JOB_TYPES, blockedJobType, blockedJobTypes, loadEngagedSwitches, assertNotKilled, KillSwitchEngagedError, killSwitchResponse } from "@/lib/security-governance/enforcement";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { generalRegistry, knownJobTypes } from "@/lib/workers/registry";
 import type { KillSwitchRow } from "@/lib/domain/security-governance";
 
@@ -218,5 +220,40 @@ describe("loadEngagedSwitches fails OPEN on a read error (stated tradeoff)", () 
   it("returns no switches rather than throwing", async () => {
     const switches = await loadEngagedSwitches({ loadSwitches: async () => { throw new Error("db down"); } }).catch(() => "threw");
     expect(switches).not.toBe("threw");
+  });
+});
+
+describe("a contained action is 409, never 500", () => {
+  /**
+   * The first LIVE enforcement probe returned 500, because every enqueue route maps a thrown error to
+   * "unknown error". A 500 says THE SERVER BROKE; a kill switch is the opposite — the system is working
+   * exactly as instructed and refusing on purpose. A founder who cannot tell a deliberate control from a
+   * crash will either ignore real outages or "fix" their own containment, and retry logic hammers a 500
+   * while correctly backing off a 409.
+   */
+  it("maps KillSwitchEngagedError to 409 with the structured switch + reason", () => {
+    const r = killSwitchResponse(new KillSwitchEngagedError("agent", "content_worker", "suspected runaway loop"));
+    expect(r?.status).toBe(409);
+    expect(r?.body.blockedBy).toEqual({ targetType: "agent", targetRef: "content_worker", reason: "suspected runaway loop" });
+    // Structured, so the UI renders WHICH switch and WHY without parsing an error string.
+    expect(r?.body.error).toMatch(/agent:content_worker/);
+  });
+
+  it("returns null for any other error — a real fault must still surface as a fault", () => {
+    expect(killSwitchResponse(new Error("database exploded"))).toBeNull();
+    expect(killSwitchResponse("not even an error")).toBeNull();
+  });
+
+  /**
+   * Statically pins the mapping so a NEW enqueue route cannot silently reintroduce the 500. Any route
+   * that can enqueue durable work can throw KillSwitchEngagedError, and must translate it.
+   */
+  it("every route that enqueues durable work maps the kill switch to 409", () => {
+    const ENQUEUE_ROUTES = ["content/generate/route.ts", "jobs/route.ts", "revisions/[id]/action/route.ts"];
+    const missing = ENQUEUE_ROUTES.filter((rel) => {
+      const src = readFileSync(path.join(process.cwd(), "src", "app", "api", rel), "utf8");
+      return !src.includes("killSwitchResponse");
+    });
+    expect(missing, `enqueue routes that would 500 on a contained action: ${missing.join(", ")}`).toEqual([]);
   });
 });

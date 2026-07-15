@@ -3,6 +3,7 @@ import { z } from "zod";
 import { enqueueJob, listJobs } from "@/lib/jobs";
 import type { JobStatus } from "@/lib/domain/jobs";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
+import { killSwitchResponse } from "@/lib/security-governance/enforcement";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,9 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ ok: true, count: items.length, jobs: items });
   } catch (error) {
+    // A kill switch is deliberate containment, not a server fault — 409, never 500 (WOB-UAT-034).
+    const blocked = killSwitchResponse(error);
+    if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "unknown error" },
       { status: 500 },
@@ -72,6 +76,9 @@ export async function POST(request: Request) {
     const { job, deduped } = await enqueueJob(parsed.data);
     return NextResponse.json({ ok: true, deduped, job }, { status: deduped ? 200 : 201 });
   } catch (error) {
+    // A kill switch is deliberate containment, not a server fault — 409, never 500 (WOB-UAT-034).
+    const blocked = killSwitchResponse(error);
+    if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "unknown error" },
       { status: 500 },

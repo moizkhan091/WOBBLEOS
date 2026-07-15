@@ -37,6 +37,32 @@ export class KillSwitchEngagedError extends Error {
 }
 
 /**
+ * 409 CONFLICT — the correct status for contained work, and the reason this helper exists.
+ *
+ * The first live enforcement probe returned **500**, because every enqueue route maps a thrown error to
+ * "unknown error". A 500 says THE SERVER BROKE. A kill switch is the opposite: the system is working
+ * exactly as instructed and is refusing on purpose. A founder who cannot tell a deliberate control from
+ * a crash will either ignore real outages or "fix" their own containment — and an operator's retry logic
+ * will hammer a 500 while correctly backing off a 409.
+ *
+ * Use in any route that can enqueue or run department work:
+ *   catch (error) { const k = killSwitchResponse(error); if (k) return NextResponse.json(k.body, { status: k.status }); ... }
+ */
+export function killSwitchResponse(error: unknown): { status: number; body: { ok: false; error: string; blockedBy: { targetType: string; targetRef: string; reason: string } } } | null {
+  if (!(error instanceof KillSwitchEngagedError)) return null;
+  return {
+    status: 409,
+    body: {
+      ok: false,
+      error: error.message,
+      // Structured, not just prose: the UI must be able to render WHICH switch and WHY without parsing
+      // an error string.
+      blockedBy: { targetType: error.targetType, targetRef: error.targetRef, reason: error.switchReason },
+    },
+  };
+}
+
+/**
  * Which durable job types an AGENT owns.
  *
  * A kill switch on `agent:content_worker` must stop the work that agent actually performs, and that work
