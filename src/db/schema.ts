@@ -554,6 +554,27 @@ export const webhookEvents = pgTable("webhook_events", {
   updatedAt: updatedAt(),
 });
 
+/**
+ * Durable single-use claims for authenticated inbound webhook deliveries. The producer + hashed
+ * delivery identifier is unique, so concurrent app instances cannot ingest the same delivery twice.
+ * Only hashes are stored; signatures, shared secrets, and raw delivery identifiers never enter DB.
+ */
+export const webhookReplayClaims = pgTable("webhook_replay_claims", {
+  id: id(),
+  producer: varchar("producer", { length: 80 }).notNull(),
+  deliveryKeyHash: varchar("delivery_key_hash", { length: 64 }).notNull(),
+  payloadSha256: varchar("payload_sha256", { length: 64 }).notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("claimed"),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  metadata: metadata(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("webhook_replay_claims_producer_key_uidx").on(table.producer, table.deliveryKeyHash),
+  index("webhook_replay_claims_expires_idx").on(table.expiresAt),
+]);
+
 export const deadLetters = pgTable("dead_letters", {
   id: id(),
   sourceType: varchar("source_type", { length: 80 }).notNull(),

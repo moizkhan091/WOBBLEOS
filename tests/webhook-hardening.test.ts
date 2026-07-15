@@ -6,6 +6,21 @@ function req(body: string, headers: Record<string, string> = {}): Request {
   return new Request("http://x/webhook", { method: "POST", body, headers });
 }
 
+function streamedReq(chunks: string[], headers: Record<string, string> = {}): Request {
+  const encoder = new TextEncoder();
+  return new Request("http://x/webhook", {
+    method: "POST",
+    headers,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }),
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
 describe("webhook body-size cap (WOB-AUD-011)", () => {
   it("rejects a body over the cap via Content-Length before parsing", async () => {
     const r = await readCappedRawBody(req("{}", { "content-length": String(MAX_WEBHOOK_BODY_BYTES + 1) }), MAX_WEBHOOK_BODY_BYTES);
@@ -15,7 +30,7 @@ describe("webhook body-size cap (WOB-AUD-011)", () => {
 
   it("rejects an oversized actual body even if Content-Length lies", async () => {
     const big = "x".repeat(1024);
-    const r = await readCappedRawBody(req(big), 512);
+    const r = await readCappedRawBody(streamedReq([big], { "content-length": "1" }), 512);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.status).toBe(413);
   });
@@ -24,6 +39,47 @@ describe("webhook body-size cap (WOB-AUD-011)", () => {
     const r = await readCappedRawBody(req("{\"ok\":true}"), 4_000_000);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.raw).toBe("{\"ok\":true}");
+  });
+
+  it("rejects a chunked oversized request as soon as the byte threshold is crossed", async () => {
+    let cancelled = false;
+    const encoder = new TextEncoder();
+    const request = new Request("http://x/webhook", {
+      method: "POST",
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(encoder.encode("1234"));
+        },
+        cancel() { cancelled = true; },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    const r = await readCappedRawBody(request, 7);
+    expect(r).toMatchObject({ ok: false, status: 413 });
+    expect(cancelled).toBe(true);
+  });
+
+  it("rejects an oversized request with no Content-Length", async () => {
+    const r = await readCappedRawBody(streamedReq(["123", "456", "789"]), 8);
+    expect(r).toMatchObject({ ok: false, status: 413 });
+  });
+
+  it("counts multibyte UTF-8 content in bytes, not JavaScript characters", async () => {
+    expect("🙂".length).toBe(2);
+    const rejected = await readCappedRawBody(streamedReq(["🙂"]), 3);
+    expect(rejected).toMatchObject({ ok: false, status: 413 });
+    const accepted = await readCappedRawBody(streamedReq(["🙂"]), 4);
+    expect(accepted).toEqual({ ok: true, raw: "🙂" });
+  });
+
+  it("handles a missing body and never calls Request.text()", async () => {
+    const empty = new Request("http://x/webhook", { method: "POST" });
+    Object.defineProperty(empty, "text", { value: () => { throw new Error("text() must not be called"); } });
+    expect(await readCappedRawBody(empty, 10)).toEqual({ ok: true, raw: "" });
+
+    const normal = streamedReq(["ok"]);
+    Object.defineProperty(normal, "text", { value: () => { throw new Error("text() must not be called"); } });
+    expect(await readCappedRawBody(normal, 10)).toEqual({ ok: true, raw: "ok" });
   });
 });
 
