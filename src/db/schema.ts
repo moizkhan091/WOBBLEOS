@@ -2345,3 +2345,168 @@ export const revisionComponentVersions = pgTable("revision_component_versions", 
 }, (table) => [
   index("revision_component_versions_cycle_idx").on(table.cycleId, table.componentKey),
 ]);
+
+// ================================================================================================
+// Security & Governance (WOB-UAT-024). These four tables are GENUINELY new — each justified against
+// what already exists rather than added by default:
+//
+//  - `escalations` is WORKFLOW-scoped (department/workflow/task) and dedups per running task. A security
+//    finding is ASSET-scoped (an account, a policy, a client, a provider) and outlives any workflow, so
+//    it cannot be an escalation row. Findings LINK to an escalation when one is raised.
+//  - `approvals` remains the approval system; findings/incidents reference `approvalId` and never
+//    re-implement it.
+//  - `audit_logs` remains the immutable history; nothing here duplicates it.
+//  - `autonomy_policies` remains the policy engine; kill switches are a DIFFERENT control (see below).
+// ================================================================================================
+
+/**
+ * A security finding: something specific and evidence-backed that is wrong RIGHT NOW.
+ *
+ * Detection is DETERMINISTIC wherever the rule is decidable (`detectionMethod`), because a security
+ * verdict that can disagree with the enforcement it describes is worthless. An agent may only ADD
+ * interpretation to a finding — it can never overturn a deterministic result.
+ */
+export const securityFindings = pgTable("security_findings", {
+  id: id(),
+  // access | policy | isolation | config | provider | backup | version — the governance domain it came from.
+  kind: varchar("kind", { length: 32 }).notNull(),
+  severity: varchar("severity", { length: 16 }).notNull().default("medium"), // low | medium | high | critical
+  title: text("title").notNull(),
+  detail: text("detail").notNull(),
+  /** WHAT is affected — an account id, a policy category, a provider, a department slug. */
+  affectedAssetType: varchar("affected_asset_type", { length: 48 }).notNull(),
+  affectedAssetId: varchar("affected_asset_id", { length: 160 }),
+  clientWorkspaceId: varchar("client_workspace_id", { length: 120 }),
+  /** The agent/service that detected it — real attribution, never a default of "system". */
+  detectedBy: varchar("detected_by", { length: 120 }).notNull(),
+  // deterministic | evidence | agent_judgment — HOW the finding was reached. A founder must be able to
+  // tell a computed fact from an opinion; they carry different weight, so the distinction is explicit.
+  detectionMethod: varchar("detection_method", { length: 24 }).notNull().default("deterministic"),
+  /** What proves it. Never a bare assertion. */
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  reproduction: text("reproduction"),
+  // open | acknowledged | remediating | retest | resolved | accepted_risk | false_positive
+  status: varchar("status", { length: 24 }).notNull().default("open"),
+  remediationOwner: varchar("remediation_owner", { length: 120 }),
+  remediation: text("remediation"),
+  retestAt: timestamp("retest_at", { withTimezone: true }),
+  /** Closure PROOF — a resolved finding must record what re-verified it, not merely be marked done. */
+  closureProof: jsonb("closure_proof").$type<Record<string, unknown>>(),
+  resolvedBy: varchar("resolved_by", { length: 120 }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  // Links to the real machinery, so a founder action controls the actual thing and not just the record.
+  approvalId: text("approval_id"),
+  escalationId: text("escalation_id"),
+  qaReviewId: text("qa_review_id"),
+  incidentId: text("incident_id"),
+  governanceRunId: text("governance_run_id"),
+  /** Stable identity of the underlying problem — one OPEN finding per real problem (see the index). */
+  dedupeKey: varchar("dedupe_key", { length: 200 }).notNull(),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // At most one OPEN finding per real problem. A governance review runs on a schedule, and without this
+  // every tick would re-report the same unresolved issue and bury the new ones. Resolved / false-positive
+  // / accepted rows do not participate, so a recurrence AFTER closure is legitimately a new finding.
+  uniqueIndex("security_findings_open_dedup_uidx").on(table.dedupeKey).where(sql`status not in ('resolved','false_positive','accepted_risk')`),
+  index("security_findings_status_idx").on(table.status),
+  index("security_findings_kind_severity_idx").on(table.kind, table.severity),
+  index("security_findings_client_idx").on(table.clientWorkspaceId),
+  index("security_findings_created_idx").on(table.createdAt),
+]);
+
+/** A security incident: something that HAPPENED, with a lifecycle (detect → contain → recover → close). */
+export const securityIncidents = pgTable("security_incidents", {
+  id: id(),
+  title: text("title").notNull(),
+  severity: varchar("severity", { length: 16 }).notNull().default("medium"),
+  /** governance_review | readiness | worker | provider | backup | founder | version_parity */
+  detectionSource: varchar("detection_source", { length: 48 }).notNull(),
+  affectedService: varchar("affected_service", { length: 120 }),
+  clientWorkspaceId: varchar("client_workspace_id", { length: 120 }),
+  // detected | contained | remediating | recovered | resolved | closed
+  status: varchar("status", { length: 24 }).notNull().default("detected"),
+  /** Append-only lifecycle: [{ at, actor, event, detail }]. The history IS the incident record. */
+  timeline: jsonb("timeline").$type<Record<string, unknown>[]>().notNull().default([]),
+  containment: text("containment"),
+  remediation: text("remediation"),
+  recovery: text("recovery"),
+  founderDecision: text("founder_decision"),
+  postIncidentReview: text("post_incident_review"),
+  openedBy: varchar("opened_by", { length: 120 }).notNull(),
+  resolvedBy: varchar("resolved_by", { length: 120 }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  approvalId: text("approval_id"),
+  escalationId: text("escalation_id"),
+  /** Stable identity so a recurring condition updates ONE incident instead of spawning thousands. */
+  dedupeKey: varchar("dedupe_key", { length: 200 }).notNull(),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  uniqueIndex("security_incidents_open_dedup_uidx").on(table.dedupeKey).where(sql`status not in ('resolved','closed')`),
+  index("security_incidents_status_idx").on(table.status),
+  index("security_incidents_created_idx").on(table.createdAt),
+]);
+
+/** The risk register: something that MIGHT happen, tracked deliberately rather than rediscovered twice. */
+export const riskRegister = pgTable("risk_register", {
+  id: id(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: varchar("category", { length: 48 }).notNull(),
+  severity: varchar("severity", { length: 16 }).notNull().default("medium"),
+  likelihood: varchar("likelihood", { length: 16 }).notNull().default("possible"), // rare|unlikely|possible|likely|almost_certain
+  impact: text("impact").notNull(),
+  affectedClients: jsonb("affected_clients").$type<string[]>().notNull().default([]),
+  affectedSystems: jsonb("affected_systems").$type<string[]>().notNull().default([]),
+  owner: varchar("owner", { length: 120 }).notNull(),
+  mitigation: text("mitigation"),
+  reviewAt: timestamp("review_at", { withTimezone: true }),
+  status: varchar("status", { length: 24 }).notNull().default("open"), // open | mitigating | accepted | closed
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  /** Version history lives in `metadata.history` — a risk assessment CHANGING is the interesting part. */
+  version: integer("version").notNull().default(1),
+  createdBy: varchar("created_by", { length: 120 }).notNull(),
+  updatedBy: varchar("updated_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("risk_register_status_idx").on(table.status),
+  index("risk_register_review_idx").on(table.reviewAt),
+]);
+
+/**
+ * TARGETED kill switches (agent | workflow | provider | department).
+ *
+ * Deliberately NOT a global off-switch. `src/lib/domain/autonomy.ts` states the doctrine: "Autonomy is
+ * PER-ACTION and EARNED, never a global switch." A single master switch would contradict that, and would
+ * also be the kind of control nobody dares to use. A TARGETED switch is consistent with the doctrine: it
+ * disables ONE named thing, for a stated reason, with audited authority and a recorded reactivation.
+ *
+ * The pre-existing `automations.kill_switch_key` column was dead — no read logic anywhere in the repo.
+ * This is the real control, and it is ENFORCED at the point of execution rather than merely recorded.
+ */
+export const killSwitches = pgTable("kill_switches", {
+  id: id(),
+  targetType: varchar("target_type", { length: 24 }).notNull(), // agent | workflow | provider | department
+  targetRef: varchar("target_ref", { length: 160 }).notNull(),
+  state: varchar("state", { length: 16 }).notNull().default("disabled"), // disabled | active
+  reason: text("reason").notNull(),
+  disabledBy: varchar("disabled_by", { length: 120 }).notNull(),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }).notNull().defaultNow(),
+  reactivatedBy: varchar("reactivated_by", { length: 120 }),
+  reactivatedAt: timestamp("reactivated_at", { withTimezone: true }),
+  reactivationReason: text("reactivation_reason"),
+  approvalId: text("approval_id"),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  // One live switch per target. Re-disabling an already-disabled target must not create a second row,
+  // which would make "is this off?" ambiguous — the one question a kill switch must answer definitively.
+  uniqueIndex("kill_switches_target_uidx").on(table.targetType, table.targetRef).where(sql`state = 'disabled'`),
+  index("kill_switches_state_idx").on(table.state),
+]);

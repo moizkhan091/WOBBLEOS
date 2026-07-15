@@ -379,6 +379,13 @@
       "when": 1784132685981,
       "tag": "0053_department_service_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1784149316497,
+      "tag": "0054_security_governance",
+      "breakpoints": true
     }
   ]
 }
