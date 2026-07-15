@@ -372,6 +372,13 @@
       "when": 1784119230695,
       "tag": "0052_department_operating_model",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1784132685981,
+      "tag": "0053_department_service_bindings",
+      "breakpoints": true
     }
   ]
 }

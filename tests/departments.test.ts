@@ -4,7 +4,7 @@ import type { HandoffRow } from "@/lib/domain/handoff-delivery";
 
 const t = (s: string) => new Date(s);
 
-const reg = (over: Partial<RegisteredDepartment>): RegisteredDepartment => ({ slug: "x", name: "X", status: "active", healthStatus: "unknown", purpose: "p", operatingModel: "agent_team", orchestratorAgentSlug: null, outboundProducts: [], downstreamConsumers: [], ...over });
+const reg = (over: Partial<RegisteredDepartment>): RegisteredDepartment => ({ slug: "x", name: "X", status: "active", healthStatus: "unknown", purpose: "p", operatingModel: "agent_team", serviceBindings: [], orchestratorAgentSlug: null, outboundProducts: [], downstreamConsumers: [], ...over });
 
 describe("shapeDepartmentRollups (registry ∪ live activity)", () => {
   it("rolls up registry identity + handoff state + cost + weighted quality + member counts", () => {

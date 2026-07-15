@@ -1712,6 +1712,9 @@ export const departments = pgTable("departments", {
   version: integer("version").notNull().default(1),
   orchestratorAgentSlug: varchar("orchestrator_agent_slug", { length: 120 }),
   deterministicServices: jsonb("deterministic_services").$type<string[]>().notNull().default([]),
+  // For a `service_department`: the real workers/jobs/routes/adapters its capability is built from.
+  // Health derives from these rather than from `department_members` (WOB-UAT-025).
+  serviceBindings: jsonb("service_bindings").$type<Record<string, unknown>[]>().notNull().default([]),
   permissions: jsonb("permissions").$type<Record<string, unknown>>().notNull().default({}),
   io: jsonb("io").$type<Record<string, unknown>>().notNull().default({}),
   events: jsonb("events").$type<Record<string, unknown>>().notNull().default({}),

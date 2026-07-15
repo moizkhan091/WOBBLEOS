@@ -1,0 +1,1 @@
+ALTER TABLE "departments" ADD COLUMN "service_bindings" jsonb DEFAULT '[]'::jsonb NOT NULL;

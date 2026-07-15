@@ -160,7 +160,7 @@ export async function setMemberActive(id: string, active: boolean, deps: Departm
 
 function serializeDepartment(row: Partial<DepartmentRow>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
-  for (const k of ["permissions", "io", "events", "governance", "kpis", "budget", "limits", "metadata", "deterministicServices"]) {
+  for (const k of ["permissions", "io", "events", "governance", "kpis", "budget", "limits", "metadata", "deterministicServices", "serviceBindings"]) {
     if (k in out && out[k] !== undefined) out[k] = out[k] as unknown as Record<string, unknown>;
   }
   return out;

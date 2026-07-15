@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { handoffs as handoffsTable, departments as departmentsTable, departmentMembers as departmentMembersTable } from "@/db/schema";
 import type { HandoffRow } from "@/lib/domain/handoff-delivery";
+import { resolveServiceBindings } from "@/lib/departments/service-bindings";
 
 /**
  * Department roll-up + detail (Phase 3). The department is a first-class operating unit — its identity,
@@ -36,8 +37,10 @@ export interface RegisteredDepartment {
   status: string;
   healthStatus: string;
   purpose: string;
-  /** agent_team | human_control_plane — the UI must not render "team 0/0" for a control plane. */
+  /** agent_team | human_control_plane | service_department — drives what the UI renders as the "team". */
   operatingModel: string;
+  /** DECLARED backing services for a service_department (unresolved — `getDepartmentRollups` resolves them). */
+  serviceBindings: { kind: string; ref: string; required: boolean }[];
   orchestratorAgentSlug: string | null;
   outboundProducts: string[];
   downstreamConsumers: string[];
@@ -50,10 +53,16 @@ export interface DepartmentRollup {
   status: string | null;
   healthStatus: string | null;
   /**
-   * agent_team | human_control_plane (null for an unregistered department). The UI needs this to avoid
-   * rendering "team 0/0" for a control plane whose team is the founders.
+   * agent_team | human_control_plane | service_department (null for an unregistered department). The UI
+   * needs this to avoid rendering "team 0/0" for a control plane whose team is the founders, or for a
+   * service department whose "team" is a worker + a queue (WOB-UAT-022, WOB-UAT-025).
    */
   operatingModel: string | null;
+  /**
+   * For a service_department: its backing services and their LIVE state, so the UI can show which code
+   * runs this department and whether it is actually up — not just a friendlier label. Empty otherwise.
+   */
+  serviceBindings: { kind: string; ref: string; required: boolean; state: string; detail?: string }[];
   handoffs: {
     total: number;
     byState: Record<string, number>;
@@ -111,12 +120,23 @@ const STUCK = new Set(["dead_lettered", "failed"]);
  * (even with no activity yet); a department seen only in handoff activity also appears (name/status null).
  * Sorted by unhealthy-first (stuck), then most in-flight, then name — what needs attention surfaces first.
  */
-export function shapeDepartmentRollups(handoffRows: HandoffAggRow[], memberRows: MemberAggRow[], registered: RegisteredDepartment[]): DepartmentRollup[] {
+export function shapeDepartmentRollups(
+  handoffRows: HandoffAggRow[],
+  memberRows: MemberAggRow[],
+  registered: RegisteredDepartment[],
+  /**
+   * Resolved backing-service states by department slug. Passed IN rather than resolved here because
+   * resolving reads worker heartbeats off disk, and this shaper is pure so the rollup logic stays
+   * unit-testable without a filesystem. Absent → the department renders no binding chips rather than
+   * inventing "alive" ones.
+   */
+  resolvedBindings: Map<string, { kind: string; ref: string; required: boolean; state: string; detail?: string }[]> = new Map(),
+): DepartmentRollup[] {
   const byDept = new Map<string, DepartmentRollup>();
   const ensure = (department: string): DepartmentRollup => {
     let d = byDept.get(department);
     if (!d) {
-      d = { department, name: null, status: null, healthStatus: null, operatingModel: null, handoffs: { total: 0, byState: {}, inFlight: 0, completed: 0, stuck: 0 }, cost: { totalEstimate: 0 }, quality: { avg: null, samples: 0 }, members: { total: 0, active: 0 }, lastActivityAt: null };
+      d = { department, name: null, status: null, healthStatus: null, operatingModel: null, serviceBindings: [], handoffs: { total: 0, byState: {}, inFlight: 0, completed: 0, stuck: 0 }, cost: { totalEstimate: 0 }, quality: { avg: null, samples: 0 }, members: { total: 0, active: 0 }, lastActivityAt: null };
       byDept.set(department, d);
     }
     return d;
@@ -128,6 +148,7 @@ export function shapeDepartmentRollups(handoffRows: HandoffAggRow[], memberRows:
     d.status = r.status;
     d.healthStatus = r.healthStatus;
     d.operatingModel = r.operatingModel;
+    d.serviceBindings = resolvedBindings.get(r.slug) ?? [];
   }
 
   const qual = new Map<string, { sum: number; n: number }>();
@@ -163,7 +184,15 @@ export function shapeDepartmentRollups(handoffRows: HandoffAggRow[], memberRows:
 export async function getDepartmentRollups(deps: DepartmentDeps = {}): Promise<DepartmentRollup[]> {
   const store = deps.store ?? defaultStore();
   const [handoffRows, memberRows, registered] = await Promise.all([store.handoffAggByDepartment(), store.memberCountsByDepartment(), store.registeredDepartments()]);
-  return shapeDepartmentRollups(handoffRows, memberRows, registered);
+  // Resolve backing services ONLY for service departments — for an agent team or a control plane the
+  // list is empty by design and resolving it would prove nothing.
+  const resolved = new Map<string, { kind: string; ref: string; required: boolean; state: string; detail?: string }[]>();
+  await Promise.all(
+    registered
+      .filter((r) => r.operatingModel === "service_department" && r.serviceBindings.length > 0)
+      .map(async (r) => void resolved.set(r.slug, await resolveServiceBindings(r.serviceBindings.map((b) => ({ ...b, kind: b.kind as never }))))),
+  );
+  return shapeDepartmentRollups(handoffRows, memberRows, registered, resolved);
 }
 
 /** Drill into one department: its registry facts + its team (from department_members) + recent handoffs. */
@@ -230,6 +259,7 @@ function toRegistered(r: typeof departmentsTable.$inferSelect): RegisteredDepart
     healthStatus: r.healthStatus,
     purpose: r.purpose,
     operatingModel: r.operatingModel,
+    serviceBindings: ((r.serviceBindings ?? []) as { kind: string; ref: string; required: boolean }[]),
     orchestratorAgentSlug: r.orchestratorAgentSlug ?? null,
     outboundProducts: io.outboundProducts ?? [],
     downstreamConsumers: io.downstreamConsumers ?? [],

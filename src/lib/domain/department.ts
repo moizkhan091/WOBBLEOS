@@ -24,13 +24,47 @@ export type DepartmentStatus = (typeof DEPARTMENT_STATUSES)[number];
  *                       and what every LLM-backed department is.
  *   human_control_plane the FOUNDERS are the team. It owns approvals, escalations and intervention
  *                       controls; it deliberately has no orchestrator and no agent members.
+ *   service_department  the capability is real CODE — durable jobs, a dedicated worker, deterministic
+ *                       routes — rather than a roster of LLM agents. It may own agents, but its
+ *                       health comes from its BACKING SERVICES, not from `department_members`.
  *
  * Without this distinction the health classifier reads "no orchestrator + 0 members" as broken, and
  * reports a correctly-configured human console as `misconfigured` forever (WOB-UAT-022). Staffing it
  * with LLM agents to silence that would be a lie: no agent approves on a founder's behalf.
+ *
+ * `service_department` exists for the same reason, one layer down (WOB-UAT-025): Free Audit, Media
+ * Production and Publishing all WORK — `/api/audit/free`, `media_jobs` + a dedicated `worker-video`,
+ * `scheduled_posts` + the publisher registry — but they carry no `department_members`, so the
+ * Departments screen rendered them "draft · team 0/0", IDENTICALLY to Design Intelligence and Security
+ * & Governance, which genuinely do not exist. A founder reading that screen would conclude three
+ * working capabilities were unbuilt, and two unbuilt ones were merely understaffed. Both halves are
+ * false. The fix is NOT a label: a service department declares the services that back it, and its
+ * health is derived from whether those are actually alive.
  */
-export const DEPARTMENT_OPERATING_MODELS = ["agent_team", "human_control_plane"] as const;
+export const DEPARTMENT_OPERATING_MODELS = ["agent_team", "human_control_plane", "service_department"] as const;
 export type DepartmentOperatingModel = (typeof DEPARTMENT_OPERATING_MODELS)[number];
+
+/**
+ * A concrete thing that backs a `service_department`, and how to know it is alive. Health derives from
+ * these, so a service department can be truthfully `healthy`, `degraded` or `blocked` without ever
+ * having an agent roster — and cannot claim health it has not earned.
+ *
+ *   worker    a named worker process that must be heartbeating (e.g. `worker-video`)
+ *   job_type  a durable job type the queue must know how to run (e.g. `audit.paid`)
+ *   route     a deterministic API surface the department's work enters through
+ *   adapter   an external-provider adapter whose absence is a truthful BLOCK, not a failure
+ */
+export const SERVICE_BINDING_KINDS = ["worker", "job_type", "route", "adapter"] as const;
+export type ServiceBindingKind = (typeof SERVICE_BINDING_KINDS)[number];
+
+export const serviceBindingSchema = z.object({
+  kind: z.enum(SERVICE_BINDING_KINDS),
+  /** The worker name / job type / route path / adapter id. Must match what the runtime actually reports. */
+  ref: z.string().trim().min(1),
+  /** When true, the department cannot operate at all without this. A missing optional binding degrades. */
+  required: z.boolean().default(true),
+});
+export type ServiceBinding = z.infer<typeof serviceBindingSchema>;
 
 /** Truthful operational health — computed from real signals, never assumed from record existence. */
 export const DEPARTMENT_HEALTH_STATUSES = [
@@ -146,6 +180,13 @@ export interface DepartmentRow {
   orchestratorAgentSlug: string | null;
   /** Deterministic (non-LLM) services this department owns, by identifier. */
   deterministicServices: string[];
+  /**
+   * For a `service_department`: the real workers/jobs/routes/adapters its capability is built from.
+   * Health is derived from these rather than from `department_members` (WOB-UAT-025). Empty for an
+   * `agent_team` or a `human_control_plane` — a service department with none is `misconfigured`,
+   * because "I am backed by code" with no code named is exactly the unverifiable claim this replaces.
+   */
+  serviceBindings: ServiceBinding[];
   permissions: DepartmentPermissions;
   io: DepartmentIo;
   events: DepartmentEvents;
@@ -171,6 +212,7 @@ export const departmentInputSchema = z.object({
   version: z.number().int().positive().default(1),
   orchestratorAgentSlug: z.string().trim().min(1).nullable().default(null),
   deterministicServices: stringList,
+  serviceBindings: z.array(serviceBindingSchema).default([]),
   permissions: departmentPermissionsSchema.default(() => departmentPermissionsSchema.parse({})),
   io: departmentIoSchema.default(() => departmentIoSchema.parse({})),
   events: departmentEventsSchema.default(() => departmentEventsSchema.parse({})),
@@ -199,6 +241,7 @@ export function buildDepartmentRow(input: DepartmentInput, opts: { id?: string; 
     version: parsed.version,
     orchestratorAgentSlug: parsed.orchestratorAgentSlug,
     deterministicServices: parsed.deterministicServices,
+    serviceBindings: parsed.serviceBindings,
     permissions: parsed.permissions,
     io: parsed.io,
     events: parsed.events,

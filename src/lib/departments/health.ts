@@ -3,6 +3,7 @@ import { getDb, type Db } from "@/db";
 import { handoffs as handoffsTable, departmentMembers as departmentMembersTable, agents as agentsTable, approvals as approvalsTable } from "@/db/schema";
 import type { DepartmentRow, DepartmentStatus, DepartmentHealthStatus, DepartmentOperatingModel } from "@/lib/domain/department";
 import { enforceBudget } from "@/lib/departments/enforcement";
+import { resolveServiceBindings } from "@/lib/departments/service-bindings";
 import { getDepartment, listDepartments, setDepartmentHealth, type DepartmentRegistryDeps } from "@/lib/departments/registry";
 
 /**
@@ -32,6 +33,13 @@ export interface DepartmentHealthSignals {
   qaFailureRate?: number | null;
   staleKnowledgeDays?: number | null;
   missingCredentials?: string[];
+  /**
+   * For a `service_department` (WOB-UAT-025): the real state of each declared backing service. This is
+   * where a service department's health comes from — NOT `department_members`, which it legitimately
+   * has none of. `unknown` is never treated as fine: if we cannot see a worker's heartbeat we have
+   * learned nothing about it, and refusing to guess is the whole point of the version-parity precedent.
+   */
+  serviceBindings?: { kind: string; ref: string; required: boolean; state: "alive" | "missing" | "blocked" | "unknown"; detail?: string }[];
 }
 
 export interface HealthThresholds {
@@ -70,10 +78,17 @@ export function computeDepartmentHealth(
   }
 
   const isAgentTeam = operatingModel === "agent_team";
+  const isService = operatingModel === "service_department";
+  const bindings = signals.serviceBindings ?? [];
 
   // misconfigured — the department can't function as declared.
   if (isAgentTeam && !signals.orchestratorRegistered) reasons.push("no orchestrator registered");
   if (isAgentTeam && signals.totalAgents === 0) reasons.push("no specialist team (0 members)");
+  // A service department that names NO backing service is misconfigured, not healthy. "My capability is
+  // real code" with no code named is exactly the unverifiable claim this operating model replaces —
+  // without this, `service_department` would become a way to silence the staffing check and report
+  // green forever, which is the WOB-UAT-022 mistake with a new label.
+  if (isService && bindings.length === 0) reasons.push("service department declares no backing services");
   if (signals.missingCredentials?.length) reasons.push(`missing credentials: ${signals.missingCredentials.join(", ")}`);
   if (reasons.length) return { status: "misconfigured", reasons };
 
@@ -81,7 +96,20 @@ export function computeDepartmentHealth(
   if (signals.orchestratorRegistered && !signals.orchestratorActive) reasons.push("orchestrator agent is inactive");
   if (signals.totalAgents > 0 && signals.activeAgents === 0) reasons.push("all specialist agents are inactive");
   if (signals.providerHealthy === false) reasons.push("model provider is unhealthy");
+  // A REQUIRED backing service that is gone (worker not heartbeating, job type unregistered) means the
+  // capability cannot run at all — e.g. stop `worker-video` and Media Production is genuinely down.
+  for (const b of bindings.filter((b) => b.required && b.state === "missing")) {
+    reasons.push(`required ${b.kind} '${b.ref}' is not available${b.detail ? ` (${b.detail})` : ""}`);
+  }
   if (reasons.length) return { status: "unavailable", reasons };
+
+  // blocked — the capability is built and running, but an external dependency is truthfully absent.
+  // Distinct from `unavailable` on purpose: "no FAL_KEY" is a credential the founder can add, not a
+  // broken system, and Media Production already models exactly this at the job level.
+  for (const b of bindings.filter((b) => b.required && b.state === "blocked")) {
+    reasons.push(`${b.kind} '${b.ref}' is blocked${b.detail ? `: ${b.detail}` : ""}`);
+  }
+  if (reasons.length) return { status: "blocked", reasons };
 
   // over_budget — spend has exceeded a configured cap.
   if (signals.overBudget) return { status: "over_budget", reasons: ["spend exceeds the department budget"] };
@@ -105,7 +133,17 @@ export function computeDepartmentHealth(
   if (signals.failed > 0) reasons.push(`${signals.failed} failed handoff(s) retrying`);
   if (signals.qaFailureRate != null && signals.qaFailureRate > thresholds.qaFailureDegraded) reasons.push(`QA failure rate ${(signals.qaFailureRate * 100).toFixed(0)}%`);
   if (signals.backlog >= thresholds.backlogDegraded) reasons.push(`backlog ${signals.backlog} at/over degrade threshold ${thresholds.backlogDegraded}`);
+  // An OPTIONAL binding that is gone impairs the department without stopping it.
+  for (const b of bindings.filter((b) => !b.required && (b.state === "missing" || b.state === "blocked"))) {
+    reasons.push(`optional ${b.kind} '${b.ref}' is ${b.state}`);
+  }
   if (reasons.length) return { status: "degraded", reasons };
+
+  // A binding we cannot SEE proves nothing about it, so we refuse to report health we have not earned.
+  // Same rule the version-parity gate uses for a stale heartbeat: `unknown` is never silently "fine".
+  // This is last so a real, nameable problem above always wins over "I couldn't check".
+  const unknown = bindings.filter((b) => b.required && b.state === "unknown");
+  if (unknown.length) return { status: "unknown", reasons: unknown.map((b) => `cannot verify ${b.kind} '${b.ref}' — no recent signal`) };
 
   return { status: "healthy", reasons: [] };
 }
@@ -175,6 +213,11 @@ export async function gatherSignals(department: DepartmentRow, db: Db = getDb())
 
   const budgetDecision = enforceBudget(department.budget, { cents: spendCents });
 
+  // Only resolved for a service department — for an agent team or a control plane the bindings list is
+  // empty by design, and resolving it would just be work that proves nothing.
+  const serviceBindings =
+    department.operatingModel === "service_department" ? await resolveServiceBindings(department.serviceBindings) : undefined;
+
   return {
     orchestratorRegistered: !!department.orchestratorAgentSlug,
     orchestratorActive,
@@ -188,5 +231,6 @@ export async function gatherSignals(department: DepartmentRow, db: Db = getDb())
     overBudget: budgetDecision.overBudget,
     blockedApprovals: Number(approvalRows[0]?.n ?? 0),
     downstreamDeliveryFailures: count("dead_lettered"),
+    serviceBindings,
   };
 }

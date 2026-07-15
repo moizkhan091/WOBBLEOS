@@ -5182,7 +5182,7 @@ function HandoffPage() {
 }
 
 // ---- Departments & Handoffs Command Centre (Phase 3) ----
-type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; operatingModel: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
+type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; operatingModel: string | null; serviceBindings?: { kind: string; ref: string; required: boolean; state: string; detail?: string }[]; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
 type HandoffView = { id: string; department: string; deliveryState: string; sourceAgent: string; destinationAgent: string | null; workflowId: string; clientWorkspaceId: string | null; retryCount: number; failureReason: string | null; correlationId: string; causationId: string | null; costEstimate: string | null; latencyMs: number | null; qualityScore: string | null };
 type EscView = { id: string; departmentSlug: string; reason: string; severity: string; status: string; requiredDecision: string; assignee: string | null; workflowId: string | null; resolutionAction: string | null };
 type BudgetStateView = { departmentSlug: string; caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; concurrencyLimit: number }; usage: { dailyCents: number; monthlyCents: number; dailyTokens: number; activeReservations: number }; remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null }; providerUsage: { actualCostCents: number; actualRows: number; estimatedRows: number; unverifiedRows: number } };
@@ -5302,16 +5302,34 @@ function DepartmentsPage() {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Tag text={d.healthStatus ?? "unknown"} color={HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray} />
-                {/* A human_control_plane's team is the FOUNDERS — rendering "team 0/0" for it reads as
-                    "unstaffed" when it is correctly configured. Show what actually operates it. */}
+                {/* WHAT OPERATES THIS DEPARTMENT — the three models are genuinely different things, and
+                    rendering "team 0/0" for all of them is what made a working capability and an absent
+                    one look identical (WOB-UAT-022, WOB-UAT-025). A control plane's team is the FOUNDERS;
+                    a service department's "team" is CODE (a worker, a queue, a route); only an agent_team
+                    is staffed by agents, and one with 0 members really is unstaffed. */}
                 {d.operatingModel === "human_control_plane" ? (
                   <Tag text="human-operated · founders" color={C.blue} />
+                ) : d.operatingModel === "service_department" ? (
+                  <Tag text={`service · ${d.serviceBindings?.length ?? 0} backing service${(d.serviceBindings?.length ?? 0) === 1 ? "" : "s"}`} color={C.blue} />
                 ) : d.members.total === 0 ? (
                   <Tag text="unstaffed · no agents assigned" color={C.orange} />
                 ) : (
                   <Tag text={`team ${d.members.active}/${d.members.total}`} color={C.gray} />
                 )}
               </div>
+              {/* The substance behind the "service" label: WHICH code backs this, and is it alive right
+                  now. Without this the label is just a nicer word for the same unverifiable claim. */}
+              {d.operatingModel === "service_department" && d.serviceBindings?.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {d.serviceBindings.map((b) => (
+                    <Tag
+                      key={`${b.kind}:${b.ref}`}
+                      text={`${b.ref} · ${b.state}`}
+                      color={b.state === "alive" ? C.lime : b.state === "blocked" || b.state === "missing" ? C.orange : C.gray}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 11, color: faint }}>
                 <span>in-flight {d.handoffs.inFlight}</span>
                 <span>done {d.handoffs.completed}</span>

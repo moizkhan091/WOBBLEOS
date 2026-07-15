@@ -32,7 +32,19 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "free_audit",
     name: "Free Audit",
     purpose: "Produce an evidence-backed diagnostic + opportunity assessment + service matching for a prospect.",
-    status: "draft", // becomes a real multi-agent flow in Phase 9
+    // ACTIVE as a service_department (WOB-UAT-025): this capability WORKS today and was rendering as
+    // "draft · team 0/0", indistinguishable from a department that does not exist. It is deliberately
+    // NOT an agent_team — `/api/audit/free` runs a deterministic `diagnose()` IN-REQUEST with no durable
+    // job and no orchestrator, so declaring an agent roster would describe a system that isn't there.
+    // Honest scope note: it is synchronous, so it has no retry/checkpointing — unlike `audit.paid`.
+    // Making it durable is real work, tracked separately; it is not a reason to call it draft today.
+    status: "active",
+    operatingModel: "service_department",
+    deterministicServices: ["diagnose", "runFreeAudit"],
+    serviceBindings: [
+      { kind: "route", ref: "/api/audit/free", required: true },
+      { kind: "route", ref: "/api/audit/pitch", required: true },
+    ],
     permissions: { authorizedMemoryScopes: ["company", "offer"], permittedDataClassifications: ["internal", "client_confidential"] },
     io: { inboundCapabilities: ["run_free_audit"], acceptedHandoffSchemas: [], outboundProducts: ["diagnostic", "opportunity_assessment", "service_matching", "presentation"], downstreamConsumers: ["sales_crm"] },
     owner: "Moiz",
@@ -94,7 +106,20 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "media_production",
     name: "Media Production",
     purpose: "Generate and process media assets from an approved design brief (reference-conditioned).",
-    status: "draft",
+    // ACTIVE as a service_department (WOB-UAT-025): `media_jobs` + a lease-based dedicated `worker-video`
+    // container are real and running. The work is executed by a durable queue, not an agent roster.
+    // The `fal` adapter is REQUIRED, so with no FAL_KEY this department reports `blocked` — which is the
+    // truth and already exactly what the job layer does (unknown/unconfigured provider → terminal
+    // `blocked` + audit, never a synthetic success). Department health now says the same thing the jobs
+    // say, instead of "draft".
+    status: "active",
+    operatingModel: "service_department",
+    deterministicServices: ["dispatchMediaJobs", "runMediaWorkerCycle"],
+    serviceBindings: [
+      { kind: "worker", ref: "worker-video", required: true },
+      { kind: "adapter", ref: "fal", required: true },
+    ],
+    degradedBehaviour: "queue media jobs; block honestly when no provider credential is configured; never fabricate an asset",
     permissions: { authorizedMemoryScopes: ["design", "brand"], permittedDataClassifications: ["internal"] },
     io: { inboundCapabilities: ["produce_media"], acceptedHandoffSchemas: ["design_briefs"], outboundProducts: ["media_assets"], downstreamConsumers: ["publishing"] },
     owner: "Moiz",
@@ -103,7 +128,18 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     slug: "publishing",
     name: "Publishing",
     purpose: "Schedule and publish approved content across channels.",
-    status: "draft",
+    // ACTIVE as a service_department (WOB-UAT-025): `scheduled_posts` + the publisher registry, driven by
+    // `dispatchDuePosts` on the GENERAL worker's scheduler — hence the `worker` binding, not a dedicated one.
+    // `zernio` is deliberately NOT a binding: `manual` publishing is a complete, legitimate operating
+    // model (WOBBLE prepares, a human posts and marks it done), so a missing Zernio key does not degrade
+    // this department. Declaring it would make Publishing permanently "degraded" in every environment
+    // without that key — a false alarm, and false alarms are what teach founders to ignore health.
+    // Per-publisher truth is reported by `GET /api/library/publishers` instead (WOB-UAT-006).
+    status: "active",
+    operatingModel: "service_department",
+    deterministicServices: ["schedulePost", "dispatchDuePosts", "applyZernioPostEvent"],
+    serviceBindings: [{ kind: "worker", ref: "worker", required: true }],
+    degradedBehaviour: "hold posts as scheduled; fail unresolvable publishers loudly with a reason; never silently defer",
     permissions: { authorizedMemoryScopes: ["content"], permittedDataClassifications: ["internal", "public"] },
     io: { inboundCapabilities: ["publish"], acceptedHandoffSchemas: ["content_pack", "media_assets"], outboundProducts: ["published_content"], downstreamConsumers: ["founder_command_centre"] },
     governance: { requiredApprovals: ["content_packet"], escalationRules: [] },

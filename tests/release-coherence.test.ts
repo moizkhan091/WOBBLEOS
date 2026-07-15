@@ -13,16 +13,42 @@ const activeDepts = CANONICAL_DEPARTMENTS.filter((d) => d.status === "active");
 const effectiveStatus = (a: { status?: string }): string => a.status ?? "active";
 
 describe("release coherence — departments", () => {
-  it("every ACTIVE department has a registered, non-paused orchestrator (except the human-operated hub)", () => {
+  it("every ACTIVE agent_team has a registered, non-paused orchestrator", () => {
     const bad: string[] = [];
     for (const d of activeDepts) {
-      if (d.slug === "founder_command_centre") continue; // human-operated, no LLM orchestrator by design
+      // Exempt by OPERATING MODEL, not by slug. This used to hardcode `founder_command_centre`, which
+      // was written before the model existed and would have needed a new special-case for every
+      // non-agent department. Only an agent_team is run BY an orchestrator: a human_control_plane is run
+      // by the founders and a service_department is run by code (its own coherence is asserted below).
+      if ((d.operatingModel ?? "agent_team") !== "agent_team") continue;
       const slug = d.orchestratorAgentSlug;
       const agent = slug ? agentBySlug.get(slug) : undefined;
       if (!agent) bad.push(`${d.slug}: orchestrator '${slug}' not registered`);
       else if (effectiveStatus(agent) === "paused") bad.push(`${d.slug}: orchestrator '${slug}' is paused`);
     }
     expect(bad, `active departments with a missing/paused orchestrator: ${bad.join("; ")}`).toEqual([]);
+  });
+
+  /**
+   * The exemption above must not become an escape hatch (WOB-UAT-025). An agent_team proves itself by
+   * naming a real orchestrator; a service_department must prove itself by naming the real code that
+   * backs it. Without this, marking a department `service_department` would silence the orchestrator
+   * check and let an EMPTY department report active — precisely the "green because the record exists"
+   * failure the operating model exists to prevent.
+   */
+  it("every ACTIVE service_department names the backing services its health is derived from", () => {
+    const bad: string[] = [];
+    for (const d of activeDepts.filter((d) => d.operatingModel === "service_department")) {
+      const bindings = d.serviceBindings ?? [];
+      if (bindings.length === 0) bad.push(`${d.slug}: declares no serviceBindings`);
+      if (!bindings.some((b) => b.required !== false)) bad.push(`${d.slug}: has no REQUIRED binding — its health could never be anything but healthy`);
+    }
+    expect(bad, `service departments with unverifiable capability: ${bad.join("; ")}`).toEqual([]);
+  });
+
+  it("a service_department does not also claim an agent orchestrator (pick one operating model)", () => {
+    const bad = activeDepts.filter((d) => d.operatingModel === "service_department" && d.orchestratorAgentSlug).map((d) => d.slug);
+    expect(bad, `service departments also claiming an orchestrator: ${bad.join("; ")}`).toEqual([]);
   });
 
   it("every department's downstreamConsumers reference a REAL department (no dangling routes)", () => {
