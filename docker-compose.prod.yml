@@ -1,7 +1,7 @@
 # WOBBLE OS — isolated production stack for a single VPS.
 #   web app + Postgres/pgvector + general worker (scheduler leader) + media/video worker.
-# Prep:  cp .env.production.example .env.production   # then fill the real secrets (see docs/VPS_DEPLOYMENT.md)
-# Up:    docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# Preferred: keep the filled env file outside this checkout. `deploy.sh` exports its absolute path as
+# WOBBLE_ENV_FILE and also passes it to Compose for interpolation.
 # The `migrate` service applies drizzle migrations from scratch, then exits; app + workers start only after it succeeds.
 
 x-restart: &restart unless-stopped
@@ -58,7 +58,8 @@ services:
       context: .
       target: runner
     restart: *restart
-    env_file: .env.production
+    env_file:
+      - "${WOBBLE_ENV_FILE:-.env.production}"
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -97,7 +98,8 @@ services:
       target: worker
     command: ["npm", "run", "worker"]
     restart: *restart
-    env_file: .env.production
+    env_file:
+      - "${WOBBLE_ENV_FILE:-.env.production}"
     environment:
       NODE_ENV: production
       STORAGE_ROOT: /app/storage
@@ -130,7 +132,8 @@ services:
       target: worker
     command: ["npm", "run", "worker:video"]
     restart: *restart
-    env_file: .env.production
+    env_file:
+      - "${WOBBLE_ENV_FILE:-.env.production}"
     environment:
       NODE_ENV: production
       STORAGE_ROOT: /app/storage

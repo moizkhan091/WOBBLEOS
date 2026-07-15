@@ -46,6 +46,21 @@ Copy `.env.example` → `.env` and fill it in. **Required for a working deploy:*
 - `PLAUSIBLE_API_KEY` + `PLAUSIBLE_SITE_ID` → live Website Analytics.
 - Per-role `*_MODEL` overrides are all optional (sensible defaults in `src/db/seed-runner.ts`).
 
+### Intelligence webhook signing and replay protection
+
+Every `POST /api/webhooks/intelligence` producer must send:
+
+- `X-Wobble-Timestamp`: current Unix seconds;
+- `X-Wobble-Producer`: a stable producer slug such as `apify_scout`;
+- `X-Wobble-Idempotency-Key`: a unique delivery/event identifier from that producer;
+- `X-Wobble-Signature`: hex HMAC-SHA256 using `INTELLIGENCE_WEBHOOK_SECRET`.
+
+The signed bytes are `timestamp + "." + JSON.stringify({producer,deliveryId}) + "." + rawBody`, with
+the context JSON keys in exactly that order. The server validates the signature and timestamp before
+atomically reserving a durable producer-scoped delivery claim. Exact replays and identifier/payload
+conflicts return HTTP 409 without another intelligence insert. Claims are retained for 30 days and
+purged by scheduled maintenance; signatures, secrets, and raw delivery identifiers are not stored.
+
 **Rotate every key that was ever pasted into a chat.**
 
 ## 4. Database: migrate + seed
@@ -97,14 +112,37 @@ private network, healthchecks, a `migrate` step that applies drizzle migrations 
 `.env.production.example` (the secrets template), `.dockerignore`, and `GET /api/health` (public liveness/readiness
 — 200 healthy / 503 when the DB is unreachable; exposes only up/down, never business data).
 
+### External production environment file
+
+Keep the filled production environment file outside the Git checkout and readable only by the deploy
+account. For example:
+
+```bash
+sudo install -m 600 .env.production.example /etc/wobble/wobble.env
+sudoedit /etc/wobble/wobble.env
+bash scripts/deploy.sh /etc/wobble/wobble.env
+```
+
+`deploy.sh` validates the selected file before Git or Docker operations, canonicalizes it, passes it to
+Compose for variable interpolation, and exports the same absolute path as `WOBBLE_ENV_FILE` so the app
+and both workers receive the file. Omitting the path retains the legacy `.env.production` default; a
+missing default or override fails clearly.
+
+Equivalent direct Compose commands are:
+
+```bash
+WOBBLE_ENV_FILE=/etc/wobble/wobble.env docker compose -f docker-compose.prod.yml --env-file /etc/wobble/wobble.env config
+WOBBLE_ENV_FILE=/etc/wobble/wobble.env docker compose -f docker-compose.prod.yml --env-file /etc/wobble/wobble.env up -d --build
+```
+
 **Runbook (on the VPS):**
-1. `cp .env.production.example .env.production` and fill the REAL values (see the BLOCKED-EXTERNAL markers):
+1. Copy `.env.production.example` to the protected external path and fill the REAL values:
    - `POSTGRES_PASSWORD`, `DATABASE_URL` (points at the `db` service), `SESSION_SECRET` (`openssl rand -hex 32`),
      `SHARED_LOGIN_PASSWORD_HASH_B64` (base64 of a bcrypt hash of the shared login password).
    - Optional providers: `OPENROUTER_API_KEY` (text — present in dev), `FAL_KEY` (media; absent → Media Studio stays
      honestly `blocked`), `APIFY_API_KEY` (rich scraping; absent → ingestion falls back to the unblocked http/inline
      adapters).
-2. `docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`
+2. `bash scripts/deploy.sh /etc/wobble/wobble.env`
    → `db` starts, `migrate` applies all migrations and exits, then `app` starts and its healthcheck goes green.
 3. Put a TLS-terminating reverse proxy (Caddy/nginx) in front of `127.0.0.1:3000` for your domain (BLOCKED-EXTERNAL:
    domain + DNS + TLS cert). The app binds to loopback; only the proxy is public. The DB has NO published port
