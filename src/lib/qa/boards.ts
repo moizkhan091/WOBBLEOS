@@ -4,7 +4,7 @@ import { CONTENT_GRAPH_AGENTS } from "@/lib/domain/content-graph";
 import type { PaidAuditResult } from "@/lib/paid-audit-graph";
 import type { ContentGraphResult } from "@/lib/content-graph";
 import { criterionResult, type QaCriterion, type QaCriterionResult, type QaEvidenceItem, type QaSubmission } from "@/lib/domain/qa-board";
-import { validateHandoff, type HandoffReceiverContext } from "@/lib/domain/handoff";
+import { handoffEnvelopeSchema, validateHandoff, type HandoffReceiverContext } from "@/lib/domain/handoff";
 import { createQaBoardRegistry, type QaBoard, type QaBoardEvaluationInput } from "@/lib/qa";
 
 /**
@@ -320,6 +320,25 @@ function evaluateSecurityIsolation(input: QaBoardEvaluationInput<SecurityIsolati
     );
   }
 
+  // A MALFORMED envelope cannot be judged for isolation, and must not be guessed at in either direction.
+  // `validateHandoff` short-circuits on a schema-parse failure and returns ONLY the parse errors — the
+  // isolation checks never execute — so we genuinely do not know whether it leaks. Reporting "fail:
+  // cross-tenant" would invent a finding; reporting "pass" would hide one. `blocked` is the only honest
+  // verdict, and it is what the framework already means by an unassessable criterion.
+  const parsed = handoffEnvelopeSchema.safeParse(artifact.envelope);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "envelope"}: ${i.message}`);
+    return SECURITY_ISOLATION_CRITERIA.map((c) =>
+      criterionResult(c, {
+        assessable: false,
+        passed: false,
+        score: 0,
+        rationale: `envelope is malformed, so isolation cannot be assessed: ${issues.join("; ")}`,
+        evidence: [ev("envelope", "schema", "envelope failed schema validation", issues)],
+      }),
+    );
+  }
+
   const validation = validateHandoff(artifact.envelope, artifact.receiver ?? {});
   const errors = validation.errors;
   const find = (needle: RegExp) => errors.filter((e) => needle.test(e));
@@ -343,17 +362,25 @@ function evaluateSecurityIsolation(input: QaBoardEvaluationInput<SecurityIsolati
     });
   });
 
-  // A malformed envelope (schema/version/required-input failures) is NOT one of the three isolation
-  // criteria, but it must not be reported as "isolated and fine" either — those errors are real and the
-  // dispatcher would reject on them. Fail the tenant criterion rather than let a broken envelope pass.
+  // SEMANTIC problems the envelope has despite parsing (schemaVersion drift, missing required inputs).
+  // These are NOT one of the three isolation criteria, but the dispatcher would reject on them, so the
+  // envelope must not be reported as "isolated and fine".
+  //
+  // It must NOT overwrite a real isolation finding, though. An earlier version replaced the tenant
+  // result outright, which would bury a leak behind a triviality. A security reviewer must always name
+  // the leak; a structural fault is ADDITIONAL, never a substitute.
   const structural = errors.filter((e) => !checks.some((c) => c.pattern.test(e)));
   if (structural.length) {
+    const tenant = results[0];
+    const leaked = !tenant.passed;
     results[0] = criterionResult(byKey.tenant_isolated, {
       assessable: true,
       passed: false,
       score: 0,
-      rationale: `envelope is not valid for dispatch: ${structural.join("; ")}`,
-      evidence: [ev("envelope", "validate_handoff", "structural validation failed", structural)],
+      rationale: leaked
+        ? `${tenant.rationale}; ALSO not valid for dispatch: ${structural.join("; ")}`
+        : `envelope is not valid for dispatch: ${structural.join("; ")}`,
+      evidence: [...tenant.evidence, ev("envelope", "validate_handoff", "structural validation failed", structural)],
     });
   }
 

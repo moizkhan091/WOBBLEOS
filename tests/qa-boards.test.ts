@@ -388,16 +388,43 @@ describe("security_tenant_isolation board (deterministic, scored against real en
     expect(review.criteria.every((c) => c.assessable === false)).toBe(true);
   });
 
-  it("does not pass a STRUCTURALLY invalid envelope as 'isolated and fine'", async () => {
-    // A malformed envelope is not one of the three isolation criteria, but the dispatcher would reject
-    // it — so reporting it as isolated would be a lie of omission.
+  /**
+   * A MALFORMED envelope is unknowable, not failing. `validateHandoff` short-circuits on a schema-parse
+   * failure and returns ONLY the parse errors — the isolation checks never execute — so we genuinely do
+   * not know whether it leaks. "fail: cross-tenant" would invent a finding; "pass" would hide one.
+   * `blocked` is the only honest verdict. (Learned from a live probe, not from a unit test.)
+   */
+  it("is BLOCKED — not failed, not passed — on a malformed envelope it cannot assess", async () => {
     const { d } = makeDeps();
     const review = await runQaReview(
       { board: securityTenantIsolationBoardImpl, submission: submit({ envelope: { workflowId: "wf", nonsense: true }, receiver: { clientWorkspaceId: "client_alpha" } }) },
       d,
     );
+    expect(review.verdict).toBe("blocked");
+    expect(review.criteria.every((c) => c.assessable === false)).toBe(true);
+    expect(review.criteria[0].rationale).toMatch(/malformed/);
+  });
+
+  /**
+   * Found LIVE, not by unit test: a probe carrying a genuine Alpha→Beta leak reported only
+   * "envelope is not valid for dispatch: priority: Invalid option" — the structural branch overwrote the
+   * tenant result and buried the leak behind a triviality. A security reviewer must always name the leak;
+   * a structural problem is ADDITIONAL, never a substitute.
+   */
+  it("names the LEAK even when the envelope is also structurally invalid", async () => {
+    const { d } = makeDeps();
+    // A SEMANTIC fault (schemaVersion drift) — the envelope still parses, so the isolation checks DO run
+    // and both findings must be reported. Contrast the malformed case below, which is unknowable.
+    const leaky = { ...(envelopeFor() as unknown as Record<string, unknown>), schemaVersion: 99 };
+    const review = await runQaReview(
+      { board: securityTenantIsolationBoardImpl, submission: submit({ envelope: leaky, receiver: { clientWorkspaceId: "client_beta", grantedMemoryScopes: ["content", "brand"], permittedDataClassifications: ["client_confidential"] } }) },
+      d,
+    );
     expect(review.verdict).not.toBe("pass");
-    expect(review.criteria.find((c) => c.key === "tenant_isolated")!.passed).toBe(false);
+    const tenant = review.criteria.find((c) => c.key === "tenant_isolated")!;
+    expect(tenant.passed).toBe(false);
+    expect(tenant.rationale).toMatch(/client isolation/);   // the leak is named
+    expect(tenant.rationale).toMatch(/not valid for dispatch/); // and so is the structural fault
   });
 
   it("agrees with the runtime: whatever validateHandoff rejects, the board never passes", () => {
