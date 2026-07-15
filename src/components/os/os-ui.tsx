@@ -2984,6 +2984,8 @@ function LibraryPage() {
   const [platform, setPlatform] = useState("instagram");
   const [when, setWhen] = useState("");
   const [publisher, setPublisher] = useState("manual");
+  // The publishers that actually exist, derived from the live registry (WOB-UAT-006).
+  const pubs = useApi<{ publishers: { publisher: string; state: "operational" | "manual" | "blocked"; detail: string }[] }>("/api/library/publishers");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<LibAsset | null>(null);
@@ -3112,11 +3114,15 @@ function LibraryPage() {
             {LIB_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
-          <select value={publisher} onChange={(e) => setPublisher(e.target.value)} style={selectStyle}>
-            <option value="manual">manual</option>
-            <option value="zernio">zernio</option>
-            <option value="ayrshare">ayrshare</option>
-            <option value="n8n">n8n</option>
+          {/* Derived from the registry via /api/library/publishers — never a hardcoded list
+              (WOB-UAT-006). A blocked publisher is shown but NOT selectable, with the reason, so the
+              founder can see it exists and why it is unavailable rather than picking a silent dead end. */}
+          <select data-testid="publisher-select" value={publisher} onChange={(e) => setPublisher(e.target.value)} style={selectStyle}>
+            {(pubs.data?.publishers ?? [{ publisher: "manual", state: "manual", detail: "" }]).map((p) => (
+              <option key={p.publisher} value={p.publisher} disabled={p.state === "blocked"} title={p.detail}>
+                {p.publisher}{p.state === "blocked" ? " — blocked (no credentials)" : p.state === "manual" ? " — you post it" : ""}
+              </option>
+            ))}
           </select>
           <button onClick={doSchedule} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Schedule"}</button>
         </div>

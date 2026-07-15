@@ -11,6 +11,7 @@ import {
   buildScheduledPostRow,
   canTransitionPost,
   planFeed,
+  PUBLISHERS,
   type ContentAssetRow,
   type CreateAssetInput,
   type FeedPlanItem,
@@ -60,13 +61,43 @@ export const zernioPublisher: PublisherAdapter = {
   },
 };
 
-export function resolvePublisher(name: string, registry: Record<string, PublisherAdapter>): PublisherAdapter {
-  return registry[name] ?? manualPublisher;
+/**
+ * Resolve a publisher, or NULL when the registry cannot produce one (WOB-UAT-006).
+ *
+ * This used to be `registry[name] ?? manualPublisher` — a silent substitution that turned "this
+ * publisher does not exist" into "a human will post it", which is a different and untrue statement.
+ * The caller must now decide honestly; `dispatchDuePosts` fails the post with a reason.
+ *
+ * Media Production already got this right (an unknown provider → terminal `blocked` + error + audit).
+ * Publishing made the opposite choice on identical logic. This aligns them.
+ */
+export function resolvePublisher(name: string, registry: Record<string, PublisherAdapter>): PublisherAdapter | null {
+  return registry[name] ?? null;
 }
 
 /** The live publisher registry, env-gated: Zernio joins only when its API key is configured. */
 export function defaultPublisherRegistry(): Record<string, PublisherAdapter> {
   return zernioConfigured() ? { manual: manualPublisher, zernio: zernioPublisher } : { manual: manualPublisher };
+}
+
+/** Why a publisher is not usable right now — drives both the API and the UI's selectability. */
+export type PublisherAvailability =
+  | { publisher: string; state: "operational"; detail: string }
+  | { publisher: string; state: "manual"; detail: string }
+  | { publisher: string; state: "blocked"; detail: string };
+
+/**
+ * The truthful state of every KNOWN publisher (WOB-UAT-006). One source of truth for the UI, derived
+ * from the registry + env — never a hand-maintained list. Every displayed publishing method must be
+ * exactly one of: operational, manual, or blocked-pending-credentials. Anything not in `PUBLISHERS`
+ * has no adapter and is not offered at all.
+ */
+export function publisherAvailability(registry: Record<string, PublisherAdapter> = defaultPublisherRegistry()): PublisherAvailability[] {
+  return PUBLISHERS.map((publisher) => {
+    if (publisher === "manual") return { publisher, state: "manual" as const, detail: "WOBBLE prepares the post; you publish it and mark it done." };
+    if (registry[publisher]) return { publisher, state: "operational" as const, detail: "Connected — WOBBLE publishes automatically at the scheduled time." };
+    return { publisher, state: "blocked" as const, detail: `Not configured — set ZERNIO_API_KEY to enable ${publisher}. Posts cannot be scheduled to it until then.` };
+  });
 }
 
 // ---------------------------------------------------------------- store + deps
@@ -377,6 +408,29 @@ export async function dispatchDuePosts(deps: LibraryDeps & { enforceAutonomy?: b
       continue;
     }
     const publisher = resolvePublisher(post.publisher, registry);
+    // No adapter → FAIL the post loudly (WOB-UAT-006). Previously `resolvePublisher` fell back to the
+    // manual adapter, so this landed in the `deferred` branch below and the post sat `scheduled`
+    // forever — re-deferred every tick, indistinguishable from a legitimate manual post, with no error,
+    // no audit, and (because the UI only offers "Mark posted" for `manual`) no way to resolve it.
+    // Reasons this fires: a legacy row naming a publisher we removed (`ayrshare`/`n8n`), or a publisher
+    // whose credentials are absent. Both are recoverable — the founder can see it and re-schedule.
+    if (!publisher) {
+      const known = (PUBLISHERS as readonly string[]).includes(post.publisher);
+      const error = known
+        ? `publisher '${post.publisher}' is not configured — publishing blocked (no credentials)`
+        : `publisher '${post.publisher}' has no adapter — this post can never be published and must be re-scheduled to a supported publisher`;
+      await store.updateScheduledPost(post.id, { status: "failed", error, updatedAt: now });
+      await (deps.recordAudit ?? defaultRecordAudit)({
+        eventType: "library.post_failed",
+        module: LIBRARY_MODULE,
+        entityType: "scheduled_post",
+        entityId: post.id,
+        actor: "publisher",
+        metadata: { assetId: post.assetId, platform: post.platform, publisher: post.publisher, reason: known ? "not_configured" : "no_adapter" },
+      }).catch(() => {});
+      failed += 1;
+      continue;
+    }
     if (publisher.slug === "manual") {
       deferred += 1; // leave scheduled; the founder posts + marks done
       continue;

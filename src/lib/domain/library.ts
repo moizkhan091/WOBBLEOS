@@ -23,9 +23,26 @@ export type PostPlatform = (typeof POST_PLATFORMS)[number];
 export const POST_STATUSES = ["scheduled", "publishing", "published", "failed", "canceled"] as const;
 export type PostStatus = (typeof POST_STATUSES)[number];
 
-// Provider-agnostic publishers. "manual" needs nothing (you post + mark done); the others are
-// unified social APIs / n8n that connect the accounts once and post via one call.
-export const PUBLISHERS = ["manual", "ayrshare", "zernio", "n8n"] as const;
+/**
+ * Publishers that a real adapter exists for. THIS LIST IS THE CONTRACT — a publisher may appear here
+ * only if `defaultPublisherRegistry()` can produce an adapter for it.
+ *
+ * `ayrshare` and `n8n` were removed (WOB-UAT-006). No adapter for either has ever existed, yet both
+ * were in this enum, so the API validated them, returned 201, and persisted the row — after which
+ * `resolvePublisher` silently substituted the MANUAL adapter and `dispatchDuePosts` counted the post as
+ * "deferred to a human" forever. No error, no `failed` status, no audit event, and the UI only renders
+ * "Mark posted" for `publisher === "manual"`, so the founder could not even resolve it by hand. Work
+ * disappeared into a state nothing could observe or recover.
+ *
+ * Three hand-maintained copies of this list had drifted apart: this enum, the registry, and the UI
+ * dropdown. There is now ONE source of truth — `GET /api/library/publishers` derives availability from
+ * the registry, and the UI renders that. Adding a publisher here without an adapter re-breaks it, and
+ * `tests/library.test.ts` asserts enum ⊆ registry to stop exactly that.
+ *
+ * `manual` is not a degraded mode — it is a legitimate operating model: WOBBLE prepares the post, a
+ * human fires it and marks it done. `zernio` is env-gated and reports as blocked without its key.
+ */
+export const PUBLISHERS = ["manual", "zernio"] as const;
 export type Publisher = (typeof PUBLISHERS)[number];
 
 export interface MediaRef {

@@ -21,9 +21,18 @@ export async function POST(request: Request) {
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   try {
-    // When Zernio is configured, push scheduled Zernio posts to its native scheduler so it holds
-    // the schedule (and cancel can reach it). Otherwise the post stays local/manual.
-    const scheduleRemote = zernioConfigured() ? (args: Parameters<typeof zernioSchedule>[0]) => zernioSchedule(args) : undefined;
+    // Push to Zernio's native scheduler ONLY when the caller actually asked for Zernio, so it holds the
+    // schedule (and cancel can reach it). Otherwise the post stays local/manual.
+    //
+    // WOB-UAT-028: this used to gate on `zernioConfigured()` ALONE, and `schedulePost` gates only on
+    // `publisher !== "manual"` — so with a Zernio key present, a post requested as `ayrshare` was really
+    // published THROUGH ZERNIO, given a Zernio publisherRef, and reconciled to `published` by the Zernio
+    // webhook, while the row still claimed `publisher='ayrshare'`. A real external post under a false
+    // provider label is worse than the dead-end it sat next to: the dead-end lost work, this one
+    // misreports where work went. Removing ayrshare/n8n from PUBLISHERS closes the reported case; this
+    // check closes the CLASS, so the next publisher added cannot inherit it.
+    const wantsZernio = parsed.data.publisher === "zernio";
+    const scheduleRemote = wantsZernio && zernioConfigured() ? (args: Parameters<typeof zernioSchedule>[0]) => zernioSchedule(args) : undefined;
     const post = await schedulePost({ ...parsed.data, createdBy: auth }, { scheduleRemote });
     return NextResponse.json({ ok: true, post }, { status: 201 });
   } catch (error) {

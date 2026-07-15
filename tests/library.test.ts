@@ -9,6 +9,7 @@ import {
   canTransitionPost,
   localImportKey,
   parseAdFolderName,
+  PUBLISHERS,
   type ContentAssetRow,
   type ScheduledPostRow,
 } from "@/lib/domain/library";
@@ -23,6 +24,10 @@ import {
   markAssetPostedOnPlatform,
   markPostPublished,
   applyZernioPostEvent,
+  manualPublisher,
+  defaultPublisherRegistry,
+  publisherAvailability,
+  resolvePublisher,
   schedulePost,
   type LibraryStore,
   type PublisherAdapter,
@@ -412,11 +417,95 @@ describe("library service", () => {
     const auto = await schedulePost({ assetId: asset.id, platform: "linkedin", scheduledAt: past, publisher: "zernio" }, { store, now, recordAudit: async () => {} });
     const fakeZernio: PublisherAdapter = { slug: "zernio", publish: async () => ({ publisherRef: "ext_123" }) };
 
-    const result = await dispatchDuePosts({ store, now, publishers: { zernio: fakeZernio } });
+    // The registry must include `manual` — the real `defaultPublisherRegistry()` always does (asserted
+    // below). This test previously injected `{ zernio }` only and still passed, because
+    // `resolvePublisher` silently substituted the manual adapter for ANY unresolved name. That
+    // fallback was WOB-UAT-006: it is also what made `ayrshare` look like a deferred manual post.
+    const result = await dispatchDuePosts({ store, now, publishers: { manual: manualPublisher, zernio: fakeZernio } });
     expect(result.deferred).toBe(1);
     expect(result.dispatched).toBe(1);
     expect(posts.get(manual.id)!.status).toBe("scheduled"); // manual left for the human
     expect(posts.get(auto.id)!.status).toBe("published");
     expect(posts.get(auto.id)!.publisherRef).toBe("ext_123");
+  });
+
+  /**
+   * WOB-UAT-006. A publisher the registry cannot produce must FAIL the post loudly, not vanish.
+   * Before the fix this post sat `scheduled` forever: `resolvePublisher` returned the manual adapter,
+   * dispatch counted it as `deferred` (indistinguishable from a real manual post), no error was
+   * written, no audit fired, and the UI offers "Mark posted" only for `manual` — so the founder could
+   * not even resolve it by hand. Work disappeared into a state nothing could observe or recover.
+   */
+  it("fails a post whose publisher has no adapter instead of silently deferring it forever", async () => {
+    const { store, posts } = makeStore();
+    const audits: { eventType: string }[] = [];
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const past = "2026-07-09T11:00:00Z";
+    // A LEGACY row: written while `ayrshare` was still in the enum, and still sitting in the DB.
+    // Inserted straight into the store on purpose — `schedulePost` now correctly REJECTS `ayrshare` at
+    // validation, so the only way such a row can exist today is that it predates the enum change. The
+    // `publisher` column is a varchar, so these rows are real and must be handled, not assumed away.
+    const orphan = buildScheduledPostRow({ assetId: asset.id, platform: "instagram", scheduledAt: past, publisher: "manual" }, { now, id: "post_legacy" });
+    await store.insertScheduledPost({ ...orphan, publisher: "ayrshare" });
+
+    const result = await dispatchDuePosts({ store, now, publishers: { manual: manualPublisher }, recordAudit: async (e) => void audits.push(e) });
+
+    expect(result.failed).toBe(1);
+    expect(result.deferred).toBe(0); // NOT counted as a manual post
+    const row = posts.get(orphan.id)!;
+    expect(row.status).toBe("failed");
+    expect(row.error).toMatch(/no adapter/i);
+    expect(row.error).toMatch(/re-scheduled/i); // tells the founder how to recover
+    expect(audits.some((e) => e.eventType === "library.post_failed")).toBe(true);
+  });
+
+  it("blocks — rather than silently defers — a known publisher whose credentials are absent", async () => {
+    const { store, posts } = makeStore();
+    const asset = await addContentAsset({ title: "A" }, { store, now, recordAudit: async () => {} });
+    const past = "2026-07-09T11:00:00Z";
+    // `zernio` IS a real publisher, but the registry has no adapter for it without ZERNIO_API_KEY.
+    const post = await schedulePost({ assetId: asset.id, platform: "instagram", scheduledAt: past, publisher: "zernio" }, { store, now, recordAudit: async () => {} });
+
+    const result = await dispatchDuePosts({ store, now, publishers: { manual: manualPublisher } });
+
+    expect(result.failed).toBe(1);
+    const row = posts.get(post.id)!;
+    expect(row.status).toBe("failed");
+    expect(row.error).toMatch(/not configured/i); // distinct from "no adapter" — this one is recoverable by adding a key
+  });
+});
+
+/**
+ * The invariant that would have prevented WOB-UAT-006 entirely: three hand-maintained lists (this enum,
+ * the registry, the UI dropdown) drifted apart, and nothing compared them. The UI now derives from the
+ * registry, and these pin the remaining two together.
+ */
+describe("publisher registry is the single source of truth (WOB-UAT-006)", () => {
+  it("every publisher in the PUBLISHERS enum has an adapter, or is truthfully reported blocked", () => {
+    const availability = publisherAvailability({ manual: manualPublisher });
+    expect(availability.map((a) => a.publisher).sort()).toEqual([...PUBLISHERS].sort());
+    for (const a of availability) expect(["operational", "manual", "blocked"]).toContain(a.state);
+  });
+
+  it("does not offer a publisher that has no adapter at all", () => {
+    // The exact defect: `ayrshare` and `n8n` were in the enum, validated, persisted — and unpublishable.
+    expect(PUBLISHERS as readonly string[]).not.toContain("ayrshare");
+    expect(PUBLISHERS as readonly string[]).not.toContain("n8n");
+  });
+
+  it("always offers `manual` — it needs no credentials and is a real operating model, not a fallback", () => {
+    expect(Object.keys(defaultPublisherRegistry())).toContain("manual");
+    expect(publisherAvailability({ manual: manualPublisher }).find((a) => a.publisher === "manual")?.state).toBe("manual");
+  });
+
+  it("reports zernio blocked (not operational) when its adapter is absent", () => {
+    const zernio = publisherAvailability({ manual: manualPublisher }).find((a) => a.publisher === "zernio");
+    expect(zernio?.state).toBe("blocked");
+    expect(zernio?.detail).toMatch(/ZERNIO_API_KEY/);
+  });
+
+  it("resolvePublisher returns null for an unknown publisher — it must never substitute manual", () => {
+    expect(resolvePublisher("ayrshare", { manual: manualPublisher })).toBeNull();
+    expect(resolvePublisher("manual", { manual: manualPublisher })).toBe(manualPublisher);
   });
 });
