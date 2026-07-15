@@ -5689,3 +5689,71 @@ P1: WOB-UAT-023 (Design Intelligence), 024 (the Security & Governance DEPARTMENT
 ledger. The entire founder-correction scope (memory suggestions, governed admin correction, memory
 categories, founder-profile depth, universal Ask router) is SPECIFIED, not built. Golden workflow and
 three-client isolation unproven.
+
+---
+
+## 2026-07-16 — Claude: Security & Governance BUILT as a real agent_team (WOB-UAT-024)
+
+Branch `feat/founder-accounts-local-uat`, HEAD `cfa24d7` (pushed). `main` untouched at `c4831d34`.
+No merge, no deploy, no paid provider calls. Migration head `0054_security_governance`.
+
+### What changed
+The department was `draft`, unstaffed, and declared **`acceptedHandoffSchemas: []`** — the detail that
+made it genuinely unreachable: `departmentCanAccept` rejected every inbound handoff, so it could not
+receive work at all. Now: **active `agent_team`, team 4/4**, 4 new tables, real API, founder workspace.
+
+| Agent | Executes as |
+|---|---|
+| `governance_orchestrator` | `runGovernanceReview` (gather → dispatch → persist → report skipped) |
+| `access_policy_agent` | `reviewAccess()` |
+| `risk_compliance_agent` | `reviewPolicies()` |
+| `incident_audit_agent` | `openIncident()` — a CRITICAL finding becomes a closable incident |
+| `security_isolation_reviewer` | the runnable deterministic board (evaluator) |
+
+All carry `tools: []` — the honest declaration. They answer DECIDABLE questions, and a security verdict
+that can disagree with the enforcement it describes is worthless.
+
+### LIVE PROOF (founder session → API → deterministic rules → DB → audit)
+```
+department            : security_governance  active  agent_team  team 4/4   (design_intelligence: draft 0/0)
+governance review     : executedBy=governance_orchestrator, both checks ran, skipped=[]
+                        → 3 REAL findings about the REAL seed (restricted-data grants), by risk_compliance_agent
+INJECTED FAULT        : 4 live sessions on a disabled account (containment silently failing)
+  → review            : worst=critical, requiresAttention=true, created=4, deduped=3, incidents=4
+                        each names the session id, carries SQL reproduction, detectionMethod=deterministic
+CONTAINMENT (product) : revoke_sessions + enable via /api/auth/accounts/founder_ali/action
+  → review            : worst=low, 0 new criticals
+kill switch           : no reason → 422 · Ali (not super-admin) → 403 · Moiz engages → created
+                        re-engage same target → SAME id, created=false (idempotent, not a second row)
+authority             : Ali 403 on engage, 200 on read — authenticated ≠ authorized
+```
+
+### Two guards caught real problems. Both left STRONGER; neither weakened.
+1. `registry-integrity` ("no decorative agents") rejected all 5 new active agents. Correct — an agent is
+   not operational because it has a name.
+2. Its fix (a declared execution-path list) is exactly the kind of list that rots into fiction, so I made
+   it non-self-certifying: a new test greps the ACTUAL governance source for every declared slug. It
+   immediately caught **`governance_orchestrator`: declared executable, referenced nowhere** — a
+   genuinely decorative agent, found by my own guard within a minute. The run now records `executedBy`,
+   deliberately distinct from `actor` (who ASKED): collapsing them would misattribute a scheduled machine
+   run to a person, or a founder's decision to an agent.
+
+### A defect found by running it, not by testing it
+After fixing the injected fault the 4 findings stayed OPEN, so the workspace showed "critical: 4" about
+conditions that no longer existed — **the screen was lying**. Fixed: a deterministic finding whose
+condition cleared closes itself with the run as `closureProof`. Guarded twice: only a `kind` whose check
+actually RAN is retested (absence of evidence ≠ evidence of absence — otherwise a skipped check would
+silently close an unfixed critical), and only `deterministic` findings are eligible (an `agent_judgment`
+finding not being re-raised proves nothing).
+
+### Receipts
+typecheck 0 · **1104/1104** unit tests (137 files) · registry-integrity 8/8 · release-coherence green ·
+migration 0054 applied · stack green, parity 200.
+
+### Still open — NOT ready for independent product audit
+**P1: WOB-UAT-023 Design Intelligence** (still `draft`, 0 code refs — the last absent department).
+Security & Governance itself still lacks: a `verticals/security-governance.ts` handoff-driven runner, a
+`DEPARTMENT_CONSUMERS` registration, a scheduler-driven cadence, and browser-verified UI (the workspace
+module is built + typechecked but was NOT yet driven in the visible browser). Plus the whole
+founder-correction scope (memory suggestions, governed admin correction, universal Ask router), the
+golden workflow, three-client isolation, and the 28 pillars.
