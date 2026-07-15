@@ -5419,3 +5419,68 @@ directly contradict the "no fake data" contract: fabricated Command Center KPI t
 values are string literals and factually wrong; there are 41 wired modules), the "What WOBBLE knows about me" tab
 rendering ALL memory rather than the founder's, and a publisher dropdown offering an `ayrshare` adapter that does
 not exist (posts become unresolvable dead ends). See `C:\Temp\wobble-local-uat\DEFECT_LEDGER.md`.
+
+---
+
+## 2026-07-15 — Claude: North Star persisted; department reconciliation; version-parity gate
+
+Branch `feat/founder-accounts-local-uat`, HEAD `2de834e` (pushed). `main` untouched at `c4831d34`.
+No merge, no deploy, no production credentials, no paid provider calls.
+
+Two binding additive specs are now in-repo (`docs/WOBBLE_OS_V1_NORTH_STAR.md`,
+`docs/WOBBLE_OS_V1_AI_WORKFORCE_CONTINUOUS_INTELLIGENCE_ADDENDUM.md`, commit `a33ecb4`, docs-only).
+All 28 pillars are mandatory V1 minimums and are ADDITIVE — they never license removing existing work.
+
+### Department/agent reconciliation — authoritative, DB-verified
+
+**Two of my own earlier inventory numbers were wrong; the product was right both times.**
+- **52 agents**, not 55 (`DEFAULT_AGENTS` has exactly 52 too).
+- **9 active / 5 draft** departments, not 8/6.
+
+Real linkage: `52 = 22 members + 8 orchestrators + 22 unconnected (8 active, 14 truthfully paused)`.
+Orchestrators bind via `departments.orchestrator_agent_slug`, NOT membership — so the visible team
+counts were already truthful. The 8 active unconnected agents (content_worker, knowledge_compiler,
+ask_wobble, memory_router, source_intake_orchestrator, content_excellence_gate, wobble_pitch_writer,
+audit_interview_planner) genuinely run — via the job system, which predates the department overlay.
+Full analysis: `C:\Temp\wobble-local-uat\DEPARTMENT_AGENT_RECONCILIATION.md`.
+
+Every 0/0 department is explained there: founder_command_centre = control plane by design;
+free_audit / publishing / media_production = capability built elsewhere (8 / 24 / dedicated worker-video);
+design_intelligence + security_governance = **0 code refs outside the seed — genuinely absent**.
+
+### WOB-UAT-022 (P1) — Founder Command Centre `active + misconfigured + 0/0` — FIXED (`98c06c0`)
+
+`computeDepartmentHealth` assumed every active department is an agent team. The founder console has no
+orchestrator and no members BY DESIGN. Fixed by modelling `operatingModel: agent_team |
+human_control_plane` (migration `0052`) — NOT by staffing it with fictional agents; no agent approves on
+a founder's behalf. Staffing checks skip only for a control plane; every other signal still applies, an
+`agent_team` with 0 members is still `misconfigured`, and the parameter defaults to `agent_team` so
+there is no silent leniency. UI renders "human-operated · founders" / "unstaffed · no agents assigned".
+
+### WOB-UAT-026 (P1, raised from P2) — service version parity — FIXED (`2de834e`)
+
+Hit live: `docker compose up -d --build app` rebuilt ONLY the app, leaving worker + worker-video on the
+previous image against an already-migrated schema. Silent and misleading — a seed run by the stale
+worker "succeeded" while writing nothing, and `/api/health/ready` said 200 throughout. Re-classified P1
+because a split-brain stack invalidates every other proof in the campaign.
+
+One `WOBBLE_BUILD_ID` (git SHA) stamped into every image via `base` ARG→ENV + OCI label; workers report
+it on every heartbeat (metadata refreshed on upsert — a replaced container reuses the row id);
+`GET /api/health/version` 503s naming the exact stale service; readiness treats parity as CRITICAL in
+production; `scripts/stack-build.sh` builds EVERY service with one id (naming no service, on purpose).
+
+**Proven live, not just unit-tested:** recreating only the app with a different build id →
+`/api/health/version` 503 listing `worker` + `worker-video`; `/api/health/ready` 503 `version-parity`
+FAILING. Restoring parity returns both to 200.
+
+### Receipts
+typecheck clean · `release:check` **exit 0** · **1036/1036** tests (136 files) · migration chain verified
+on BOTH fresh and incremental paths converging to a byte-identical schema (sha256 `99ac9ba9…`) ·
+production compose stack green on fresh volumes.
+
+### Status — campaign CONTINUES (not a terminal verdict)
+NOT yet ready for independent product audit. Open: founder-memory scoping (P1), ayrshare dead-end (P1),
+Design Intelligence + Security & Governance (P1 by founder override — must be built, not classified),
+WOB-UAT-025 service_department modelling, agent ownership bindings. Golden workflow and three-client
+isolation unproven; **no claim made about cross-client leakage in either direction**.
+Exact next action: `C:\Temp\wobble-local-uat\CONTINUATION_HANDOFF.md`.
