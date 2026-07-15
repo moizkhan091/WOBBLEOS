@@ -131,6 +131,42 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
     }
   });
 
+  /**
+   * Client-supplied identity must never be TRUSTED (WOB-UAT-030).
+   *
+   * A route may still ACCEPT an identity field for compatibility with older callers, but it must
+   * override it with the session founder. This was not theoretical: `memory/proposals` spread
+   * `parsed.data` straight into `proposeMemoryUpdate` without overriding, so `proposedBy` was purely
+   * the caller's assertion — and the UI's source for it was the "Acting as" dropdown. It surfaced only
+   * when the dropdown was removed and attribution silently went null. Every sibling route already did
+   * the override, so this guard pins down the one rule they were all following informally.
+   *
+   * Detects `<identityField>: z.…` in a schema and requires `<identityField>: auth` in the same file.
+   */
+  it("no route trusts a client-supplied identity field — it must be overridden with the session actor", () => {
+    // Fields that assert WHO IS ACTING. Deliberately excludes `actor` — on an autonomy policy that is a
+    // SCOPE field ("this policy applies to actor X"), not an identity claim, and that route correctly
+    // audits with `approvedBy: auth`. Naming, not semantics, is the only thing a static guard can see.
+    const IDENTITY_FIELDS = [
+      "proposedBy", "requestedBy", "addedBy", "createdBy", "approvedBy", "rejectedBy",
+      "editedBy", "archivedBy", "restoredBy", "resolvedBy", "reviewedBy", "decidedBy",
+    ];
+    const offenders: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      if (!SESSION_GATES.some((gate) => src.includes(gate))) continue; // ungated routes are the other tests' problem
+      for (const field of IDENTITY_FIELDS) {
+        if (!new RegExp(`\\b${field}\\s*:\\s*z\\.`).test(src)) continue;
+        if (new RegExp(`\\b${field}\\s*:\\s*auth\\b`).test(src)) continue; // overridden — correct
+        offenders.push(`${relKey(file)} accepts '${field}' but never overrides it with the session actor`);
+      }
+    }
+    expect(
+      offenders,
+      `these routes trust a caller-supplied identity instead of the verified session (WOB-UAT-030):\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("account administration is super-admin gated, not merely founder gated", () => {
     // Disabling a founder / revoking their sessions is not something any founder may do to another.
     // requireFounder alone would be too weak here, so assert the stronger gate explicitly.

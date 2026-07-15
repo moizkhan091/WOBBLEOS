@@ -64,7 +64,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await proposeMemoryUpdate(parsed.data);
+    // `proposedBy` comes from the SESSION, overriding whatever the body claimed (WOB-UAT-030). Unlike
+    // its sibling routes this one passed `parsed.data` straight through, so the proposer was purely a
+    // client-supplied assertion — the one identity field in the memory API that was actually trusted.
+    const result = await proposeMemoryUpdate({ ...parsed.data, proposedBy: auth });
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
