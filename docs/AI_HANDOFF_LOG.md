@@ -5632,3 +5632,60 @@ P1: WOB-UAT-023/024 (Design Intelligence + Security & Governance must be BUILT).
 ownership), 010, 013, 014, 017, 007. P3: 009, 011, 012, 015, 018, 031, 033. Plus the entire founder-
 correction scope (memory suggestions, governed admin correction, memory categories, founder-profile
 depth, universal Ask router) — SPECIFIED, not built. Golden workflow and three-client isolation unproven.
+
+---
+
+## 2026-07-16 — Claude: the security isolation reviewer is real (WOB-UAT-024, PARTIAL)
+
+Branch `feat/founder-accounts-local-uat`, HEAD `fe23976` (pushed). `main` untouched at `c4831d34`.
+No merge, no deploy, no paid provider calls.
+
+### What is now real — and what is NOT
+
+**REAL:** `security_tenant_isolation` was a DECLARED board (identity + criteria, no evaluator). The
+runner refuses to execute a declared board, so *nothing could ever run it* — the department's core
+capability did not exist in any runnable form. It also declared `department: "platform"`, a slug absent
+from the seed, so a `revise` verdict routed nowhere.
+
+It now has a **deterministic** evaluator scoring `validateHandoff`'s ACTUAL output. That is the design,
+not a shortcut: the board's three criteria were already an exact restatement of validateHandoff's three
+real checks, so an LLM re-judging them would be slower, costly, non-reproducible, and capable of PASSING
+an envelope the dispatcher would reject. **A security verdict that can disagree with the enforcement it
+describes is worthless.** A property test pins it: whatever validateHandoff rejects, the board never passes.
+
+**LIVE PROOF** (founder session → `POST /api/qa/reviews`, real canaries):
+Alpha's `client_confidential` envelope (`ALPHA-ONLY-7QK9`) → Beta's receiver (`BETA-ONLY-4M2P`) →
+`verdict: fail`, `released: false`, `tenant_isolated passed=false` naming the exact leak,
+`routingTarget: { department: "security_governance", action: "revise_stages" }`, persisted
+`qareview_3ed4d73c…`.
+
+**NOT REAL — do not describe the department as operational.** `security_governance` is still `draft`,
+unstaffed, `acceptedHandoffSchemas: []` (it can receive no handoff), with no vertical runner, no
+`DEPARTMENT_CONSUMERS` registration and no UI module. `design_intelligence` (WOB-UAT-023) is untouched.
+
+### Two corrections found by running it live, not by unit test
+
+1. **A malformed envelope is UNKNOWABLE, not failing.** `validateHandoff` short-circuits on a
+   schema-parse failure and returns only parse errors — the isolation checks never run — so we cannot
+   know whether it leaks. My first version reported a tenant FAILURE: a fabricated finding, the same
+   class of dishonesty as a fabricated pass. Now → `blocked`.
+2. **A real leak must never be buried.** The structural branch overwrote the tenant result, so a probe
+   carrying a genuine Alpha→Beta leak reported only "priority: Invalid option". The verdict was right by
+   luck; the reason was a triviality. A semantic fault is now reported ALONGSIDE the leak, never instead.
+
+25 passing tests agreed with an evaluator that would have buried a cross-tenant leak. That is the whole
+argument for verifying over trusting green tests.
+
+### Also caught
+`vitest` transpiles without typechecking — a missing type-only import passed **1072 tests** and failed
+`tsc`. Both gates are load-bearing; neither substitutes for the other.
+
+### Receipts
+typecheck 0 · **1073/1073** unit tests (136 files) · qa-boards 26/26 · `release:check` exit 0 ·
+stack green, parity 200.
+
+### Still open — NOT ready for independent product audit
+P1: WOB-UAT-023 (Design Intelligence), 024 (the Security & Governance DEPARTMENT). P2/P3: see the
+ledger. The entire founder-correction scope (memory suggestions, governed admin correction, memory
+categories, founder-profile depth, universal Ask router) is SPECIFIED, not built. Golden workflow and
+three-client isolation unproven.
