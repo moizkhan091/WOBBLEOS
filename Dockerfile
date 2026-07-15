@@ -6,6 +6,17 @@
 # SAME npm that generated package-lock.json, so `npm ci` is strict and reproducible here.
 FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS base
 
+# ONE build identity shared by every service image (WOB-UAT-026). Compose passes the git SHA as a build
+# arg to app + worker + migrator, each service reports it at runtime, and /api/health/version refuses to
+# call the stack healthy when they disagree. Without this, a targeted rebuild (`--build app`) silently
+# leaves workers on the previous image against an already-migrated schema.
+#
+# Declared + promoted to ENV in `base` so EVERY derived stage (migrator/runner/worker) inherits it: an
+# ARG does not cross a FROM boundary, but an ENV does.
+ARG WOBBLE_BUILD_ID=unknown
+ENV WOBBLE_BUILD_ID=$WOBBLE_BUILD_ID
+LABEL org.opencontainers.image.revision=$WOBBLE_BUILD_ID
+
 # ---- deps: install deps once, cached ----
 FROM base AS deps
 WORKDIR /app

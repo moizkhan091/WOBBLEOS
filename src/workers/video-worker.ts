@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { closeDb } from "@/db";
+import { getBuildId } from "@/lib/build/version";
 import { assertRuntimeConfig } from "@/lib/config/validate";
 import { runMediaWorkerCycle } from "@/lib/media/worker";
 
@@ -12,7 +13,12 @@ let stopping = false;
 
 async function writeHeartbeat(state: string, detail: Record<string, unknown> = {}) {
   await mkdir(path.dirname(heartbeatPath), { recursive: true });
-  await writeFile(heartbeatPath, JSON.stringify({ state, at: new Date().toISOString(), workerId, ...detail }, null, 2));
+  // `buildId` lets /api/health/version catch this worker running different code from the app
+  // (WOB-UAT-026) — a partial `--build app` rebuild leaves this container on the previous image.
+  await writeFile(
+    heartbeatPath,
+    JSON.stringify({ state, at: new Date().toISOString(), workerId, buildId: getBuildId(), ...detail }, null, 2),
+  );
 }
 
 const requestStop = () => { stopping = true; };

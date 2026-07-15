@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { workerHeartbeats } from "@/db/schema";
 import { getDb, type Db } from "@/db";
+import { getBuildId } from "@/lib/build/version";
 
 /**
  * Chunk 07: Worker heartbeats.
@@ -32,8 +33,15 @@ export interface BuildHeartbeatInput {
   status: WorkerHeartbeatStatus | string;
   currentJobId?: string;
   now?: Date;
+  /** Overridable for tests; defaults to the id stamped into this worker's image. */
+  buildId?: string;
 }
 
+/**
+ * Every heartbeat carries the worker's BUILD ID (WOB-UAT-026). This is what lets the app detect that a
+ * worker is running different code from itself — the failure mode that a partial `--build app` rebuild
+ * produces silently. It rides in `metadata` (already jsonb) so no migration is needed.
+ */
 export function buildHeartbeatRow(input: BuildHeartbeatInput): HeartbeatRow {
   const now = input.now ?? new Date();
   return {
@@ -43,7 +51,7 @@ export function buildHeartbeatRow(input: BuildHeartbeatInput): HeartbeatRow {
     status: input.status,
     currentJobId: input.currentJobId ?? null,
     heartbeatAt: now,
-    metadata: {},
+    metadata: { buildId: input.buildId ?? getBuildId() },
     createdAt: now,
     updatedAt: now,
   };
@@ -65,18 +73,28 @@ export async function writeHeartbeat(input: BuildHeartbeatInput, db: Db = getDb(
         status: row.status,
         currentJobId: row.currentJobId,
         heartbeatAt: row.heartbeatAt,
+        // MUST be refreshed on every beat: a replaced container reuses the same heartbeat row id, so a
+        // stale metadata.buildId here would report the OLD image forever and defeat the parity check.
+        metadata: row.metadata,
         updatedAt: row.updatedAt,
       },
     });
   return row;
 }
 
-/** Backwards-compatible file heartbeat for the existing /api/health/worker route. */
+/**
+ * Backwards-compatible file heartbeat for the existing /api/health/worker route.
+ *
+ * Also carries `buildId` (WOB-UAT-026): the file heartbeat is the ONE channel both workers write (the
+ * media worker writes only a file, not the DB row), and readiness already reads it — so it is the only
+ * place the app can see every worker's running code version.
+ */
 export async function writeHeartbeatFile(
   state: string,
   storageRoot: string = process.env.STORAGE_ROOT ?? path.join(process.cwd(), "storage"),
+  fileName = "worker-heartbeat.json",
 ): Promise<void> {
-  const heartbeatPath = path.join(storageRoot, "temp", "worker-heartbeat.json");
+  const heartbeatPath = path.join(storageRoot, "temp", fileName);
   await mkdir(path.dirname(heartbeatPath), { recursive: true });
-  await writeFile(heartbeatPath, JSON.stringify({ state, at: new Date().toISOString() }, null, 2));
+  await writeFile(heartbeatPath, JSON.stringify({ state, at: new Date().toISOString(), buildId: getBuildId() }, null, 2));
 }

@@ -44,6 +44,8 @@ services:
     build:
       context: .
       target: migrator
+      args:
+        WOBBLE_BUILD_ID: ${WOBBLE_BUILD_ID:-unknown}
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env.production}
     depends_on:
@@ -57,6 +59,8 @@ services:
     build:
       context: .
       target: runner
+      args:
+        WOBBLE_BUILD_ID: ${WOBBLE_BUILD_ID:-unknown}
     restart: *restart
     env_file:
       - "${WOBBLE_ENV_FILE:-.env.production}"
@@ -96,6 +100,8 @@ services:
     build:
       context: .
       target: worker
+      args:
+        WOBBLE_BUILD_ID: ${WOBBLE_BUILD_ID:-unknown}
     command: ["npm", "run", "worker"]
     restart: *restart
     env_file:
@@ -130,6 +136,8 @@ services:
     build:
       context: .
       target: worker
+      args:
+        WOBBLE_BUILD_ID: ${WOBBLE_BUILD_ID:-unknown}
     command: ["npm", "run", "worker:video"]
     restart: *restart
     env_file:
