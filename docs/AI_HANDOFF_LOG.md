@@ -5567,3 +5567,68 @@ still open: WOB-UAT-025 (service_department modelling), WOB-UAT-006 + NEW WOB-UA
 `ayrshare`/`n8n` posts publishing VIA Zernio under a false provider label), WOB-UAT-023/024 (Design
 Intelligence + Security & Governance), golden workflow, three-client isolation. These are SPECIFIED, not
 delivered, and must not be described as done.
+
+---
+
+## 2026-07-15 (cont.) — Claude: publishing honesty + service departments
+
+Branch `feat/founder-accounts-local-uat`. `main` untouched at `c4831d34`. No merge, no deploy, no paid
+provider calls. Migration head now `0053_department_service_bindings`.
+
+### WOB-UAT-006 + WOB-UAT-028 (P1) — publishing — FIXED
+
+Media Production and Publishing had made **opposite honesty choices on structurally identical logic** —
+resolving a named provider from a registry that might not contain it. Media: unknown/unconfigured →
+terminal `blocked` + error + audit + retry. Publishing: `registry[name] ?? manualPublisher`, a silent
+substitution that turned "this publisher does not exist" into "a human will post it". `ayrshare`/`n8n`
+therefore validated, returned 201, persisted — then sat `scheduled` forever, counted as `deferred`
+(indistinguishable from a real manual post), with no error/audit and no "Mark posted" button (that
+renders only for `manual`). Three hand-maintained copies of one list (Zod enum, registry, UI dropdown)
+had drifted apart and nothing compared them.
+
+WOB-UAT-028 was worse: the schedule route set `scheduleRemote = zernioSchedule` on `zernioConfigured()`
+ALONE, so with a Zernio key an `ayrshare` post was really published THROUGH ZERNIO and reconciled to
+`published` while the row claimed `ayrshare`. Not reproduced live (needs a paid key); covered by an
+injected adapter, and the CLASS is closed by gating on `publisher === "zernio"`.
+
+Fixed: `PUBLISHERS = manual | zernio`; `resolvePublisher` returns null and never substitutes; dispatch
+FAILS with a reason distinguishing "no adapter — re-schedule" from "not configured (no credentials)" +
+a `library.post_failed` audit; `GET /api/library/publishers` derives availability from the live registry
+and the UI renders that. **Live: `POST …{publisher:"ayrshare"}` → 422 (was 201); dropdown shows
+`manual — you post it` + `zernio — blocked (no credentials)` DISABLED.**
+
+A pre-existing test passed only BECAUSE of the bug (it injected a registry with no `manual` and relied
+on the fallback). Fixed to inject a realistic registry; the real invariant is now asserted directly.
+
+### WOB-UAT-025 (P2) — service departments — FIXED
+
+Third operating model `service_department`: health derives from declared `serviceBindings`
+(worker/job_type/route/adapter), not `department_members`. Guarded against becoming an escape hatch —
+no bindings → `misconfigured`; required worker not heartbeating → `unavailable`; required adapter with
+no credentials → `blocked`; unverifiable → `unknown`, never "fine"; every non-staffing signal still
+applies. Worker liveness reads the SAME heartbeat files as readiness/version-parity.
+
+**Proven derived, by injecting a real failure:** `stop worker-video` → media_production
+`blocked → unavailable (worker-video=missing)` while publishing/free_audit stayed healthy; `start` →
+recovered to `blocked` in ~20s. Browser: the three working capabilities now render `active · service ·
+N backing services` with live chips, and Design Intelligence / Security & Governance still render
+`draft · unknown · unstaffed` — no longer identical.
+
+**IMPORTANT for the next session:** the compose stack runs MIGRATIONS on boot but NOT the seed. Department
+changes need an explicit seed run:
+```bash
+WOBBLE_ENV_FILE="C:/Temp/wobble-local-uat/env/uat.env" docker compose -p wobbleuat \
+  -f docker-compose.prod.yml --env-file "C:/Temp/wobble-local-uat/env/uat.env" \
+  run --rm --entrypoint sh worker -c "npm run db:seed"
+```
+(`migrate`'s image cannot run it — tsx can't resolve the source there. The script is `db:seed`, not `seed`.)
+
+### Receipts
+typecheck 0 · **1064/1064** unit tests (136 files) · migration 0053 applied · stack green, parity 200,
+console clean.
+
+### Still open — NOT ready for independent product audit
+P1: WOB-UAT-023/024 (Design Intelligence + Security & Governance must be BUILT). P2: WOB-UAT-008 (agent
+ownership), 010, 013, 014, 017, 007. P3: 009, 011, 012, 015, 018, 031, 033. Plus the entire founder-
+correction scope (memory suggestions, governed admin correction, memory categories, founder-profile
+depth, universal Ask router) — SPECIFIED, not built. Golden workflow and three-client isolation unproven.
