@@ -198,6 +198,48 @@ export async function persistFindings(drafts: SecurityFindingDraft[], opts: { go
   return { created, deduped };
 }
 
+
+/**
+ * Close DETERMINISTIC findings whose condition no longer holds, using this run as the closure proof.
+ *
+ * Restricted to `kinds` whose check genuinely RAN, and to `detectionMethod = 'deterministic'`: only a
+ * computed rule's silence is meaningful. An `agent_judgment` finding that merely was not re-raised
+ * proves nothing about whether it was fixed, so it is never auto-closed — a founder must decide.
+ */
+async function retestClearedFindings(runId: string, ranKinds: Set<string>, stillFailing: Set<string>, deps: SecurityDeps): Promise<string[]> {
+  const db = deps.db ?? getDb();
+  const now = deps.now ?? new Date();
+  const open = await db
+    .select()
+    .from(securityFindings)
+    .where(and(inArray(securityFindings.status, ["open", "acknowledged", "remediating", "retest"]), eq(securityFindings.detectionMethod, "deterministic")));
+
+  const cleared = open.filter((f) => ranKinds.has(f.kind) && !stillFailing.has(f.dedupeKey));
+  const ids: string[] = [];
+  for (const f of cleared) {
+    await db
+      .update(securityFindings)
+      .set({
+        status: "resolved",
+        resolvedBy: GOVERNANCE_ORCHESTRATOR,
+        resolvedAt: now,
+        closureProof: { retestedBy: runId, method: "deterministic_retest", at: now.toISOString(), note: `The condition no longer holds: the '${f.kind}' check ran and did not re-raise '${f.dedupeKey}'.` },
+        updatedAt: now,
+      })
+      .where(eq(securityFindings.id, f.id));
+    ids.push(f.id);
+    await audit(deps, {
+      eventType: "security.finding_retest_cleared",
+      module: SECURITY_MODULE,
+      entityType: "security_finding",
+      entityId: f.id,
+      actor: GOVERNANCE_ORCHESTRATOR,
+      metadata: { dedupeKey: f.dedupeKey, kind: f.kind, severity: f.severity, retestedBy: runId },
+    });
+  }
+  return ids;
+}
+
 export interface GovernanceRunRecord extends GovernanceRunResult {
   /** The orchestrator that ran this pass — real attribution, distinct from whoever requested it. */
   executedBy: string;
@@ -205,6 +247,8 @@ export interface GovernanceRunRecord extends GovernanceRunResult {
   deduped: string[];
   /** Incidents opened from CRITICAL findings by `incident_audit_agent`. */
   incidents: string[];
+  /** Findings this run CLOSED because their condition no longer holds (deterministic retest). */
+  retested: string[];
   requiresAttention: boolean;
   worst: string | null;
 }
@@ -237,6 +281,21 @@ export async function runGovernanceReview(input: { requestedBy: string } = { req
   const run = assembleGovernanceRun({ runId, startedAt: now, access, policy });
   const persisted = await persistFindings(run.findings, { governanceRunId: runId }, deps);
   const requiresAttention = requiresFounderAttention(run);
+
+  // AUTO-RETEST: a DETERMINISTIC finding whose condition no longer holds closes itself, with this run as
+  // its closure proof. This is what `retest` + `closureProof` mean — the system re-verified it.
+  //
+  // Without this the screen LIES: fix the problem and the finding stays open, so a founder reads
+  // "4 critical" about conditions that are gone, and learns to distrust the number. Making a human
+  // hand-close what the system can prove is both busywork and a false display.
+  //
+  // The load-bearing constraint: only retest a `kind` whose check ACTUALLY RAN this pass. If the access
+  // review was skipped, an access finding's absence proves nothing — absence of evidence is not evidence
+  // of absence, and auto-resolving on it would silently erase a real, unfixed critical.
+  const ranKinds = new Set<string>();
+  if (run.checks.some((c) => c.check === "access_review" && c.ran)) ranKinds.add("access");
+  if (run.checks.some((c) => c.check === "policy_review" && c.ran)) ranKinds.add("policy");
+  const retested = ranKinds.size ? await retestClearedFindings(runId, ranKinds, new Set(run.findings.map((f) => f.dedupeKey)), deps) : [];
 
   // A CRITICAL finding is not merely a row to read later — it is an incident happening now, and it gets
   // a lifecycle a founder must close. `incident_audit_agent` owns this: it is what makes that agent a
@@ -284,11 +343,12 @@ export async function runGovernanceReview(input: { requestedBy: string } = { req
       deduped: persisted.deduped.length,
       worst: worstSeverity(run.findings),
       incidentsOpened: incidents.length,
+      retestedClosed: retested.length,
       requiresAttention,
     },
   });
 
-  return { ...run, executedBy: GOVERNANCE_ORCHESTRATOR, created: persisted.created, deduped: persisted.deduped, incidents, requiresAttention, worst: worstSeverity(run.findings) };
+  return { ...run, executedBy: GOVERNANCE_ORCHESTRATOR, created: persisted.created, deduped: persisted.deduped, incidents, retested, requiresAttention, worst: worstSeverity(run.findings) };
 }
 
 export interface ListFindingsQuery {
