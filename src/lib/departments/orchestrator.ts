@@ -5,6 +5,8 @@ import type { DepartmentRow } from "@/lib/domain/department";
 import { selectSpecialists, type DepartmentMemberRow } from "@/lib/domain/department-membership";
 import { dispatchHandoff, type HandoffStore } from "@/lib/handoff";
 import { getDepartment, listMembers } from "@/lib/departments/registry";
+import { loadEngagedSwitches, KillSwitchEngagedError, type EnforcementDeps } from "@/lib/security-governance/enforcement";
+import { isKilled } from "@/lib/domain/security-governance";
 import { reserveBudget, settleReservationFromUsage, releaseBudget, type BudgetStore } from "@/lib/departments/budget";
 import { createEscalation, type EscalationStore } from "@/lib/departments/escalation";
 import type { EscalationReason, EscalationSeverity } from "@/lib/domain/escalation";
@@ -72,6 +74,8 @@ export interface DepartmentRunResult<T> {
 }
 
 export interface RunDepartmentDeps {
+  /** Kill-switch enforcement (WOB-UAT-024). Injectable so tests engage a switch without a database. */
+  enforcement?: EnforcementDeps;
   loadDepartment?: (slug: string) => Promise<DepartmentRow | null>;
   loadMembers?: (slug: string) => Promise<DepartmentMemberRow[]>;
   handoffStore?: HandoffStore;
@@ -143,6 +147,24 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
 
   const department = await loadDepartment(input.departmentSlug);
   if (!department) throw new DepartmentRejectedError(input.departmentSlug, ["department not found"]);
+
+  // 0. KILL SWITCH (WOB-UAT-024). Checked BEFORE acceptance, and it THROWS rather than returning a
+  // result: a contained department must not accept work, must not partially run, and must not report
+  // anything that reads as success. It also covers a department's own orchestrator being killed —
+  // otherwise an agent switch would be walkable-around by routing a handoff at the department.
+  const engaged = await loadEngagedSwitches(deps.enforcement);
+  const deptKill = isKilled(engaged, "department", department.slug);
+  if (deptKill.killed) {
+    await audit(deps, { eventType: "department.blocked_by_kill_switch", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, targetType: "department", targetRef: department.slug, reason: deptKill.reason } });
+    throw new KillSwitchEngagedError("department", department.slug, deptKill.reason ?? "no reason recorded");
+  }
+  if (department.orchestratorAgentSlug) {
+    const orchKill = isKilled(engaged, "agent", department.orchestratorAgentSlug);
+    if (orchKill.killed) {
+      await audit(deps, { eventType: "department.blocked_by_kill_switch", module: "departments", entityType: "department", entityId: department.slug, actor: envelope.actor, metadata: { workflowId: envelope.workflowId, correlationId: envelope.correlationId, targetType: "agent", targetRef: department.orchestratorAgentSlug, reason: orchKill.reason } });
+      throw new KillSwitchEngagedError("agent", department.orchestratorAgentSlug, orchKill.reason ?? "no reason recorded");
+    }
+  }
 
   // 1. Accept (or reject) the inbound handoff — department policy gate + handoff runtime validation.
   const acceptance = acceptInboundHandoff(department, envelope, receiverCtx);

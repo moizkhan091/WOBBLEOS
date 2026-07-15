@@ -4,6 +4,7 @@ import { getDb, type Db } from "@/db";
 import { newId } from "@/lib/ids";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
+import { loadEngagedSwitches, blockedJobType, blockedJobTypes, KillSwitchEngagedError, type EnforcementDeps } from "@/lib/security-governance/enforcement";
 import {
   buildJobRow,
   enqueueJobSchema,
@@ -40,7 +41,14 @@ export interface JobStore {
   findActiveByIdempotencyKey(key: string): Promise<JobRow | null>;
   insert(row: JobRow): Promise<void>;
   /** atomically pick the next runnable job, mark it active, increment attempts */
-  claimNext(queue: string, now: Date): Promise<JobRow | null>;
+  /**
+   * `blockedTypes` are job types under an engaged kill switch. They are excluded IN THE CLAIM QUERY, not
+   * after claiming: `claimNext` does `attempts = attempts + 1` and `requeue` never decrements, so a
+   * claim-then-defer would burn an attempt every poll and a switch engaged for minutes would silently
+   * exhaust maxAttempts and permanently FAIL queued work. Filtering here leaves the job untouched and
+   * `pending`, so it runs normally the moment the switch is released (WOB-UAT-024 enforcement).
+   */
+  claimNext(queue: string, now: Date, blockedTypes?: string[]): Promise<JobRow | null>;
   complete(id: string, result: Record<string, unknown>, now: Date): Promise<void>;
   requeue(id: string, runAfter: Date | null, now: Date, reason: string): Promise<void>;
   markFailed(id: string, now: Date, reason: string): Promise<void>;
@@ -56,6 +64,8 @@ export interface JobDeps {
   store?: JobStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
+  /** Kill-switch enforcement (WOB-UAT-024). Injectable so tests can engage a switch without a database. */
+  enforcement?: EnforcementDeps;
 }
 
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
@@ -82,6 +92,22 @@ export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Pr
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
 
   await assertJobConnectionsAllowed(row, { recordAudit });
+
+  // No NEW work enters the queue for a killed target. Throwing (rather than silently dropping or
+  // returning a fake job) is the point: the caller must learn the work did not happen. Blocked work
+  // never reports success.
+  const engaged = await loadEngagedSwitches(deps.enforcement);
+  const blocked = blockedJobType(engaged, row.type);
+  if (blocked) {
+    await recordAudit({
+      eventType: "job.enqueue_blocked_by_kill_switch",
+      module: "jobs",
+      entityType: "job",
+      entityId: row.id,
+      metadata: { type: row.type, targetType: blocked.targetType, targetRef: blocked.targetRef, reason: blocked.reason },
+    });
+    throw new KillSwitchEngagedError(blocked.targetType, blocked.targetRef, blocked.reason);
+  }
 
   if (row.idempotencyKey) {
     const existing = await store.findActiveByIdempotencyKey(row.idempotencyKey);
@@ -143,8 +169,27 @@ export async function processNextJob(
   const recordAudit = deps.recordAudit ?? defaultRecordAudit;
   const now = deps.now ?? new Date();
 
-  const job = await store.claimNext(queue, now);
+  // Kill-switch enforcement (WOB-UAT-024): killed types are excluded from the claim, so a contained job
+  // is never picked up, never burns an attempt, and resumes untouched when the switch is released.
+  const switches = await loadEngagedSwitches(deps.enforcement);
+  const job = await store.claimNext(queue, now, blockedJobTypes(switches));
   if (!job) return { processed: false };
+
+  // Defence in depth: a switch engaged in the instant between the claim query and here. Requeue with a
+  // real backoff rather than run it. This DOES cost the job one attempt, which is the honest tradeoff for
+  // a race this narrow — the alternative is executing work a founder has explicitly contained.
+  const raced = blockedJobType(switches, job.type);
+  if (raced) {
+    await store.requeue(job.id, new Date(now.getTime() + 60_000), now, `deferred: ${raced.targetType}:${raced.targetRef} kill switch — ${raced.reason}`);
+    await recordAudit({
+      eventType: "job.deferred_by_kill_switch",
+      module: "jobs",
+      entityType: "job",
+      entityId: job.id,
+      metadata: { queue: job.queue, type: job.type, targetType: raced.targetType, targetRef: raced.targetRef, reason: raced.reason },
+    });
+    return { processed: true, jobId: job.id, outcome: "retry" };
+  }
 
   const handler = registry[job.type];
   if (!handler) {
@@ -262,12 +307,15 @@ export function defaultStore(db: Db = getDb()): JobStore {
     async insert(row) {
       await db.insert(jobs).values(row);
     },
-    async claimNext(queue, now) {
+    async claimNext(queue, now, blockedTypes) {
+      // An empty array must NOT become `type <> ALL('{}')` semantics we have to reason about — skip the
+      // clause entirely when nothing is blocked, which is the overwhelmingly common case.
+      const blockFilter = blockedTypes?.length ? sql` AND type <> ALL(${sql.raw(`ARRAY[${blockedTypes.map((t) => `'${t.replace(/'/g, "''")}'`).join(",")}]::text[]`)})` : sql``;
       const result = await db.execute(sql`
         UPDATE jobs SET status = 'active', attempts = attempts + 1, locked_at = ${now}, updated_at = ${now}
         WHERE id = (
           SELECT id FROM jobs
-          WHERE queue = ${queue} AND status = 'pending' AND (run_after IS NULL OR run_after <= ${now})
+          WHERE queue = ${queue} AND status = 'pending' AND (run_after IS NULL OR run_after <= ${now})${blockFilter}
           ORDER BY priority DESC, created_at ASC
           LIMIT 1 FOR UPDATE SKIP LOCKED
         )
