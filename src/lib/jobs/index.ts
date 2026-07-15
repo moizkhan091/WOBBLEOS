@@ -68,6 +68,20 @@ export interface JobDeps {
   enforcement?: EnforcementDeps;
 }
 
+
+/**
+ * Best-effort actor for a job-level audit event. Jobs carry no actor column; the enqueuing route knows
+ * the founder and conventionally puts it in the payload. Returns "unknown" rather than null so an
+ * unattributable action is stated, not implied by absence.
+ */
+function attributedActor(payload: Record<string, unknown> | undefined): string {
+  for (const key of ["requestedBy", "createdBy", "actor", "founder", "openedBy"]) {
+    const v = payload?.[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "unknown";
+}
+
 async function defaultRecordAudit(input: AuditEventInput): Promise<void> {
   await writeAuditEvent(input);
 }
@@ -104,6 +118,11 @@ export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Pr
       module: "jobs",
       entityType: "job",
       entityId: row.id,
+      // "Who tried to run contained work?" is a security question, so the block MUST carry an actor.
+      // The first live probe recorded `actor: null`, which answers it with silence. `enqueueJob` has no
+      // actor parameter, so this reads the attribution the payload already carries and says "unknown"
+      // honestly when there is none — rather than a null that reads as "not applicable".
+      actor: attributedActor(row.payload),
       metadata: { type: row.type, targetType: blocked.targetType, targetRef: blocked.targetRef, reason: blocked.reason },
     });
     throw new KillSwitchEngagedError(blocked.targetType, blocked.targetRef, blocked.reason);

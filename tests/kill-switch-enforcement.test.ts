@@ -257,3 +257,28 @@ describe("a contained action is 409, never 500", () => {
     expect(missing, `enqueue routes that would 500 on a contained action: ${missing.join(", ")}`).toEqual([]);
   });
 });
+
+describe("a block is ATTRIBUTED — 'who tried to run contained work?' must not be answered with silence", () => {
+  /**
+   * The first live probe recorded `actor: null` on the block. Jobs carry no actor column, so this reads
+   * the attribution the enqueuing route already puts in the payload.
+   */
+  it("records the founder who attempted the blocked work", async () => {
+    const { store } = makeStore();
+    const events: AuditEventInput[] = [];
+    const d = { store, now, recordAudit: async (e: AuditEventInput) => void events.push(e), enforcement: { loadSwitches: async () => [killed("agent", "content_worker")] } } as JobDeps;
+    await expect(enqueueJob({ queue: "general", type: "content.generate", payload: { requestedBy: "Ali" } }, d)).rejects.toBeInstanceOf(KillSwitchEngagedError);
+    const blockEvent = events.find((e) => e.eventType === "job.enqueue_blocked_by_kill_switch");
+    expect(blockEvent?.actor).toBe("Ali");
+  });
+
+  it("says 'unknown' rather than null when the payload carries no attribution", async () => {
+    // An unattributable action must be STATED, not implied by an absent field that reads as
+    // "not applicable".
+    const { store } = makeStore();
+    const events: AuditEventInput[] = [];
+    const d = { store, now, recordAudit: async (e: AuditEventInput) => void events.push(e), enforcement: { loadSwitches: async () => [killed("agent", "content_worker")] } } as JobDeps;
+    await expect(enqueueJob({ queue: "general", type: "content.generate", payload: {} }, d)).rejects.toThrow();
+    expect(events.find((e) => e.eventType === "job.enqueue_blocked_by_kill_switch")?.actor).toBe("unknown");
+  });
+});
