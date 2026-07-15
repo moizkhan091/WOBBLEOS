@@ -36,6 +36,8 @@ export interface RegisteredDepartment {
   status: string;
   healthStatus: string;
   purpose: string;
+  /** agent_team | human_control_plane — the UI must not render "team 0/0" for a control plane. */
+  operatingModel: string;
   orchestratorAgentSlug: string | null;
   outboundProducts: string[];
   downstreamConsumers: string[];
@@ -47,6 +49,11 @@ export interface DepartmentRollup {
   name: string | null;
   status: string | null;
   healthStatus: string | null;
+  /**
+   * agent_team | human_control_plane (null for an unregistered department). The UI needs this to avoid
+   * rendering "team 0/0" for a control plane whose team is the founders.
+   */
+  operatingModel: string | null;
   handoffs: {
     total: number;
     byState: Record<string, number>;
@@ -109,7 +116,7 @@ export function shapeDepartmentRollups(handoffRows: HandoffAggRow[], memberRows:
   const ensure = (department: string): DepartmentRollup => {
     let d = byDept.get(department);
     if (!d) {
-      d = { department, name: null, status: null, healthStatus: null, handoffs: { total: 0, byState: {}, inFlight: 0, completed: 0, stuck: 0 }, cost: { totalEstimate: 0 }, quality: { avg: null, samples: 0 }, members: { total: 0, active: 0 }, lastActivityAt: null };
+      d = { department, name: null, status: null, healthStatus: null, operatingModel: null, handoffs: { total: 0, byState: {}, inFlight: 0, completed: 0, stuck: 0 }, cost: { totalEstimate: 0 }, quality: { avg: null, samples: 0 }, members: { total: 0, active: 0 }, lastActivityAt: null };
       byDept.set(department, d);
     }
     return d;
@@ -120,6 +127,7 @@ export function shapeDepartmentRollups(handoffRows: HandoffAggRow[], memberRows:
     d.name = r.name;
     d.status = r.status;
     d.healthStatus = r.healthStatus;
+    d.operatingModel = r.operatingModel;
   }
 
   const qual = new Map<string, { sum: number; n: number }>();
@@ -221,6 +229,7 @@ function toRegistered(r: typeof departmentsTable.$inferSelect): RegisteredDepart
     status: r.status,
     healthStatus: r.healthStatus,
     purpose: r.purpose,
+    operatingModel: r.operatingModel,
     orchestratorAgentSlug: r.orchestratorAgentSlug ?? null,
     outboundProducts: io.outboundProducts ?? [],
     downstreamConsumers: io.downstreamConsumers ?? [],

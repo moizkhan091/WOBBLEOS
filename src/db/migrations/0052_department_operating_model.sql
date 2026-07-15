@@ -1,0 +1,1 @@
+ALTER TABLE "departments" ADD COLUMN "operating_model" varchar(32) DEFAULT 'agent_team' NOT NULL;

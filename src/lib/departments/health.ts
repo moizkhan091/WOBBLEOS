@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { handoffs as handoffsTable, departmentMembers as departmentMembersTable, agents as agentsTable, approvals as approvalsTable } from "@/db/schema";
-import type { DepartmentRow, DepartmentStatus, DepartmentHealthStatus } from "@/lib/domain/department";
+import type { DepartmentRow, DepartmentStatus, DepartmentHealthStatus, DepartmentOperatingModel } from "@/lib/domain/department";
 import { enforceBudget } from "@/lib/departments/enforcement";
 import { getDepartment, listDepartments, setDepartmentHealth, type DepartmentRegistryDeps } from "@/lib/departments/registry";
 
@@ -51,16 +51,29 @@ export interface HealthResult {
 /**
  * Map real signals → a truthful health status (worst-cause wins). A non-active department is not
  * operational, so its health reflects that (archived → unavailable; draft/inactive → unknown).
+ *
+ * `operatingModel` decides which staffing signals even apply. For a `human_control_plane` the founders
+ * ARE the team: no orchestrator and no agent members is the CORRECT configuration, so the staffing
+ * checks below are skipped rather than reported as a misconfiguration. Every other signal (blocked
+ * approvals, backlog, dead-letters, budget) still applies — a control plane can absolutely be blocked
+ * or degraded, and that must still be told truthfully.
  */
-export function computeDepartmentHealth(status: DepartmentStatus, signals: DepartmentHealthSignals, thresholds: HealthThresholds = DEFAULT_HEALTH_THRESHOLDS): HealthResult {
+export function computeDepartmentHealth(
+  status: DepartmentStatus,
+  signals: DepartmentHealthSignals,
+  thresholds: HealthThresholds = DEFAULT_HEALTH_THRESHOLDS,
+  operatingModel: DepartmentOperatingModel = "agent_team",
+): HealthResult {
   const reasons: string[] = [];
   if (status !== "active") {
     return { status: status === "archived" ? "unavailable" : "unknown", reasons: [`department status is ${status} (not operational)`] };
   }
 
+  const isAgentTeam = operatingModel === "agent_team";
+
   // misconfigured — the department can't function as declared.
-  if (!signals.orchestratorRegistered) reasons.push("no orchestrator registered");
-  if (signals.totalAgents === 0) reasons.push("no specialist team (0 members)");
+  if (isAgentTeam && !signals.orchestratorRegistered) reasons.push("no orchestrator registered");
+  if (isAgentTeam && signals.totalAgents === 0) reasons.push("no specialist team (0 members)");
   if (signals.missingCredentials?.length) reasons.push(`missing credentials: ${signals.missingCredentials.join(", ")}`);
   if (reasons.length) return { status: "misconfigured", reasons };
 
@@ -109,7 +122,7 @@ export async function refreshDepartmentHealth(slug: string, deps: DepartmentHeal
   if (!department) return null;
   const loadSignals = deps.loadSignals ?? ((d: DepartmentRow) => gatherSignals(d));
   const signals = await loadSignals(department);
-  const result = computeDepartmentHealth(department.status, signals, deps.thresholds ?? DEFAULT_HEALTH_THRESHOLDS);
+  const result = computeDepartmentHealth(department.status, signals, deps.thresholds ?? DEFAULT_HEALTH_THRESHOLDS, department.operatingModel);
   await setDepartmentHealth(slug, result.status, deps);
   return result;
 }

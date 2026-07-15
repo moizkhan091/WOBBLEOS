@@ -5102,7 +5102,7 @@ function HandoffPage() {
 }
 
 // ---- Departments & Handoffs Command Centre (Phase 3) ----
-type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
+type DeptRollup = { department: string; name: string | null; status: string | null; healthStatus: string | null; operatingModel: string | null; handoffs: { total: number; inFlight: number; completed: number; stuck: number }; cost: { totalEstimate: number }; quality: { avg: number | null }; members: { total: number; active: number }; lastActivityAt: string | null };
 type HandoffView = { id: string; department: string; deliveryState: string; sourceAgent: string; destinationAgent: string | null; workflowId: string; clientWorkspaceId: string | null; retryCount: number; failureReason: string | null; correlationId: string; causationId: string | null; costEstimate: string | null; latencyMs: number | null; qualityScore: string | null };
 type EscView = { id: string; departmentSlug: string; reason: string; severity: string; status: string; requiredDecision: string; assignee: string | null; workflowId: string | null; resolutionAction: string | null };
 type BudgetStateView = { departmentSlug: string; caps: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null; concurrencyLimit: number }; usage: { dailyCents: number; monthlyCents: number; dailyTokens: number; activeReservations: number }; remaining: { dailyCents: number | null; monthlyCents: number | null; dailyTokens: number | null }; providerUsage: { actualCostCents: number; actualRows: number; estimatedRows: number; unverifiedRows: number } };
@@ -5222,7 +5222,15 @@ function DepartmentsPage() {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Tag text={d.healthStatus ?? "unknown"} color={HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray} />
-                <Tag text={`team ${d.members.active}/${d.members.total}`} color={C.gray} />
+                {/* A human_control_plane's team is the FOUNDERS — rendering "team 0/0" for it reads as
+                    "unstaffed" when it is correctly configured. Show what actually operates it. */}
+                {d.operatingModel === "human_control_plane" ? (
+                  <Tag text="human-operated · founders" color={C.blue} />
+                ) : d.members.total === 0 ? (
+                  <Tag text="unstaffed · no agents assigned" color={C.orange} />
+                ) : (
+                  <Tag text={`team ${d.members.active}/${d.members.total}`} color={C.gray} />
+                )}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 11, color: faint }}>
                 <span>in-flight {d.handoffs.inFlight}</span>

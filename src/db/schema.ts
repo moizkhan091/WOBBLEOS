@@ -1705,6 +1705,10 @@ export const departments = pgTable("departments", {
   name: varchar("name", { length: 160 }).notNull(),
   purpose: text("purpose").notNull(),
   status: varchar("status", { length: 32 }).notNull().default("draft"), // draft | active | inactive | archived
+  // HOW the work is done, distinct from whether it is switched on: agent_team | human_control_plane.
+  // A human_control_plane (the Founder Command Centre) has no orchestrator and no agent members BY
+  // DESIGN — the founders are the team — so health must not read that as a misconfiguration.
+  operatingModel: varchar("operating_model", { length: 32 }).notNull().default("agent_team"),
   version: integer("version").notNull().default(1),
   orchestratorAgentSlug: varchar("orchestrator_agent_slug", { length: 120 }),
   deterministicServices: jsonb("deterministic_services").$type<string[]>().notNull().default([]),

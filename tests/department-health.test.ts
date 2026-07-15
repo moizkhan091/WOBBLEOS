@@ -8,6 +8,11 @@ function healthy(): DepartmentHealthSignals {
   return { orchestratorRegistered: true, orchestratorActive: true, totalAgents: 5, activeAgents: 5, backlog: 0, deadLettered: 0, failed: 0, avgLatencyMs: 1200, spendCents: 0, overBudget: false, blockedApprovals: 0, downstreamDeliveryFailures: 0, providerHealthy: true, qaFailureRate: 0, staleKnowledgeDays: 1, missingCredentials: [] };
 }
 
+/** A correctly-configured human control plane: the founders are the team, so no orchestrator, no agents. */
+function controlPlane(): DepartmentHealthSignals {
+  return { ...healthy(), orchestratorRegistered: false, orchestratorActive: false, totalAgents: 0, activeAgents: 0 };
+}
+
 describe("computeDepartmentHealth — truthful, worst-cause wins", () => {
   it("healthy when every signal is good", () => {
     expect(computeDepartmentHealth("active", healthy()).status).toBe("healthy");
@@ -16,6 +21,37 @@ describe("computeDepartmentHealth — truthful, worst-cause wins", () => {
   it("non-active departments are not operational (draft → unknown, archived → unavailable)", () => {
     expect(computeDepartmentHealth("draft", healthy()).status).toBe("unknown");
     expect(computeDepartmentHealth("archived", healthy()).status).toBe("unavailable");
+  });
+
+  /**
+   * WOB-UAT-022. The Founder Command Centre is human-operated: no orchestrator and no agent members is
+   * its CORRECT configuration, not a fault. Judged as an agent_team it reported `misconfigured` forever
+   * on a working console. The staffing checks must not apply — but every other signal still must, so a
+   * control plane cannot hide a real problem behind its operating model.
+   */
+  describe("human_control_plane — the founders are the team", () => {
+    it("is healthy with no orchestrator and no agents (that is the correct configuration)", () => {
+      expect(computeDepartmentHealth("active", controlPlane(), undefined, "human_control_plane").status).toBe("healthy");
+    });
+
+    it("an agent_team with the SAME signals is still misconfigured (the distinction is real)", () => {
+      const r = computeDepartmentHealth("active", controlPlane(), undefined, "agent_team");
+      expect(r.status).toBe("misconfigured");
+      expect(r.reasons).toContain("no orchestrator registered");
+      expect(r.reasons).toContain("no specialist team (0 members)");
+    });
+
+    it("defaults to agent_team when the operating model is not given (no silent leniency)", () => {
+      expect(computeDepartmentHealth("active", controlPlane()).status).toBe("misconfigured");
+    });
+
+    it("still reports real problems truthfully — it is not a blanket exemption", () => {
+      // Blocked approvals are exactly the control plane's own workload; it must still say so.
+      expect(computeDepartmentHealth("active", { ...controlPlane(), blockedApprovals: 3 }, undefined, "human_control_plane").status).toBe("blocked");
+      expect(computeDepartmentHealth("active", { ...controlPlane(), deadLettered: 1 }, undefined, "human_control_plane").status).toBe("failed");
+      expect(computeDepartmentHealth("active", { ...controlPlane(), overBudget: true }, undefined, "human_control_plane").status).toBe("over_budget");
+      expect(computeDepartmentHealth("active", { ...controlPlane(), missingCredentials: ["X"] }, undefined, "human_control_plane").status).toBe("misconfigured");
+    });
   });
 
   it("misconfigured: no orchestrator / no team / missing credentials", () => {

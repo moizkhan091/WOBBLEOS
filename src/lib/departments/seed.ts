@@ -164,6 +164,10 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     name: "Founder Command Centre",
     purpose: "The founders' console: operational summaries, approvals, escalations and intervention controls.",
     status: "active", // human-operated hub (no LLM orchestrator) — the escalation + approval destination
+    // The FOUNDERS are the team. No orchestrator and no agent members is the correct configuration, not a
+    // gap: no agent approves on a founder's behalf. Declaring this stops the health classifier reporting
+    // a working console as `misconfigured` (WOB-UAT-022) without staffing it with fictional agents.
+    operatingModel: "human_control_plane",
     permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "client_confidential", "restricted"] },
     io: { inboundCapabilities: ["approve", "escalate", "intervene"], acceptedHandoffSchemas: [], outboundProducts: ["operational_summaries", "approvals", "escalations", "intervention_controls"], downstreamConsumers: [] },
     owner: "Moiz",

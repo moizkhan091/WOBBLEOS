@@ -17,6 +17,21 @@ import { newId } from "@/lib/ids";
 export const DEPARTMENT_STATUSES = ["draft", "active", "inactive", "archived"] as const;
 export type DepartmentStatus = (typeof DEPARTMENT_STATUSES)[number];
 
+/**
+ * HOW a department does its work — distinct from WHETHER it is switched on (`status`).
+ *
+ *   agent_team          an orchestrator + registered specialist agents execute the work. The default,
+ *                       and what every LLM-backed department is.
+ *   human_control_plane the FOUNDERS are the team. It owns approvals, escalations and intervention
+ *                       controls; it deliberately has no orchestrator and no agent members.
+ *
+ * Without this distinction the health classifier reads "no orchestrator + 0 members" as broken, and
+ * reports a correctly-configured human console as `misconfigured` forever (WOB-UAT-022). Staffing it
+ * with LLM agents to silence that would be a lie: no agent approves on a founder's behalf.
+ */
+export const DEPARTMENT_OPERATING_MODELS = ["agent_team", "human_control_plane"] as const;
+export type DepartmentOperatingModel = (typeof DEPARTMENT_OPERATING_MODELS)[number];
+
 /** Truthful operational health — computed from real signals, never assumed from record existence. */
 export const DEPARTMENT_HEALTH_STATUSES = [
   "healthy",
@@ -124,6 +139,8 @@ export interface DepartmentRow {
   name: string;
   purpose: string;
   status: DepartmentStatus;
+  /** How the work gets done. `human_control_plane` departments have no orchestrator/agents BY DESIGN. */
+  operatingModel: DepartmentOperatingModel;
   version: number;
   /** The manager/orchestrator agent slug that receives handoffs and runs the department. */
   orchestratorAgentSlug: string | null;
@@ -150,6 +167,7 @@ export const departmentInputSchema = z.object({
   name: z.string().trim().min(1),
   purpose: z.string().trim().min(1),
   status: z.enum(DEPARTMENT_STATUSES).default("draft"),
+  operatingModel: z.enum(DEPARTMENT_OPERATING_MODELS).default("agent_team"),
   version: z.number().int().positive().default(1),
   orchestratorAgentSlug: z.string().trim().min(1).nullable().default(null),
   deterministicServices: stringList,
@@ -177,6 +195,7 @@ export function buildDepartmentRow(input: DepartmentInput, opts: { id?: string; 
     name: parsed.name,
     purpose: parsed.purpose,
     status: parsed.status,
+    operatingModel: parsed.operatingModel,
     version: parsed.version,
     orchestratorAgentSlug: parsed.orchestratorAgentSlug,
     deterministicServices: parsed.deterministicServices,
