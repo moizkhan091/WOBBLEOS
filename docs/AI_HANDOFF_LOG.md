@@ -5757,3 +5757,61 @@ Security & Governance itself still lacks: a `verticals/security-governance.ts` h
 module is built + typechecked but was NOT yet driven in the visible browser). Plus the whole
 founder-correction scope (memory suggestions, governed admin correction, universal Ask router), the
 golden workflow, three-client isolation, and the 28 pillars.
+
+---
+
+## 2026-07-16 — Claude: kill switches now ENFORCE (WOB-UAT-034)
+
+Branch `feat/founder-accounts-local-uat`, HEAD `48c96a6` (pushed). `main` untouched at `c4831d34`.
+No merge, no deploy, no paid provider calls.
+
+### The defect I self-reported last session, now fixed
+`checkKillSwitch` existed, was tested, and was called by NOTHING — its only appearance outside its module
+was a string in the seed's `deterministicServices`. Engaging a switch changed a row and stopped no work.
+That is precisely what this system's OWN `risk_compliance_agent` reports as HIGH for a disabled budget
+cap: *"a control that appears to exist and enforces nothing is worse than none — it produces false
+confidence."* Shipping it would have been the campaign's own failure mode.
+
+Enforced at three points a switch cannot be walked around: `enqueueJob` (throws — no new work), the
+`claimNext` SQL (queued work is never picked up), and `runDepartment` (incl. a killed orchestrator, so an
+agent switch is not walkable-around by routing a handoff at the department).
+
+**The load-bearing detail:** enforcement is IN THE CLAIM QUERY. `claimNext` does `attempts = attempts + 1`
+and `requeue` never decrements, so a claim-then-defer would burn an attempt per poll and a few minutes of
+containment would silently exhaust `maxAttempts` and PERMANENTLY FAIL the work it was protecting. A
+control that destroys what it contains is worse than useless — founders would learn never to touch it.
+A test asserts 10 poll cycles under containment burn ZERO attempts.
+
+### LIVE PROOF (build 48c96a6 == HEAD)
+```
+engage agent:content_worker                            -> 201
+POST /api/content/generate (contained)                 -> 409  blockedBy{agent, content_worker, reason}
+audit job.enqueue_blocked_by_kill_switch  actor=Moiz
+release (super-admin + reason)                         -> 200
+POST /api/content/generate (same work)                 -> 202  capability recovered
+```
+Switch state also survived a full stack rebuild → persistence.
+
+### Three things found by RUNNING it, not by testing it
+1. **500 on a contained action.** A 500 says the server broke; a kill switch is the opposite. A founder
+   who cannot tell a control from a crash ignores real outages or "fixes" their own containment. → 409.
+2. **`actor: null` on the block.** "Who tried to run contained work?" answered with silence. → attributed.
+3. **I wrote an unverified claim into the evidence file.** I recorded `actor=Moiz` before noticing the
+   running build predated the fix. Caught only by comparing `/api/health/version` buildId against HEAD.
+   Corrected in the ledger rather than deleted. **Check buildId vs HEAD before writing evidence.**
+
+### Cleared, not defects (recorded so they are not re-raised)
+A stored reason showed U+FFFD where an em-dash belonged — looked like data corruption. It is not: a UTF-8
+round-trip stores `em-dash — test ünïcode` byte-perfect; my bash/curl probe mangled it. Second false-defect
+near-miss this session, after the idempotent `/api/qa/reviews` cache.
+
+### Receipts
+typecheck 0 · **1126/1126** unit tests (138 files) · kill-switch-enforcement 22/22 (written as BYPASS
+attempts, not happy paths) · stack green, parity 200, build == HEAD.
+
+### Still open — NOT ready for independent product audit
+Security & Governance still lacks a `verticals/security-governance.ts` handoff-driven runner, a
+`DEPARTMENT_CONSUMERS` registration, a scheduler cadence, and **browser-verified UI** (the `/security`
+workspace is built + typechecked but has never been driven in the visible browser). **WOB-UAT-023 Design
+Intelligence** remains the last genuinely-absent department. Plus the founder-correction scope, the
+golden workflow, three-client isolation, and the 28 pillars.
