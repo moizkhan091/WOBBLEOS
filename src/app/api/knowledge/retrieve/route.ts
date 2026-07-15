@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { retrieveKnowledge } from "@/lib/knowledge";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const query = url.searchParams.get("query")?.trim();
   if (!query) return NextResponse.json({ ok: false, error: "query is required" }, { status: 422 });

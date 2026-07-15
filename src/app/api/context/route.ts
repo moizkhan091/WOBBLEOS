@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { retrieveTrustedContext, contextCoverageForScope, listContextContradictions } from "@/lib/context-os";
 import { CONTEXT_SCOPES, type ContextScopeType } from "@/lib/domain/context-os";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
  *  (records a retrieval evidence row), plus coverage + open contradictions. Only APPROVED, in-scope facts. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   const type = u.searchParams.get("scope") as ContextScopeType | null;
   const scopeId = u.searchParams.get("id");

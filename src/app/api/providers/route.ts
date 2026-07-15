@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listProviderConnections } from "@/lib/providers";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,10 @@ function dbUnavailable() {
  * GET /api/providers
  * List configured provider connections. Returns credential key names, never secret values.
  */
-export async function GET() {
+export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   try {
     const providers = await listProviderConnections();

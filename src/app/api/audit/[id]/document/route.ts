@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { getAudit } from "@/lib/free-audit";
 import { renderAuditReportHtml } from "@/lib/documents/render";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/audit/[id]/document — premium HTML audit report (open in a tab, print to PDF). */
-export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { id } = await ctx.params;
   const audit = await getAudit(id);
   if (!audit) return NextResponse.json({ ok: false, error: "audit not found" }, { status: 404 });

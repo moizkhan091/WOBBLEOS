@@ -26,9 +26,20 @@ function errorStatus(message: string): number {
   return 500;
 }
 
-/** GET /api/memory/records?bank=founder_moiz&status=active — browse a bank's records in detail. */
+/**
+ * GET /api/memory/records?bank=founder_moiz&status=active — browse a bank's records in detail.
+ *
+ * Any authenticated founder may browse any bank, including a colleague's — founder memory is
+ * transparent across the company, and this endpoint backs the founder-profile surface. There is
+ * deliberately no owner check on READ; editing stays owner-only via the POST below.
+ *
+ * `requireFounder` closes WOB-UAT-029: the edge proxy is JWT-signature-only, so without this gate a
+ * REVOKED session still read every bank until its token expired.
+ */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const bankSlug = url.searchParams.get("bank") ?? undefined;
   const status = (url.searchParams.get("status") as "active" | "archived" | null) ?? "active";

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getWebstats } from "@/lib/analytics/plausible";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/webstats?period=30d — live website traffic (Plausible), or an honest connect-state. */
 export async function GET(request: Request) {
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   const period = u.searchParams.get("period") ?? "30d";
   try {

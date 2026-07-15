@@ -225,3 +225,77 @@ Log founder conversations too (not just code). If a founder states intent in cha
   `requireSuperAdmin` instead of allow-listing the new auth routes as "public". WHY: all three resolve through the
   same DB-backed `verifySession`; allow-listing would have created a real hole in the guard, whereas teaching it
   the stricter gates preserves the invariant. `requireSuperAdmin` is additionally asserted on the account-action route.
+
+---
+
+### 2026-07-15 - Founder(Moiz)+Claude - Founder memory is TRANSPARENT; identity-safe learning; Ask WOBBLE as universal front door
+- Decision (BINDING FOUNDER CORRECTION — reverses an in-progress Claude implementation before it was committed):
+  1. **Founder company memory is visible to every authenticated founder.** Preferences, communication style,
+     design/writing taste, strategic tendencies, expertise, department ownership, responsibilities, recent work,
+     decisions, approvals, rejected directions, tasks, project history, meeting/call notes, AI-learned preferences.
+     This is the product working: transparency, accountability, coordination, fewer repeated explanations.
+  2. **Only the owner may directly edit their own founder memory.** Other founders' profiles are READ-ONLY.
+  3. **A super-admin may correct another founder's profile only through a dedicated administrative action**
+     requiring explicit target + reason + confirmation + audit event + before/after values + actor attribution +
+     notification to the affected founder. A generic query parameter must never silently retarget a write.
+  4. **AI learning writes ONLY to the authenticated founder.** Identity comes from the verified session — never a
+     dropdown, URL segment, request-body founder name, client-supplied actor field, or display name.
+  5. **A statement about another founder becomes a SUGGESTION, not confirmed memory.** ("Moiz says Ali prefers
+     aggressive pricing" → a pending suggestion targeting Ali with source/confidence/evidence, which Ali or an
+     authorized super-admin approves, edits, or rejects.) Low-risk observed preferences about the AUTHENTICATED
+     founder may auto-add with source/date/confidence/origin/audit + correction path; material identity,
+     responsibility, policy, financial or strategic conclusions stay proposals until approved.
+  6. **Security material is never founder memory:** passwords, hashes, auth/session tokens, API keys, private keys,
+     recovery codes, provider credentials, infrastructure secrets, and legally restricted personal information
+     unrelated to company work. Those live in secure systems.
+  7. **Ask WOBBLE is the universal company command surface** — the front door OVER the specialised modules, never a
+     replacement for them. Existing modules remain for detailed work, direct control, department state, revisions,
+     monitoring, settings, evidence and approvals.
+  8. **Routing must be capability-based, confidence-aware, cost-aware, client-scoped, founder-aware and auditable**
+     — an Intent Analyzer / Context Resolver / Capability Router / Mission Planner / Department Orchestrator /
+     Execution Supervisor / Quality Evaluator / Founder Approval Gate architecture. NOT one giant generic prompt,
+     and NOT a fan-out that calls every department for every request.
+- Context / why: Claude's local UAT campaign proved live that an ordinary founder (Ali) could read a private canary
+  out of Moiz's `founder_moiz` bank through three endpoints, and began fixing it by making founder memory
+  owner-private on read (mirroring `canEditMemoryBanks`). The founder corrected the DIRECTION: the leak framing was
+  wrong. WOBBLE is an internal company OS built on founder transparency — founders SHOULD see each other's company
+  memory. The genuine defect is on the WRITE side: caller-controlled identity and silent modification of another
+  founder's memory. "Visibility is not ownership."
+- Alternatives rejected:
+  - **Owner-private founder memory reads** (Claude's first direction) — REJECTED. It destroys the transparency the
+    company OS exists to provide and would force founders to re-explain themselves to each other.
+  - **Blending all founders' preferences into every answer** — REJECTED. Visibility is not ownership: WOBBLE must
+    not adopt Ali's writing style as Moiz's default just because Ali's profile is readable. Personalization is
+    scoped to the authenticated founder (`personalizationFounder`); explicit collaboration reads are not.
+  - **Super-admin read exemption / super-admin silent edit** — REJECTED both ways. Reads need no exemption because
+    reads are open; writes need a governed, audited, notified correction flow rather than an implicit privilege.
+- Affects: `src/lib/domain/memory.ts` (`identityScopedBanks` replaces the rejected `canReadMemoryBanks`),
+  `src/lib/memory/index.ts` (`personalizationFounder`, `getFounderMemory(founder, viewer)` → `editable`),
+  `src/lib/ask/index.ts` (brain retrieval personalizes as the authenticated founder), memory API routes,
+  `src/components/os/os-ui.tsx` (Founder profiles surface; `useSessionFounder`), `tests/memory-manage.test.ts`,
+  `tests/route-auth-coverage.test.ts`.
+- Do NOT change: founder-to-founder READ access (transparency is the requirement, not a bug — a test asserts it so
+  a future "shouldn't this be private?" change must argue with a failing test); owner-only EDIT via
+  `canEditMemoryBanks`; session-derived identity; the read-side session gate (WOB-UAT-029) — transparency is for
+  AUTHENTICATED founders only, and an unauthenticated/revoked/disabled reader still gets nothing.
+- Risks / open questions: the memory-suggestion flow (5), the governed administrative correction (3), the founder
+  profile surface (activity/decisions/approvals/commitments), and the universal router (7, 8) are SPECIFIED here but
+  NOT yet implemented. They are open work, not delivered capability, and must not be described as done.
+
+### 2026-07-15 - Claude - Read routes are a security boundary, not a convenience
+- Decision: every founder-facing API READ requires a DB-backed session gate, enforced statically by
+  `tests/route-auth-coverage.test.ts` with a narrow, justified public allowlist (health probes, `auth/session`,
+  `public/media/[id]`).
+- Context / why: `src/proxy.ts` verifies the JWT SIGNATURE ONLY — its own comment defers revocation/expiry to
+  `verifySession` in the Node handlers. 39 of 105 GET routes never called it. Proven live: after Moiz revoked Ali's
+  sessions (`sessionsRevoked: 2`), Ali's revoked cookie got **401 on POST** and **200 with real data on GET**,
+  including another founder's memory. Revoking a departed or compromised founder did not stop them reading for the
+  30-day JWT lifetime — the control was decorative. WOB-AUD-004's guard only covered mutations, which is why this
+  shipped.
+- Alternatives rejected: enforcing revocation in the edge proxy — REJECTED, the edge runtime has no DB access
+  (jose-only), which is precisely why the gate belongs in the handlers.
+- Affects: 29 GET route handlers, `tests/route-auth-coverage.test.ts`.
+- Do NOT change: the read half of the coverage guard, or the public read allowlist without justifying each entry.
+  A new ungated read route must fail CI.
+- Risks / open questions: this closes the read bypass, not the underlying design — a JWT-only edge remains a
+  latent trap for any future route that forgets the gate. The guard is what makes forgetting fail loudly.

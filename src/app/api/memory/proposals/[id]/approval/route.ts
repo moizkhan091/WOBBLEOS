@@ -10,10 +10,13 @@ function dbUnavailable() {
   return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
 }
 
+// `approvedBy`/`rejectedBy` are optional and IGNORED — both handlers override them with the session
+// founder. They were `required`, which forced clients to send an identity the server discards
+// (WOB-UAT-030). Accepted for compatibility with older callers, never trusted.
 const approveSchema = z.object({
   action: z.literal("approve"),
   approvalId: z.string().trim().min(1),
-  approvedBy: z.string().trim().min(1),
+  approvedBy: z.string().trim().min(1).optional(),
   slug: z.string().trim().min(1),
   title: z.string().trim().min(1),
   memoryTier: z.enum(MEMORY_TIERS),
@@ -26,7 +29,7 @@ const approveSchema = z.object({
 const rejectSchema = z.object({
   action: z.literal("reject"),
   approvalId: z.string().trim().min(1),
-  rejectedBy: z.string().trim().min(1),
+  rejectedBy: z.string().trim().min(1).optional(),
   reason: z.string().trim().min(1).optional(),
 });
 

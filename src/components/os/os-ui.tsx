@@ -249,7 +249,31 @@ function offlineIf(s: ApiState<unknown>): React.ReactNode | null {
   return null;
 }
 
+/**
+ * The founder roster, used ONLY to choose whose profile you are LOOKING AT (a subject selector).
+ * It is no longer used to choose who you ARE — that always comes from `useSessionFounder`.
+ *
+ * KNOWN LIMITATION: this is a hardcoded list and can drift from `founder_profiles`. The roster
+ * endpoint (`GET /api/auth/accounts`) is super-admin gated, so an ordinary founder has no way to
+ * enumerate founders yet. A founder-visible roster endpoint is the correct fix — tracked as
+ * WOB-UAT-031 rather than papered over by pretending this list is derived.
+ */
 const FOUNDERS = ["Moiz", "Ali", "Ibrahim", "Haad"];
+
+/**
+ * The AUTHENTICATED founder, from the session (WOB-UAT-005).
+ *
+ * Not a picker. Every mutating route derives the actor from the verified session and ignores any
+ * `actor`/`by`/`who` sent in the body — so an "Acting as" dropdown could never actually change who
+ * acted; it only told the founder something untrue. It is a leftover of the shared team login that
+ * per-founder accounts replaced (WOB-UAT-002). Returns "" until the session resolves, which callers
+ * must treat as "unknown yet" rather than as a founder.
+ */
+function useSessionFounder(): { founder: string; loading: boolean } {
+  const s = useApi<{ authenticated: boolean; founder?: string }>("/api/auth/session");
+  return { founder: s.data?.founder ?? "", loading: s.loading };
+}
+
 const selectStyle: React.CSSProperties = { padding: "8px 11px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: C.white, fontSize: 12.5 };
 const primaryBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 11, border: "none", background: C.lime, color: "#0A0A0A", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const rejectBtn: React.CSSProperties = { padding: "10px 14px", borderRadius: 11, border: "1px solid rgba(255,107,0,0.35)", background: "rgba(255,107,0,0.08)", color: C.orange, fontSize: 12, fontWeight: 600, cursor: "pointer" };
@@ -411,8 +435,8 @@ function MemoryApproveModal({ approvalId, entityId, who, onClose, onDone }: { ap
     try {
       const body =
         action === "approve"
-          ? { action, approvalId, approvedBy: who, slug: slug.trim() || "memory_" + entityId.slice(-6), title: title.trim() || slug.trim() || "Memory note", memoryTier: tier, trustLevel: trust }
-          : { action, approvalId, rejectedBy: who, reason: reason.trim() || "rejected by founder" };
+          ? { action, approvalId, slug: slug.trim() || "memory_" + entityId.slice(-6), title: title.trim() || slug.trim() || "Memory note", memoryTier: tier, trustLevel: trust }
+          : { action, approvalId, reason: reason.trim() || "rejected by founder" };
       const r = await fetch("/api/memory/proposals/" + entityId + "/approval", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = (await r.json()) as Record<string, unknown>;
       if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
@@ -449,7 +473,7 @@ function MemoryApproveModal({ approvalId, entityId, who, onClose, onDone }: { ap
 
 function ApprovalsPage() {
   const s = useApi<{ items: Record<string, unknown>[]; pendingCount: number }>("/api/approvals?status=pending&limit=50");
-  const [who, setWho] = useState(FOUNDERS[0]);
+  const { founder: who } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [memItem, setMemItem] = useState<{ approvalId: string; entityId: string } | null>(null);
@@ -458,7 +482,7 @@ function ApprovalsPage() {
     setBusyId(id);
     setNote(null);
     try {
-      const r = await fetch("/api/approvals/" + id + "/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, approvedBy: who }) });
+      const r = await fetch("/api/approvals/" + id + "/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const j = (await r.json()) as Record<string, unknown>;
       if (!r.ok || j.ok === false) setNote("Could not " + action + ": " + String(j.error ?? "HTTP " + r.status));
       else { setNote(action === "approve" ? "Approved by " + who + " · logged to audit." : "Rejected · returned to the agent."); s.reload(); }
@@ -480,7 +504,7 @@ function ApprovalsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: muted }}>Acting as</span>
-        <select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select>
+        <span data-testid="approvals-actor" style={{ fontSize: 12.5, fontWeight: 600 }}>{who || "…"}</span>
         {note ? <span style={{ fontSize: 12, color: C.lime }}>{note}</span> : null}
       </div>
       {items.map((a, i) => {
@@ -704,7 +728,7 @@ function GenerateModal({ tracks, defaultTrack, onClose, onDone }: { tracks: Reco
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [formats, setFormats] = useState<string[]>([]);
   const [maxPackets, setMaxPackets] = useState(3);
-  const [by, setBy] = useState(FOUNDERS[0]);
+  const { founder: by } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   function toggle(list: string[], set: (v: string[]) => void, v: string) { set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]); }
@@ -712,7 +736,7 @@ function GenerateModal({ tracks, defaultTrack, onClose, onDone }: { tracks: Reco
     setBusy(true);
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { contentTrackId: trackId, requestedBy: by, platformFocus: platforms, formatFocus: formats, maxPackets };
+      const body: Record<string, unknown> = { contentTrackId: trackId, platformFocus: platforms, formatFocus: formats, maxPackets };
       if (objective.trim()) body.objective = objective.trim();
       const r = await fetch("/api/content/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = (await r.json()) as Record<string, unknown>;
@@ -754,7 +778,7 @@ function GenerateModal({ tracks, defaultTrack, onClose, onDone }: { tracks: Reco
             </div>
             <div>
               <div style={labelStyle}>REQUESTED BY</div>
-              <select value={by} onChange={(e) => setBy(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{by || "…"}</span>
             </div>
           </div>
           {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
@@ -1310,13 +1334,60 @@ function MemoryReviewPanel({ actor }: { actor: string }) {
   );
 }
 
-function FounderMemoryPanel({ founder }: { founder: string }) {
-  const s = useApi<{ bank: string; count: number; records: Record<string, unknown>[] }>("/api/memory/founder/" + encodeURIComponent(founder));
+/**
+ * Founder profiles. Founder company memory is TRANSPARENT: any authenticated founder may read any
+ * founder's profile — preferences, taste, expertise, decisions, recent work — which is what stops
+ * founders re-explaining themselves and lets teams coordinate. Editing stays owner-only, so a
+ * colleague's profile renders read-only rather than hidden.
+ *
+ * `subject` is a SUBJECT selector, not an identity picker: it changes whose profile you are looking
+ * at, never who you are. Who you are always comes from the session.
+ *
+ * Two defects are fixed here. It rendered `ManagedMemoryList` — the unfiltered ALL-memory list — so
+ * the panel showed the same rows for every founder and ignored `bank` entirely (the logged
+ * WOB-UAT-005 symptom). And it took its subject from the old "Acting as" identity dropdown.
+ */
+function FounderMemoryPanel({ viewer }: { viewer: string }) {
+  const [subject, setSubject] = useState(viewer || FOUNDERS[0]);
+  // Follow the session once it resolves, so the default subject is YOU rather than whoever is first.
+  useEffect(() => { if (viewer) setSubject(viewer); }, [viewer]);
+  const s = useApi<{ bank: string; count: number; editable: boolean; records: Record<string, unknown>[] }>(
+    "/api/memory/founder/" + encodeURIComponent(subject),
+  );
   const guard = offlineIf(s); if (guard) return guard;
+  const records = s.data?.records ?? [];
+  const editable = s.data?.editable ?? false;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ fontSize: 12, color: muted }}>Everything WOBBLE has learned about <b>{founder}</b> personally (bank <code>{s.data?.bank}</code>) — {s.data?.count ?? 0} memories.</div>
-      <ManagedMemoryList actor={founder} status="active" />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11.5, color: faint }}>Viewing profile of</span>
+        <select data-testid="founder-profile-subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={selectStyle}>
+          {FOUNDERS.map((f) => <option key={f} value={f}>{f}{f === viewer ? " (you)" : ""}</option>)}
+        </select>
+        <Tag text={editable ? "editable · your profile" : "read-only · colleague's profile"} color={editable ? C.lime : C.blue} />
+      </div>
+      <div style={{ fontSize: 12, color: muted }}>
+        What WOBBLE has learned about <b>{subject}</b> (bank <code>{s.data?.bank}</code>) — {s.data?.count ?? 0} memories.
+        {editable ? " You can edit your own profile." : " Visible to every founder for coordination; only " + subject + " can change it."}
+      </div>
+      {records.length === 0 ? (
+        <StateBlock kind="empty" message={`WOBBLE has not learned anything about ${subject} yet.`} />
+      ) : (
+        <div style={{ ...glass, padding: "8px 10px" }}>
+          {records.map((r, i) => (
+            <div key={String(r.id ?? i)} style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < records.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{String(r.title ?? "memory")}</span>
+                  {r.memoryTier ? <Tag text={String(r.memoryTier)} color={C.lime} /> : null}
+                  {r.area ? <Tag text={String(r.area)} color={C.gray} /> : null}
+                </div>
+                <div style={{ fontSize: 12, color: muted, marginTop: 3 }}>{String(r.content ?? "")}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1325,21 +1396,25 @@ const MEM_TABS = [
   { id: "records", label: "All memory" },
   { id: "conflicts", label: "Conflicts" },
   { id: "review", label: "Stale review" },
-  { id: "mine", label: "What WOBBLE knows about me" },
+  // Renamed from "What WOBBLE knows about me": founder memory is transparent, so this surface shows
+  // ANY founder's company profile — your own is editable, a colleague's is read-only.
+  { id: "mine", label: "Founder profiles" },
   { id: "archived", label: "Recently deleted" },
 ];
 
 function MemoryPage() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("records");
-  const [actor, setActor] = useState(FOUNDERS[0]);
+  // The actor is WHOEVER IS LOGGED IN — never a dropdown (WOB-UAT-005). Every memory route already
+  // takes the actor from the verified session, so a picker here could only ever misinform.
+  const { founder: actor, loading } = useSessionFounder();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button onClick={() => setOpen(true)} style={primaryBtn}>Add memory</button>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
           <span style={{ fontSize: 11.5, color: faint }}>Acting as</span>
-          <select value={actor} onChange={(e) => setActor(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select>
+          <span data-testid="memory-actor" style={{ fontSize: 12.5, fontWeight: 600 }}>{loading ? "…" : actor || "unknown"}</span>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1352,7 +1427,7 @@ function MemoryPage() {
       {tab === "archived" ? <ManagedMemoryList actor={actor} status="archived" /> : null}
       {tab === "conflicts" ? <MemoryConflictsPanel actor={actor} /> : null}
       {tab === "review" ? <MemoryReviewPanel actor={actor} /> : null}
-      {tab === "mine" ? <FounderMemoryPanel founder={actor} /> : null}
+      {tab === "mine" ? <FounderMemoryPanel viewer={actor} /> : null}
       {open ? <AddMemoryModal onClose={() => setOpen(false)} onDone={() => setOpen(false)} /> : null}
     </div>
   );
@@ -1535,7 +1610,7 @@ const FALLBACK_SOURCE_TYPES: SourceTypeOption[] = [
 ];
 
 function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [who, setWho] = useState(FOUNDERS[0]);
+  const { founder: who } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [title, setTitle] = useState("");
   const typeApi = useApi<{ types: SourceTypeOption[] }>("/api/sources/types?limit=200");
   const sourceTypes = typeApi.data?.types?.length ? typeApi.data.types : FALLBACK_SOURCE_TYPES;
@@ -1581,7 +1656,7 @@ function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Competitor pricing teardown" style={inputStyle} /></div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={selectStyle}>{sourceTypes.map((t) => <option key={t.slug} value={t.slug}>{t.label}</option>)}</select></div>
-            <div><div style={labelStyle}>ADDED BY</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((fo) => <option key={fo} value={fo}>{fo}</option>)}</select></div>
+            <div><div style={labelStyle}>ADDED BY</div><div style={{ ...selectStyle, opacity: 0.75 }}>{who || "…"}</div></div>
           </div>
           <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>{selectedType?.category ?? "source"} - {selectedType?.description ?? "Per-type intake runs after approval."}</div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -1603,7 +1678,7 @@ function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () =
 }
 
 function AddMemoryModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [who, setWho] = useState(FOUNDERS[0]);
+  const { founder: who } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [proposedMemory, setProposedMemory] = useState("");
   const [affectedArea, setAffectedArea] = useState("");
   const [reason, setReason] = useState("");
@@ -1613,7 +1688,7 @@ function AddMemoryModal({ onClose, onDone }: { onClose: () => void; onDone: () =
     setBusy(true);
     setMsg(null);
     try {
-      const body = { proposedMemory: proposedMemory.trim(), affectedArea: affectedArea.trim() || "general", reason: reason.trim() || "founder capture", proposedBy: who };
+      const body = { proposedMemory: proposedMemory.trim(), affectedArea: affectedArea.trim() || "general", reason: reason.trim() || "founder capture" };
       const r = await fetch("/api/memory/proposals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = (await r.json()) as Record<string, unknown>;
       if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
@@ -1633,7 +1708,7 @@ function AddMemoryModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           <div><div style={labelStyle}>MEMORY</div><textarea value={proposedMemory} onChange={(e) => setProposedMemory(e.target.value)} rows={5} placeholder="What should WOBBLE remember?" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} /></div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 150 }}><div style={labelStyle}>AREA</div><input value={affectedArea} onChange={(e) => setAffectedArea(e.target.value)} placeholder="brand_voice / client" style={inputStyle} /></div>
-            <div><div style={labelStyle}>BY</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((fo) => <option key={fo} value={fo}>{fo}</option>)}</select></div>
+            <div><div style={labelStyle}>BY</div><div style={{ ...selectStyle, opacity: 0.75 }}>{who || "…"}</div></div>
           </div>
           <div><div style={labelStyle}>REASON</div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="why this matters" style={inputStyle} /></div>
           {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
@@ -2041,7 +2116,7 @@ function statusColor(status: unknown) {
 }
 
 function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEntry; onClose: () => void; onDone: () => void }) {
-  const [who, setWho] = useState(FOUNDERS[0]);
+  const { founder: who } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [reason, setReason] = useState("");
   const [editSummary, setEditSummary] = useState(entry.summary ?? "");
   const [editRecommendation, setEditRecommendation] = useState(String((entry.record ?? {}).recommendation ?? ""));
@@ -2075,7 +2150,7 @@ function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEnt
       setMsg("Error: rejection reason is required.");
       return;
     }
-    await call(action, base + "/review", { method: "POST", body: JSON.stringify({ action, reviewedBy: who, reason: reason.trim() || undefined }) });
+    await call(action, base + "/review", { method: "POST", body: JSON.stringify({ action, reason: reason.trim() || undefined }) });
   }
 
   async function saveEdit() {
@@ -2088,7 +2163,6 @@ function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEnt
     await call("route", base + "/route-memory", {
       method: "POST",
       body: JSON.stringify({
-        proposedBy: who,
         affectedArea,
         suggestedBankSlugs: banks.split(",").map((b) => b.trim()).filter(Boolean),
       }),
@@ -2137,7 +2211,7 @@ function IntelligenceDrawer({ entry, onClose, onDone }: { entry: IntelligenceEnt
     >
       <div style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 11 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div><div style={labelStyle}>ACTING AS</div><select value={who} onChange={(e) => setWho(e.target.value)} style={selectStyle}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
+          <div><div style={labelStyle}>ACTING AS</div><div style={{ ...selectStyle, opacity: 0.75 }}>{who || "…"}</div></div>
           <div style={{ flex: 1, minWidth: 220 }}><div style={labelStyle}>REJECT / MERGE REASON</div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="required for rejection" style={inputStyle} /></div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2362,7 +2436,7 @@ function TastePage() {
   const profilesState = useApi<{ profiles: TasteProfile[] }>("/api/taste/profiles?limit=200");
   const eventsState = useApi<{ events: FeedbackEntry[] }>("/api/taste/feedback?limit=60");
   const [selected, setSelected] = useState<TasteProfile | null>(null);
-  const [actor, setActor] = useState(FOUNDERS[0]);
+  const { founder: actor } = useSessionFounder(); // identity from the session, never a picker (WOB-UAT-030)
   const [decision, setDecision] = useState("approve");
   const [targetType, setTargetType] = useState("content_packet");
   const [targetId, setTargetId] = useState("");
@@ -2443,7 +2517,7 @@ function TastePage() {
           <Tag text="BRAND TASTE STAYS PROTECTED" color={C.lime} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, alignItems: "end" }}>
-          <div><div style={labelStyle}>ACTOR</div><select value={actor} onChange={(e) => setActor(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{FOUNDERS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
+          <div><div style={labelStyle}>ACTOR</div><div style={{ ...selectStyle, width: "100%", opacity: 0.75 }}>{actor || "…"}</div></div>
           <div><div style={labelStyle}>DECISION</div><select value={decision} onChange={(e) => setDecision(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{["approve", "reject", "edit", "regenerate", "needs_review"].map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
           <div><div style={labelStyle}>TARGET TYPE</div><input value={targetType} onChange={(e) => setTargetType(e.target.value)} style={inputStyle} /></div>
           <div><div style={labelStyle}>TARGET ID</div><input value={targetId} onChange={(e) => setTargetId(e.target.value)} placeholder="packet_123" style={inputStyle} /></div>

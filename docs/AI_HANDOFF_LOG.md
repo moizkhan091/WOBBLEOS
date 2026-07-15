@@ -5484,3 +5484,86 @@ Design Intelligence + Security & Governance (P1 by founder override — must be 
 WOB-UAT-025 service_department modelling, agent ownership bindings. Golden workflow and three-client
 isolation unproven; **no claim made about cross-client leakage in either direction**.
 Exact next action: `C:\Temp\wobble-local-uat\CONTINUATION_HANDOFF.md`.
+
+---
+
+## 2026-07-15 — Claude: founder-memory transparency model + the read-path revocation bypass (P0)
+
+Branch `feat/founder-accounts-local-uat`. `main` untouched at `c4831d34`. No merge, no deploy, no production
+credentials, no paid provider calls. Continues the local UAT campaign from `2ada79c`.
+
+### WOB-UAT-029 (P0, NEW) — session revocation did not apply to ANY read route — FIXED
+
+The most serious finding so far, and it was found by challenging a claim rather than reading code: the earlier
+audit concluded "attribution is spoof-proof GIVEN a session". So what happens when a session is revoked?
+
+**Proven live** (pre-fix image, `wobbleuat` stack):
+```
+Moiz revokes Ali's sessions              -> {"ok":true,"sessionsRevoked":2}
+Ali's REVOKED cookie: POST /api/memory/records            -> 401  (correct)
+Ali's REVOKED cookie: GET  /api/memory                    -> 200  (WRONG — real data)
+Ali's REVOKED cookie: GET  /api/memory?bankSlug=founder_moiz -> returned another founder's record
+```
+`src/proxy.ts` is an EDGE gate and verifies the **JWT signature only** — it cannot do better, the edge runtime
+has no DB (jose-only), which is why its own comment defers revocation to `verifySession` in the Node handlers.
+But **39 of 105 GET routes never called it**, and `tests/route-auth-coverage.test.ts:66` explicitly skipped
+read-only routes — the guard written to prevent exactly this class only inspected mutations. A revoked or
+disabled founder kept read access to `backup`, `costs`, `finance/summary`, `crm/…/overview`,
+`proposals/[id]/document`, `intelligence/inbox`, `settings`, `memory/*` … for the 30-day JWT lifetime.
+
+Fixed: `requireFounder` on all 29 founder-facing read routes (placed after any `DATABASE_URL` 503 guard, before
+any data access), and the coverage guard extended to reads with a narrow, individually-justified public
+allowlist (`health/*` probes, `auth/session`, `public/media/[id]`). A new ungated read route now fails CI.
+
+### WOB-UAT-005 (P1) — founder memory — FIXED, after the founder REVERSED my fix direction
+
+Proven live pre-fix: Ali (ordinary founder) read a private canary from Moiz's bank via **three** endpoints
+(`/api/memory/founder/Moiz`, `/api/memory/records?bank=…`, `/api/memory?bankSlug=…`), all taking the target from
+caller-controlled input; both browse endpoints listed every bank when unfiltered. POST correctly returned 403.
+
+I read that read/write asymmetry as "reads should be owner-private" and built `canReadMemoryBanks`. **The
+founder corrected the direction: WOBBLE is an internal company OS built on founder TRANSPARENCY.** Founders
+should read each other's company memory — preferences, taste, expertise, ownership, decisions, recent work —
+so they stop re-explaining themselves. My fix would have destroyed a product requirement while "fixing" a bug.
+Reversed before commit. See `docs/DECISION_LOG.md` for the full binding ruling.
+
+As shipped: READ is open to any AUTHENTICATED founder; EDIT stays owner-only (`canEditMemoryBanks`, unchanged);
+`getFounderMemory` returns `editable` so a colleague's profile renders read-only rather than hidden;
+`identityScopedBanks` + `listMemoryRecords({ personalizationFounder })` keep one founder's preferences from
+being auto-applied as another's DEFAULTS ("visibility is not ownership") — scoping the automatic Ask context
+only, never an explicit collaboration read, and failing closed on an unresolved actor. Tests assert
+transparency EXPLICITLY so a future "shouldn't this be private?" change must argue with a failing test.
+
+### WOB-UAT-030 (P2, NEW) — "Acting as" founder dropdowns were decorative — FIXED
+
+7 UI surfaces let a founder pick who they are from a static list. Every route derives the actor from the
+verified session and IGNORES the body's `actor`/`who`/`by` — e.g. the pin route accepts `actor` in its Zod
+schema then calls `pinMemory({ actor: auth })`. The dropdown could not change who acted; it only misinformed.
+A leftover of the shared team login that per-founder accounts (WOB-UAT-002) replaced. All 7 now derive identity
+from `useSessionFounder`, and the client no longer SENDS an identity the server discards. Three schemas
+(`approvals/[id]/resolve`, `memory/proposals/[id]/approval` ×2) had that identity as **required** and then
+overrode it with `auth` — a required field that was thrown away; now optional + documented as never trusted.
+`FounderMemoryPanel` became a real founder-profile surface with a SUBJECT selector (whose profile you view) —
+not an identity picker (who you are).
+
+### Files touched
+`src/lib/domain/memory.ts` (`identityScopedBanks`; the rejected `canReadMemoryBanks` documented as reversed),
+`src/lib/memory/index.ts` (`personalizationFounder`, `getFounderMemory(founder, viewer)` → `editable`),
+`src/lib/ask/index.ts`, 32 API routes, `src/components/os/os-ui.tsx` (`useSessionFounder`, founder profiles,
+7 dropdowns removed), `tests/route-auth-coverage.test.ts`, `tests/memory-manage.test.ts`,
+`docs/DECISION_LOG.md`. No migration needed (`operating_model` is `varchar(32)` with no CHECK — the prior
+session's suggested "migration 0053" would have been a no-op; verified before writing one).
+
+### Receipts
+typecheck exit 0 · **1041/1041** unit tests (136 files, up from 1036) · route-auth-coverage 6/6 including the
+new read guard. Live API verification against a rebuilt stack: see the ledger.
+
+### Status — campaign CONTINUES; NOT ready for independent product audit
+Open and NOT done: the founder correction's memory-suggestion flow (a statement about another founder →
+pending suggestion), the governed super-admin correction flow (target+reason+confirm+audit+before/after+notify),
+the fuller founder profile (activity/decisions/approvals/commitments/history), explicit memory categories, and
+the entire universal Ask WOBBLE router (intent → capability registry → smallest correct department set). Also
+still open: WOB-UAT-025 (service_department modelling), WOB-UAT-006 + NEW WOB-UAT-028 (publisher dead-end; and
+`ayrshare`/`n8n` posts publishing VIA Zernio under a false provider label), WOB-UAT-023/024 (Design
+Intelligence + Security & Governance), golden workflow, three-client isolation. These are SPECIFIED, not
+delivered, and must not be described as done.

@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   action: z.enum(["approve", "reject"]),
-  approvedBy: z.string().trim().min(1, "approvedBy is required"),
+  // Optional and IGNORED — the handler overrides it with the session founder. It was `required`, which
+  // forced clients to send an identity the server discards: the caller could believe they had chosen
+  // who approved. Accepted for compatibility with older callers, never trusted (WOB-UAT-030).
+  approvedBy: z.string().trim().min(1).optional(),
   notes: z.string().trim().min(1).optional(),
   trustLevel: z.string().trim().min(1).optional(),
 }).superRefine((input, ctx) => {

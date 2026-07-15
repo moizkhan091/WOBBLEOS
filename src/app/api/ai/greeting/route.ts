@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getActingFounder } from "@/lib/auth";
 import { buildGreeting } from "@/lib/domain/greeting";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/ai/greeting?hour=&pick= — personality greeting for the logged-in founder. */
 export async function GET(request: Request) {
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   const founder = await getActingFounder(request).catch(() => null);
   const hourParam = Number(u.searchParams.get("hour"));

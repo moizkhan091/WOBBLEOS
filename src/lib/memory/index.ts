@@ -1,4 +1,4 @@
-import { and, cosineDistance, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import { newId } from "@/lib/ids";
 import { memoryBankLinks, memoryBanks, memoryChunks as memoryChunksTable, memoryConflicts, memoryRecords, memoryRecordVersions, memoryUpdateProposals } from "@/db/schema";
 import { getDb, type Db } from "@/db";
@@ -17,6 +17,7 @@ import {
   canEditMemoryBanks,
   classifyMemoryWrite,
   computeReviewAfter,
+  identityScopedBanks,
   MEMORY_PURGE_GRACE_MS,
   suggestMemoryBanks,
   type ConflictResolution,
@@ -51,6 +52,18 @@ export interface ListMemoryRecordsQuery {
   bankSlug?: string;
   status?: "active" | "archived";
   limit?: number;
+  /**
+   * IDENTITY-SAFE PERSONALIZATION — not an access control (see `identityScopedBanks`).
+   *
+   * When set, records in ANOTHER founder's personal bank are excluded, so WOBBLE does not adopt Ali's
+   * preferences as Moiz's defaults while answering Moiz. Founder memory is otherwise transparent:
+   * every authenticated founder may READ every founder's company memory, and founder-facing browse
+   * endpoints deliberately do NOT set this.
+   *
+   * Set it ONLY when assembling the automatic context WOBBLE speaks *as* / *for* a founder. Leave it
+   * undefined for browse, export, and explicit collaboration reads ("what has Ali been working on?").
+   */
+  personalizationFounder?: string;
 }
 
 export interface ListMemoryProposalsQuery {
@@ -986,18 +999,33 @@ export async function pinMemory(input: { id: string; pinned: boolean; importance
 }
 
 export interface FounderMemoryExport {
+  /** The founder this memory is ABOUT (may be someone other than the viewer — that is allowed). */
   founder: string;
   bank: string;
   count: number;
   records: MemoryRecordRow[];
+  /** The authenticated founder who read it. */
+  viewer: string;
+  /** True only when viewer === founder: other founders' profiles are read-only, never hidden. */
+  editable: boolean;
 }
 
-/** "What WOBBLE knows about me" — everything in a founder's personal bank, for review/export. */
-export async function getFounderMemory(founder: string, deps: MemoryDeps = {}): Promise<FounderMemoryExport> {
+/**
+ * A founder's company memory — for their own review/export AND for any other authenticated founder
+ * reading their profile ("what has Ali been working on?").
+ *
+ * Reading another founder's bank is INTENDED, not a leak: founder memory is transparent across the
+ * company. `viewer` is recorded for attribution/audit and to mark the response read-only in the UI; it
+ * deliberately does not restrict WHICH bank may be read. The caller must still be an authenticated
+ * founder — that gate lives in the route (and is what stops an unauthenticated or revoked reader).
+ *
+ * Editing remains owner-only via `canEditMemoryBanks`; `editable` tells the caller which it is.
+ */
+export async function getFounderMemory(founder: string, viewer: string, deps: MemoryDeps = {}): Promise<FounderMemoryExport> {
   const store = deps.store ?? defaultStore();
   const bank = founderBankSlug(founder);
   const records = await store.listMemoryRecords({ bankSlug: bank, status: "active", limit: MAX_MEMORY_LIMIT });
-  return { founder, bank, count: records.length, records };
+  return { founder, bank, count: records.length, records, viewer, editable: canEditMemoryBanks(viewer, [bank]).allowed };
 }
 
 // ---- Bulk operations + merge / split ----
@@ -1276,6 +1304,29 @@ export function defaultStore(db: Db = getDb()): MemoryStore {
         const recordIds = [...new Set(links.map((link) => link.memoryRecordId).filter((id): id is string => Boolean(id)))];
         if (!recordIds.length) return [];
         conditions.push(inArray(memoryRecords.id, recordIds));
+      }
+      // Identity-safe personalization, NOT confidentiality. Founder memory is transparent to every
+      // authenticated founder, so browse/export endpoints leave this unset and see everything. This
+      // only keeps another founder's personal memory out of the context WOBBLE speaks *as* someone.
+      //
+      // `!== undefined`, NOT a truthiness test: an EMPTY value means "personalizing for an actor we
+      // could not resolve", which must exclude EVERY personal bank (no owner matches "") rather than
+      // fall through to no filter. Truthiness would fail open on exactly the case that must fail closed.
+      if (query.personalizationFounder !== undefined) {
+        const personal = await db
+          .select({ memoryRecordId: memoryBankLinks.memoryRecordId, bank: memoryBankLinks.memoryBankSlug })
+          .from(memoryBankLinks)
+          .where(sql`${memoryBankLinks.memoryBankSlug} like 'founder\\_%'`);
+        const foreignBanks = new Set(identityScopedBanks(query.personalizationFounder, [...new Set(personal.map((l) => l.bank ?? ""))]));
+        const hidden = [
+          ...new Set(
+            personal
+              .filter((link) => foreignBanks.has(link.bank ?? ""))
+              .map((link) => link.memoryRecordId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        ];
+        if (hidden.length) conditions.push(notInArray(memoryRecords.id, hidden));
       }
       const where = conditions.length ? and(...conditions) : undefined;
       return db

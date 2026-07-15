@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { serveLibraryMedia } from "@/lib/library/media-serve";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 /**
  * GET /api/library/assets/[id]/media?i=0[&download=1]
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { id } = await ctx.params;
   const url = new URL(request.url);
   const rawIndex = Number(url.searchParams.get("i") ?? "0");

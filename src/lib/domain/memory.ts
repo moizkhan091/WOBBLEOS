@@ -966,9 +966,9 @@ export function rankMemoryChunks<T extends MemoryChunkCandidate>(input: {
     .sort((a, b) => b.score - a.score);
 }
 
-// ---- Founder-scoped edit permissions for direct memory management ----
+// ---- Founder-scoped read/edit permissions for direct memory management ----
 
-function normalizeFounderKey(actor?: string | null): string {
+export function normalizeFounderKey(actor?: string | null): string {
   return (actor ?? "").trim().toLowerCase().replace(/^founder[_-]?/, "");
 }
 
@@ -997,4 +997,46 @@ export function canEditMemoryBanks(actor: string | undefined, bankSlugs: string[
     }
   }
   return { allowed: true, reason: "ok" };
+}
+
+/**
+ * Founder memory is TRANSPARENT between authenticated founders — read access is NOT owner-scoped.
+ *
+ * WOBBLE is an internal company OS built on founder transparency, collaboration and accountability.
+ * Every authenticated founder may read every other founder's company-related memory: preferences,
+ * taste, expertise, ownership, recent work, decisions, approvals, rejected directions. That is the
+ * point — it is what stops founders re-explaining themselves and lets teams coordinate.
+ *
+ * So there is deliberately NO `canReadMemoryBanks`. Read authorization for founder memory is exactly
+ * one question — "is this an authenticated founder?" — and that is answered by the route's session
+ * gate, not here. An earlier pass at WOB-UAT-005 added an owner-scoped read rule mirroring
+ * `canEditMemoryBanks`; that was the wrong model and was reversed by an explicit founder correction.
+ *
+ * The real defect WOB-UAT-005 covers is on the WRITE side and remains enforced by
+ * `canEditMemoryBanks` above: caller-controlled identity, and one founder silently modifying another's
+ * memory. Visibility is not ownership — see `identityScopedBanks` for the separate rule that keeps one
+ * founder's preferences from being applied as another founder's defaults.
+ *
+ * Two things stay out of founder memory entirely and are NOT made transparent by this: security
+ * material (passwords, hashes, tokens, API/private/session keys, recovery codes, provider credentials,
+ * infrastructure secrets) and legally restricted personal information unrelated to company work. Those
+ * belong in secure systems and must never be written to a memory bank in the first place.
+ */
+
+/**
+ * Banks whose contents must NOT be auto-applied as `actor`'s own context (identity-safe learning).
+ *
+ * Distinct from confidentiality: every founder may READ Ali's preferences, but when WOBBLE is
+ * personalizing FOR Moiz it must not silently adopt Ali's writing style as Moiz's default. Visibility
+ * is not ownership. Used to scope the automatic personalization context, never to refuse a read.
+ *
+ * An EMPTY/unknown actor returns every personal bank: if we cannot resolve who is speaking, no
+ * founder's personal preferences are auto-applied. Fails closed on identity, not on transparency.
+ */
+export function identityScopedBanks(actor: string | undefined, bankSlugs: string[]): string[] {
+  const actorKey = normalizeFounderKey(actor);
+  return bankSlugs.filter((bank) => {
+    const owner = personalBankOwner(bank);
+    return owner !== null && owner !== actorKey;
+  });
 }

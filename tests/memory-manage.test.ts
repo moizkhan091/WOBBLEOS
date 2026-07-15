@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canEditMemoryBanks } from "@/lib/domain/memory";
+import { canEditMemoryBanks, identityScopedBanks } from "@/lib/domain/memory";
 import {
   archiveMemoryRecord,
   bulkMemoryOperation,
@@ -80,6 +80,40 @@ describe("canEditMemoryBanks", () => {
     expect(canEditMemoryBanks("Moiz", ["company", "brand"]).allowed).toBe(true);
     expect(canEditMemoryBanks("Moiz", ["founder_ali"]).allowed).toBe(false);
     expect(canEditMemoryBanks("Moiz", ["company", "founder_ali"]).allowed).toBe(false);
+  });
+});
+
+/**
+ * Identity-safe personalization — NOT an access control. Founder memory is transparent, so this never
+ * decides whether Ali MAY READ Moiz's profile (he may). It decides only which banks may be auto-applied
+ * as the speaker's OWN context, so WOBBLE never answers Ali using Moiz's preferences as the default.
+ * "Visibility is not ownership."
+ */
+describe("identityScopedBanks", () => {
+  it("scopes out other founders' personal banks, never shared or own", () => {
+    expect(identityScopedBanks("Moiz", ["founder_moiz"])).toEqual([]);
+    expect(identityScopedBanks("Moiz", ["company", "brand", "founder_taste"])).toEqual([]);
+    expect(identityScopedBanks("Moiz", ["founder_ali"])).toEqual(["founder_ali"]);
+    expect(identityScopedBanks("Moiz", ["company", "founder_ali", "founder_haad"])).toEqual(["founder_ali", "founder_haad"]);
+  });
+
+  it("normalizes the actor the same way the edit rule does", () => {
+    expect(identityScopedBanks("founder_moiz", ["founder_moiz"])).toEqual([]);
+    expect(identityScopedBanks("  MOIZ  ", ["founder_moiz"])).toEqual([]);
+  });
+
+  it("treats `founder_taste` as SHARED, not as a founder named 'taste'", () => {
+    expect(identityScopedBanks("Ali", ["founder_taste"])).toEqual([]);
+  });
+
+  /**
+   * Fails closed on identity: if we cannot resolve who is speaking, NO founder's personal preferences
+   * are auto-applied. The store's `personalizationFounder` check is `!== undefined` rather than a
+   * truthiness test precisely so an empty actor reaches this branch instead of skipping the filter.
+   */
+  it("scopes out EVERY personal bank when the actor is unknown", () => {
+    expect(identityScopedBanks("", ["founder_moiz", "founder_ali"])).toEqual(["founder_moiz", "founder_ali"]);
+    expect(identityScopedBanks(undefined, ["founder_moiz"])).toEqual(["founder_moiz"]);
   });
 });
 
@@ -219,9 +253,48 @@ describe("pinning + founder export", () => {
       { title: "t", content: "moiz fact", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
       { store, embedder, recordAudit: audit, now },
     );
-    const dump = await getFounderMemory("Moiz", { store });
+    const dump = await getFounderMemory("Moiz", "Moiz", { store });
     expect(dump.bank).toBe("founder_moiz");
     expect(dump.count).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * Founder transparency is a PRODUCT REQUIREMENT, not an oversight: WOBBLE runs on founders being
+   * able to see each other's company context. Asserted explicitly so a future well-meaning
+   * "shouldn't this be private?" change has to argue with a failing test — an earlier pass at
+   * WOB-UAT-005 made exactly that mistake and had to be reversed.
+   */
+  it("lets any founder READ another founder's company memory (transparency by design)", async () => {
+    const { store } = makeStore();
+    const audit = async () => {};
+    await createMemoryRecord(
+      { title: "pricing view", content: "MOIZ-COMPANY-NOTE", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    const dump = await getFounderMemory("Moiz", "Ali", { store });
+    expect(dump.count).toBeGreaterThanOrEqual(1);
+    expect(dump.records.some((r) => r.content === "MOIZ-COMPANY-NOTE")).toBe(true);
+  });
+
+  /** Transparent to read, owner-only to edit. `editable` is what the UI keys read-only mode off. */
+  it("marks another founder's memory read-only and your own editable", async () => {
+    const { store } = makeStore();
+    expect((await getFounderMemory("Moiz", "Moiz", { store })).editable).toBe(true);
+    expect((await getFounderMemory("Moiz", "Ali", { store })).editable).toBe(false);
+  });
+
+  /**
+   * The real WOB-UAT-005 defect is on the WRITE side, and it stays closed: transparency must not
+   * become a licence to silently rewrite a colleague's memory. Read is open; edit is owner-only.
+   */
+  it("still refuses to let one founder EDIT another founder's memory", async () => {
+    const { store } = makeStore();
+    const audit = async () => {};
+    const rec = await createMemoryRecord(
+      { title: "t", content: "moiz fact", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_moiz"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: audit, now },
+    );
+    await expect(pinMemory({ id: rec.id, pinned: true, actor: "Ali" }, { store, recordAudit: audit, now })).rejects.toThrow(/personal memory bank/);
   });
 });
 

@@ -59,7 +59,8 @@ export type AskResult =
 export interface AskWobbleDeps {
   classifyIntent?: (question: string) => IntentType;
   capabilities?: Record<IntentType, CapabilityRoute>;
-  retrieveBrain?: () => Promise<AskBrainRecord[]>;
+  /** `speakingFor` is the authenticated founder — WOBBLE personalizes as them, never as a colleague. */
+  retrieveBrain?: (speakingFor: string) => Promise<AskBrainRecord[]>;
   retrieveMemory?: (question: string) => Promise<AskMemoryChunk[]>;
   retrieveSources?: () => Promise<AskSourceRef[]>;
   retrieveSystemSnapshot?: () => Promise<string | undefined>;
@@ -130,7 +131,9 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
 
   const retrieveIntelligence = deps.retrieveIntelligence ?? (() => getIntelligenceContextBlock("ask"));
   const [brain, memory, sources, systemSnapshot, intel] = await Promise.all([
-    retrieveBrain(),
+    // `?? ""` fails CLOSED: `founder` is optional on the schema, and an ask whose actor we cannot
+    // resolve gets no founder's personal memory at all rather than everyone's.
+    retrieveBrain(parsed.founder ?? ""),
     retrieveMemory(parsed.question),
     retrieveSources(),
     retrieveSystemSnapshot(),
@@ -173,9 +176,15 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
 
 // ---- default wiring to the real Chunk 08/09/10 + queue modules ----
 
-async function defaultRetrieveBrain(): Promise<AskBrainRecord[]> {
+async function defaultRetrieveBrain(speakingFor: string): Promise<AskBrainRecord[]> {
   // Bound at the source too: buildAskContext caps to maxBrainItems, but don't fetch far more than needed.
-  const records = await listMemoryRecords({ memoryTier: "core", status: "active", limit: DEFAULT_ASK_CONTEXT_BUDGET.maxBrainItems });
+  //
+  // `personalizationFounder` is IDENTITY SAFETY, not confidentiality: founder memory is transparent, and
+  // Ali may absolutely ask "what does Moiz think about pricing?" — that is a normal collaboration read.
+  // What must not happen is Moiz's personal preferences silently loading as Ali's DEFAULTS in the context
+  // WOBBLE answers Ali with. Visibility is not ownership. An explicit question about a colleague is
+  // served by the founder-profile read path, which applies no such scoping.
+  const records = await listMemoryRecords({ memoryTier: "core", status: "active", limit: DEFAULT_ASK_CONTEXT_BUDGET.maxBrainItems, personalizationFounder: speakingFor });
   return records.map((r) => ({ slug: r.slug, title: r.title, area: r.area, content: r.content }));
 }
 
