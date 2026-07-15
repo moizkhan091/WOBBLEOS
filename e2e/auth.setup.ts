@@ -1,10 +1,11 @@
 import { test as setup, expect } from "@playwright/test";
-import { AUTH_STATE_PATH, E2E_DEPARTMENT, E2E_FOUNDER, E2E_PASSWORD } from "./fixtures/constants";
+import { AUTH_STATE_PATH, E2E_DEPARTMENT, E2E_EMAIL, E2E_FOUNDER, E2E_PASSWORD } from "./fixtures/constants";
 
 /**
  * Log in ONCE as the founder and persist the session (`wobble_session` cookie) as storageState for every
- * authed test. We log in through the real /api/auth/login endpoint and capture its Set-Cookie via the
- * request context's jar — robust against dev-server client-redirect timing (the login PAGE itself is
+ * authed test. We log in through the real /api/auth/login endpoint with the founder's OWN email +
+ * password (the accounts are seeded into the E2E database by global-setup) and capture its Set-Cookie via
+ * the request context's jar — robust against dev-server client-redirect timing (the login PAGE itself is
  * separately smoke-tested by the unauthenticated gate spec).
  *
  * We also WARM the on-demand-compiled routes here (Next dev / Turbopack compiles each route on first hit),
@@ -13,10 +14,12 @@ import { AUTH_STATE_PATH, E2E_DEPARTMENT, E2E_FOUNDER, E2E_PASSWORD } from "./fi
 setup("authenticate founder + warm routes", async ({ request }) => {
   setup.setTimeout(180_000); // absorb first-hit route compilation on a cold dev server
 
-  const res = await request.post("/api/auth/login", { data: { password: E2E_PASSWORD, founder: E2E_FOUNDER } });
+  const res = await request.post("/api/auth/login", { data: { email: E2E_EMAIL, password: E2E_PASSWORD } });
   expect(res.ok(), `login failed: ${res.status()} ${await res.text().catch(() => "")}`).toBeTruthy();
   const body = (await res.json()) as { ok?: boolean; founder?: string };
   expect(body.ok).toBe(true);
+  // The acting founder is derived from the ACCOUNT, never from the request — proving it here means every
+  // downstream authed test is attributed to a real, individually-authenticated founder.
   expect(body.founder).toBe(E2E_FOUNDER);
 
   // Persist the authenticated cookie jar as storageState.

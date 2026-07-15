@@ -1,7 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
-import bcrypt from "bcryptjs";
 import { loadDotEnv } from "./e2e/fixtures/load-env";
-import { AUTH_STATE_PATH, BASE_URL, E2E_PASSWORD, E2E_PORT, E2E_SESSION_SECRET } from "./e2e/fixtures/constants";
+import { AUTH_STATE_PATH, BASE_URL, E2E_PORT, E2E_SESSION_SECRET } from "./e2e/fixtures/constants";
 
 /**
  * WOBBLE OS — Phase 3 browser gate (Playwright E2E).
@@ -11,16 +10,13 @@ import { AUTH_STATE_PATH, BASE_URL, E2E_PASSWORD, E2E_PORT, E2E_SESSION_SECRET }
  * through the API to assert the DB actually changed (handoff redriven→delivered, cancelled; escalation
  * resolved/resume, resolved/terminate, dismissed; budget + real provider usage).
  *
- * Auth is isolated to this server: the config injects a bcrypt hash of E2E_PASSWORD + a fixed
- * SESSION_SECRET into the web server's env, so the shared-login password is known ONLY here. DATABASE_URL
- * is passed through (loaded from .env locally; exported by the job in CI) and points at the E2E database.
+ * Auth is isolated to this server: a fixed SESSION_SECRET is injected into the web server's env, and the
+ * founder ACCOUNTS (email + bcrypt password) are written into the E2E database by the global-setup seed
+ * (`seedFounderAccounts`) — credentials live in Postgres, not in the environment. DATABASE_URL is passed
+ * through (loaded from .env locally; exported by the job in CI) and points at the E2E database.
  */
 
 loadDotEnv();
-
-// Non-secret, test-only shared-login password → base64 bcrypt hash (the app reads *_HASH_B64, no `$` to
-// mangle). Computed from the same constant the setup logs in with, so they can never drift.
-const E2E_PASSWORD_HASH_B64 = Buffer.from(bcrypt.hashSync(E2E_PASSWORD, 8), "utf8").toString("base64");
 
 const isCI = !!process.env.CI;
 const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1";
@@ -89,9 +85,9 @@ export default defineConfig({
       ...process.env,
       NODE_ENV: process.env.NODE_ENV ?? (isCI ? "production" : "development"),
       NEXT_TELEMETRY_DISABLED: "1",
-      // Isolated E2E auth — known password + secret ONLY for this server.
+      // Isolated E2E auth — a fixed signing secret for this server only. The founder accounts
+      // themselves are seeded into the E2E database by global-setup.
       SESSION_SECRET: E2E_SESSION_SECRET,
-      SHARED_LOGIN_PASSWORD_HASH_B64: E2E_PASSWORD_HASH_B64,
       // The production build issues a `Secure` session cookie, which Playwright's APIRequestContext will
       // NOT replay over http://127.0.0.1 → authed API reads would 401. Issue a non-secure cookie for the
       // E2E server ONLY (test harness; never a real deploy) so both the browser and request context auth.

@@ -190,3 +190,38 @@ Log founder conversations too (not just code). If a founder states intent in cha
   real disaster recovery is a `pg_dump`-based backup + restore + a proven restore DRILL (dump → restore into a
   disposable DB → compare full table+row fingerprint). Off-host retention / encryption keys / WAL-PITR are
   operational config for the VPS.
+
+## 2026-07-15 — Claude: per-founder accounts supersede the shared team login
+
+- DECISION (REVERSES the WOB-AUD-009 decision above): the shared-founder login is REMOVED. Each founder now has
+  their own account (`founder_profiles.email` + `password_hash`) and the acting founder is derived from the
+  authenticated account. WHY: the previous model — one team password plus a caller-supplied `founder` field —
+  meant anyone holding the single password could mint a session as any founder, so approvals, proposals, audit
+  actor and memory attribution were only as trustworthy as "whoever typed the dropdown". The earlier decision
+  deferred per-user identity as "a larger product change"; the founder has now explicitly commissioned it.
+  Rate-limiting/lockout is RETAINED on top (it is still the online brute-force defense), not replaced.
+- DECISION: EXTEND `founder_profiles` rather than add a `founder_accounts` table. WHY: the table already carries
+  displayName/role/status for exactly these four people, and CLAUDE.md forbids duplicating schemas. `status`
+  already existed and now gates login + live sessions ("active" | "disabled").
+- DECISION: keep `SessionClaims.founder` (the display name) as the claim every route reads, and ADD `fid`
+  (account id) + `sa` (super admin). WHY: 135 mutating routes already resolve the actor through
+  `requireFounder(request)`. Keeping the claim shape makes the identity authoritative instead of chosen with a
+  near-zero blast radius, rather than touching 135 routes.
+- DECISION: `verifySession` re-reads the CURRENT account row and returns its displayName/isSuperAdmin rather than
+  trusting the token's copy. WHY: sessions live 30 days; a renamed or de-privileged founder must not keep old
+  attribution or admin rights for a month.
+- DECISION: credentials live ONLY in Postgres, set by `npm run auth:bootstrap`. `SHARED_LOGIN_PASSWORD_HASH(_B64)`
+  is deleted from env/config/validate/instrumentation and the deploy templates. WHY: a per-account hash cannot be
+  an env var, and it removes the dotenv `$`-mangling footgun that the base64 workaround existed to dodge.
+- DECISION: login returns an identical opaque 401 for an unknown email and a wrong password, and always runs a
+  bcrypt compare (against a dummy hash when the account is missing). WHY: otherwise the endpoint enumerates which
+  founder emails exist, by both response and timing. "Disabled" (403) is only reported AFTER the password verifies.
+- DECISION: account administration (disable/enable/revoke another founder's sessions) requires the super-admin
+  (`requireSuperAdmin`), not merely a founder. Self-disable is refused (409) so the OS cannot be left with no
+  administrator. Moiz is the designated super admin.
+- DECISION: MFA remains out of scope and is documented as future hardening rather than half-built — per the task's
+  own instruction not to introduce an unreviewed partial implementation.
+- DECISION: broaden the `route-auth-coverage` guard to accept `requireFounder` | `requireSession` |
+  `requireSuperAdmin` instead of allow-listing the new auth routes as "public". WHY: all three resolve through the
+  same DB-backed `verifySession`; allow-listing would have created a real hole in the guard, whereas teaching it
+  the stricter gates preserves the invariant. `requireSuperAdmin` is additionally asserted on the account-action route.

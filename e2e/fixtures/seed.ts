@@ -3,6 +3,7 @@ loadDotEnv(); // must precede the first `@/db` import so getPool() sees DATABASE
 
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import bcrypt from "bcryptjs";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { getDb, closeDb, schema } from "@/db";
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
@@ -15,7 +16,24 @@ import { recordProviderUsage } from "@/lib/provider-usage";
 import { seedDepartments } from "@/lib/departments/seed";
 import { buildCompanyRow, buildOpportunityRow } from "@/lib/domain/crm";
 import { buildProposalRow } from "@/lib/domain/proposal";
-import { AGENTS, DECISIONS, E2E_DEPARTMENT, E2E_WORKSPACE, IDS, PROPOSAL, PROVIDER_USAGE_REQ_ID, WF } from "./constants";
+import {
+  AGENTS,
+  DECISIONS,
+  E2E_DEPARTMENT,
+  E2E_EMAIL,
+  E2E_EMAIL_B,
+  E2E_FOUNDER,
+  E2E_FOUNDER_B,
+  E2E_FOUNDER_B_ID,
+  E2E_FOUNDER_ID,
+  E2E_PASSWORD,
+  E2E_PASSWORD_B,
+  E2E_WORKSPACE,
+  IDS,
+  PROPOSAL,
+  PROVIDER_USAGE_REQ_ID,
+  WF,
+} from "./constants";
 
 /** Fixed graph-run ids for the selective-revision fixtures (cleaned + reseeded every run). */
 const E2E_REVISION_RUN = "e2e_rev_run";
@@ -151,12 +169,64 @@ export async function cleanupE2E(): Promise<void> {
   await db.delete(schema.jobs).where(like(schema.jobs.idempotencyKey, "revision_rerun:%"));
 }
 
+/**
+ * Provision the founder LOGIN ACCOUNTS for the E2E database.
+ *
+ * Credentials live in Postgres now, so the suite's login has to be seeded rather than injected into the
+ * server env. Two founders are provisioned (Moiz = super admin, Ali = ordinary) so the browser gate can
+ * prove that one founder cannot act as the other, and that revoking/disabling one leaves the other alone.
+ *
+ * Upserts by id so it works whether or not `npm run db:seed` has run against this database.
+ */
+export async function seedFounderAccounts(): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  const accounts = [
+    { id: E2E_FOUNDER_ID, displayName: E2E_FOUNDER, email: E2E_EMAIL, password: E2E_PASSWORD, role: "Founder / WOBBLE OS operator", isSuperAdmin: true, approvalDefault: true },
+    { id: E2E_FOUNDER_B_ID, displayName: E2E_FOUNDER_B, email: E2E_EMAIL_B, password: E2E_PASSWORD_B, role: "Founder", isSuperAdmin: false, approvalDefault: false },
+  ];
+
+  for (const a of accounts) {
+    // Cost 4 (not the production 12) — these are throwaway test credentials and the suite logs in on
+    // every run; a production-cost hash would add seconds to setup for no security value in an
+    // isolated test DB.
+    const passwordHash = await bcrypt.hash(a.password, 4);
+    const row = {
+      id: a.id,
+      displayName: a.displayName,
+      role: a.role,
+      status: "active",
+      approvalDefault: a.approvalDefault,
+      email: a.email,
+      passwordHash,
+      isSuperAdmin: a.isSuperAdmin,
+      passwordChangedAt: now,
+      metadata: {},
+      updatedAt: now,
+    };
+    await db
+      .insert(schema.founderProfiles)
+      .values(row)
+      .onConflictDoUpdate({
+        target: schema.founderProfiles.id,
+        // Reset status/credential every run so a test that disables or rotates a founder cannot leak
+        // into the next run.
+        set: { email: row.email, passwordHash, isSuperAdmin: row.isSuperAdmin, status: "active", passwordChangedAt: now, updatedAt: now },
+      });
+  }
+
+  // Drop any sessions left behind by a previous run so session-revocation assertions start from zero.
+  await db.delete(schema.authSessions).where(inArray(schema.authSessions.founderId, accounts.map((a) => a.id)));
+}
+
 export async function seedE2E(): Promise<void> {
   // The department must exist for the grid + budget/kpi endpoints (idempotent upsert — safe every run).
   // Skippable via E2E_FIXTURES_ONLY for the per-test reseed (departments already exist from global setup),
   // which keeps the reseed fast and light on the DB.
   if (process.env.E2E_FIXTURES_ONLY !== "1") await seedDepartments({ recordAudit: async () => {} });
   await cleanupE2E();
+  // Founder accounts must exist before auth.setup.ts can log in.
+  if (process.env.E2E_FIXTURES_ONLY !== "1") await seedFounderAccounts();
 
   const db = getDb();
   const hs = handoffStore();

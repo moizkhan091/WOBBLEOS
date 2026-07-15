@@ -6,26 +6,56 @@ const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull(
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 const metadata = () => jsonb("metadata").$type<Record<string, unknown>>().notNull().default({});
 
-export const founderProfiles = pgTable("founder_profiles", {
-  id: id(),
-  displayName: varchar("display_name", { length: 80 }).notNull(),
-  role: varchar("role", { length: 120 }).notNull(),
-  status: varchar("status", { length: 32 }).notNull().default("active"),
-  approvalDefault: boolean("approval_default").notNull().default(false),
-  metadata: metadata(),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+/**
+ * A founder — profile AND login account. The shared-team-password model (one password, caller picks
+ * which founder they act as) is gone: each founder authenticates against their OWN `email` +
+ * `passwordHash`, and the acting founder is derived from that account alone. `status` gates login and
+ * live sessions ("active" | "disabled"), so disabling an account also kills its sessions on next check.
+ *
+ * `email` is stored lower-cased (the login path lower-cases before lookup) so the unique index is a
+ * genuine case-insensitive constraint without needing citext.
+ */
+export const founderProfiles = pgTable(
+  "founder_profiles",
+  {
+    id: id(),
+    displayName: varchar("display_name", { length: 80 }).notNull(),
+    role: varchar("role", { length: 120 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("active"),
+    approvalDefault: boolean("approval_default").notNull().default(false),
+    // Auth. Nullable so an un-bootstrapped profile simply cannot log in (no password ⇒ no login),
+    // rather than the migration inventing a credential.
+    email: varchar("email", { length: 200 }),
+    passwordHash: text("password_hash"),
+    isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+    passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    metadata: metadata(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [uniqueIndex("founder_profiles_email_unique").on(table.email)],
+);
 
-export const authSessions = pgTable("auth_sessions", {
-  id: id(),
-  sessionTokenHash: text("session_token_hash").notNull(),
-  status: varchar("status", { length: 32 }).notNull().default("active"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+/**
+ * A login session. `founderId` ties the session to the account that created it — without it there is
+ * no way to revoke ONE founder's sessions (the old model kept the founder only inside the JWT, so
+ * sessions were anonymous rows).
+ */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: id(),
+    founderId: text("founder_id").references(() => founderProfiles.id),
+    sessionTokenHash: text("session_token_hash").notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("active"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("auth_sessions_founder_idx").on(table.founderId)],
+);
 
 export const settings = pgTable("settings", {
   id: id(),

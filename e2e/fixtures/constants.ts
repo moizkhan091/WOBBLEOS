@@ -12,10 +12,22 @@ export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${E
 export const AUTH_STATE_PATH = "e2e/.auth/founder.json";
 
 // ---- Isolated E2E auth --------------------------------------------------------------------------
-// The Playwright config injects a bcrypt hash of E2E_PASSWORD + E2E_SESSION_SECRET into the web
-// server's env, so this password is the real, working shared-login password for the E2E server only.
-export const E2E_FOUNDER = "Moiz";
+// Founder credentials live in Postgres, so the E2E SEED writes these accounts (see seedFounderAccounts)
+// rather than the Playwright config injecting a password hash into the server env. These passwords are
+// non-secret test values that only ever exist in the isolated E2E database.
+//
+// TWO founders are provisioned so the suite can prove ISOLATION (A cannot act as B) and per-founder
+// session revocation, which a single shared account could never demonstrate.
+export const E2E_FOUNDER = "Moiz"; // display name — the acting founder the authed suite expects
+export const E2E_EMAIL = "moiz@wobble.local";
 export const E2E_PASSWORD = "wobble-e2e-secret-pw";
+export const E2E_FOUNDER_ID = "founder_moiz";
+
+export const E2E_FOUNDER_B = "Ali";
+export const E2E_EMAIL_B = "ali@wobble.local";
+export const E2E_PASSWORD_B = "wobble-e2e-secret-pw-b";
+export const E2E_FOUNDER_B_ID = "founder_ali";
+
 export const E2E_SESSION_SECRET = "e2e-session-secret-please-change-0001"; // >= 16 chars (getSecretKey)
 
 // ---- Isolated logical workspace + the department under test -------------------------------------

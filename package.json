@@ -28,7 +28,7 @@
     "content:live-check": "tsx src/scripts/live-content-check.ts",
     "skill:live-check": "tsx src/scripts/live-skill-check.ts",
     "memory:backfill-embeddings": "tsx src/scripts/backfill-memory-embeddings.ts",
-    "auth:hash": "tsx src/scripts/hash-password.ts",
+    "auth:bootstrap": "tsx src/scripts/auth-bootstrap.ts",
     "verify:commercial": "tsx src/scripts/verify-commercial-chain-db.ts",
     "verify:consumer": "tsx src/scripts/verify-department-consumer-db.ts",
     "verify:origination": "tsx src/scripts/verify-proposal-accept-origination-db.ts",

@@ -5350,3 +5350,72 @@ oversized chunked/no-Content-Length webhook returned 413; serial and 10-way conc
 200 per delivery and 409 for duplicates, with one intelligence row per title; a zero-cost media job was consumed and
 honestly blocked with no output because no provider credential was configured. All `wobblefollowup-*` Docker
 containers, images, volumes, and networks were removed after proof.
+
+---
+
+## 2026-07-15 — Claude: real per-founder accounts (replaces the shared team login) + Phase 1 product inventory
+
+Branch `feat/founder-accounts-local-uat` from `c4831d34` (main, clean). No merge, no deploy, no paid provider
+calls, no production credentials, no synthetic client data committed.
+
+### Founder accounts (supersedes the shared login; see DECISION_LOG for the reversal rationale)
+
+The shared model — one team password plus a caller-supplied `founder` field — let anyone holding that password
+mint a session as any founder, so approval/audit/proposal attribution was unenforced. Replaced with:
+
+- `founder_profiles` EXTENDED (not duplicated) with `email` (unique, lower-cased), `password_hash`,
+  `is_super_admin`, `password_changed_at`, `last_login_at`. Existing `status` now gates login AND live sessions.
+- `auth_sessions.founder_id` → `founder_profiles.id` (indexed, FK). Sessions were previously anonymous rows with
+  the founder only inside the JWT, so per-founder revocation was impossible to implement.
+- `login({ email, password })`; the acting founder is copied from the authenticated account. There is no
+  `founder` field on the login body any more. Unknown email and wrong password return an identical opaque 401
+  and both run a bcrypt compare (dummy hash when absent) — no account enumeration by response or timing.
+- `verifySession` additionally re-reads the account row: a disabled account's LIVE session dies on its next
+  request, and displayName/super-admin are taken from the current row, not the 30-day-old token.
+- New: `POST /api/auth/password` (own password only, requires current password, revokes your other sessions),
+  `GET /api/auth/accounts` (super-admin roster; never selects password_hash), `POST /api/auth/accounts/[id]/action`
+  (disable | enable | revoke_sessions; super-admin only; self-disable refused 409). All audited with the actor
+  taken from the session.
+- `npm run auth:hash` → `npm run auth:bootstrap` (`--list`, `--seed-test`, `--founder … --email … --super-admin`,
+  `--disable`/`--enable`). Passwords are read from stdin unechoed or `WOBBLE_BOOTSTRAP_PASSWORD`, min 12 chars,
+  bcrypt cost 12. Credentials live ONLY in Postgres; `SHARED_LOGIN_PASSWORD_HASH(_B64)` is removed from
+  env/config-validate/instrumentation and both deploy templates. A migrated-but-unbootstrapped DB has NO logins.
+- Login page: founder dropdown → email + password. E2E provisions accounts via the seed (`seedFounderAccounts`),
+  not by injecting a hash into the server env; two founders (Moiz super-admin, Ali ordinary) so isolation and
+  per-founder revocation are actually provable.
+- `route-auth-coverage` broadened to accept `requireFounder` | `requireSession` | `requireSuperAdmin` (all
+  DB-backed) rather than allow-listing the new routes as public, which would have holed the guard.
+
+### Defect found and fixed en route — drizzle meta snapshot drift (P1)
+
+`meta/0050_snapshot.json` was never committed with `0050_webhook_replay_claims.sql` (commit `bbef8fe`), so
+`drizzle-kit generate` diffed against 0049 and re-emitted `CREATE TABLE "webhook_replay_claims"` — which fails
+`relation already exists` on any DB that ran 0050, breaking the migrate stage and therefore app+worker startup.
+Reconstructed the missing snapshot, relinked 0049→0050→0051. `generate` now reports "No schema changes".
+Proven by applying the FULL chain 0000→0051 from scratch into a fresh DB (the exact case that would have failed).
+
+### Receipts
+
+typecheck clean · unit tests 1017/1017 · `npm run release:check` exit 0 · founder-accounts Playwright suite 17/17
+against a live server on an isolated `wobble_os_uat` database (full migrate + seed + bootstrap from scratch).
+Three initial E2E failures were investigated and proven to be TEST defects, not product defects (an anonymous
+`curl` returned 401 where the test claimed 200 — Playwright's `request.newContext()` had inherited the authed
+storageState). Documented in the external defect ledger rather than papered over.
+
+### Phase 1 product inventory (read-only, complete)
+
+41 UI modules / 43 reachable URLs served by 3 page files through one dynamic `[module]` route; the whole
+frontend is ONE 5,477-line file (`src/components/os/os-ui.tsx`). 180 API route files, 101 tables, 2 workers
+(general = `jobs` table w/ SKIP LOCKED; media = `media_jobs`, lease-based), 14 departments (8 active/6 draft),
+55 agents (38 active/14 truthfully paused). Inventory + UAT matrix + defect ledger live OUTSIDE the repo at
+`C:\Temp\wobble-local-uat`.
+
+### Status — NOT a completed acceptance campaign
+
+Phases 1-2 are done and verified. Phases 3-11 (prod-topology compose UAT, per-element browser verification of all
+41 modules, 3-client isolation with canaries, long-term memory lifecycle, golden E2E, concurrency/failure/recovery,
+backup+restore drill, UX audit) are NOT done. 15 further defects are logged and OPEN, including three P1s that
+directly contradict the "no fake data" contract: fabricated Command Center KPI tiles ("9 of 26 modules" — both
+values are string literals and factually wrong; there are 41 wired modules), the "What WOBBLE knows about me" tab
+rendering ALL memory rather than the founder's, and a publisher dropdown offering an `ayrshare` adapter that does
+not exist (posts become unresolvable dead ends). See `C:\Temp\wobble-local-uat\DEFECT_LEDGER.md`.

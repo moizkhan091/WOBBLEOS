@@ -3,10 +3,13 @@ import { isAuthConfigured } from "@/lib/auth";
 /**
  * Startup runtime-config validation (WOB-AUD-017).
  *
- * Fails fast on MISSING CRITICAL config in production (no database, no session secret, no shared-login
- * hash) so a misconfigured deploy stops loudly instead of serving a broken/insecure app. Soft config
- * (durable storage path, public base URL) produces warnings — those features degrade honestly rather
- * than crash the process. Pure + injectable so it is unit-tested without real env.
+ * Fails fast on MISSING CRITICAL config in production (no database, no session secret) so a
+ * misconfigured deploy stops loudly instead of serving a broken/insecure app. Soft config (durable
+ * storage path, public base URL) produces warnings — those features degrade honestly rather than
+ * crash the process. Pure + injectable so it is unit-tested without real env.
+ *
+ * Founder credentials are NOT checked here: they live in Postgres (per-account bcrypt hashes set by
+ * `npm run auth:bootstrap`), not in the environment.
  */
 
 export interface ConfigCheckResult {
@@ -34,13 +37,9 @@ export function validateRuntimeConfig(
     (production ? errors : warnings).push("DATABASE_URL is not set — the app cannot reach Postgres.");
   }
 
-  // Auth config (session secret + shared-login hash) is required for the web app to authenticate anyone.
+  // A session secret is required for the web app to sign/verify any session at all.
   if (opts.context === "web" && !isAuthConfigured(env)) {
-    const detail =
-      !env.SESSION_SECRET || env.SESSION_SECRET.length < 16
-        ? "SESSION_SECRET is missing or shorter than 16 chars"
-        : "SHARED_LOGIN_PASSWORD_HASH(_B64) is missing or not a bcrypt hash";
-    (production ? errors : warnings).push(`auth is not configured (${detail}) — login will fail.`);
+    (production ? errors : warnings).push("auth is not configured (SESSION_SECRET is missing or shorter than 16 chars) — login will fail.");
   }
 
   // --- Soft (warnings; features degrade) ---
