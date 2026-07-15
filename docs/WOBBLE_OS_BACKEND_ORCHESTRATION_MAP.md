@@ -241,8 +241,11 @@ Handles:
 Technical command:
 
 ```text
-npm run video-worker
+npm run worker:video
 ```
+
+Runtime ownership: this dedicated process polls and leases `media_jobs` through
+`runMediaWorkerCycle` / `dispatchMediaJobs`. The general scheduler does not dispatch media jobs.
 
 Must be isolated from the web app.
 

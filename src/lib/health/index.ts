@@ -39,8 +39,8 @@ export async function getHealthStatus(deps: HealthDeps = {}): Promise<HealthStat
 
 /**
  * Aggregate READINESS (WOB-AUD-013) — distinct from the shallow liveness above. Readiness reflects the
- * whole operating system: DB reachable + storage writable + the general worker (which also runs the
- * scheduler) heartbeating freshly. The video worker is reported but non-critical. This is what an
+ * whole operating system: DB reachable + storage writable + the general worker/scheduler and the
+ * dedicated media worker heartbeating freshly. This is what an
  * orchestrator / deploy gate should poll, so "web is up" can never be mistaken for "the OS is working".
  */
 export interface ReadinessCheck {
@@ -124,9 +124,9 @@ export async function getReadiness(deps: ReadinessDeps = {}): Promise<ReadinessS
     checks.push({ name: "storage", critical: true, ok: false, detail: e instanceof Error ? e.message : "unwritable" });
   }
 
-  // General worker + scheduler (critical) and video worker (non-critical) heartbeats
+  // General worker + scheduler and dedicated media worker are both required production capabilities.
   checks.push(heartbeatCheck("worker", true, await readHeartbeat("worker-heartbeat.json"), nowMs, maxAgeMs));
-  checks.push(heartbeatCheck("video-worker", false, await readHeartbeat("video-worker-heartbeat.json"), nowMs, maxAgeMs));
+  checks.push(heartbeatCheck("video-worker", true, await readHeartbeat("video-worker-heartbeat.json"), nowMs, maxAgeMs));
 
   const ok = checks.filter((c) => c.critical).every((c) => c.ok);
   return { ok, status: ok ? "ready" : "not_ready", checks, checkedAt };

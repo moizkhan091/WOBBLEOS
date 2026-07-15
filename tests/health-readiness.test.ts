@@ -37,9 +37,9 @@ describe("getReadiness (WOB-AUD-013)", () => {
     expect(r.checks.find((c) => c.name === "database")?.ok).toBe(false);
   });
 
-  it("stays READY when only the NON-critical video worker is down", async () => {
+  it("is NOT READY when the required media worker is down", async () => {
     const r = await getReadiness(deps({ readHeartbeat: async (n) => (n.includes("video") ? null : fresh) }));
-    expect(r.ok).toBe(true); // video worker is non-critical
+    expect(r.ok).toBe(false);
     expect(r.checks.find((c) => c.name === "video-worker")?.ok).toBe(false);
   });
 

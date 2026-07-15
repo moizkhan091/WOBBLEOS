@@ -5326,3 +5326,27 @@ security headers live; readiness 503→200 with a worker; DR drill restores 99 t
 
 Externally blocked (not internal): VPS/SSH, production secrets, domain/DNS/TLS, and a FAL_KEY + approved budget for a
 live fal.ai smoke test. Branch protection ruleset documented (needs a repo admin; `gh` unavailable here).
+
+---
+
+## 2026-07-15 — Codex: targeted post-remediation deployment follow-ups
+
+Branch `fix/reaudit-followups` from `ea450876`. Four bounded follow-ups were implemented without production
+credentials, paid calls, deploy, or main-branch changes:
+
+- Production Compose/deploy now accepts a protected environment file outside the checkout through an absolute
+  `WOBBLE_ENV_FILE`, while retaining `.env.production` only as a legacy default.
+- Public webhook raw bodies are counted as streamed bytes and cancelled at the 4,000,000-byte cap; chunked and
+  missing/dishonest Content-Length requests cannot force a complete body buffer.
+- Intelligence webhook signatures now bind producer + delivery ID, and a durable unique replay claim admits at most
+  one valid delivery across concurrent app instances. Exact replay and ID/payload conflicts return 409.
+- The dedicated `worker:video` process now owns `media_jobs` dispatch through a bounded worker cycle; the general
+  scheduler no longer dispatches media work, and readiness treats the media worker as critical.
+
+Receipts: focused remediation tests 27/27; full tests 1005/1005; typecheck/build/verify coverage/55 DB proofs green;
+`release:full` exit 0; Playwright 55/55. Isolated Compose startup/readiness passed, DB remained private, app remained
+loopback-only, and durable storage survived forced container recreation with the same SHA-256. Runtime probes:
+oversized chunked/no-Content-Length webhook returned 413; serial and 10-way concurrent replay produced exactly one
+200 per delivery and 409 for duplicates, with one intelligence row per title; a zero-cost media job was consumed and
+honestly blocked with no output because no provider credential was configured. All `wobblefollowup-*` Docker
+containers, images, volumes, and networks were removed after proof.

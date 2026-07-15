@@ -23,6 +23,7 @@ loadDotEnv();
 const E2E_PASSWORD_HASH_B64 = Buffer.from(bcrypt.hashSync(E2E_PASSWORD, 8), "utf8").toString("base64");
 
 const isCI = !!process.env.CI;
+const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1";
 
 // Production build+start is the realistic gate in CI; `next dev` is the fast loop locally. Override with
 // PLAYWRIGHT_WEB_COMMAND when needed (e.g. to reuse an already-built server).
@@ -77,7 +78,7 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
+  webServer: useExternalServer ? undefined : {
     command: webCommand,
     url: `${BASE_URL}/login`,
     reuseExistingServer: !isCI,

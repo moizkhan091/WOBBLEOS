@@ -196,6 +196,10 @@ Full detail: `docs/DASHBOARD_COMPLETION_PLAN.md`. Short version:
 
 ## Notes
 
+- 2026-07-15 targeted deployment follow-up: production Compose now accepts an external secret-file path;
+  public webhook bodies are byte-bounded while streaming; intelligence deliveries use durable replay
+  claims; and the dedicated media worker owns media dispatch instead of the general scheduler.
+
 - When you finish a chunk: flip its box to `[x]` here, append an entry to `docs/AI_HANDOFF_LOG.md`, and push so CI verifies it.
 - If you change the order, update this file and say why in the handoff log.
 - Deferred-but-required chunks are NOT optional; they are in V2 scope and listed in their Phase above.
