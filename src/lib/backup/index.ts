@@ -4,7 +4,23 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 
-/** Backup & Restore — a real point-in-time export + additive, non-destructive restore of business-critical tables. */
+/**
+ * LIMITED JSON export / additive import of selected business-critical tables (WOB-AUD-007).
+ *
+ * This is NOT disaster recovery and NOT a full database backup. It is a convenience export/import of a
+ * curated set of business tables (capped per table), with an ADDITIVE, non-destructive restore (inserts
+ * missing rows by id; never overwrites/deletes). It exists for founder-facing "grab my CRM/tasks/etc as
+ * JSON" and safe re-import — nothing more.
+ *
+ * Real disaster recovery — full pg_dump of the ENTIRE schema, checksummed + optionally encrypted,
+ * durable-file (media) backup, retention, and a proven destructive clean-room restore DRILL — lives in
+ * scripts/backup-db.sh, scripts/restore-db.sh, and scripts/dr-drill.sh. See docs/DISASTER_RECOVERY.md.
+ */
+
+/** Human-readable scope label so callers/UI never mistake this for full DR. */
+export const BACKUP_EXPORT_SCOPE = "limited-json-export";
+export const BACKUP_EXPORT_NOTE =
+  "Limited JSON export of selected business tables (capped per table) — NOT a full database backup or disaster recovery. Use scripts/backup-db.sh + dr-drill.sh for real DR.";
 
 // The tables worth snapshotting (business data, not ephemeral job/queue rows).
 const BACKUP_TABLES: Array<{ key: string; table: typeof schema.crmCompanies }> = [
@@ -33,6 +49,8 @@ const ID_QUERY_CHUNK = 1_000;
 export interface BackupOverview {
   tables: Array<{ key: string; rows: number }>;
   totalRows: number;
+  scope: string;
+  note: string;
 }
 
 export async function getBackupOverview(deps: { db?: Db } = {}): Promise<BackupOverview> {
@@ -46,7 +64,7 @@ export async function getBackupOverview(deps: { db?: Db } = {}): Promise<BackupO
       tables.push({ key, rows: -1 }); // table missing / not migrated
     }
   }
-  return { tables, totalRows: tables.reduce((s, t) => s + Math.max(0, t.rows), 0) };
+  return { tables, totalRows: tables.reduce((s, t) => s + Math.max(0, t.rows), 0), scope: BACKUP_EXPORT_SCOPE, note: BACKUP_EXPORT_NOTE };
 }
 
 export interface BackupSnapshot {

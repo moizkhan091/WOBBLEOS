@@ -162,3 +162,31 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - DECISION: The historical "candidate" metric is an explicit PROJECTION (close half the gap to 1.0), stored as such — never presented as a realized actual. estimatedValue is derived from the projected gap closed. This matches the domain's contract ("an estimate — never presented as a realized actual").
 - DECISION: The scheduler runs the cycle in the daily-maintenance branch, cadence-gated by `optimizerCycleDue` (~1/day) so repeated ticks never re-run it. Evidence collectors read REAL tables (qa_reviews, revision_cycles, handoffs, provider_usage); a collector failure is audited and never fails the cycle. Founders can also trigger a cycle on demand from the Self-Optimizer module.
 - GUARDRAIL (locked): no auto-approve, no auto-activate; approval requires a passing historical test; activation only from approved; degrade → rollback; the optimizer writes only to its own tables; every transition founder-gated + audited.
+
+## 2026-07-14 — Deployment-readiness remediation (Codex audit WOB-AUD-001..021)
+
+- DECISION: Regenerate `package-lock.json` using the npm that ships in `node:22-alpine` (the deploy target's npm),
+  not the local npm 11. WHY: npm majors resolve floating optional deps (esbuild/@emnapi) to different exact versions;
+  a lock made by npm 11 was rejected by CI/Docker's npm 10 `npm ci`. An older-npm-generated lock is forward-compatible,
+  so it installs cleanly on Linux Node 22 AND local Node 24 AND alpine. Proven on all three.
+- DECISION: Close WOB-AUD-004 with a per-route `requireFounder` gate on every mutation handler PLUS a static
+  route-coverage TEST, rather than DB checks in the edge proxy. WHY: the edge/proxy runtime is jose-only (no pg), so
+  it cannot do DB-backed revocation; the codebase's established pattern is `requireFounder` (DB-backed verifySession)
+  in the handler. The coverage test makes it regression-proof (a new unguarded mutation route fails CI).
+- DECISION (refine audit): WOB-AUD-011 — harden our OWN webhooks (intelligence, n8n callback) with a timestamped-HMAC
+  replay window, but leave the Zernio webhook on its native raw-body HMAC (add only a body cap). WHY: Zernio is an
+  EXTERNAL provider; we cannot dictate the signing envelope it sends. Replay for Zernio is bounded by idempotent apply.
+- DECISION (refine audit): WOB-AUD-015 — make `verify:all-db` a filesystem-driven runner that discovers every
+  `verify-*-db.ts` and runs all but a manifest-listed few (each with a reason), instead of a hand-curated chain that
+  silently dropped 24 proofs. 3 proofs are deferred: one needs a live provider credential; two assert on GLOBAL
+  department state and are not sequence-safe in a shared gate DB (they pass standalone). Result: 34 → 55 in the gate.
+- DECISION: WOB-AUD-009 — keep the shared-founder login (an explicit product decision: one team password, caller
+  selects the acting founder) and add rate-limiting/lockout as defense-in-depth. Per-user identity + MFA is a larger
+  product change, intentionally deferred and documented — not silently dropped.
+- DECISION: WOB-AUD-016 — do NOT force `npm audit fix` (it downgrades Next to 9.x). The 2 moderate advisories
+  (postcss stringify, esbuild dev-server) are build/dev-time only and unreachable in the `node server.js` production
+  runtime. Documented as triaged-accepted in docs/SECURITY.md; CI gates high/critical.
+- DECISION: WOB-AUD-007 — the existing 15-table JSON snapshot is relabeled a "limited export/import" (it is not DR);
+  real disaster recovery is a `pg_dump`-based backup + restore + a proven restore DRILL (dump → restore into a
+  disposable DB → compare full table+row fingerprint). Off-host retention / encryption keys / WAL-PITR are
+  operational config for the VPS.

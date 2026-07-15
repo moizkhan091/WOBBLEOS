@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createContentPacket, listContentPackets } from "@/lib/content";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 import {
   CONTENT_APPROVAL_STATUSES,
   CONTENT_FORMATS,
@@ -49,6 +50,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   let body: unknown;
   try {

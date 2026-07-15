@@ -71,6 +71,8 @@ Existing first build pass includes:
 ## Safety rules
 
 - Do not commit `.env` or secrets.
+- Production Compose secrets should live outside the checkout and be supplied with
+  `bash scripts/deploy.sh /absolute/path/to/wobble.env`; `.env.production` is only a legacy default.
 - Keep provider keys in VPS environment variables only.
 - Do not run workers inside Next.js request lifecycle.
 - Keep FFmpeg/HyperFrames rendering isolated from the web process.

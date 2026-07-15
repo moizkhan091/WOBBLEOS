@@ -1,59 +1,58 @@
 #!/usr/bin/env bash
 #
-# WOBBLE OS - VPS deploy gate.
+# WOBBLE OS — isolated VPS deploy.
 #
-# Run this ON the VPS to deploy. It REFUSES to deploy unless the full check
-# suite passes, so a broken build never goes live. This is the last line of
-# defense after CI.
+# Preferred usage (production secrets stay outside the checkout):
+#   bash scripts/deploy.sh /etc/wobble/wobble.env
 #
-# Usage (on the VPS, from the project root):
-#   bash scripts/deploy.sh
-#
-# What it does:
-#   1. Pull the latest code (if this is a git checkout).
-#   2. Clean install dependencies from the lockfile (correct Linux binaries).
-#   3. Run verify = typecheck + test + build. ABORTS on any failure.
-#   4. Only if green: (re)start the app + workers.
-#
-# Restart step: edit the RESTART section for your process manager (pm2,
-# systemd, docker, etc.). It is intentionally explicit so deploys are
-# predictable.
-
+# Optional env: COMPOSE_FILE, ENV_FILE (used only when no positional path is supplied), READY_URL,
+# READY_TIMEOUT. The legacy default is .env.production for backward compatibility.
 set -euo pipefail
+
+COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.prod.yml}
+ENV_FILE_INPUT=${1:-${ENV_FILE:-.env.production}}
+READY_URL=${READY_URL:-http://127.0.0.1:3000/api/health/ready}
+READY_TIMEOUT=${READY_TIMEOUT:-180}
 
 echo "==> WOBBLE OS deploy starting at $(date -u +%FT%TZ)"
 
-# 1. Pull latest (skip gracefully if not a git checkout)
-if [ -d .git ]; then
-  echo "==> git pull"
-  git pull --ff-only
-else
-  echo "==> not a git checkout, skipping git pull"
-fi
-
-# 2. Install dependencies (installs correct platform binaries).
-# Uses `npm install` for resilience to lockfile drift; switch to `npm ci`
-# once package-lock.json is regenerated cleanly for stricter reproducibility.
-echo "==> npm install"
-npm install --no-audit --no-fund
-
-# 3. The gate: typecheck + test + build. set -e aborts the script on failure.
-echo "==> npm run verify (typecheck + test + build)"
-if ! npm run verify; then
-  echo "XX  VERIFY FAILED - aborting deploy. Nothing was restarted." >&2
+[ -f "$ENV_FILE_INPUT" ] || {
+  echo "XX  production environment file not found: $ENV_FILE_INPUT" >&2
+  echo "    Usage: bash scripts/deploy.sh /absolute/path/to/wobble.env" >&2
   exit 1
+}
+
+# Compose resolves service-level env_file entries from the project definition. Always supply an
+# absolute path so a file outside the checkout works consistently from any caller working directory.
+ENV_FILE=$(cd "$(dirname "$ENV_FILE_INPUT")" && pwd)/$(basename "$ENV_FILE_INPUT")
+export WOBBLE_ENV_FILE="$ENV_FILE"
+echo "==> using production environment file: $WOBBLE_ENV_FILE"
+
+if [ -d .git ]; then
+  echo "==> git pull --ff-only"
+  git pull --ff-only
 fi
 
-# 4. Restart only after a green verify.
-echo "==> verify passed, restarting services"
-# --- RESTART (edit for your setup) -------------------------------------------
-# pm2 example:
-#   pm2 restart wobble-os wobble-worker wobble-video-worker
-# systemd example:
-#   sudo systemctl restart wobble-os wobble-worker wobble-video-worker
-# docker compose example:
-#   docker compose up -d --build
-# -----------------------------------------------------------------------------
-echo "!!  No restart command configured yet. Edit the RESTART section of scripts/deploy.sh."
+echo "==> validating compose config"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null
 
+echo "==> docker compose up -d --build (app + db + migrate + worker + worker-video)"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
+
+echo "==> waiting for readiness at $READY_URL (timeout ${READY_TIMEOUT}s)"
+deadline=$(( $(date +%s) + READY_TIMEOUT ))
+until curl -fsS "$READY_URL" >/dev/null 2>&1; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "XX  DEPLOY FAILED — the OS did not become READY within ${READY_TIMEOUT}s." >&2
+    echo "    Last readiness response:" >&2
+    curl -sS "$READY_URL" >&2 || true
+    echo "" >&2
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >&2 || true
+    exit 1
+  fi
+  sleep 5
+done
+
+echo "==> READY. Current services:"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
 echo "==> WOBBLE OS deploy finished OK at $(date -u +%FT%TZ)"

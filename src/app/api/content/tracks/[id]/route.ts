@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listContentTracks, updateContentTrack } from "@/lib/content";
 import { updateContentTrackSchema } from "@/lib/domain/content-command";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   const { id } = await context.params;
   let body: unknown;

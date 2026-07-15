@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 import { desc } from "drizzle-orm";
 import { webhookEndpoints, webhookEvents } from "@/db/schema";
 import { getDb } from "@/db";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/n8n — the handoff bridge: registered webhook endpoints + recent signed events. */
-export async function GET() {
+/**
+ * GET /api/n8n — the handoff bridge registry: endpoint URLs, secret-ref names, enabled state, recent
+ * signed events. This is administrative metadata, so it requires a founder session (WOB-AUD-005); it is
+ * no longer public at the edge. Only /api/n8n/callback stays public (HMAC-verified).
+ */
+export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
     const db = getDb();
     const [endpoints, events] = await Promise.all([

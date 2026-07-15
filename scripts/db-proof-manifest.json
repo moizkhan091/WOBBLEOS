@@ -1,0 +1,8 @@
+{
+  "_comment": "WOB-AUD-015: deny-by-default DB-proof manifest. run-all-db-proofs.mjs discovers EVERY src/scripts/verify-*-db.ts and runs it in the release gate. A proof may be excluded ONLY by an entry here with an explicit reason. check-verify-coverage.mjs enforces that every proof file is either run or listed here (no silent omission, no stale entries).",
+  "skip": {
+    "verify-provider-usage-db.ts": "Requires a live OPENROUTER_API_KEY (paid provider credential) not present in CI/the base gate. Validated in the credentialed live-check lane.",
+    "verify-department-registry-rollup-db.ts": "Asserts on GLOBAL department roll-up state (no draft department may appear). Passes standalone against a fresh DB, but is not sequence-safe in the shared gate DB because sibling department proofs seed draft departments. Run in isolation.",
+    "verify-department-seed-db.ts": "Asserts on GLOBAL department seed state (proposal must be shallow-active). Passes standalone against a fresh DB, but is not sequence-safe in the shared gate DB. Run in isolation."
+  }
+}

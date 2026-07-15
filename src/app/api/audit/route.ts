@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditEventInputSchema } from "@/lib/domain/audit";
 import { listAuditEvents, writeAuditEvent } from "@/lib/audit";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   let body: unknown;
   try {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardConnection } from "@/lib/connections";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ const guardBodySchema = z.object({
 /** POST /api/connections/[id]/guard - verify if a module/action may use this connection. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { id } = await context.params;
   let body: unknown;
   try {

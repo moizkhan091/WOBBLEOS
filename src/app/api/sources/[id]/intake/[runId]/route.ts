@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { markSourceIntakeRunComplete } from "@/lib/sources";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,8 @@ const completeIntakeSchema = z.object({
 /** PATCH /api/sources/[id]/intake/[runId] - complete/fail a source intake run. */
 export async function PATCH(request: Request, context: { params: Promise<{ id: string; runId: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { runId } = await context.params;
   let body: unknown;
   try {

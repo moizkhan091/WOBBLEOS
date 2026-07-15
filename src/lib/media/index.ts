@@ -4,6 +4,8 @@ import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { newId } from "@/lib/ids";
+import { recordProviderRun, type RecordProviderRunInput } from "@/lib/provider-runs";
+import { falMediaProvider } from "@/lib/media/fal-provider";
 import {
   MEDIA_KINDS,
   validateMediaRequest,
@@ -35,16 +37,10 @@ export const deterministicMediaProvider: MediaProvider = {
   },
 };
 
-/** Real fal.ai provider. `configured()` is true only when FAL_KEY/FAL_API_KEY is set. The live call is the ONLY
- *  blocked piece: without a key a job is BLOCKED (never reaches generate); with a key, generate throws a clear
- *  "not wired" error (honest — the provider-independent pipeline is complete; wire the fal client + supply the key). */
-export const falMediaProvider: MediaProvider = {
-  slug: "fal",
-  configured: () => falConfigured(),
-  generate: async () => {
-    throw new Error("live fal.ai generation is not wired in this environment — the pipeline is complete; supply FAL_KEY and wire the fal client to enable real media");
-  },
-};
+// Real fal.ai provider (WOB-AUD-014) — the live queue→poll→result→download adapter (imported above).
+// `configured()` is true only when FAL_KEY/FAL_API_KEY is set; an unconfigured environment keeps a job
+// truthfully BLOCKED (never a fabricated success).
+export { falMediaProvider };
 
 /** The PRODUCTION registry contains ONLY real providers. `deterministicMediaProvider` is intentionally NOT here — it
  *  fabricates a synthetic ref and is available ONLY via explicit injection (tests/proofs), so a founder request can
@@ -81,6 +77,7 @@ export interface MediaStore {
 export interface MediaDeps {
   store?: MediaStore;
   recordAudit?: (i: AuditEventInput) => Promise<void>;
+  recordProviderRun?: (i: RecordProviderRunInput) => Promise<unknown>;
   providers?: Record<string, MediaProvider>;
   now?: Date;
 }
@@ -142,16 +139,29 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
     await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider } });
     return { claimed: true, jobId: job.id, status: "blocked" };
   }
+  const attemptStart = Date.now();
+  // Durable paid-attempt / cost record (WOB-AUD-014) — written on BOTH success and failure.
+  const recordRun = (fields: Omit<RecordProviderRunInput, "provider" | "operation" | "requestMetadata">) =>
+    (deps.recordProviderRun ?? recordProviderRun)({
+      provider: provider.slug,
+      operation: `media.${job.kind}`,
+      requestMetadata: { mediaJobId: job.id, kind: job.kind, provider: provider.slug },
+      estimatedCostCents: job.estimatedCostCents,
+      latencyMs: Date.now() - attemptStart,
+      ...fields,
+    }).catch(() => {});
   try {
     const result = await provider.generate({ kind: job.kind, prompt: job.prompt, params: job.params });
     // Compare-and-set: only write the terminal result if THIS worker still owns the lease (a slow generation that
     // outlived its lease could have been reclaimed + re-claimed — never double-write / double-spend).
     const owned = await store.updateOwned(job.id, leaseOwner, { status: "succeeded", outputRefs: result.outputRefs, actualCostCents: result.actualCostCents ?? job.estimatedCostCents, error: null, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
     if (!owned) return { claimed: true, jobId: job.id, status: "generating" }; // lost the lease → another worker owns it
+    await recordRun({ status: "success", actualCostCents: result.actualCostCents ?? job.estimatedCostCents, responseMetadata: { outputs: result.outputRefs.length } });
     await audit(deps, { eventType: "media.job_succeeded", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: provider.slug, outputs: result.outputRefs.length } });
     return { claimed: true, jobId: job.id, status: "succeeded" };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "generation failed";
+    await recordRun({ status: "failed", error: msg });
     const attempts = job.attempts + 1;
     const willRetry = canRetryMediaJob({ status: "failed", attempts, maxAttempts: job.maxAttempts });
     if (willRetry) {
@@ -221,8 +231,8 @@ export function mediaPipelineStatus(): { pipelineBuilt: boolean; providerConfigu
     provider: "fal",
     kinds: MEDIA_KINDS,
     note: configured
-      ? "Pipeline built. FAL key is present, but the live fal.ai client is not wired yet — jobs will FAIL with a clear message until it is wired (never a fabricated success)."
-      : "Pipeline built (durable queue, worker, retries, recovery, UI). The live provider is BLOCKED: set FAL_KEY to enable real generation. Until then a submitted job is truthfully 'blocked', never faked.",
+      ? "Pipeline built AND the live fal.ai adapter is wired (queue→poll→result→download to durable storage, with provider_runs cost records). FAL key present — real generation is enabled."
+      : "Pipeline built (durable queue, worker, retries, recovery, UI) and the fal.ai adapter is wired. The live provider is BLOCKED until FAL_KEY is set; until then a submitted job is truthfully 'blocked', never faked.",
   };
 }
 

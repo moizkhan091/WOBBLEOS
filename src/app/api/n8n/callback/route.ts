@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { receiveN8nCallback } from "@/lib/n8n";
+import { readCappedRawBody } from "@/lib/security/webhooks";
 import {
   N8N_EVENT_TYPE_HEADER,
   N8N_IDEMPOTENCY_HEADER,
@@ -16,7 +17,10 @@ function dbUnavailable() {
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
 
-  const payloadText = await request.text();
+  // Pre-parse body-size cap (WOB-AUD-011). n8n callback already has timestamped-HMAC + idempotency.
+  const body = await readCappedRawBody(request);
+  if (!body.ok) return NextResponse.json({ ok: false, error: body.error }, { status: body.status });
+  const payloadText = body.raw;
   let result;
   try {
     result = await receiveN8nCallback({

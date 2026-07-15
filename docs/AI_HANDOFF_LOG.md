@@ -5293,3 +5293,60 @@ correct/safe). Fixed both blockers:
 Security posture reconfirmed by the reviewer: no secret committed, DB not published to the host, app loopback-bound,
 health leaks only up/down. GATE: compose config parses · migrator image builds + runs migrations green · app-code
 proofs unchanged (health + cockpit x2).
+
+---
+
+## 2026-07-14 — Claude (Opus 4.8): deployment-readiness remediation (independent Codex audit)
+
+Branch `fix/deployment-readiness` (off `bf4b060`). Fixed + verified every actionable finding WOB-AUD-001..021
+from `WOBBLEOS_DEPLOYMENT_BLOCKER_AUDIT_2026-07-14.md`. Full detail + proofs in
+`docs/DEPLOYMENT_READINESS_REMEDIATION.md`; DR in `docs/DISASTER_RECOVERY.md`; vuln policy in `docs/SECURITY.md`.
+
+Code/infra changes:
+- Build/supply-chain: regenerated `package-lock.json` with the Node-22 npm (records all-platform optionals) so
+  `npm ci` is reproducible on Linux/Windows/alpine; switched CI + Dockerfile + deploy to `npm ci`; added `engines`
+  + `.nvmrc`. Deny-by-default `.dockerignore` + `next.config` `outputFileTracingExcludes` + `scripts/check-docker-image.mjs`
+  → runner image 358 MB, zero storage/docs/tests/.env leak.
+- DB/workers/storage: `docker-compose.prod.yml` now uses digest-pinned `pgvector/pgvector:pg16`, adds `worker` +
+  `worker-video` services + a durable `wobble_storage` volume + hardening (cap_drop, no-new-privileges, limits);
+  new Dockerfile `worker` stage (tsx); scheduler singleton via a Postgres advisory lock (`src/lib/scheduler/leader.ts`);
+  startup config validation (`src/lib/config/validate.ts` + `src/instrumentation.ts`); aggregate `/api/health/ready`.
+- Auth/n8n: `requireFounder` on all 28 unguarded mutation routes + `tests/route-auth-coverage.test.ts` guard; proxy
+  public prefix reduced to `/api/n8n/callback` + strict slash-boundary matcher; SSRF+timeout on the n8n outbound
+  (`src/lib/security/url-guard.ts`, shared with source-intake); server-authoritative connection credential allowlist;
+  login rate-limit/lockout.
+- Gate/webhooks/media/backup: hermetic ask test (release gate green); filesystem-driven `verify:all-db` runner +
+  manifest + coverage guard (55/58 proofs now in the gate); webhook body caps + timestamped-HMAC replay; media-token
+  expiry; real fal.ai adapter (`src/lib/media/fal-provider.ts`) + `provider_runs` cost records; real DB+media DR
+  (`scripts/backup-db.sh`/`restore-db.sh`/`dr-drill.sh`); working `scripts/deploy.sh` (compose up + readiness gate).
+
+Runtime proofs (isolated Docker, no prod creds, no paid calls): pgvector migrate 99 tables (alpine fails);
+worker leader/follower + 1 lock holder; revoked session → 401 on connections/tasks/session; unauth n8n → 401; 5
+security headers live; readiness 503→200 with a worker; DR drill restores 99 tables identically; 55 DB proofs green.
+
+Externally blocked (not internal): VPS/SSH, production secrets, domain/DNS/TLS, and a FAL_KEY + approved budget for a
+live fal.ai smoke test. Branch protection ruleset documented (needs a repo admin; `gh` unavailable here).
+
+---
+
+## 2026-07-15 — Codex: targeted post-remediation deployment follow-ups
+
+Branch `fix/reaudit-followups` from `ea450876`. Four bounded follow-ups were implemented without production
+credentials, paid calls, deploy, or main-branch changes:
+
+- Production Compose/deploy now accepts a protected environment file outside the checkout through an absolute
+  `WOBBLE_ENV_FILE`, while retaining `.env.production` only as a legacy default.
+- Public webhook raw bodies are counted as streamed bytes and cancelled at the 4,000,000-byte cap; chunked and
+  missing/dishonest Content-Length requests cannot force a complete body buffer.
+- Intelligence webhook signatures now bind producer + delivery ID, and a durable unique replay claim admits at most
+  one valid delivery across concurrent app instances. Exact replay and ID/payload conflicts return 409.
+- The dedicated `worker:video` process now owns `media_jobs` dispatch through a bounded worker cycle; the general
+  scheduler no longer dispatches media work, and readiness treats the media worker as critical.
+
+Receipts: focused remediation tests 27/27; full tests 1005/1005; typecheck/build/verify coverage/55 DB proofs green;
+`release:full` exit 0; Playwright 55/55. Isolated Compose startup/readiness passed, DB remained private, app remained
+loopback-only, and durable storage survived forced container recreation with the same SHA-256. Runtime probes:
+oversized chunked/no-Content-Length webhook returned 413; serial and 10-way concurrent replay produced exactly one
+200 per delivery and 409 for duplicates, with one intelligence row per title; a zero-cost media job was consumed and
+honestly blocked with no output because no provider credential was configured. All `wobblefollowup-*` Docker
+containers, images, volumes, and networks were removed after proof.

@@ -378,8 +378,9 @@ describe("library service", () => {
     const items = zernioMediaItems(asset, "https://os.wobble.com");
     expect(items).toHaveLength(1);
     expect(items[0].type).toBe("image");
-    // signed public endpoint (NOT the session-gated /api/library route) with an HMAC token bound to assetId+index
-    expect(items[0].url).toMatch(/^https:\/\/os\.wobble\.com\/api\/public\/media\/asset_1\?i=0&t=[a-f0-9]{64}$/);
+    // signed public endpoint (NOT the session-gated /api/library route) with an HMAC token bound to
+    // assetId+index+EXPIRY. Format: `<exp>.<hmac>` (WOB-AUD-019 — the token now expires).
+    expect(items[0].url).toMatch(/^https:\/\/os\.wobble\.com\/api\/public\/media\/asset_1\?i=0&t=\d+\.[a-f0-9]{64}$/);
   });
 
   it("passes through already-remote media URLs unchanged", () => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createContentTrack, listContentTracks } from "@/lib/content";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 import {
   createContentTrackSchema,
   CONTENT_TRACK_OWNER_TYPES,
@@ -38,6 +39,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   let body: unknown;
   try {

@@ -14,6 +14,29 @@ export type ConnectionHealthStatus = (typeof CONNECTION_HEALTH_STATUSES)[number]
 export const CONNECTION_PERMISSION_MODES = ["read_only", "write_only", "read_write", "webhook_only"] as const;
 export type ConnectionPermissionMode = (typeof CONNECTION_PERMISSION_MODES)[number];
 
+/**
+ * Server-authoritative map of KNOWN provider slug → the exact env var that holds its credential
+ * (WOB-AUD-010). A caller cannot register/patch a known provider to read an UNRELATED env var (e.g.
+ * point slug `openrouter` at `SESSION_SECRET`), which would otherwise leak that secret to the provider's
+ * health probe. For known slugs the credential env name is forced to this value regardless of the caller
+ * input. Slugs with an outbound health probe MUST be pinned here.
+ */
+export const PROVIDER_CREDENTIAL_ENV: Record<string, string> = {
+  openrouter: "OPENROUTER_API_KEY",
+  tavily: "TAVILY_API_KEY",
+  search_api: "SEARCH_API_KEY",
+  apify: "APIFY_API_KEY",
+  fal: "FAL_KEY",
+  zernio: "ZERNIO_API_KEY",
+  n8n: "N8N_WEBHOOK_SECRET",
+  embedding: "EMBEDDING_API_KEY",
+};
+
+/** The pinned credential env var for a known provider slug, or null if the slug is not a known provider. */
+export function credentialEnvForSlug(slug: string): string | null {
+  return PROVIDER_CREDENTIAL_ENV[slug] ?? null;
+}
+
 export const slugSchema = z
   .string()
   .trim()
