@@ -4,6 +4,7 @@ import { CONTENT_GRAPH_AGENTS } from "@/lib/domain/content-graph";
 import type { PaidAuditResult } from "@/lib/paid-audit-graph";
 import type { ContentGraphResult } from "@/lib/content-graph";
 import { criterionResult, type QaCriterion, type QaCriterionResult, type QaEvidenceItem, type QaSubmission } from "@/lib/domain/qa-board";
+import { validateHandoff, type HandoffReceiverContext } from "@/lib/domain/handoff";
 import { createQaBoardRegistry, type QaBoard, type QaBoardEvaluationInput } from "@/lib/qa";
 
 /**
@@ -276,6 +277,128 @@ export const contentBrandBoard: QaBoard<ContentGraphResult> = {
   evaluate: evaluateContentBrand,
 };
 
+// ================================================================ Security & Tenant Isolation (IMPLEMENTED)
+
+/**
+ * The artifact this board reviews: a handoff envelope PLUS the receiver context it is being judged
+ * against. Both halves are required — "is this envelope isolated?" is meaningless without knowing which
+ * destination is receiving it and what that destination is actually granted.
+ */
+export interface SecurityIsolationArtifact {
+  /** The handoff envelope under review (unknown — `validateHandoff` parses + validates it itself). */
+  envelope: unknown;
+  /** What the DESTINATION is genuinely permitted: its client workspace, memory grant, classifications. */
+  receiver: HandoffReceiverContext;
+}
+
+const SECURITY_ISOLATION_CRITERIA: QaCriterion[] = [
+  { key: "tenant_isolated", stage: "handoff", required: true, weight: 2, description: "Client/tenant scope matches the receiver — no cross-tenant leakage." },
+  { key: "memory_scope_authorized", stage: "handoff", required: true, weight: 1.5, description: "Authorized memory scopes never exceed the receiver's grant." },
+  { key: "classification_permitted", stage: "handoff", required: true, weight: 1.5, description: "Data classification is permitted for the destination." },
+];
+
+/**
+ * DETERMINISTIC security evaluation (WOB-UAT-024) — the whole point of this board.
+ *
+ * It scores against `validateHandoff`'s ACTUAL output, not an LLM's opinion of a security question. The
+ * board's three criteria were already an exact restatement of `validateHandoff`'s three real checks
+ * (client isolation / memory-scope widening / classification), so asking a model to re-judge them would
+ * be strictly worse: slower, costly, non-reproducible, and capable of passing an envelope the runtime
+ * would reject. A security verdict that can disagree with the enforcement it describes is worthless.
+ *
+ * This means the reviewer cannot be fooled and cannot fabricate: a `pass` here is the same computation
+ * the dispatcher performs, so the board and the runtime can never contradict each other.
+ */
+function evaluateSecurityIsolation(input: QaBoardEvaluationInput<SecurityIsolationArtifact>): QaCriterionResult[] {
+  const artifact = input.submission.artifact;
+  const byKey = Object.fromEntries(SECURITY_ISOLATION_CRITERIA.map((c) => [c.key, c])) as Record<string, QaCriterion>;
+
+  // No envelope → the board CANNOT assess. Drives a `blocked` verdict, never a fake pass or a fake fail.
+  if (!artifact?.envelope) {
+    return SECURITY_ISOLATION_CRITERIA.map((c) =>
+      criterionResult(c, { assessable: false, passed: false, score: 0, rationale: "no handoff envelope present on the artifact", evidence: [ev("envelope", "artifact_field", "envelope missing", null)] }),
+    );
+  }
+
+  const validation = validateHandoff(artifact.envelope, artifact.receiver ?? {});
+  const errors = validation.errors;
+  const find = (needle: RegExp) => errors.filter((e) => needle.test(e));
+
+  // Each criterion owns the exact error signature `validateHandoff` emits for it. If validateHandoff's
+  // wording changes, these stop matching and the tests fail loudly rather than silently passing.
+  const checks: { criterion: QaCriterion; pattern: RegExp; ok: string }[] = [
+    { criterion: byKey.tenant_isolated, pattern: /^client isolation:/, ok: "envelope client workspace matches the receiver" },
+    { criterion: byKey.memory_scope_authorized, pattern: /^unauthorized memory scopes:/, ok: "authorized memory scopes are within the receiver's grant" },
+    { criterion: byKey.classification_permitted, pattern: /^data classification /, ok: "data classification is permitted for this destination" },
+  ];
+
+  const results = checks.map(({ criterion, pattern, ok }) => {
+    const hits = find(pattern);
+    return criterionResult(criterion, {
+      assessable: true,
+      passed: hits.length === 0,
+      score: hits.length === 0 ? 1 : 0,
+      rationale: hits.length === 0 ? ok : hits.join("; "),
+      evidence: [ev(criterion.key, "validate_handoff", hits.length === 0 ? ok : hits.join("; "), hits.length ? hits : null)],
+    });
+  });
+
+  // A malformed envelope (schema/version/required-input failures) is NOT one of the three isolation
+  // criteria, but it must not be reported as "isolated and fine" either — those errors are real and the
+  // dispatcher would reject on them. Fail the tenant criterion rather than let a broken envelope pass.
+  const structural = errors.filter((e) => !checks.some((c) => c.pattern.test(e)));
+  if (structural.length) {
+    results[0] = criterionResult(byKey.tenant_isolated, {
+      assessable: true,
+      passed: false,
+      score: 0,
+      rationale: `envelope is not valid for dispatch: ${structural.join("; ")}`,
+      evidence: [ev("envelope", "validate_handoff", "structural validation failed", structural)],
+    });
+  }
+
+  return results;
+}
+
+export const securityTenantIsolationBoardImpl: QaBoard<SecurityIsolationArtifact> = {
+  boardSlug: "security_tenant_isolation",
+  name: "Security & Tenant Isolation Board",
+  reviewerAgentSlug: "security_isolation_reviewer",
+  // Was `platform` — a slug that does not exist in the seed, so a `revise` verdict routed nowhere
+  // (WOB-UAT-024). Reviews route back to the department that actually owns security.
+  department: "security_governance",
+  targetArtifactSchema: "handoff_envelope",
+  systemPolicy:
+    "Independent security reviewer: verify client/tenant isolation and memory-scope authorization are enforced — no cross-tenant leakage, no scope widening — before work is accepted. Judged DETERMINISTICALLY against validateHandoff's real output, never an opinion.",
+  memoryScopes: ["qa_rubric"],
+  criteria: SECURITY_ISOLATION_CRITERIA,
+  // 0.95 keeps the original intent: every required isolation criterion must pass. There is no partial
+  // credit for "mostly isolated" — a single cross-tenant leak is a total failure.
+  thresholds: { passScore: 0.95, reviseFloor: 0.7 },
+  status: "implemented",
+  evaluate: evaluateSecurityIsolation,
+};
+
+/** Build the QA submission for a real handoff envelope + the receiver it is being dispatched to. */
+export function buildSecurityIsolationSubmission(
+  artifact: SecurityIsolationArtifact,
+  ctx: { workflowId: string; taskId?: string | null; clientWorkspaceId?: string | null; authorAgentSlug: string; contributingAgents?: string[] },
+): QaSubmission<SecurityIsolationArtifact> {
+  return {
+    artifactSchema: "handoff_envelope",
+    artifact,
+    authorAgentSlug: ctx.authorAgentSlug,
+    // The author is whoever built the envelope. `security_isolation_reviewer` must never appear here or
+    // the independence guard rejects the review.
+    contributingAgents: ctx.contributingAgents ?? [ctx.authorAgentSlug],
+    department: "security_governance",
+    workflowId: ctx.workflowId,
+    taskId: ctx.taskId ?? null,
+    clientWorkspaceId: ctx.clientWorkspaceId ?? null,
+    completedStages: ["handoff"],
+  };
+}
+
 // ---------------------------------------------------------------- declared boards (definitions only)
 
 /** A declared board: identity + criteria are defined, but no evaluator yet. The runner refuses to run it
@@ -363,21 +486,12 @@ export const architectureReviewBoard = declaredBoard({
   ],
 });
 
-export const securityTenantIsolationBoard = declaredBoard({
-  boardSlug: "security_tenant_isolation",
-  name: "Security & Tenant Isolation Board",
-  reviewerAgentSlug: "security_isolation_reviewer",
-  department: "platform",
-  targetArtifactSchema: "handoff_envelope",
-  systemPolicy: "Independent security reviewer: verify client/tenant isolation and memory-scope authorization are enforced — no cross-tenant leakage, no scope widening — before work is accepted.",
-  memoryScopes: ["qa_rubric"],
-  thresholds: { passScore: 0.95, reviseFloor: 0.7 },
-  criteria: [
-    { key: "tenant_isolated", stage: "handoff", required: true, description: "Client/tenant scope matches the receiver — no cross-tenant leakage." },
-    { key: "memory_scope_authorized", stage: "handoff", required: true, description: "Authorized memory scopes never exceed the receiver's grant." },
-    { key: "classification_permitted", stage: "handoff", required: true, description: "Data classification is permitted for the destination." },
-  ],
-});
+/**
+ * The security board is now IMPLEMENTED — see `securityTenantIsolationBoardImpl` above. It is exported
+ * under the old name so every existing reference keeps working, and because a board's identity (slug +
+ * reviewer) is what the independence guard and the registry key on.
+ */
+export const securityTenantIsolationBoard = securityTenantIsolationBoardImpl as unknown as QaBoard;
 
 // ---------------------------------------------------------------- registry
 

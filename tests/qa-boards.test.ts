@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { buildHandoffEnvelope, validateHandoff, type HandoffReceiverContext } from "@/lib/domain/handoff";
+import { securityTenantIsolationBoardImpl, buildSecurityIsolationSubmission, type SecurityIsolationArtifact } from "@/lib/qa/boards";
+import type { QaCriterionResult } from "@/lib/domain/qa-board";
 import type { PaidAuditResult } from "@/lib/paid-audit-graph";
 import type { PaidAuditReport } from "@/lib/domain/paid-audit-graph";
 import type { ContentGraphResult } from "@/lib/content-graph";
@@ -280,5 +283,136 @@ describe("board registry integrity", () => {
     expect(qaBoardRegistry.require("paid_audit_qa").boardSlug).toBe("paid_audit_qa");
     expect(() => qaBoardRegistry.require("nope")).toThrow();
     expect(qaBoardRegistry.forArtifact("content_pack").map((b) => b.boardSlug).sort()).toEqual(["content_brand_review", "content_quality_review"]);
+  });
+});
+
+// ================================================================ Security & Tenant Isolation (WOB-UAT-024)
+
+/**
+ * WOB-UAT-024. This board was DECLARED-only — identity + criteria, no evaluator — so nothing could run
+ * it, and the department that owns it (`security_governance`) had no working capability at all. It also
+ * pointed at `department: "platform"`, a slug that does not exist in the seed, so a `revise` verdict
+ * routed nowhere.
+ *
+ * The evaluator is DELIBERATELY DETERMINISTIC: it scores against `validateHandoff`'s actual output
+ * rather than an LLM's opinion. The board's three criteria were already an exact restatement of
+ * validateHandoff's three real checks, so a model re-judging them would be slower, costly,
+ * non-reproducible, and — the disqualifying part — capable of PASSING an envelope the dispatcher would
+ * reject. A security verdict that can disagree with the enforcement it describes is worthless.
+ */
+describe("security_tenant_isolation board (deterministic, scored against real enforcement)", () => {
+  const now = new Date("2026-07-16T00:00:00.000Z");
+
+  const envelopeFor = (over: Partial<Parameters<typeof buildHandoffEnvelope>[0]> = {}) =>
+    buildHandoffEnvelope(
+      {
+        workflowId: "wf_sec_1",
+        department: "content",
+        sourceAgent: "content_orchestrator",
+        objective: "produce a content pack",
+        requestedAction: "generate_content_pack",
+        expectedOutputSchema: "content_pack",
+        destinationAgent: "design_intelligence_orchestrator",
+        dataClassification: "client_confidential",
+        clientWorkspaceId: "client_alpha",
+        authorizedMemoryScopes: ["content", "brand"],
+        ...over,
+      },
+      { now, taskId: "task_sec_1" },
+    );
+
+  const submit = (artifact: SecurityIsolationArtifact) =>
+    buildSecurityIsolationSubmission(artifact, { workflowId: "wf_sec_1", clientWorkspaceId: "client_alpha", authorAgentSlug: "content_orchestrator" });
+
+  it("is RUNNABLE — it is no longer a declared board that nothing can execute", async () => {
+    const { d } = makeDeps();
+    const review = await runQaReview(
+      { board: securityTenantIsolationBoardImpl, submission: submit({ envelope: envelopeFor(), receiver: { clientWorkspaceId: "client_alpha", grantedMemoryScopes: ["content", "brand"], permittedDataClassifications: ["client_confidential"] } }) },
+      d,
+    );
+    expect(review.verdict).toBe("pass");
+    expect(review.reviewerAgentSlug).toBe("security_isolation_reviewer");
+  });
+
+  it("routes a revise back to security_governance — NOT the non-existent 'platform' department", () => {
+    expect(securityTenantIsolationBoardImpl.department).toBe("security_governance");
+  });
+
+  it("FAILS a genuine cross-tenant envelope (Alpha's work handed to Beta's receiver)", async () => {
+    const { d } = makeDeps();
+    const review = await runQaReview(
+      {
+        board: securityTenantIsolationBoardImpl,
+        submission: submit({ envelope: envelopeFor({ clientWorkspaceId: "client_alpha" }), receiver: { clientWorkspaceId: "client_beta", grantedMemoryScopes: ["content", "brand"], permittedDataClassifications: ["client_confidential"] } }),
+      },
+      d,
+    );
+    expect(review.verdict).not.toBe("pass");
+    const tenant = review.criteria.find((c) => c.key === "tenant_isolated")!;
+    expect(tenant.passed).toBe(false);
+    expect(tenant.rationale).toMatch(/client isolation/);
+  });
+
+  it("FAILS an envelope that widens memory scope beyond the receiver's grant", async () => {
+    const { d } = makeDeps();
+    const review = await runQaReview(
+      {
+        board: securityTenantIsolationBoardImpl,
+        submission: submit({ envelope: envelopeFor({ authorizedMemoryScopes: ["content", "finance"] }), receiver: { clientWorkspaceId: "client_alpha", grantedMemoryScopes: ["content"], permittedDataClassifications: ["client_confidential"] } }),
+      },
+      d,
+    );
+    expect(review.verdict).not.toBe("pass");
+    const scope = review.criteria.find((c) => c.key === "memory_scope_authorized")!;
+    expect(scope.passed).toBe(false);
+    expect(scope.rationale).toMatch(/finance/);
+  });
+
+  it("FAILS an envelope whose classification the destination may not handle", async () => {
+    const { d } = makeDeps();
+    const review = await runQaReview(
+      {
+        board: securityTenantIsolationBoardImpl,
+        submission: submit({ envelope: envelopeFor({ dataClassification: "restricted" }), receiver: { clientWorkspaceId: "client_alpha", grantedMemoryScopes: ["content", "brand"], permittedDataClassifications: ["internal"] } }),
+      },
+      d,
+    );
+    expect(review.verdict).not.toBe("pass");
+    expect(review.criteria.find((c) => c.key === "classification_permitted")!.passed).toBe(false);
+  });
+
+  it("is BLOCKED — not passed — when there is no envelope to assess", async () => {
+    const { d } = makeDeps();
+    const review = await runQaReview({ board: securityTenantIsolationBoardImpl, submission: submit({ envelope: null, receiver: {} }) }, d);
+    expect(review.verdict).toBe("blocked");
+    expect(review.criteria.every((c) => c.assessable === false)).toBe(true);
+  });
+
+  it("does not pass a STRUCTURALLY invalid envelope as 'isolated and fine'", async () => {
+    // A malformed envelope is not one of the three isolation criteria, but the dispatcher would reject
+    // it — so reporting it as isolated would be a lie of omission.
+    const { d } = makeDeps();
+    const review = await runQaReview(
+      { board: securityTenantIsolationBoardImpl, submission: submit({ envelope: { workflowId: "wf", nonsense: true }, receiver: { clientWorkspaceId: "client_alpha" } }) },
+      d,
+    );
+    expect(review.verdict).not.toBe("pass");
+    expect(review.criteria.find((c) => c.key === "tenant_isolated")!.passed).toBe(false);
+  });
+
+  it("agrees with the runtime: whatever validateHandoff rejects, the board never passes", () => {
+    // The property that makes this board worth having. If these two could disagree, the verdict is noise.
+    const cases: { envelope: unknown; receiver: HandoffReceiverContext }[] = [
+      { envelope: envelopeFor(), receiver: { clientWorkspaceId: "client_alpha", grantedMemoryScopes: ["content", "brand"], permittedDataClassifications: ["client_confidential"] } },
+      { envelope: envelopeFor(), receiver: { clientWorkspaceId: "client_beta", grantedMemoryScopes: ["content", "brand"] } },
+      { envelope: envelopeFor({ authorizedMemoryScopes: ["secret"] }), receiver: { clientWorkspaceId: "client_alpha", grantedMemoryScopes: ["content"] } },
+      { envelope: envelopeFor({ dataClassification: "restricted" }), receiver: { clientWorkspaceId: "client_alpha", permittedDataClassifications: ["internal"] } },
+    ];
+    for (const c of cases) {
+      const runtimeOk = validateHandoff(c.envelope, c.receiver).ok;
+      const results = securityTenantIsolationBoardImpl.evaluate!({ board: securityTenantIsolationBoardImpl, submission: submit(c as SecurityIsolationArtifact) }) as QaCriterionResult[];
+      const boardOk = results.every((r) => r.passed);
+      expect(boardOk, `board and runtime disagreed for receiver ${JSON.stringify(c.receiver)}`).toBe(runtimeOk);
+    }
   });
 });

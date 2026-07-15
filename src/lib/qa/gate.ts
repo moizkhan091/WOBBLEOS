@@ -4,6 +4,9 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import type { CreateApprovalInput } from "@/lib/approvals";
 import type { ProposalRow } from "@/lib/domain/proposal";
 import { criterionResult, type QaCriterion, type QaCriterionResult } from "@/lib/domain/qa-board";
+// The security board lives in boards.ts with the other implemented boards. No cycle: qa/index.ts does
+// not import gate.ts, and boards.ts only reaches qa/index.ts.
+import { securityTenantIsolationBoardImpl } from "@/lib/qa/boards";
 import {
   runQaReview,
   createInMemoryQaReviewStore,
@@ -458,6 +461,10 @@ export const RUNNABLE_QA_BOARDS: Record<string, QaBoard<unknown>> = {
   proposal_technical_review: proposalTechnicalReviewBoardImpl as unknown as QaBoard<unknown>,
   proposal_commercial_review: proposalCommercialReviewBoardImpl as unknown as QaBoard<unknown>,
   research_validation: researchValidationBoardImpl as unknown as QaBoard<unknown>,
+  // WOB-UAT-024: the security board now has a real, DETERMINISTIC evaluator (it scores against
+  // validateHandoff's actual output), so it is runnable. Before this it was declared-only and nothing
+  // could execute it — the department it belongs to had no working capability at all.
+  security_tenant_isolation: securityTenantIsolationBoardImpl as unknown as QaBoard<unknown>,
 };
 
 /** The full Research authoring team — a reviewer that is any of these is NOT independent. */
