@@ -73,6 +73,7 @@ export const MODULES: Record<string, ModuleDef> = {
   comms: { id: "comms", label: "Communications", title: "Communications Outbox", icon: "Send", status: "wired", api: "/api/comms", tagline: "Every outbound message the OS prepares — internal notifications, external comms and proposal-send packages. Earned Autonomy can auto-deliver a low-risk notification or stage a draft ready; the actual external/proposal SEND stays a founder confirm." },
 
   // SYSTEM
+  security: { id: "security", label: "Security & Governance", title: "Security & Governance", icon: "ShieldCheck", status: "wired", api: "/api/security", tagline: "Deterministic governance of access, policy, risk and incidents. Every finding is a computed fact with reproduction steps and evidence — reproducible without a model call — never an opinion. A check that could not run is reported as skipped, because \"I could not check\" is not \"all clear\"." },
   memory: { id: "memory", label: "Memory", title: "Memory", icon: "Database", status: "wired", chunk: 10, api: "/api/memory", tagline: "Long-term recall across the workforce. What WOBBLE remembers, and why." },
   taste: { id: "taste", label: "Taste Learning", title: "Taste + Feedback Learning", icon: "HeartHandshake", status: "wired", chunk: 56, api: "/api/taste/profiles,/api/taste/feedback", tagline: "How approvals, rejections, edits, founder preferences and client/project taste become usable learning without overwriting WOBBLE brand truth." },
   costs: { id: "costs", label: "Costs", title: "Costs", icon: "Receipt", status: "wired", chunk: 5, api: "/api/costs", tagline: "Spend across every model, render and service - against budget, in real time." },
@@ -90,7 +91,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
   { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "comms", "skills", "workers", "handoff"] },
-  { label: "SYSTEM", items: ["cockpit", "memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },
+  { label: "SYSTEM", items: ["cockpit", "security", "memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },
 ];
 
 export const DEFAULT_MODULE = "command";

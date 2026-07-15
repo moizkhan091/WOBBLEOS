@@ -189,10 +189,38 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
   {
     slug: "security_governance",
     name: "Security & Governance",
-    purpose: "Review security, make policy decisions, surface risk findings across the org.",
-    status: "draft",
+    purpose: "Govern access, policy, risk and incidents across the OS: detect deterministically, escalate honestly, and give founders a control they can actually act on.",
+    // ACTIVE as a real agent_team (WOB-UAT-024). It has an orchestrator, four executing members, and a
+    // deterministic evaluator — `runGovernanceReview` genuinely runs each of them. It is NOT a
+    // service_department: the work is judgment-bearing governance with a founder decision at the end,
+    // not a queue. It IS deliberately deterministic, which is an implementation choice, not a lesser
+    // status — a security verdict that can disagree with the enforcement it describes is worthless.
+    status: "active",
+    operatingModel: "agent_team",
+    orchestratorAgentSlug: "governance_orchestrator",
+    deterministicServices: ["runGovernanceReview", "reviewAccess", "reviewPolicies", "checkKillSwitch"],
     permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "restricted"] },
-    io: { inboundCapabilities: ["security_review"], acceptedHandoffSchemas: [], outboundProducts: ["security_reviews", "policy_decisions", "risk_findings"], downstreamConsumers: ["founder_command_centre"] },
+    // `acceptedHandoffSchemas` was EMPTY, which meant `departmentCanAccept` rejected every inbound
+    // handoff — the department could not receive work at all. It now accepts the artifact its evaluator
+    // actually reviews (`handoff_envelope`) plus a governance request.
+    io: {
+      inboundCapabilities: ["security_review", "run_governance_review"],
+      acceptedHandoffSchemas: ["handoff_envelope", "governance_request"],
+      outboundProducts: ["security_reviews", "policy_decisions", "risk_findings", "security_incidents"],
+      downstreamConsumers: ["founder_command_centre"],
+    },
+    governance: {
+      requiredApprovals: [],
+      escalationRules: [
+        { condition: "critical_finding", escalateTo: "founder_command_centre" },
+        { condition: "governance_check_unavailable", escalateTo: "founder_command_centre" },
+      ],
+    },
+    kpis: [
+      { key: "open_critical_findings", target: 0, unit: "count" },
+      { key: "mean_time_to_resolve_hours", target: 24, unit: "hours" },
+    ],
+    degradedBehaviour: "report what could NOT be checked as skipped and demand founder attention; never report an unrun check as a clean result",
     owner: "Moiz",
   },
   {
@@ -224,6 +252,16 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
 
 /** Specialist memberships for the departments that are actually operational today (real agent teams). */
 export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
+  // Security & Governance (WOB-UAT-024). Every member EXECUTES — `runGovernanceReview` dispatches the
+  // access + policy reviewers, and a critical finding drives the incident agent. `toolGrants: []` is the
+  // honest declaration: these agents answer decidable questions deterministically and are not permitted
+  // to have an opinion about them.
+  { departmentSlug: "security_governance", memberType: "agent", memberRef: "access_policy_agent", role: "specialist", responsibility: "deterministic access governance: sessions, accounts, super-admin cover", priority: 10, capabilities: ["access_review"], toolGrants: [], memoryGrants: ["company"], allowedInputSchemas: ["access_state"], expectedOutputs: ["security_finding"], escalationDestination: "governance_orchestrator" },
+  { departmentSlug: "security_governance", memberType: "agent", memberRef: "risk_compliance_agent", role: "specialist", responsibility: "deterministic policy governance: spend caps, autonomy grants, data-classification grants", priority: 20, capabilities: ["policy_review"], toolGrants: [], memoryGrants: ["company"], allowedInputSchemas: ["policy_state"], expectedOutputs: ["security_finding"], escalationDestination: "governance_orchestrator" },
+  { departmentSlug: "security_governance", memberType: "agent", memberRef: "incident_audit_agent", role: "specialist", responsibility: "turn critical findings into incidents with a closable lifecycle", priority: 30, capabilities: ["incident_management"], toolGrants: [], memoryGrants: ["company"], allowedInputSchemas: ["security_finding"], expectedOutputs: ["security_incident"], escalationDestination: "governance_orchestrator" },
+  // The evaluator is a MEMBER but never reviews its own team's work: it evaluates OTHER departments'
+  // handoff envelopes, so the independence guard is satisfied structurally rather than by convention.
+  { departmentSlug: "security_governance", memberType: "agent", memberRef: "security_isolation_reviewer", role: "evaluator", responsibility: "deterministic tenant-isolation review of any department's handoff envelope", priority: 40, capabilities: ["isolation_review"], toolGrants: [], memoryGrants: ["qa_rubric"], allowedInputSchemas: ["handoff_envelope"], expectedOutputs: ["qa_review"], escalationDestination: "governance_orchestrator" },
   // Paid Audit team — one claimed handoff drives each specialist (see the paid-audit graph).
   { departmentSlug: "paid_audit", memberType: "agent", memberRef: PAID_AUDIT_AGENTS.discovery, role: "specialist", responsibility: "map the client's current state", priority: 10, capabilities: ["discovery"], toolGrants: ["run_node"], memoryGrants: AUDIT_MEMORY, allowedInputSchemas: ["current_state_map"], expectedOutputs: ["current_state_map"], escalationDestination: "paid_audit_orchestrator" },
   { departmentSlug: "paid_audit", memberType: "agent", memberRef: PAID_AUDIT_AGENTS.opportunity, role: "specialist", responsibility: "identify AI/automation opportunities", priority: 20, capabilities: ["opportunity"], toolGrants: ["run_node"], memoryGrants: AUDIT_MEMORY, allowedInputSchemas: ["opportunity_set"], expectedOutputs: ["opportunity_set"], escalationDestination: "paid_audit_orchestrator" },

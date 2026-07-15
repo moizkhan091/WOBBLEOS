@@ -5567,6 +5567,213 @@ function CockpitPage() {
   );
 }
 
+type SecFinding = { id: string; kind: string; severity: string; title: string; detail: string; status: string; detectedBy: string; detectionMethod: string; affectedAssetType: string; affectedAssetId: string | null; evidence: Record<string, unknown>; reproduction: string | null; remediation: string | null; createdAt: string };
+type SecIncident = { id: string; title: string; severity: string; status: string; detectionSource: string; affectedService: string | null; timeline: { at: string; actor: string; event: string; detail: string }[]; openedBy: string; createdAt: string };
+type SecRisk = { id: string; title: string; category: string; severity: string; likelihood: string; status: string; owner: string };
+type SecKill = { id: string; targetType: string; targetRef: string; state: string; reason: string; disabledBy: string; disabledAt: string };
+type SecState = {
+  summary: { openFindings: number; critical: number; high: number; openIncidents: number; openRisks: number; engagedKillSwitches: number };
+  findings: SecFinding[];
+  incidents: SecIncident[];
+  risks: SecRisk[];
+  killSwitches: SecKill[];
+};
+
+const SEC_SEV_COLOR: Record<string, string> = { critical: C.orange, high: C.orange, medium: C.blue, low: C.gray };
+const SEC_OPEN_STATUSES = ["open", "acknowledged", "remediating", "retest"];
+
+/**
+ * Security & Governance workspace (WOB-UAT-024).
+ *
+ * Every number here is derived from real rows. Every finding carries its evidence and reproduction, so
+ * a founder can check the claim rather than trust it — the same standard the findings themselves are
+ * held to. No decorative buttons: each action hits a real route and the list reloads from the server.
+ */
+function SecurityPage() {
+  const [bump, setBump] = useState(0);
+  const s = useApi<SecState>("/api/security?r=" + bump);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [open, setOpen] = useState<SecFinding | null>(null);
+  const guard = offlineIf(s); if (guard) return guard;
+  const d = s.data;
+
+  async function call(url: string, body: Record<string, unknown>, ok: string) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!r.ok || !j.ok) { setMsg("Error: " + String(j.error ?? r.status)); return; }
+      setMsg(ok);
+      setBump((x) => x + 1);
+      setOpen(null);
+    } finally { setBusy(false); }
+  }
+
+  const findings = d?.findings ?? [];
+  const openFindings = findings.filter((f) => SEC_OPEN_STATUSES.includes(f.status));
+  const closed = findings.filter((f) => !SEC_OPEN_STATUSES.includes(f.status));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+        <Kpi label="Open findings" value={String(d?.summary.openFindings ?? 0)} icon="ShieldCheck" color={(d?.summary.openFindings ?? 0) > 0 ? C.orange : C.lime} sub="deterministic detection" />
+        <Kpi label="Critical" value={String(d?.summary.critical ?? 0)} icon="AlertTriangle" color={(d?.summary.critical ?? 0) > 0 ? C.orange : C.lime} sub="auto-opens an incident" />
+        <Kpi label="Open incidents" value={String(d?.summary.openIncidents ?? 0)} icon="Activity" color={(d?.summary.openIncidents ?? 0) > 0 ? C.orange : C.lime} sub="need a founder to close" />
+        <Kpi label="Kill switches" value={String(d?.summary.engagedKillSwitches ?? 0)} icon="Pin" color={(d?.summary.engagedKillSwitches ?? 0) > 0 ? C.orange : C.gray} sub="engaged right now" />
+        <Kpi label="Risks" value={String(d?.summary.openRisks ?? 0)} icon="Database" color={C.gray} sub="tracked deliberately" />
+      </div>
+
+      <Panel>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Governance review</div>
+            <div style={{ fontSize: 12, color: muted, marginTop: 3 }}>
+              Reads real accounts, sessions, spend caps, autonomy grants and department grants, then applies deterministic rules.
+              A check that cannot run is reported as <b>skipped</b> — never counted as clean.
+            </div>
+          </div>
+          <button data-testid="run-governance-review" onClick={() => call("/api/security", { action: "run_governance_review" }, "Governance review complete.")} disabled={busy} style={busy ? disabledBtn : primaryBtn}>
+            {busy ? "…" : "Run governance review"}
+          </button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{msg}</div> : null}
+      </Panel>
+
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Open findings</div>
+        {openFindings.length === 0 ? (
+          <StateBlock kind="empty" message="No open findings. Run a governance review to check access, policy and configuration against the live system." />
+        ) : (
+          <div style={{ ...glass, padding: "8px 10px" }}>
+            {openFindings.map((f, i) => (
+              <div key={f.id} data-testid="finding-row" style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < openFindings.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor: "pointer" }} onClick={() => setOpen(f)}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: SEC_SEV_COLOR[f.severity] ?? C.gray, flex: "none" }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{f.title}</span>
+                    <Tag text={f.severity} color={SEC_SEV_COLOR[f.severity] ?? C.gray} />
+                    <Tag text={f.kind} color={C.gray} />
+                    {/* A founder must be able to tell a computed fact from an opinion at a glance. */}
+                    <Tag text={f.detectionMethod === "deterministic" ? "computed fact" : f.detectionMethod} color={f.detectionMethod === "deterministic" ? C.lime : C.blue} />
+                    <Tag text={f.status} color={C.blue} />
+                  </div>
+                  <div style={{ fontSize: 12, color: muted, marginTop: 3 }}>{f.detail.slice(0, 150)}{f.detail.length > 150 ? "…" : ""}</div>
+                  <div style={{ fontSize: 11, color: faint, marginTop: 2 }}>detected by {f.detectedBy}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {d?.incidents.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Incidents</div>
+          <div style={{ ...glass, padding: "8px 10px" }}>
+            {d.incidents.map((inc, i) => (
+              <div key={inc.id} data-testid="incident-row" style={{ padding: "13px 12px", borderBottom: i < d.incidents.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{inc.title}</span>
+                  <Tag text={inc.severity} color={SEC_SEV_COLOR[inc.severity] ?? C.gray} />
+                  <Tag text={inc.status} color={["resolved", "closed"].includes(inc.status) ? C.lime : C.orange} />
+                </div>
+                <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>via {inc.detectionSource} · opened by {inc.openedBy} · {inc.timeline.length} timeline entr{inc.timeline.length === 1 ? "y" : "ies"}</div>
+                {!["resolved", "closed"].includes(inc.status) ? (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    {(["contain", "remediate", "recover", "resolve"] as const).map((a) => (
+                      <button key={a} disabled={busy} onClick={() => call("/api/security/incidents", { action: a, id: inc.id, note: `${a} performed by founder from the Security workspace` }, `Incident ${a}.`)} style={{ ...card, padding: "5px 9px", fontSize: 11.5, color: C.white, cursor: "pointer", background: "transparent" }}>{a}</button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {d?.killSwitches.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Kill switches</div>
+          <div style={{ fontSize: 12, color: muted, marginBottom: 10 }}>
+            Targeted, never global — one named agent, workflow, provider or department at a time. Engaging or releasing one is a super-admin action and always requires a stated reason.
+          </div>
+          <div style={{ ...glass, padding: "8px 10px" }}>
+            {d.killSwitches.map((k, i) => (
+              <div key={k.id} data-testid="kill-switch-row" style={{ display: "flex", gap: 12, padding: "11px 12px", alignItems: "center", borderBottom: i < d.killSwitches.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, fontFamily: "monospace" }}>{k.targetType}:{k.targetRef}</span>
+                    <Tag text={k.state === "disabled" ? "KILLED" : "active"} color={k.state === "disabled" ? C.orange : C.lime} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: muted, marginTop: 2 }}>{k.reason}</div>
+                  <div style={{ fontSize: 11, color: faint, marginTop: 2 }}>by {k.disabledBy}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {closed.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Resolved / accepted ({closed.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {closed.slice(0, 10).map((f) => (
+              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted }}>
+                <Tag text={f.status} color={C.lime} />
+                <span style={{ flex: 1 }}>{f.title}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {open ? <FindingDrawer finding={open} onClose={() => setOpen(null)} onAct={(action, note) => call(`/api/security/findings/${encodeURIComponent(open.id)}/action`, { action, note, closureProof: action === "resolve" ? { verifiedBy: "founder", verifiedAt: new Date().toISOString(), note } : undefined }, `Finding ${action}.`)} busy={busy} /> : null}
+    </div>
+  );
+}
+
+/** The evidence a finding carries. A founder must be able to CHECK the claim, not just read it. */
+function FindingDrawer({ finding, onClose, onAct, busy }: { finding: SecFinding; onClose: () => void; onAct: (action: string, note: string) => void; busy: boolean }) {
+  const [note, setNote] = useState("");
+  return (
+    <DetailDrawer
+      title={finding.title}
+      subtitle={`${finding.affectedAssetType}${finding.affectedAssetId ? " · " + finding.affectedAssetId : ""}`}
+      tags={[
+        { text: finding.severity, color: SEC_SEV_COLOR[finding.severity] ?? C.gray },
+        { text: finding.kind, color: C.gray },
+        { text: finding.detectionMethod === "deterministic" ? "computed fact · reproducible" : finding.detectionMethod, color: finding.detectionMethod === "deterministic" ? C.lime : C.blue },
+        { text: finding.status, color: C.blue },
+      ]}
+      onClose={onClose}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div><div style={labelStyle}>DETAIL</div><div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{finding.detail}</div></div>
+        <div><div style={labelStyle}>DETECTED BY</div><div style={{ fontSize: 12.5 }}>{finding.detectedBy}</div></div>
+        {finding.reproduction ? (
+          <div><div style={labelStyle}>REPRODUCTION</div><pre style={{ ...card, padding: 10, fontSize: 11, color: muted, overflow: "auto", whiteSpace: "pre-wrap" }}>{finding.reproduction}</pre></div>
+        ) : null}
+        <div><div style={labelStyle}>EVIDENCE</div><pre style={{ ...card, padding: 10, fontSize: 11, color: muted, overflow: "auto" }}>{JSON.stringify(finding.evidence, null, 2)}</pre></div>
+        {finding.remediation ? (
+          <div><div style={labelStyle}>REMEDIATION</div><div style={{ fontSize: 12.5, color: muted }}>{finding.remediation}</div></div>
+        ) : null}
+        <div>
+          <div style={labelStyle}>NOTE <span style={{ color: faint, fontWeight: 400 }}>(required to resolve — a finding marked done without evidence proves nothing)</span></div>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="what you did / what re-verified it" style={inputStyle} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button data-testid="finding-acknowledge" disabled={busy} onClick={() => onAct("acknowledge", note)} style={{ ...card, padding: "9px 13px", fontSize: 12, color: C.white, cursor: "pointer", background: "transparent" }}>Acknowledge</button>
+          <button disabled={busy} onClick={() => onAct("start_remediation", note)} style={{ ...card, padding: "9px 13px", fontSize: 12, color: C.white, cursor: "pointer", background: "transparent" }}>Start remediation</button>
+          <button data-testid="finding-resolve" disabled={busy || !note.trim()} onClick={() => onAct("resolve", note)} style={busy || !note.trim() ? disabledBtn : primaryBtn} title={!note.trim() ? "Resolving requires closure proof" : undefined}>Resolve</button>
+          <button disabled={busy || !note.trim()} onClick={() => onAct("false_positive", note)} style={busy || !note.trim() ? disabledBtn : rejectBtn}>False positive</button>
+        </div>
+      </div>
+    </DetailDrawer>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   cockpit: CockpitPage,
   comms: CommsPage,
@@ -5596,6 +5803,7 @@ const WIRED: Record<string, React.ComponentType> = {
   decision: DecisionRoomPage,
   offers: OfferLabPage,
   workers: WorkersPage,
+  security: SecurityPage,
   settings: SettingsPage,
   automations: AutomationsPage,
   seo: SeoPage,

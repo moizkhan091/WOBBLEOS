@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { DEFAULT_AGENTS, type RegisterAgentInput } from "@/lib/domain/agents";
 import { CONTENT_GRAPH_AGENTS } from "@/lib/domain/content-graph";
 import { PAID_AUDIT_AGENTS } from "@/lib/domain/paid-audit-graph";
@@ -40,7 +42,19 @@ const DEPARTMENT_ORCHESTRATOR_AGENTS = ["paid_audit_orchestrator", "content_orch
 // Department specialists that run synchronously inside a department policy (not via a graph job) — the
 // Proposal solution architect is the judgment step in runProposalDepartment, attributed for real settlement.
 // The QA reviewers wired into live gates execute via runQaGate (release/block/route real downstream work).
-const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent", "paid_audit_qa_reviewer", "content_quality_reviewer", "content_brand_reviewer", "proposal_technical_reviewer", "proposal_commercial_reviewer", "research_validation_reviewer"];
+const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal_agent", "finance_analyst_agent", "delivery_lead_agent", "paid_audit_qa_reviewer", "content_quality_reviewer", "content_brand_reviewer", "proposal_technical_reviewer", "proposal_commercial_reviewer", "research_validation_reviewer",
+  // Executes via runQaGate through the RUNNABLE `security_tenant_isolation` board (WOB-UAT-024). It is
+  // deterministic — it scores validateHandoff's real output — which is why it carries no tools.
+  "security_isolation_reviewer"];
+
+// Security & Governance (WOB-UAT-024). Each runs INSIDE `runGovernanceReview`, deterministically:
+//   governance_orchestrator → runGovernanceReview itself (gather → dispatch → persist → report skipped)
+//   access_policy_agent     → reviewAccess()   (sessions, accounts, super-admin cover)
+//   risk_compliance_agent   → reviewPolicies() (spend caps, autonomy grants, classification grants)
+//   incident_audit_agent    → openIncident()   (a CRITICAL finding becomes a closable incident)
+// The list below is NOT self-certifying: the test "the governance agents are referenced by the real
+// governance code" greps the actual source for each slug, so this declaration cannot drift into fiction.
+const DETERMINISTIC_GOVERNANCE_AGENTS = ["governance_orchestrator", "access_policy_agent", "risk_compliance_agent", "incident_audit_agent"];
 
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [
@@ -65,6 +79,7 @@ const EXECUTABLE_SLUGS = new Set<string>([
   ...DEPARTMENT_ORCHESTRATOR_AGENTS,
   ...DEPARTMENT_SPECIALIST_AGENTS,
   ...SYNC_OR_SUBROUTINE_AGENTS,
+  ...DETERMINISTIC_GOVERNANCE_AGENTS,
   ...JOB_BACKED_AGENTS.map((j) => j.slug),
 ]);
 
@@ -90,6 +105,20 @@ describe("registry integrity — agents", () => {
   it("every ACTIVE agent has a declared, real execution path (no decorative agents)", () => {
     const activeWithoutPath = DEFAULT_AGENTS.filter((a) => effectiveStatus(a) === "active" && !EXECUTABLE_SLUGS.has(a.slug)).map((a) => a.slug);
     expect(activeWithoutPath, `active agents with no execution path: ${activeWithoutPath.join(", ")}`).toEqual([]);
+  });
+
+  /**
+   * Keeps the declaration above HONEST. Adding a slug to `DETERMINISTIC_GOVERNANCE_AGENTS` silences the
+   * decorative-agent guard, so that list must not be self-certifying — it is checked against the real
+   * governance source. If an agent is declared executable here but no code runs it, this fails.
+   */
+  it("the governance agents are actually referenced by the real governance code", () => {
+    const src = [
+      readFileSync(path.join(process.cwd(), "src", "lib", "security-governance", "index.ts"), "utf8"),
+      readFileSync(path.join(process.cwd(), "src", "lib", "domain", "security-governance.ts"), "utf8"),
+    ].join(String.fromCharCode(10));
+    const missing = DETERMINISTIC_GOVERNANCE_AGENTS.filter((slug) => !src.includes(slug));
+    expect(missing, `declared executable but never referenced by the governance code: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("every declared execution path points at a real, ACTIVE agent (no wired-but-paused / stale)", () => {
