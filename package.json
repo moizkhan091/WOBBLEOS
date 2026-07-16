@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
-    "build": "npm run clean:next-dev-types && next build",
+    "build": "npm run clean:next-dev-types && next build --webpack",
     "start": "next start --hostname 127.0.0.1",
     "lint": "next lint",
     "clean:next-dev-types": "node scripts/clean-next-dev-types.mjs",

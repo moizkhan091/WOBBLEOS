@@ -8,7 +8,8 @@ import {
   type CreativeReference,
   type ReferenceSelection,
 } from "@/lib/domain/reference-selection";
-import { runTextProvider, type ProviderUsageContext } from "@/lib/providers";
+import { runTextProvider } from "@/lib/providers";
+import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 
 /**
