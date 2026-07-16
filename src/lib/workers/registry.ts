@@ -13,6 +13,7 @@ import type { PaidAuditReport } from "@/lib/domain/paid-audit-graph";
 import type { JobRow as PaidAuditJobRow } from "@/lib/domain/jobs";
 import { runScoutJobHandler, runAnalyzeJobHandler, runDreamerJobHandler } from "@/lib/intelligence/jobs";
 import { runSourceIntakeJobHandler } from "@/lib/source-intake";
+import { GOVERNANCE_REVIEW_JOB_TYPE, runGovernanceReviewJobHandler } from "@/lib/security-governance/job";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -176,6 +177,10 @@ export const generalRegistry: JobHandlerRegistry = {
   "intelligence.analyze": runAnalyzeJobHandler,
   "intelligence.dream": runDreamerJobHandler,
   "source.intake": runSourceIntakeJobHandler,
+  // WOB-UAT-024: governance survives restart + runs on a cadence. The handler DISPATCHES a typed handoff
+  // to the department (it does not run the review itself), so governance work arrives through the same
+  // backbone as every other department's work — and the department's consumer has a real producer.
+  [GOVERNANCE_REVIEW_JOB_TYPE]: runGovernanceReviewJobHandler,
 };
 
 export function getHandler(type: string, registry: JobHandlerRegistry = generalRegistry): JobHandler | undefined {

@@ -8,6 +8,7 @@ import { purgeExpiredGraphCheckpoints, GRAPH_CHECKPOINT_RETENTION_MS } from "@/l
 import { reclaimExpiredHandoffLeases, purgeExpiredHandoffs, HANDOFF_RETENTION_MS } from "@/lib/handoff";
 import { reconcileApprovalEffects } from "@/lib/approval-effects";
 import { refreshAllDepartmentHealth } from "@/lib/departments/health";
+import { GOVERNANCE_REVIEW_JOB_TYPE } from "@/lib/security-governance/job";
 import { expireStaleReservations } from "@/lib/departments/budget";
 import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
@@ -137,6 +138,18 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     await refreshAllDepartmentHealth({ now });
   } catch (e) {
     result.errors.push(`department-health: ${e instanceof Error ? e.message : e}`);
+  }
+  // Governance runs on a CADENCE, not only when a founder clicks (WOB-UAT-024). Enqueued as a durable
+  // job so it survives a restart; the idempotency key is the UTC hour, so repeated ticks within the hour
+  // dedupe to one review instead of flooding the queue with reviews of identical state.
+  try {
+    const hourKey = `governance.review:${now.toISOString().slice(0, 13)}`;
+    await enqueueJob({ queue: "general", type: GOVERNANCE_REVIEW_JOB_TYPE, payload: { requestedBy: "scheduler" }, idempotencyKey: hourKey, linkedModule: "security_governance" }, { now });
+  } catch (e) {
+    // A kill switch on governance is a legitimate founder decision, not a scheduler fault — record it
+    // without treating it as an error the operator must chase.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/kill switch/i.test(msg)) result.errors.push(`governance-review: ${msg}`);
   }
   // Release abandoned budget reservations (work that reserved spend but never settled) so a crashed job
   // can't hold a department's budget hostage.

@@ -15,6 +15,7 @@ import type { RunDepartmentDeps, DepartmentRunResult } from "@/lib/departments/o
 import { runProposalDepartment, type RunProposalDepartmentDeps } from "@/lib/departments/verticals/proposal";
 import { openProposalRevision } from "@/lib/proposals/revision";
 import { runSalesCrmDepartment, type RunSalesCrmDepartmentDeps } from "@/lib/departments/verticals/sales-crm";
+import { runSecurityGovernanceDepartment } from "@/lib/departments/verticals/security-governance";
 import { runFinanceDepartment, type RunFinanceDepartmentDeps } from "@/lib/departments/verticals/finance";
 import { runDeliveryDepartment, type RunDeliveryDepartmentDeps } from "@/lib/departments/verticals/delivery";
 
@@ -93,6 +94,31 @@ async function runResearchLessonsIngest(env: HandoffEnvelope, deps: DepartmentCo
  * Each consumer reconstructs its vertical's input from the claimed handoff's carried outputs.
  */
 export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
+  // WOB-UAT-024. Registered because there IS a real upstream producer: the `governance.review` job
+  // dispatches this handoff (and any department may route an isolation review here). It branches on the
+  // envelope's schema, exactly as `finance` does — a governance_request runs the deterministic access +
+  // policy review; a handoff_envelope is judged by the isolation evaluator.
+  security_governance: (env, deps) =>
+    runSecurityGovernanceDepartment(
+      {
+        capability: env.expectedOutputSchema === "handoff_envelope" ? "review_isolation" : "run_governance_review",
+        requestedBy: env.actor ?? "scheduler",
+        workflowId: env.workflowId,
+        clientWorkspaceId: env.clientWorkspaceId ?? null,
+        isolation:
+          env.expectedOutputSchema === "handoff_envelope"
+            ? {
+                // The envelope UNDER REVIEW rides in previousAgentOutputs — it is the artifact, not the
+                // carrier. Reviewing the carrier itself would be self-referential and always pass.
+                envelope: out(env).envelope,
+                receiver: (out(env).receiver as Record<string, unknown>) ?? {},
+                authorAgentSlug: env.sourceAgent ?? "unknown",
+                sourceDepartment: str(out(env).sourceDepartment, env.department),
+              }
+            : undefined,
+      },
+      { ...deps, handoffStore: deps.handoffStore, inboundEnvelope: env },
+    ),
   proposal: (env, deps) =>
     runProposalDepartment(
       {
