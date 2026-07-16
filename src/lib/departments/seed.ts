@@ -87,7 +87,11 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
     // client_confidential is permitted: the vertical accepts a companyId and builds a client-scoped
     // envelope for client-specific content — without this the client path is rejected before any work runs.
     permissions: { authorizedMemoryScopes: CONTENT_MEMORY, permittedDataClassifications: ["internal", "client_confidential"] },
-    io: { inboundCapabilities: ["generate_content_pack"], acceptedHandoffSchemas: ["creative_brief"], outboundProducts: ["content_strategy", "brief", "content_pack"], downstreamConsumers: ["publishing"] },
+    // Content now routes to BOTH Design Intelligence and Publishing (WOB-UAT-023). Deliberate: a pack with
+    // no visual work (a text post) still goes straight to Publishing, while Design Intelligence turns the
+    // copywriter's free-text `designDirection` into structured visual direction for anything that needs a
+    // rendered asset. Replacing the Publishing route would have stranded text-only packs.
+    io: { inboundCapabilities: ["generate_content_pack"], acceptedHandoffSchemas: ["creative_brief"], outboundProducts: ["content_strategy", "brief", "content_pack"], downstreamConsumers: ["publishing", "design_intelligence"] },
     governance: { requiredApprovals: ["content_packet"], escalationRules: [{ condition: "quality_gate_failed", escalateTo: "founder_command_centre" }] },
     kpis: [{ key: "approval_rate", target: 0.8, unit: "ratio" }, { key: "success_rate", target: 0.9, unit: "ratio" }],
     degradedBehaviour: "queue new packs; finish in-flight; alert founder",
@@ -96,10 +100,24 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
   {
     slug: "design_intelligence",
     name: "Design Intelligence",
-    purpose: "Own visual direction, design briefs, layout rules and reference selection for every asset.",
-    status: "draft",
-    permissions: { authorizedMemoryScopes: ["design", "brand", "content"], permittedDataClassifications: ["internal"] },
+    purpose: "Turn approved content + brand truth into structured visual direction, layout rules and exactly ONE selected reference per asset — then hand a real, renderable design brief to Media Production.",
+    // ACTIVE agent_team (WOB-UAT-023). `enforcement.ts:120` rejects a route FROM a draft department, so
+    // `draft` is what kept this unreachable regardless of anything else that existed.
+    status: "active",
+    operatingModel: "agent_team",
+    orchestratorAgentSlug: "design_intelligence_orchestrator",
+    // The AUTHORITATIVE step is deterministic: `selectReferenceForAsset` picks exactly ONE reference per
+    // asset by a scored, stable rule. The vision/brand agents are ADVISORY — they describe and critique,
+    // they never choose. Same doctrine as sales-crm: judgment advises, deterministic code decides.
+    deterministicServices: ["selectReferencesForBatch", "collectAvoidTags", "buildDesignBrief"],
+    // `client_confidential` is REQUIRED, not optional: Content sets it whenever a companyId is present,
+    // so with `internal` only, every client pack would be rejected at dispatch and the department would
+    // look built while never receiving real client work.
+    permissions: { authorizedMemoryScopes: ["design", "brand", "content", "visual_reference"], permittedDataClassifications: ["internal", "client_confidential"] },
     io: { inboundCapabilities: ["produce_visual_direction"], acceptedHandoffSchemas: ["content_pack"], outboundProducts: ["visual_direction", "design_briefs", "layout_rules", "references"], downstreamConsumers: ["media_production"] },
+    governance: { requiredApprovals: [], escalationRules: [{ condition: "no_eligible_reference", escalateTo: "founder_command_centre" }, { condition: "brand_critique_failed", escalateTo: "founder_command_centre" }] },
+    kpis: [{ key: "reference_hit_rate", target: 0.9, unit: "ratio" }, { key: "brief_completeness", target: 1, unit: "ratio" }],
+    degradedBehaviour: "emit a brief with no reference and say so explicitly; never invent a reference, and never call an unreferenced brief a rendered asset",
     owner: "Moiz",
   },
   {
@@ -252,6 +270,12 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
 
 /** Specialist memberships for the departments that are actually operational today (real agent teams). */
 export const CANONICAL_MEMBERSHIPS: DepartmentMemberInput[] = [
+  // Design Intelligence (WOB-UAT-023). The vision + brand agents ADVISE; `selectReferenceForAsset`
+  // DECIDES. Reference selection is deterministic on purpose — a model that re-picks a reference every
+  // run makes design direction unreproducible, and the founder rule (exactly ONE reference per asset,
+  // never a hybrid blend) is a rule, not an opinion.
+  { departmentSlug: "design_intelligence", memberType: "agent", memberRef: "visual_reference_analyst", role: "specialist", responsibility: "describe approved visual references into style descriptors (advisory)", priority: 10, capabilities: ["visual_analysis"], toolGrants: ["vision_model"], memoryGrants: ["design", "visual_reference", "founder_taste"], allowedInputSchemas: ["content_pack"], expectedOutputs: ["style_descriptor"], escalationDestination: "design_intelligence_orchestrator" },
+  { departmentSlug: "design_intelligence", memberType: "agent", memberRef: "brand_voice_guardian", role: "evaluator", responsibility: "critique visual direction against brand rules and do-not-say (advisory)", priority: 20, capabilities: ["brand_critique"], toolGrants: [], memoryGrants: ["brand"], allowedInputSchemas: ["visual_direction"], expectedOutputs: ["brand_review"], escalationDestination: "design_intelligence_orchestrator" },
   // Security & Governance (WOB-UAT-024). Every member EXECUTES — `runGovernanceReview` dispatches the
   // access + policy reviewers, and a critical finding drives the incident agent. `toolGrants: []` is the
   // honest declaration: these agents answer decidable questions deterministically and are not permitted

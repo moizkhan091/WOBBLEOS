@@ -56,6 +56,15 @@ const DEPARTMENT_SPECIALIST_AGENTS = ["proposal_solution_architect", "sales_deal
 // governance code" greps the actual source for each slug, so this declaration cannot drift into fiction.
 const DETERMINISTIC_GOVERNANCE_AGENTS = ["governance_orchestrator", "access_policy_agent", "risk_compliance_agent", "incident_audit_agent"];
 
+// Design Intelligence (WOB-UAT-023). Each runs INSIDE `runDesignIntelligenceDepartment`:
+//   design_intelligence_orchestrator → the vertical itself (upgrade direction → select → emit a brief)
+//   visual_reference_analyst         → the ADVISORY vision descriptor pass (deps.describeReferences)
+//   brand_voice_guardian             → the ADVISORY brand critique pass (deps.critiqueBrand)
+// The AUTHORITATIVE step (`selectReferencesForBatch`) is deterministic and is not an agent — a model
+// that re-picks a reference every run makes design direction unreproducible.
+// Like the governance list, this is NOT self-certifying: the test below greps the real vertical source.
+const DESIGN_INTELLIGENCE_AGENTS = ["design_intelligence_orchestrator", "visual_reference_analyst", "brand_voice_guardian"];
+
 // Run synchronously in a request path, or as a deterministic subroutine of another agent's flow.
 const SYNC_OR_SUBROUTINE_AGENTS = [
   "ask_wobble", // Ask WOBBLE — synchronous /api/ask router
@@ -80,6 +89,7 @@ const EXECUTABLE_SLUGS = new Set<string>([
   ...DEPARTMENT_SPECIALIST_AGENTS,
   ...SYNC_OR_SUBROUTINE_AGENTS,
   ...DETERMINISTIC_GOVERNANCE_AGENTS,
+  ...DESIGN_INTELLIGENCE_AGENTS,
   ...JOB_BACKED_AGENTS.map((j) => j.slug),
 ]);
 
@@ -112,6 +122,16 @@ describe("registry integrity — agents", () => {
    * decorative-agent guard, so that list must not be self-certifying — it is checked against the real
    * governance source. If an agent is declared executable here but no code runs it, this fails.
    */
+  it("the design intelligence agents are actually referenced by the real vertical", () => {
+    // Same rule as the governance list: adding a slug above silences the decorative-agent guard, so it
+    // must be checked against the code that claims to run it.
+    const src = readFileSync(path.join(process.cwd(), "src", "lib", "departments", "verticals", "design-intelligence.ts"), "utf8");
+    const seed = readFileSync(path.join(process.cwd(), "src", "lib", "departments", "seed.ts"), "utf8");
+    const both = src + String.fromCharCode(10) + seed;
+    const missing = DESIGN_INTELLIGENCE_AGENTS.filter((slug) => !both.includes(slug));
+    expect(missing, `declared executable but never referenced by the design vertical/seed: ${missing.join(", ")}`).toEqual([]);
+  });
+
   it("the governance agents are actually referenced by the real governance code", () => {
     const src = [
       readFileSync(path.join(process.cwd(), "src", "lib", "security-governance", "index.ts"), "utf8"),

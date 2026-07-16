@@ -16,6 +16,8 @@ import { runProposalDepartment, type RunProposalDepartmentDeps } from "@/lib/dep
 import { openProposalRevision } from "@/lib/proposals/revision";
 import { runSalesCrmDepartment, type RunSalesCrmDepartmentDeps } from "@/lib/departments/verticals/sales-crm";
 import { runSecurityGovernanceDepartment } from "@/lib/departments/verticals/security-governance";
+import { runDesignIntelligenceDepartment, type RunDesignIntelligenceInput } from "@/lib/departments/verticals/design-intelligence";
+import { createMediaJob } from "@/lib/media";
 import { runFinanceDepartment, type RunFinanceDepartmentDeps } from "@/lib/departments/verticals/finance";
 import { runDeliveryDepartment, type RunDeliveryDepartmentDeps } from "@/lib/departments/verticals/delivery";
 
@@ -94,6 +96,67 @@ async function runResearchLessonsIngest(env: HandoffEnvelope, deps: DepartmentCo
  * Each consumer reconstructs its vertical's input from the claimed handoff's carried outputs.
  */
 export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
+  // WOB-UAT-023. Content now routes here, so this consumer has a REAL producer.
+  design_intelligence: (env, deps) =>
+    runDesignIntelligenceDepartment(
+      {
+        packetId: str(out(env).packetId),
+        // Content carries `packetId`, not the pack body — the same re-load-by-id pattern proposal and
+        // finance use. `designDirection` rides on the outputs when present.
+        designDirection: str(out(env).designDirection, "Follow the approved brand system for this pack."),
+        assets: (out(env).assets as RunDesignIntelligenceInput["assets"]) ?? [{ assetType: "static" }],
+        references: (out(env).references as RunDesignIntelligenceInput["references"]) ?? [],
+        companyId: env.companyId ?? null,
+        requestedBy: env.sourceAgent ?? "content_orchestrator",
+        workflowId: env.workflowId,
+      },
+      { ...deps, handoffStore: deps.handoffStore, inboundEnvelope: env },
+    ),
+
+  // WOB-UAT-023. Registered because Design Intelligence now routes `design_briefs` here — without a
+  // consumer that emission would be created, delivered and NEVER claimed: a decorative emission, the
+  // mirror image of the decorative consumer this file forbids.
+  //
+  // media_production is a SERVICE department: it has no orchestrator and no LLM team. So this consumer
+  // does the only honest thing — turns each design request into a REAL durable media job via the
+  // existing `createMediaJob`, and lets the media worker own everything downstream (including reporting
+  // `blocked` truthfully when no provider credential is configured).
+  media_production: async (env, deps) => {
+    const requests = (out(env).mediaRequests as { kind: string; prompt: string; params: Record<string, unknown> }[]) ?? [];
+    const created: string[] = [];
+    const rejected: { index: number; error: string }[] = [];
+    for (const [i, r] of requests.entries()) {
+      const job = await createMediaJob({
+        kind: r.kind,
+        prompt: r.prompt,
+        params: r.params,
+        estimatedCostCents: 0,
+        budgetCapCents: 500,
+        requestedBy: env.sourceAgent ?? "design_intelligence_orchestrator",
+        companyId: env.companyId ?? undefined,
+        clientId: env.clientWorkspaceId ?? undefined,
+        // Idempotent per (workflow, asset): a redriven handoff must not queue a second render of the
+        // same asset — that would spend real provider budget twice.
+        dedupeKey: `${env.workflowId}:media:${i}`,
+      });
+      // `createMediaJob` can return ok:false with NO job (validation). Swallowing that would report a
+      // queued render that does not exist — a fake success. Every request is accounted for: queued or
+      // rejected-with-a-reason, never silently dropped.
+      if (job.ok && job.job) created.push(job.job.id);
+      else rejected.push({ index: i, error: job.error ?? job.errors?.join("; ") ?? "media job rejected" });
+    }
+    return {
+      department: "media_production",
+      accepted: true,
+      product: { mediaJobIds: created, queued: created.length, rejected },
+      productSchema: "media_assets",
+      // A QUEUED job is not an asset. Publishing is routed by the media worker when a render actually
+      // succeeds — emitting to Publishing here would call an instruction a finished asset.
+      routedTo: [],
+      escalations: rejected.map((r) => `media_production could not queue asset ${r.index}: ${r.error}`),
+      telemetry: { queued: created.length, rejected: rejected.length },
+    } as never;
+  },
   // WOB-UAT-024. Registered because there IS a real upstream producer: the `governance.review` job
   // dispatches this handoff (and any department may route an isolation review here). It branches on the
   // envelope's schema, exactly as `finance` does — a governance_request runs the deterministic access +
