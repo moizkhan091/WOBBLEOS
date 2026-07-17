@@ -2,6 +2,9 @@ import { eq } from "drizzle-orm";
 import { providerConnections, settings } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { recordModelCall, type ModelCallResult, type ModelRunDeps, type ModelRunRow } from "@/lib/model-runs";
+import { loadEngagedSwitches, assertNotKilled } from "@/lib/security-governance/enforcement";
+import { PROVIDER_BUDGETS, assertProviderAllowance, recordExternalSpend, ProviderBudgetExceededError, type ProviderBudgetDeps } from "@/lib/provider-budget";
+import type { KillSwitchRow } from "@/lib/domain/security-governance";
 import {
   assertProviderAllowedForModule,
   modelRoleMapSchema,
@@ -10,6 +13,12 @@ import {
   type ModelRoleMap,
   type ProviderConnectionConfig,
 } from "@/lib/domain/providers";
+
+/** Conservative WORST-CASE USD for a text call — deliberately pessimistic so the budget stop is never
+ *  crossed by an in-flight call. Real cost is a fraction of this; it only gates cumulative spend. */
+function estimateTextWorstCaseUsd(maxTokens: number): number {
+  return Math.max(0.01, maxTokens * 2 * 0.0001); // ~$0.10/1k tokens, both directions
+}
 
 export interface ProviderMessage {
   role: "system" | "user" | "assistant";
@@ -114,6 +123,10 @@ export interface ProviderDeps {
   modelRunDeps?: ModelRunDeps;
   /** Record normalized provider usage (injectable; env-gated default records to the DB). */
   recordUsage?: (input: import("@/lib/domain/provider-usage").BuildProviderUsageInput) => Promise<void>;
+  /** Injectable engaged-kill-switch loader (defaults to the security-governance loader). */
+  loadKillSwitches?: () => Promise<KillSwitchRow[]>;
+  /** Injectable budget deps (db/now/getSpent) for the external-provider budget gate. */
+  budgetDeps?: ProviderBudgetDeps;
 }
 
 /** Parse model-supplied tool arguments defensively — never throw on malformed JSON. */
@@ -235,6 +248,30 @@ export async function runTextProvider(
     throw new Error(`no text adapter registered for provider '${connection.slug}'`);
   }
 
+  // EXTERNAL PROVIDER GOVERNANCE: a budget-tracked provider (openrouter/…) must clear the KILL SWITCH and
+  // the BUDGET before any paid call, and its actual cost is recorded to the durable ledger after. Internal/
+  // untracked providers skip this. The worst-case estimate is pessimistic so an in-flight call can never
+  // cross the stop threshold; a rejected call is still ledgered so the block is auditable.
+  const budget = PROVIDER_BUDGETS[connection.slug];
+  const budgetItem = input.usageContext?.departmentSlug ? `${input.usageContext.departmentSlug}:${input.role}` : `${input.module}:${input.role}`;
+  // Active only in a REAL spend context: a persistent DB (production/UAT) or explicitly injected deps.
+  // A pure no-DB unit test has no external spend to govern, so the guard stays out of its way.
+  const budgetActive = Boolean(budget) && Boolean(process.env.DATABASE_URL || deps.budgetDeps || deps.loadKillSwitches);
+  let worstCaseCost = 0;
+  if (budget && budgetActive) {
+    const switches: KillSwitchRow[] = deps.loadKillSwitches ? await deps.loadKillSwitches() : await loadEngagedSwitches();
+    assertNotKilled(switches, "provider", connection.slug); // throws KillSwitchEngagedError → 409 upstream
+    worstCaseCost = budget.unit === "usd" ? estimateTextWorstCaseUsd(input.maxTokens ?? 1600) : (input.maxTokens ?? 1600);
+    try {
+      await assertProviderAllowance(connection.slug, worstCaseCost, deps.budgetDeps);
+    } catch (e) {
+      if (e instanceof ProviderBudgetExceededError) {
+        await recordExternalSpend({ provider: connection.slug, item: budgetItem, model, estimatedMaxCost: worstCaseCost, actualCost: 0, unit: budget.unit, result: "rejected_budget", actor: input.usageContext?.agentSlug ?? undefined }, deps.budgetDeps).catch(() => {});
+      }
+      throw e;
+    }
+  }
+
   const { result, run } = await recordModelCall(
     {
       provider: connection.slug,
@@ -260,6 +297,14 @@ export async function runTextProvider(
   // Record the normalized ACTUAL provider usage (idempotent by providerRequestId) so budgets settle
   // against real tokens/cost, not the estimate. Env-gated default; never fails the provider call.
   const r = result as { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningTokens?: number; providerReportedCostUsd?: number; providerRunId?: string; toolCalls?: unknown[] };
+
+  // Ledger the ACTUAL external spend for a budget-tracked provider — this is what the next call's allowance
+  // check reads. USD providers record the provider-reported cost (fallback to the run's calculated cost);
+  // character/credit providers record token throughput. Never fails the call.
+  if (budget && budgetActive) {
+    const actual = budget.unit === "usd" ? (r.providerReportedCostUsd ?? (run.estimatedCost ? Number(run.estimatedCost) : 0)) : ((r.inputTokens ?? 0) + (r.outputTokens ?? 0));
+    await recordExternalSpend({ provider: connection.slug, item: budgetItem, model, estimatedMaxCost: worstCaseCost, actualCost: actual, unit: budget.unit, tokens: (r.inputTokens ?? 0) + (r.outputTokens ?? 0), latencyMs: run.latencyMs ?? undefined, result: "succeeded", actor: input.usageContext?.agentSlug ?? undefined }, deps.budgetDeps).catch((e) => console.error("external spend record failed (non-fatal):", e instanceof Error ? e.message : e));
+  }
   const recordUsage = deps.recordUsage ?? (process.env.DATABASE_URL ? async (u: import("@/lib/domain/provider-usage").BuildProviderUsageInput) => { const { recordProviderUsage } = await import("@/lib/provider-usage"); await recordProviderUsage(u); } : undefined);
   if (recordUsage) {
     try {

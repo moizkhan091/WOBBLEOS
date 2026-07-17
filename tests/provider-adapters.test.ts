@@ -170,6 +170,42 @@ describe("provider registry service", () => {
     });
   });
 
+  it("REJECTS an OpenRouter call that would breach the external budget stop (never a runaway paid call)", async () => {
+    const adapter: TextProviderAdapter = { slug: "openrouter", providerType: "text", generateText: async () => ({ text: "should not run", providerRunId: "p" }) };
+    let called = false;
+    await expect(
+      runTextProvider(
+        { role: "ask_wobble", module: "ask_wobble", messages: [{ role: "user", content: "hi" }], maxTokens: 1600 },
+        {
+          store: fakeStore(),
+          adapters: { openrouter: { ...adapter, generateText: async () => { called = true; return { text: "x" }; } } },
+          modelRunDeps: fakeWriter().writer && { writer: fakeWriter().writer, recordAudit: async () => {} },
+          // spent 2.65 + worst-case 0.32 > 2.7 stop → rejected BEFORE the call
+          budgetDeps: { getSpent: async () => 2.65 },
+        },
+      ),
+    ).rejects.toThrow(/budget for 'openrouter' would be exceeded/);
+    expect(called).toBe(false); // the paid adapter was NEVER invoked
+  });
+
+  it("REJECTS an OpenRouter call when a provider KILL SWITCH is engaged", async () => {
+    const adapter: TextProviderAdapter = { slug: "openrouter", providerType: "text", generateText: async () => ({ text: "should not run", providerRunId: "p" }) };
+    let called = false;
+    await expect(
+      runTextProvider(
+        { role: "ask_wobble", module: "ask_wobble", messages: [{ role: "user", content: "hi" }] },
+        {
+          store: fakeStore(),
+          adapters: { openrouter: { ...adapter, generateText: async () => { called = true; return { text: "x" }; } } },
+          modelRunDeps: { writer: fakeWriter().writer, recordAudit: async () => {} },
+          budgetDeps: { getSpent: async () => 0 },
+          loadKillSwitches: async () => [{ targetType: "provider", targetRef: "openrouter", state: "disabled", reason: "UAT provider freeze" }],
+        },
+      ),
+    ).rejects.toThrow(/kill switch on provider:openrouter/);
+    expect(called).toBe(false);
+  });
+
   it("records model_run error when a provider adapter fails", async () => {
     const { rows, writer } = fakeWriter();
     const adapter: TextProviderAdapter = {

@@ -2510,3 +2510,26 @@ export const killSwitches = pgTable("kill_switches", {
   uniqueIndex("kill_switches_target_uidx").on(table.targetType, table.targetRef).where(sql`state = 'disabled'`),
   index("kill_switches_state_idx").on(table.state),
 ]);
+
+// Durable ledger of EXTERNAL paid-provider spend (OpenRouter/Tavily/Apify/ElevenLabs) so a budget check
+// before each call reads authoritative recorded spend, and so a UAT hard ceiling can never be silently
+// exceeded across restarts. `unit` distinguishes usd / credits / characters; every row names the ledger
+// item it advanced (no spend without a named acceptance item).
+export const externalProviderSpend = pgTable("external_provider_spend", {
+  id: id(),
+  provider: varchar("provider", { length: 40 }).notNull(), // openrouter | tavily | apify | elevenlabs
+  item: varchar("item", { length: 160 }).notNull(), // the named acceptance/ledger item this call advanced
+  model: varchar("model", { length: 120 }), // model/endpoint/actor used
+  estimatedMaxCost: numeric("estimated_max_cost").notNull(),
+  actualCost: numeric("actual_cost").notNull(),
+  unit: varchar("unit", { length: 16 }).notNull(), // usd | credits | characters
+  tokens: integer("tokens"),
+  latencyMs: integer("latency_ms"),
+  result: varchar("result", { length: 24 }).notNull(), // succeeded | failed | rejected_budget | blocked_killswitch
+  actor: varchar("actor", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("external_provider_spend_provider_idx").on(table.provider),
+  index("external_provider_spend_created_idx").on(table.createdAt),
+]);
