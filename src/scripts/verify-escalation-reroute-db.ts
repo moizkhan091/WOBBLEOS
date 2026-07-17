@@ -11,10 +11,11 @@
  * Run:  DATABASE_URL=... npx tsx src/scripts/verify-escalation-reroute-db.ts
  */
 import { getDb, closeDb } from "@/db";
-import { handoffs, escalations } from "@/db/schema";
+import { handoffs, escalations, departments } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { buildHandoffEnvelope } from "@/lib/domain/handoff";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
+import { buildDepartmentRow } from "@/lib/domain/department";
 import { getHandoff, defaultStore as handoffStore } from "@/lib/handoff";
 import { seedDepartments } from "@/lib/departments/seed";
 import { defaultStore as registryStore } from "@/lib/departments/registry";
@@ -36,6 +37,26 @@ async function main() {
     cleanup.push(() => db.delete(escalations).where(eq(escalations.workflowId, wf)));
     cleanup.push(() => db.delete(handoffs).where(eq(handoffs.workflowId, wf)));
 
+    // A genuinely DRAFT (inactive) department to prove "reroute to an inactive dept is rejected". It ACCEPTS
+    // won_deal and permits the classification, so the ONLY reason to reject is that it is not active — that
+    // is exactly what this step asserts. (Every seeded department is now active, so we cannot lean on a
+    // seeded one being draft, and its slug is unique-per-run so it is sequence-safe in the shared gate DB.)
+    const draftSlug = `zz_draft_rr_${uniq}`;
+    await registryStore(db).insertDepartment(
+      buildDepartmentRow(
+        {
+          slug: draftSlug,
+          name: "Draft Reroute Target",
+          purpose: "inactive department used only to prove reroute rejection",
+          status: "draft",
+          io: { inboundCapabilities: ["consume_won_deal"], acceptedHandoffSchemas: ["won_deal"], outboundProducts: [], downstreamConsumers: [] },
+          permissions: { authorizedMemoryScopes: ["company"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] },
+        },
+        { now },
+      ),
+    );
+    cleanup.push(() => db.delete(departments).where(eq(departments.slug, draftSlug)));
+
     // A blocked (dead-lettered) won_deal handoff addressed to Finance, carrying real lineage + client scope.
     const env = buildHandoffEnvelope(
       { workflowId: wf, department: "finance", sourceAgent: "sales_crm_orchestrator", destinationAgent: "finance_orchestrator", objective: "o", requestedAction: "consume won_deal", expectedOutputSchema: "won_deal", confidence: 0.8, companyId: client, clientWorkspaceId: client, dataClassification: "client_confidential", authorizedMemoryScopes: ["company"], previousAgentOutputs: { opportunityId: "opp_rr", valueCents: 480000 }, idempotencyKey: `${wf}:won->finance` },
@@ -54,8 +75,8 @@ async function main() {
     // Content does not accept won_deal → rejected.
     const rBad = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "content", reason: "wrong" }, { ...deps, handoffStore: handoffStore(db) });
     assert(!rBad.ok && /is not accepted/.test(rBad.error ?? ""), "reroute to a dept that does not accept won_deal is rejected");
-    // A draft dept → rejected.
-    const rDraft = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "publishing", reason: "wrong" }, { ...deps, handoffStore: handoffStore(db) });
+    // A draft (inactive) dept → rejected for being inactive (it accepts won_deal, so nothing else can reject it).
+    const rDraft = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: draftSlug, reason: "wrong" }, { ...deps, handoffStore: handoffStore(db) });
     assert(!rDraft.ok && /not active/.test(rDraft.error ?? ""), "reroute to a draft (inactive) dept is rejected");
     assert((await getHandoff(oldId, { store: handoffStore(db) }))?.deliveryState === "dead_lettered", "the old handoff is untouched after rejected reroutes");
     assert((await listEscalations({ departmentSlug: "finance", reason: "dead_lettered" }, deps)).find((e) => e.id === esc.id)?.status === "open", "the escalation is still open after rejected reroutes");
