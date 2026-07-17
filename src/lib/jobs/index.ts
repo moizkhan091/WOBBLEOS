@@ -39,6 +39,16 @@ export interface JobAttemptRow {
 
 export interface JobStore {
   findActiveByIdempotencyKey(key: string): Promise<JobRow | null>;
+  /**
+   * Any job with this key, IN ANY STATUS — including completed/failed.
+   *
+   * Distinct from `findActiveByIdempotencyKey` on purpose. Active-only is the right rule for ordinary
+   * idempotency (do not double-enqueue in-flight work; a completed job should not block a legitimately
+   * new request). It is the WRONG rule for a CADENCE: a job that completes in a second leaves nothing
+   * "active", so every subsequent tick re-enqueues it. That is exactly how the governance review ran 50×
+   * in one hour instead of once (WOB-UAT-036).
+   */
+  findByIdempotencyKeyAnyStatus(key: string): Promise<JobRow | null>;
   insert(row: JobRow): Promise<void>;
   /** atomically pick the next runnable job, mark it active, increment attempts */
   /**
@@ -98,6 +108,21 @@ function isUniqueViolation(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as { code?: string; cause?: { code?: string }; message?: string };
   return e.code === "23505" || e.cause?.code === "23505" || Boolean(e.message?.includes("duplicate key value"));
+}
+
+
+/**
+ * Has a job with this idempotency key EVER been enqueued? The correct guard for a CADENCE.
+ *
+ * `enqueueJob`'s own dedupe is active-only and cannot express "already ran this period" — a fast job
+ * completes, leaves nothing active, and the next tick re-enqueues it (WOB-UAT-036: 50 governance reviews
+ * in one hour against an hourly key). Pair this with a period-derived key (e.g. `...:2026-07-16T13`) to
+ * get a real once-per-period cadence that survives restarts, because the JOBS TABLE is the record — no
+ * in-memory timer to lose.
+ */
+export async function jobExistsForIdempotencyKey(key: string, deps: JobDeps = {}): Promise<boolean> {
+  const store = deps.store ?? defaultStore();
+  return Boolean(await store.findByIdempotencyKeyAnyStatus(key));
 }
 
 export async function enqueueJob(input: EnqueueJobInput, deps: JobDeps = {}): Promise<EnqueueResult> {
@@ -315,6 +340,10 @@ function mapJobRow(r: Record<string, unknown>): JobRow {
 
 export function defaultStore(db: Db = getDb()): JobStore {
   return {
+    async findByIdempotencyKeyAnyStatus(key) {
+      const rows = await db.select().from(jobs).where(eq(jobs.idempotencyKey, key)).limit(1);
+      return rows[0] ? (rows[0] as unknown as JobRow) : null;
+    },
     async findActiveByIdempotencyKey(key) {
       const rows = await db
         .select()

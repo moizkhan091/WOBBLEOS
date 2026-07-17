@@ -53,6 +53,7 @@ function makeFakeStore(claimed: JobRow | null, existing: JobRow | null = null) {
   };
   const store: JobStore = {
     findActiveByIdempotencyKey: async () => existing,
+    findByIdempotencyKeyAnyStatus: async () => existing,
     insert: async (r) => {
       calls.insert.push(r);
     },

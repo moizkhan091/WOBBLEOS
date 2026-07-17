@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enqueueJob, processNextJob, type JobStore, type JobDeps } from "@/lib/jobs";
+import { enqueueJob, processNextJob, jobExistsForIdempotencyKey, type JobStore, type JobDeps } from "@/lib/jobs";
 import type { JobRow } from "@/lib/domain/jobs";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { AGENT_JOB_TYPES, blockedJobType, blockedJobTypes, loadEngagedSwitches, assertNotKilled, KillSwitchEngagedError, killSwitchResponse } from "@/lib/security-governance/enforcement";
@@ -280,5 +280,54 @@ describe("a block is ATTRIBUTED — 'who tried to run contained work?' must not 
     const d = { store, now, recordAudit: async (e: AuditEventInput) => void events.push(e), enforcement: { loadSwitches: async () => [killed("agent", "content_worker")] } } as JobDeps;
     await expect(enqueueJob({ queue: "general", type: "content.generate", payload: {} }, d)).rejects.toThrow();
     expect(events.find((e) => e.eventType === "job.enqueue_blocked_by_kill_switch")?.actor).toBe("unknown");
+  });
+});
+
+describe("cadence dedupe — a fast job must not re-run every tick (WOB-UAT-036)", () => {
+  /**
+   * The bug this pins, found LIVE: the governance review ran **50 times in one hour** against a key meant
+   * to allow one. `enqueueJob` dedupes only against PENDING/ACTIVE jobs — correct for ordinary idempotency
+   * (a completed job should not block a legitimately new request), but WRONG for a cadence: the job
+   * finishes in ~1s, so every later tick finds nothing active and enqueues another. It flooded the queue
+   * and buried security_governance under a 100+ handoff backlog.
+   */
+  it("enqueueJob's own dedupe does NOT stop a re-enqueue once the job completes — the trap", async () => {
+    const rows = new Map<string, JobRow>();
+    const store = {
+      // Mirrors the real store: ACTIVE-only lookup.
+      findActiveByIdempotencyKey: async (k: string) => [...rows.values()].find((r) => r.idempotencyKey === k && ["pending", "active"].includes(r.status)) ?? null,
+      findByIdempotencyKeyAnyStatus: async (k: string) => [...rows.values()].find((r) => r.idempotencyKey === k) ?? null,
+      insert: async (r: JobRow) => void rows.set(r.id, r),
+      recordAttempt: async () => {},
+    } as unknown as JobStore;
+    const d = { store, now, recordAudit: async () => {}, enforcement: { loadSwitches: async () => [] } } as JobDeps;
+
+    const first = await enqueueJob({ queue: "general", type: "governance.review", payload: {}, idempotencyKey: "governance.review:2026-07-16T12" }, d);
+    expect(first.deduped).toBe(false);
+    // The job completes, exactly as the real one does in ~1s.
+    rows.set(first.job.id, { ...rows.get(first.job.id)!, status: "completed" });
+
+    const second = await enqueueJob({ queue: "general", type: "governance.review", payload: {}, idempotencyKey: "governance.review:2026-07-16T12" }, d);
+    expect(second.deduped).toBe(false); // NOT deduped — this is the flood
+    expect(rows.size).toBe(2);
+  });
+
+  it("jobExistsForIdempotencyKey sees the COMPLETED job — the real cadence guard", async () => {
+    const rows = new Map<string, JobRow>();
+    const store = {
+      findActiveByIdempotencyKey: async () => null,
+      findByIdempotencyKeyAnyStatus: async (k: string) => [...rows.values()].find((r) => r.idempotencyKey === k) ?? null,
+      insert: async (r: JobRow) => void rows.set(r.id, r),
+      recordAttempt: async () => {},
+    } as unknown as JobStore;
+    const d = { store, now, recordAudit: async () => {}, enforcement: { loadSwitches: async () => [] } } as JobDeps;
+
+    expect(await jobExistsForIdempotencyKey("governance.review:2026-07-16T12", d)).toBe(false);
+    const r = await enqueueJob({ queue: "general", type: "governance.review", payload: {}, idempotencyKey: "governance.review:2026-07-16T12" }, d);
+    rows.set(r.job.id, { ...rows.get(r.job.id)!, status: "completed" }); // completed — invisible to the active-only check
+    // The cadence guard still sees it, so the scheduler skips. This is what makes "once per hour" real.
+    expect(await jobExistsForIdempotencyKey("governance.review:2026-07-16T12", d)).toBe(true);
+    // A DIFFERENT hour is a different key — the next hour still runs.
+    expect(await jobExistsForIdempotencyKey("governance.review:2026-07-16T13", d)).toBe(false);
   });
 });

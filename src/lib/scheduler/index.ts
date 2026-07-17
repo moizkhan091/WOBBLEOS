@@ -17,7 +17,7 @@ import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
-import { enqueueJob, reclaimStalledJobs } from "@/lib/jobs";
+import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs } from "@/lib/jobs";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
 
@@ -143,8 +143,17 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
   // job so it survives a restart; the idempotency key is the UTC hour, so repeated ticks within the hour
   // dedupe to one review instead of flooding the queue with reviews of identical state.
   try {
+    // ONCE PER UTC HOUR — guarded by the jobs table, not by enqueueJob's dedupe.
+    //
+    // WOB-UAT-036: `enqueueJob` dedupes only against PENDING/ACTIVE jobs, which is correct for ordinary
+    // idempotency but wrong for a cadence. The governance job finishes in ~1s, so every subsequent tick
+    // found nothing active and enqueued another — 50 reviews in one hour against an "hourly" key, which
+    // flooded the queue and buried security_governance under a 100+ handoff backlog. Checking ANY status
+    // makes "already ran this hour" a real, restart-proof fact rather than a race against job duration.
     const hourKey = `governance.review:${now.toISOString().slice(0, 13)}`;
-    await enqueueJob({ queue: "general", type: GOVERNANCE_REVIEW_JOB_TYPE, payload: { requestedBy: "scheduler" }, idempotencyKey: hourKey, linkedModule: "security_governance" }, { now });
+    if (!(await jobExistsForIdempotencyKey(hourKey))) {
+      await enqueueJob({ queue: "general", type: GOVERNANCE_REVIEW_JOB_TYPE, payload: { requestedBy: "scheduler" }, idempotencyKey: hourKey, linkedModule: "security_governance" }, { now });
+    }
   } catch (e) {
     // A kill switch on governance is a legitimate founder decision, not a scheduler fault — record it
     // without treating it as an error the operator must chase.
