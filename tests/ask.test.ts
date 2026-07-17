@@ -240,4 +240,34 @@ describe("askWobble - router", () => {
   it("rejects an empty question", async () => {
     await expect(askWobble({ question: "  " }, deps())).rejects.toThrowError();
   });
+
+  it("surfaces the CAPABILITY ROUTER decision — content generation → the content department (one dept, not a fan-out)", async () => {
+    const enqueueJob = vi.fn(async () => ({ job: { id: "job_cr" } }));
+    const loadDepartmentCapabilities = async () => [
+      { slug: "content", status: "active", operatingModel: "agent_team", inboundCapabilities: ["generate_content_pack"], permittedDataClassifications: ["internal", "client_confidential"] },
+      { slug: "research_intelligence", status: "active", operatingModel: "agent_team", inboundCapabilities: ["scout"], permittedDataClassifications: ["internal"] },
+    ];
+    const result = await askWobble(
+      { question: "Write a LinkedIn post about AI agents", founder: "Moiz" },
+      deps({ enqueueJob, loadDepartmentCapabilities } as never),
+    );
+    if (result.type !== "route") throw new Error("expected route");
+    expect(result.capabilityRoute?.department).toBe("content");
+    expect(result.capabilityRoute?.confidence).toBe("high");
+    expect(result.capabilityRoute?.cost).toBe("medium");
+    expect(result.capabilityRoute?.alternatives).toEqual([]); // one department, never fanned out
+  });
+
+  it("the capability route DEGRADES gracefully (job still routes) if the registry can't load", async () => {
+    const enqueueJob = vi.fn(async () => ({ job: { id: "job_deg" } }));
+    const loadDepartmentCapabilities = async () => { throw new Error("no registry"); };
+    const result = await askWobble(
+      { question: "Write a LinkedIn post about AI agents", founder: "Moiz" },
+      deps({ enqueueJob, loadDepartmentCapabilities } as never),
+    );
+    if (result.type !== "route") throw new Error("expected route");
+    expect(result.status).toBe("available");
+    expect(result.jobId).toBe("job_deg"); // the command still ran
+    expect(result.capabilityRoute).toBeUndefined();
+  });
 });

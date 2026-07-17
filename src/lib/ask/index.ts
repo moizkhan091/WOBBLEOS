@@ -22,6 +22,31 @@ import {
   type CapabilityRoute,
   type IntentType,
 } from "@/lib/domain/ask";
+import { buildCapabilityRegistry, routeCapability, type DepartmentCapabilityInput, type CapabilityRoute as DepartmentCapabilityRoute } from "@/lib/domain/capability-router";
+import { listDepartments } from "@/lib/departments/registry";
+
+/**
+ * Which department CAPABILITY an action intent maps to. Only intents whose work a department genuinely owns
+ * are mapped; the rest keep their existing module/job route (memory/source/decision/handoff live in their
+ * own modules, not a department queue). This is the bridge from the intent classifier to the capability
+ * router — deliberately explicit, never a fan-out.
+ */
+export const INTENT_CAPABILITY_MAP: Partial<Record<IntentType, string>> = {
+  content_generation: "generate_content_pack",
+  research: "scout",
+};
+
+/** Load department capability inputs from the live registry (injectable for tests/proofs). */
+async function defaultLoadDepartmentCapabilities(): Promise<DepartmentCapabilityInput[]> {
+  const depts = await listDepartments({ status: "active" });
+  return depts.map((d) => ({
+    slug: d.slug,
+    status: d.status,
+    operatingModel: d.operatingModel,
+    inboundCapabilities: d.io?.inboundCapabilities ?? [],
+    permittedDataClassifications: d.permissions?.permittedDataClassifications ?? [],
+  }));
+}
 
 /**
  * Chunk 11: Ask WOBBLE V1 - the OS command surface / router.
@@ -37,6 +62,8 @@ import {
 export const askWobbleSchema = z.object({
   question: z.string().trim().min(1, "question is required"),
   founder: z.string().trim().min(1).optional(),
+  /** Optional organisation/client the ask is scoped to — makes department routing client-aware. */
+  clientWorkspaceId: z.string().trim().min(1).optional(),
   memoryLimit: z.number().int().min(1).max(50).optional(),
   sourceLimit: z.number().int().min(1).max(50).optional(),
   sourceChunkLimit: z.number().int().min(1).max(10).optional(),
@@ -54,6 +81,9 @@ export type AskResult =
       status: "available" | "planned";
       message: string;
       jobId?: string;
+      /** The capability-router decision when this intent maps to a department capability — the founder can
+       *  see WHICH department WOBBLE chose, how confident it is, and why. Absent for non-department intents. */
+      capabilityRoute?: DepartmentCapabilityRoute;
     };
 
 export interface AskWobbleDeps {
@@ -68,6 +98,8 @@ export interface AskWobbleDeps {
   retrieveIntelligence?: () => Promise<IntelligenceContextBlock>;
   enqueueJob?: (input: { queue: string; type: string; payload: Record<string, unknown>; linkedModule?: string }) => Promise<{ job: { id: string } }>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** Load department capabilities for the capability router (injectable; defaults to the live registry). */
+  loadDepartmentCapabilities?: () => Promise<DepartmentCapabilityInput[]>;
   doNotSay?: string;
   now?: Date;
 }
@@ -86,6 +118,36 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
   if (intent !== "question") {
     const route = capabilities[intent];
 
+    // CAPABILITY ROUTER: when this intent maps to a department capability, resolve WHICH single department
+    // owns it (confidence/cost/client-scope/founder-aware, auditable, never a fan-out). Surfaced on the
+    // result so the founder sees the decision; the job enqueue below carries the work.
+    let capabilityRoute: DepartmentCapabilityRoute | undefined;
+    const capability = INTENT_CAPABILITY_MAP[intent];
+    if (capability) {
+      // The capability route is an ENRICHMENT — if the registry can't load (e.g. no DB in a unit context),
+      // the ask still routes its job. It never fails the command on account of the routing decision.
+      try {
+        const registry = buildCapabilityRegistry(await (deps.loadDepartmentCapabilities ?? defaultLoadDepartmentCapabilities)());
+        capabilityRoute = routeCapability(registry, capability, {
+          // A client-scoped ask is client_confidential; otherwise internal. The founder is carried for
+          // attribution only (never to personalise another founder's routing).
+          dataClassification: parsed.clientWorkspaceId ? "client_confidential" : "internal",
+          founder: parsed.founder,
+          clientWorkspaceId: parsed.clientWorkspaceId ?? null,
+        });
+        await recordAudit({
+          eventType: "ask.capability_routed",
+          module: "ask_wobble",
+          entityType: "capability",
+          entityId: capability,
+          actor: parsed.founder,
+          metadata: { intent, capability, department: capabilityRoute.department, confidence: capabilityRoute.confidence, cost: capabilityRoute.cost, blocked: capabilityRoute.blocked ?? null, reason: capabilityRoute.reason },
+        }).catch(() => {});
+      } catch {
+        capabilityRoute = undefined;
+      }
+    }
+
     if (route.status === "available" && route.jobType) {
       const enqueue = deps.enqueueJob ?? defaultEnqueue;
       const { job } = await enqueue({
@@ -100,9 +162,10 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
         entityType: "job",
         entityId: job.id,
         actor: parsed.founder,
-        metadata: { intent, module: route.module, jobType: route.jobType },
+        metadata: { intent, module: route.module, jobType: route.jobType, department: capabilityRoute?.department ?? null },
       });
-      return { type: "route", intent, module: route.module, status: "available", message: `Routed to ${route.module}.`, jobId: job.id };
+      const dept = capabilityRoute?.department ? ` (${capabilityRoute.department}, ${capabilityRoute.confidence} confidence)` : "";
+      return { type: "route", intent, module: route.module, status: "available", message: `Routed to ${route.module}${dept}.`, jobId: job.id, capabilityRoute };
     }
 
     // Not built yet: recognise the route, do NOT fake completion or enqueue.
@@ -111,14 +174,17 @@ export async function askWobble(input: AskWobbleInput, deps: AskWobbleDeps = {})
       module: "ask_wobble",
       entityType: "intent",
       actor: parsed.founder,
-      metadata: { intent, module: route.module },
+      metadata: { intent, module: route.module, department: capabilityRoute?.department ?? null },
     });
     return {
       type: "route",
       intent,
       module: route.module,
       status: "planned",
-      message: `Intent recognized: ${intent}. Route: ${route.module}. Status: planned/not available yet.`,
+      message: capabilityRoute?.department
+        ? `Intent '${intent}' → capability '${capability}' → department '${capabilityRoute.department}' (${capabilityRoute.confidence}). Module route ${route.module} not wired yet.`
+        : `Intent recognized: ${intent}. Route: ${route.module}. Status: planned/not available yet.`,
+      capabilityRoute,
     };
   }
 
