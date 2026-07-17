@@ -389,3 +389,39 @@ export function requiresFounderAttention(run: GovernanceRunResult): boolean {
   const worst = worstSeverity(run.findings);
   return worst === "critical" || worst === "high";
 }
+
+/** The timeline event stamped on an incident whose source condition no longer reproduces. */
+export const INCIDENT_CONDITION_CLEARED = "condition_cleared";
+
+/**
+ * Should this run annotate an open incident as "root cause no longer detected"?
+ *
+ * A finding auto-closes when its deterministic check re-runs clean, but the incident it opened must be
+ * closed by a founder. This decides whether to leave the founder a signal that the underlying condition
+ * has cleared — WITHOUT closing the incident for them. It is deliberately pure so every guard is testable
+ * away from the database.
+ *
+ * Guards, each load-bearing:
+ *  - The incident must trace to a finding: its dedupeKey is `incident:<finding dedupeKey>`. No prefix ⇒
+ *    not review-sourced ⇒ we cannot reason about it, so no annotation.
+ *  - The finding `kind` (the source key's first segment) must have RUN this pass. If the access review was
+ *    skipped, the absence of an access condition proves nothing — the same rule that governs finding
+ *    retest. Annotating on a skipped check would falsely tell a founder a live risk is gone.
+ *  - The condition must not currently reproduce (`stillFailing`). If it does, the incident is live.
+ *  - Idempotent: at most one such note ever. Re-stamping every hourly run would grow the timeline without
+ *    bound — the runaway-cadence failure class (WOB-UAT-036) in a different guise.
+ */
+export function shouldAnnotateClearedIncident(
+  incident: { dedupeKey: string | null; timeline?: { event?: string }[] | null },
+  ranKinds: ReadonlySet<string>,
+  stillFailing: ReadonlySet<string>,
+): { annotate: boolean; sourceKey: string | null; kind: string | null } {
+  const prefix = "incident:";
+  const sourceKey = incident.dedupeKey?.startsWith(prefix) ? incident.dedupeKey.slice(prefix.length) : null;
+  if (!sourceKey) return { annotate: false, sourceKey: null, kind: null };
+  const kind = sourceKey.split(":")[0] ?? null;
+  if (!kind || !ranKinds.has(kind)) return { annotate: false, sourceKey, kind };
+  if (stillFailing.has(sourceKey)) return { annotate: false, sourceKey, kind };
+  if ((incident.timeline ?? []).some((t) => t?.event === INCIDENT_CONDITION_CLEARED)) return { annotate: false, sourceKey, kind };
+  return { annotate: true, sourceKey, kind };
+}

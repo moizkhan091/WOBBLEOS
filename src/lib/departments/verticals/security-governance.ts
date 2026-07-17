@@ -185,6 +185,7 @@ export async function runSecurityGovernanceDepartment(
         findingsDeduped: run.deduped.length,
         findingsRetestedClosed: run.retested.length,
         incidentsOpened: run.incidents.length,
+        incidentsConditionCleared: run.clearedIncidents.length,
         worst: run.worst,
         requiresFounderAttention: run.requiresAttention,
       },

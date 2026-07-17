@@ -16,10 +16,12 @@ import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
   assembleGovernanceRun,
+  INCIDENT_CONDITION_CLEARED,
   isKilled,
   newGovernanceRunId,
   requiresFounderAttention,
   securityFindingDraftSchema,
+  shouldAnnotateClearedIncident,
   worstSeverity,
   type AccessReviewState,
   type GovernanceRunResult,
@@ -240,6 +242,55 @@ async function retestClearedFindings(runId: string, ranKinds: Set<string>, still
   return ids;
 }
 
+/**
+ * Annotate open incidents whose underlying condition no longer reproduces.
+ *
+ * A finding auto-closes when its check re-runs clean (`retestClearedFindings`), but the INCIDENT opened
+ * from it does not — by design incidents "need a founder to close". Without this, a founder reads
+ * "4 CRITICAL incidents" about conditions that are already gone, with no signal that the root cause
+ * cleared, and either closes blind or learns to distrust the number. Neither is acceptable for a control
+ * whose whole value is that its numbers are trustworthy.
+ *
+ * This does NOT close the incident — the founder still decides. It appends ONE timeline note recording
+ * that, as of this run, the condition is not detected. Every guard (kind-ran, still-failing, idempotency)
+ * lives in the pure `shouldAnnotateClearedIncident` so it is tested away from the DB.
+ */
+async function annotateClearedIncidents(runId: string, ranKinds: Set<string>, stillFailing: Set<string>, deps: SecurityDeps): Promise<string[]> {
+  const db = deps.db ?? getDb();
+  const now = deps.now ?? new Date();
+  const open = await db
+    .select()
+    .from(securityIncidents)
+    .where(inArray(securityIncidents.status, ["detected", "contained", "remediating", "recovered"]));
+
+  const annotated: string[] = [];
+  for (const incident of open) {
+    const decision = shouldAnnotateClearedIncident(incident, ranKinds, stillFailing);
+    if (!decision.annotate) continue;
+    const timeline = incident.timeline ?? [];
+    const entry = {
+      at: now.toISOString(),
+      actor: GOVERNANCE_ORCHESTRATOR,
+      event: INCIDENT_CONDITION_CLEARED,
+      detail: `The '${decision.kind}' check ran in ${runId} and did not re-raise '${decision.sourceKey}'. The underlying condition is no longer detected — safe to close after founder review.`,
+    };
+    await db
+      .update(securityIncidents)
+      .set({ timeline: [...timeline, entry], updatedAt: now })
+      .where(eq(securityIncidents.id, incident.id));
+    annotated.push(incident.id);
+    await audit(deps, {
+      eventType: "security.incident_condition_cleared",
+      module: SECURITY_MODULE,
+      entityType: "security_incident",
+      entityId: incident.id,
+      actor: GOVERNANCE_ORCHESTRATOR,
+      metadata: { dedupeKey: incident.dedupeKey, sourceKey: decision.sourceKey, kind: decision.kind, clearedBy: runId },
+    });
+  }
+  return annotated;
+}
+
 export interface GovernanceRunRecord extends GovernanceRunResult {
   /** The orchestrator that ran this pass — real attribution, distinct from whoever requested it. */
   executedBy: string;
@@ -249,6 +300,8 @@ export interface GovernanceRunRecord extends GovernanceRunResult {
   incidents: string[];
   /** Findings this run CLOSED because their condition no longer holds (deterministic retest). */
   retested: string[];
+  /** Open incidents this run ANNOTATED because their source condition no longer reproduces (founder still closes). */
+  clearedIncidents: string[];
   requiresAttention: boolean;
   worst: string | null;
 }
@@ -295,7 +348,13 @@ export async function runGovernanceReview(input: { requestedBy: string } = { req
   const ranKinds = new Set<string>();
   if (run.checks.some((c) => c.check === "access_review" && c.ran)) ranKinds.add("access");
   if (run.checks.some((c) => c.check === "policy_review" && c.ran)) ranKinds.add("policy");
-  const retested = ranKinds.size ? await retestClearedFindings(runId, ranKinds, new Set(run.findings.map((f) => f.dedupeKey)), deps) : [];
+  const stillFailing = new Set(run.findings.map((f) => f.dedupeKey));
+  const retested = ranKinds.size ? await retestClearedFindings(runId, ranKinds, stillFailing, deps) : [];
+
+  // A finding auto-closes when its condition clears, but the incident it spawned does not — a founder must
+  // close that. Annotate those incidents so the founder sees the root cause is gone instead of a bare
+  // CRITICAL count about conditions that no longer exist. Guarded to checks that ran; idempotent per incident.
+  const clearedIncidents = ranKinds.size ? await annotateClearedIncidents(runId, ranKinds, stillFailing, deps) : [];
 
   // A CRITICAL finding is not merely a row to read later — it is an incident happening now, and it gets
   // a lifecycle a founder must close. `incident_audit_agent` owns this: it is what makes that agent a
@@ -344,11 +403,12 @@ export async function runGovernanceReview(input: { requestedBy: string } = { req
       worst: worstSeverity(run.findings),
       incidentsOpened: incidents.length,
       retestedClosed: retested.length,
+      incidentsConditionCleared: clearedIncidents.length,
       requiresAttention,
     },
   });
 
-  return { ...run, executedBy: GOVERNANCE_ORCHESTRATOR, created: persisted.created, deduped: persisted.deduped, incidents, retested, requiresAttention, worst: worstSeverity(run.findings) };
+  return { ...run, executedBy: GOVERNANCE_ORCHESTRATOR, created: persisted.created, deduped: persisted.deduped, incidents, retested, clearedIncidents, requiresAttention, worst: worstSeverity(run.findings) };
 }
 
 export interface ListFindingsQuery {

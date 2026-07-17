@@ -5679,6 +5679,9 @@ function SecurityPage() {
                   <Tag text={inc.status} color={["resolved", "closed"].includes(inc.status) ? C.lime : C.orange} />
                 </div>
                 <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>via {inc.detectionSource} · opened by {inc.openedBy} · {inc.timeline.length} timeline entr{inc.timeline.length === 1 ? "y" : "ies"}</div>
+                {inc.timeline.some((t) => t.event === "condition_cleared") && !["resolved", "closed"].includes(inc.status) ? (
+                  <div data-testid="incident-condition-cleared" style={{ fontSize: 11, color: C.lime, marginTop: 5 }}>✓ Root cause no longer detected in the latest governance review — safe to close after review.</div>
+                ) : null}
                 {!["resolved", "closed"].includes(inc.status) ? (
                   <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                     {(["contain", "remediate", "recover", "resolve"] as const).map((a) => (

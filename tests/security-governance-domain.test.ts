@@ -7,6 +7,8 @@ import {
   worstSeverity,
   requiresFounderAttention,
   securityFindingDraftSchema,
+  shouldAnnotateClearedIncident,
+  INCIDENT_CONDITION_CLEARED,
   type AccessReviewState,
   type PolicyReviewState,
 } from "@/lib/domain/security-governance";
@@ -269,5 +271,49 @@ describe("governance run assembly — an unrun check is NOT a clean result", () 
   it("worstSeverity picks the worst, not the first", () => {
     expect(worstSeverity([{ severity: "low" }, { severity: "critical" }, { severity: "medium" }])).toBe("critical");
     expect(worstSeverity([])).toBeNull();
+  });
+
+  /**
+   * WOB-UAT-037 — a governance review must tell a founder when an OPEN incident's root cause has cleared.
+   * A finding auto-closes on a clean retest, but the incident it spawned waits for a founder to close it;
+   * without a signal the founder sees a stale CRITICAL about a condition that is already gone. These pin
+   * each guard on the pure decision — the DB wrapper only carries it out.
+   */
+  describe("shouldAnnotateClearedIncident", () => {
+    const ran = new Set(["access", "policy"]);
+    const noneFailing = new Set<string>();
+
+    it("annotates a review-sourced incident whose check RAN and whose condition no longer reproduces", () => {
+      const d = shouldAnnotateClearedIncident({ dedupeKey: "incident:access:live_session_disabled:founder_ali", timeline: [] }, ran, noneFailing);
+      expect(d).toEqual({ annotate: true, sourceKey: "access:live_session_disabled:founder_ali", kind: "access" });
+    });
+
+    it("does NOT annotate when the condition still reproduces this pass — the incident is live", () => {
+      const stillFailing = new Set(["access:live_session_disabled:founder_ali"]);
+      const d = shouldAnnotateClearedIncident({ dedupeKey: "incident:access:live_session_disabled:founder_ali", timeline: [] }, ran, stillFailing);
+      expect(d.annotate).toBe(false);
+    });
+
+    it("does NOT annotate when the source finding's check was SKIPPED — absence proves nothing", () => {
+      const onlyPolicyRan = new Set(["policy"]);
+      const d = shouldAnnotateClearedIncident({ dedupeKey: "incident:access:orphan_session:x", timeline: [] }, onlyPolicyRan, noneFailing);
+      expect(d.annotate).toBe(false);
+      expect(d.kind).toBe("access");
+    });
+
+    it("is idempotent — never annotates an incident that already carries the note", () => {
+      const already = { dedupeKey: "incident:access:live_session_disabled:founder_ali", timeline: [{ event: INCIDENT_CONDITION_CLEARED }] };
+      expect(shouldAnnotateClearedIncident(already, ran, noneFailing).annotate).toBe(false);
+    });
+
+    it("ignores incidents not opened from a finding (no `incident:` prefix)", () => {
+      const d = shouldAnnotateClearedIncident({ dedupeKey: "manual_incident_42", timeline: [] }, ran, noneFailing);
+      expect(d).toEqual({ annotate: false, sourceKey: null, kind: null });
+    });
+
+    it("tolerates a null dedupeKey and a null timeline", () => {
+      expect(shouldAnnotateClearedIncident({ dedupeKey: null }, ran, noneFailing).annotate).toBe(false);
+      expect(shouldAnnotateClearedIncident({ dedupeKey: "incident:policy:restricted_grant:finance", timeline: null }, ran, noneFailing).annotate).toBe(true);
+    });
   });
 });
