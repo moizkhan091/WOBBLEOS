@@ -21,6 +21,7 @@ import { getContentPacketDetail } from "@/lib/content";
 import type { ContentPacketRow } from "@/lib/domain/content-command";
 import { assetsForContentFormat } from "@/lib/domain/reference-selection";
 import { createMediaJob } from "@/lib/media";
+import { importFromContentPacket, type LibraryDeps } from "@/lib/library";
 import { runFinanceDepartment, type RunFinanceDepartmentDeps } from "@/lib/departments/verticals/finance";
 import { runDeliveryDepartment, type RunDeliveryDepartmentDeps } from "@/lib/departments/verticals/delivery";
 
@@ -54,6 +55,8 @@ export interface DepartmentConsumerDeps extends RunDepartmentDeps {
   /** Advisory provider deps for the Design Intelligence vertical (describeReferences / critiqueBrand).
    *  Injectable so tests and proofs run without a live model; production omits them (real defaults). */
   design?: Partial<RunDesignIntelligenceDeps>;
+  /** Library deps for the Publishing consumer's approval-gated import (injectable in tests/proofs). */
+  library?: LibraryDeps;
   /** Load a content packet by id so the Design Intelligence consumer grounds its brief in the REAL pack
    *  (design direction, format, slide count) instead of a stale handoff copy. Injectable for tests;
    *  defaults to the content store. Returns null when the pack cannot be loaded — the consumer then falls
@@ -185,6 +188,50 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
       routedTo: [],
       escalations: rejected.map((r) => `media_production could not queue asset ${r.index}: ${r.error}`),
       telemetry: { queued: created.length, rejected: rejected.length },
+    } as never;
+  },
+  // WOB-UAT-025/023. Registered because Content routes `content_pack` → publishing. Without a consumer that
+  // handoff sat `delivered` forever — a routed-but-never-claimed dead-end.
+  //
+  // publishing is a SERVICE department. This consumer PROMOTES an approved pack into the publishable library
+  // via `importFromContentPacket`, whose approval gate is the load-bearing rule: an unapproved / QA-failed /
+  // draft pack returns null and is NOT imported. That case is reported as HELD-for-approval with an
+  // escalation — never a fake "published". Scheduling a specific time/platform stays a founder action in the
+  // Library module; this consumer's honest job is to make an approved pack publishable (or truthfully hold it).
+  publishing: async (env, deps) => {
+    const recordAudit = deps.recordAudit ?? (async (i: AuditEventInput) => { await writeAuditEvent(i); });
+    const packetId = str(out(env).packetId);
+    // Thread recordAudit into the library import so the asset-added audit uses the consumer's recorder
+    // (never a stray real-DB write) and stays attributable to this handoff.
+    const asset = packetId ? await importFromContentPacket(packetId, { ...deps.library, recordAudit: deps.library?.recordAudit ?? recordAudit }) : null;
+    if (!asset) {
+      const reason = packetId
+        ? `content pack '${packetId}' is not approved — held for founder approval before publishing`
+        : "publishing received a handoff with no packetId";
+      // The tick does not surface a lightweight consumer's returned escalations, so record the HOLD here as
+      // a founder-visible audit event. A held pack is a truthful non-success, never swallowed.
+      await recordAudit({ eventType: "publishing.held_for_approval", module: "departments", entityType: "content_packet", entityId: packetId || env.workflowId, actor: "publishing_consumer", metadata: { workflowId: env.workflowId, packetId: packetId || null, reason } }).catch(() => {});
+      return {
+        department: "publishing",
+        accepted: true,
+        product: { published: false, held: true, packetId: packetId || null, reason },
+        productSchema: "published_content",
+        routedTo: [],
+        // Held is a truthful non-success, surfaced to the founder — not swallowed into a clean result.
+        escalations: [reason],
+        telemetry: { imported: 0, held: 1 },
+      } as never;
+    }
+    await recordAudit({ eventType: "publishing.pack_imported", module: "departments", entityType: "content_asset", entityId: asset.id, actor: "publishing_consumer", metadata: { workflowId: env.workflowId, packetId, assetId: asset.id } }).catch(() => {});
+    return {
+      department: "publishing",
+      accepted: true,
+      // An imported library asset is PUBLISHABLE, not yet published — say exactly that.
+      product: { published: false, imported: true, assetId: asset.id, packetId, status: "publishable" },
+      productSchema: "published_content",
+      routedTo: [],
+      escalations: [],
+      telemetry: { imported: 1, held: 0 },
     } as never;
   },
   // WOB-UAT-024. Registered because there IS a real upstream producer: the `governance.review` job

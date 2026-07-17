@@ -210,4 +210,75 @@ describe("Department consumer loop (autonomous inter-department chain)", () => {
     expect(requests[0].params.assetType).toBe("carousel"); // derived from the pack's format — NOT the old static default
     expect(requests[0].prompt).toContain("WOBBLE dark, heavy type"); // the pack's REAL design direction, not the generic fallback
   });
+
+  /**
+   * WOB-UAT-025 — the Publishing consumer closes the content→publishing dead-end (the handoff used to sit
+   * `delivered` forever). It PROMOTES an approved pack into the publishable library, and TRUTHFULLY HOLDS an
+   * unapproved one — the founder-approval gate must never be bypassed into a fake "published".
+   */
+  describe("Publishing consumer (approval-gated promotion, no fake publish)", () => {
+    const publishingDept = buildDepartmentRow(
+      { slug: "publishing", name: "Publishing", purpose: "p", status: "active", operatingModel: "service_department", io: { acceptedHandoffSchemas: ["content_pack", "media_assets"], inboundCapabilities: ["publish"], outboundProducts: ["published_content"], downstreamConsumers: ["founder_command_centre"] }, permissions: { authorizedMemoryScopes: ["content"], permittedDataClassifications: ["internal", "public", "client_confidential"], allowedTools: [], deniedTools: [] } },
+      { now },
+    );
+    function makeLibraryStore() {
+      const assets = new Map<string, { id: string; contentPacketId?: string }>();
+      return {
+        assets,
+        store: {
+          findAssetByPacketId: async (pid: string) => [...assets.values()].find((a) => a.contentPacketId === pid) ?? null,
+          insertAsset: async (row: { id: string; contentPacketId?: string }) => void assets.set(row.id, row),
+          getAssetById: async (id: string) => assets.get(id) ?? null,
+        } as never,
+      };
+    }
+    async function routePackToPublishing(store: HandoffStore, packetId: string, wf: string) {
+      const env = buildHandoffEnvelope(
+        { workflowId: wf, department: "publishing", sourceAgent: "content_orchestrator", destinationAgent: "publishing_orchestrator", destinationCapability: "publish", objective: "Publish the pack", requestedAction: "consume content_pack", expectedOutputSchema: "content_pack", dataClassification: "internal", authorizedMemoryScopes: ["content"], previousAgentOutputs: { packetId }, idempotencyKey: `${wf}:route:content->publishing` },
+        { now },
+      );
+      await dispatchHandoff(env, { clientWorkspaceId: null, grantedMemoryScopes: ["content"], permittedDataClassifications: ["internal", "public"] }, { store, recordAudit: async () => {}, now });
+    }
+
+    it("promotes an APPROVED pack into the library (publishable asset created + audited)", async () => {
+      const { store, rows } = makeClaimableHandoffStore();
+      const lib = makeLibraryStore();
+      const audits: string[] = [];
+      await routePackToPublishing(store, "pk_approved", "wf_pub_ok");
+      const res = await runDepartmentConsumerTick({
+        loadDepartments: async () => [publishingDept],
+        loadDepartment: async (slug: string) => (slug === "publishing" ? publishingDept : null),
+        loadMembers: async () => [],
+        handoffStore: store,
+        library: { store: lib.store, recordAudit: async () => {}, getPacketForImport: async () => ({ id: "pk_approved", platform: "instagram", format: "static", hook: "h", caption: "c", carouselSlides: null, createdBy: "Moiz", approvalStatus: "approved", ownerScope: "content_track", ownerId: "ct_1" }) as never },
+        recordAudit: async (e) => void audits.push(e.eventType),
+        now,
+      });
+      expect(res.claimed).toBe(1);
+      expect(res.completed).toBe(1);
+      expect(lib.assets.size).toBe(1); // a real publishable asset now exists
+      expect(audits).toContain("publishing.pack_imported");
+      expect([...rows.values()].find((r) => r.department === "publishing")?.deliveryState).toBe("completed");
+    });
+
+    it("HOLDS an UNAPPROVED pack — no asset, a founder-visible held audit, never a fake publish", async () => {
+      const { store } = makeClaimableHandoffStore();
+      const lib = makeLibraryStore();
+      const audits: string[] = [];
+      await routePackToPublishing(store, "pk_draft", "wf_pub_hold");
+      const res = await runDepartmentConsumerTick({
+        loadDepartments: async () => [publishingDept],
+        loadDepartment: async (slug: string) => (slug === "publishing" ? publishingDept : null),
+        loadMembers: async () => [],
+        handoffStore: store,
+        library: { store: lib.store, recordAudit: async () => {}, getPacketForImport: async () => ({ id: "pk_draft", platform: "instagram", format: "static", hook: "h", caption: "c", carouselSlides: null, createdBy: "Moiz", approvalStatus: "draft", ownerScope: "content_track", ownerId: "ct_1" }) as never },
+        recordAudit: async (e) => void audits.push(e.eventType),
+        now,
+      });
+      expect(res.claimed).toBe(1);
+      expect(res.completed).toBe(1); // the handoff is consumed (held is a valid terminal outcome), not failed
+      expect(lib.assets.size).toBe(0); // NOT imported — the approval gate held it
+      expect(audits).toContain("publishing.held_for_approval"); // truthful, founder-visible
+    });
+  });
 });
