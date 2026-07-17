@@ -5815,3 +5815,52 @@ Security & Governance still lacks a `verticals/security-governance.ts` handoff-d
 workspace is built + typechecked but has never been driven in the visible browser). **WOB-UAT-023 Design
 Intelligence** remains the last genuinely-absent department. Plus the founder-correction scope, the
 golden workflow, three-client isolation, and the 28 pillars.
+
+---
+
+## Session (2026-07-17→18) — Claude Opus: memory governance, providers, capability router
+
+Branch `feat/founder-accounts-local-uat`. Main untouched `c4831d3`. Evidence + MASTER V1 ACCEPTANCE LEDGER
+outside the repo at `C:\Temp\wobble-local-uat`.
+
+### Shipped + LIVE-PROVEN (build == HEAD verified at each)
+- **WOB-UAT-036** governance cadence ran 50×/hr (enqueue dedupe can't express a cadence) → fixed with a
+  jobs-table cadence guard; live: exactly 1 job/hour across ~60 ticks; 320 flood handoffs cleaned.
+- **WOB-UAT-037** a governance review now annotates open incidents whose root cause cleared (idempotent).
+- **/security browser UAT** — governance review (idempotent, executedBy=orchestrator, audit=session),
+  incident contain→resolve, all attributed to the session founder.
+- **WOB-UAT-023 Design Intelligence** — full content(carousel)→design→media chain autonomous in live
+  workers; grounded brief from the reloaded packet; media job BLOCKED truthfully (no FAL_KEY).
+- **Publishing** consumer — approved pack→library asset, DRAFT→held (approval gate), no fake publish.
+- **Free Audit** — /api/audit/free → persisted audit, session-attributed. **Ayrshare** confirmed removed.
+- **Founder memory (binding corrections #3/#5)** — governed super-admin correction (path-authoritative
+  target, mismatch→422, reason+confirm mandatory, before/after audit actor=super-admin, version snapshot,
+  founder notification), non-SA→403, rollback; suggestion into another founder's bank confirmed ONLY by
+  the owner (activateApprovedMemoryUpdate owner check; harvester attributes auto-save to the resolved founder).
+- **CRM convertLead** honored the lead's existing company (no duplicate "Dr. Alpha" / no orphaned twin).
+- **Provider cost controls + kill switches** — `provider-budget` (external_provider_spend, mig 0055),
+  per-provider ceilings/stops, worst-case allowance gate, kill-switch enforcement in runTextProvider +
+  Tavily/Apify, max-1 concurrency. LIVE: OpenRouter (gpt-4o-mini, valid JSON, $0.0000105), Tavily (1cr),
+  Apify (3 items, $0.10) — all recorded to the ledger; rejection paths never make the paid call.
+- **Capability router core** (`domain/capability-router`) — routes a capability to ONE department
+  (confidence/cost/client-scope/founder-aware, auditable, never a fan-out). 8 tests. NOT yet wired into ask.
+
+### Secrets (external UAT env, never committed/echoed)
+`provider-secrets.env` now has OPENROUTER/TAVILY/APIFY/ELEVENLABS (+ voice id). A BOM/whitespace format
+issue → cleaned copy `provider-secrets.clean.env`. NOTE: the OpenRouter key leaked once in a bash error
+message — FOUNDER SHOULD ROTATE it (UAT key, to be replaced by prod anyway). ElevenLabs key usable
+(tier creator, ~216k chars). Do NOT enable autonomous app provider calls (0 approved research targets today).
+
+### Exact next command / next steps
+1. Wire capability-router into `askWobble` (intent→capability) + dispatch via handoff; live-prove routing.
+2. Integrate provider keys into the app env + rebuild ONLY with autonomous-loop guards; then run LLM
+   departments live (content graph now unblocked by the real OpenRouter key).
+3. Execution order continues: Company Twin ingestion (offer sheets = service catalogue source), Design DNA
+   (static-creative manifest already built: 196 PNG/35 campaigns/0 dupes/880x1168), Offer Validation Lab,
+   Discovery/Meeting Intelligence, Qualification Council, additive commercial architecture, org workspace,
+   OpenRouter image/video adapters, sidebar redesign, HyperFrames, marketing knowledge, golden mission,
+   3-client isolation (canaries created), 28 pillars.
+
+### Receipts
+typecheck 0 · 1193/1193 unit + new provider/capability tests · steps 1–6 of the expansion order proven.
+Builds are SLOW/flaky on this box (Turbopack stalls under load → prune + fresh + stay quiet during build).
