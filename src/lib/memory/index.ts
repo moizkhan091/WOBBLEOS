@@ -15,6 +15,8 @@ import {
   buildMemoryRecordVersionRow,
   buildMemoryUpdateProposalRow,
   canEditMemoryBanks,
+  personalBankOwner,
+  normalizeFounderKey,
   classifyMemoryWrite,
   computeReviewAfter,
   identityScopedBanks,
@@ -811,6 +813,130 @@ export async function editMemoryRecord(input: EditMemoryRecordInput, deps: Memor
     },
   });
   return { ...record, ...fields };
+}
+
+export interface CorrectFounderMemoryInput {
+  recordId: string;
+  /** The founder whose memory is being corrected — comes from the ROUTE PATH, never a request-body/query field. */
+  targetFounder: string;
+  /** The super-admin performing the correction — comes from the verified SESSION, never the body. */
+  actor: string;
+  title?: string;
+  content?: string;
+  /** MANDATORY. A correction with no stated reason is refused. */
+  reason: string;
+  /** MANDATORY explicit confirmation. A correction without it is refused (no accidental cross-founder edit). */
+  confirm: boolean;
+}
+
+export interface CorrectFounderMemoryDeps extends MemoryDeps {
+  /** Notify the affected founder. Injected in tests; the route wires the internal-notification comms channel. */
+  notifyFounder?: (n: { founder: string; subject: string; body: string; recordId: string; actor: string; reason: string }) => Promise<void>;
+}
+
+export interface FounderMemoryCorrection {
+  record: MemoryRecordRow;
+  before: { title: string; content: string };
+  after: { title: string; content: string };
+}
+
+/**
+ * GOVERNED super-admin correction of ANOTHER founder's memory (BINDING FOUNDER CORRECTION #3).
+ *
+ * A super-admin may fix a wrong entry in a colleague's founder memory, but ONLY through this governed path —
+ * never a silent edit (`canEditMemoryBanks` deliberately blocks that). Every guard here is load-bearing:
+ *  - The TARGET is the route path, and the record must actually belong to that founder's personal bank. A
+ *    record owned by someone else is REFUSED — a generic body/query field can never silently retarget who
+ *    gets corrected.
+ *  - A `reason` and explicit `confirm` are mandatory.
+ *  - The ACTOR is the verified super-admin session, attributed distinctly in the audit (not the owner).
+ *  - Full before/after is captured, a version snapshot is written (so the owner can restore), and the
+ *    affected founder is NOTIFIED. A correction the owner cannot see or undo would be exactly the silent
+ *    override this rule exists to prevent.
+ *
+ * It does NOT touch shared company/brand banks (those are edited normally) — only a founder PERSONAL bank.
+ */
+export async function correctFounderMemory(input: CorrectFounderMemoryInput, deps: CorrectFounderMemoryDeps = {}): Promise<FounderMemoryCorrection> {
+  if (!input.confirm) throw new Error("founder memory correction requires explicit confirmation");
+  if (!input.reason?.trim()) throw new Error("founder memory correction requires a reason");
+  if (input.title === undefined && input.content === undefined) throw new Error("founder memory correction has nothing to change");
+
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+
+  const record = await store.getMemoryRecordById(input.recordId);
+  if (!record) throw new Error(`memory record '${input.recordId}' not found`);
+
+  // The record MUST live in a founder PERSONAL bank, and that owner MUST equal the path target. This is what
+  // makes the target authoritative — we correct exactly the named founder's memory or nothing.
+  const owner = record.bankSlugs.map((b) => personalBankOwner(b)).find((o): o is string => Boolean(o)) ?? null;
+  if (!owner) throw new Error(`record '${input.recordId}' is not a founder personal memory — governed correction does not apply`);
+  if (normalizeFounderKey(owner) !== normalizeFounderKey(input.targetFounder)) {
+    throw new Error(`record '${input.recordId}' belongs to '${owner}', not '${input.targetFounder}' — refusing to correct a different founder's memory`);
+  }
+
+  const before = { title: record.title, content: record.content };
+  const contentChanged = input.content !== undefined && input.content !== before.content;
+
+  // Version snapshot of the PRIOR state — the owner can restore it, so the correction is never irreversible.
+  const versionNumber = (await store.countRecordVersions(input.recordId)) + 1;
+  await store.insertRecordVersion(
+    buildMemoryRecordVersionRow(
+      { memoryRecordId: input.recordId, versionNumber, title: before.title, content: before.content, editedBy: input.actor, changeReason: `super-admin correction: ${input.reason}` },
+      { now },
+    ),
+  );
+
+  const fields: Partial<MemoryRecordRow> = { updatedAt: now };
+  if (input.title !== undefined) fields.title = input.title;
+  if (input.content !== undefined) fields.content = input.content;
+  await store.updateMemoryRecordFields(input.recordId, fields);
+
+  if (contentChanged) {
+    const chunks = await store.listChunkIdsForRecord(input.recordId);
+    let vectors: number[][] | null = null;
+    try {
+      vectors = await embedTexts(chunks.map(() => input.content!), { embedder: deps.embedder });
+    } catch (error) {
+      console.error("founder correction re-embed failed (keeping old vector):", error instanceof Error ? error.message : error);
+    }
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkFields: { content: string; embedding?: number[] | null; updatedAt: Date } = { content: input.content!, updatedAt: now };
+      if (vectors && vectors[i]) chunkFields.embedding = vectors[i];
+      await store.updateChunk(chunks[i].id, chunkFields);
+    }
+  }
+
+  const after = { title: fields.title ?? record.title, content: fields.content ?? record.content };
+
+  await recordAudit({
+    eventType: "memory.founder_corrected",
+    module: "memory",
+    entityType: "memory_record",
+    entityId: input.recordId,
+    // The ACTOR is the super-admin, kept distinct from the record's owner — the audit answers WHO changed
+    // WHOSE memory, and why, with the full before/after.
+    actor: input.actor,
+    metadata: {
+      targetFounder: normalizeFounderKey(input.targetFounder),
+      recordId: input.recordId,
+      before,
+      after,
+      reason: input.reason,
+      superAdminOverride: true,
+      versionNumber,
+    },
+  });
+
+  // Notify the affected founder — a governed correction the owner never learns about is a silent override.
+  if (deps.notifyFounder) {
+    await deps
+      .notifyFounder({ founder: normalizeFounderKey(input.targetFounder), subject: `Your memory "${before.title}" was corrected by ${input.actor}`, body: `${input.actor} corrected your founder memory record "${before.title}". Reason: ${input.reason}. The prior version was saved and you can restore it.`, recordId: input.recordId, actor: input.actor, reason: input.reason })
+      .catch((e) => console.error("founder correction notify failed (non-fatal):", e instanceof Error ? e.message : e));
+  }
+
+  return { record: { ...record, ...fields }, before, after };
 }
 
 /** Founder removes (soft-deletes) a memory. Reversible via restoreMemoryRecord. Audited. */

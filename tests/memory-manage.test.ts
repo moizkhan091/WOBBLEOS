@@ -3,6 +3,7 @@ import { canEditMemoryBanks, identityScopedBanks } from "@/lib/domain/memory";
 import {
   archiveMemoryRecord,
   bulkMemoryOperation,
+  correctFounderMemory,
   createMemoryRecord,
   editMemoryRecord,
   getFounderMemory,
@@ -114,6 +115,78 @@ describe("identityScopedBanks", () => {
   it("scopes out EVERY personal bank when the actor is unknown", () => {
     expect(identityScopedBanks("", ["founder_moiz", "founder_ali"])).toEqual(["founder_moiz", "founder_ali"]);
     expect(identityScopedBanks(undefined, ["founder_moiz"])).toEqual(["founder_moiz"]);
+  });
+});
+
+/**
+ * BINDING FOUNDER CORRECTION #3 — governed super-admin correction of ANOTHER founder's memory. A super-admin
+ * may fix a colleague's wrong entry, but only through this path, with target+reason+confirm+before/after+
+ * audit+notify. A silent cross-founder edit stays blocked (that is `canEditMemoryBanks`, tested above).
+ */
+describe("correctFounderMemory (governed super-admin correction)", () => {
+  async function aliRecord() {
+    const { store, records, versions } = makeStore();
+    const rec = await createMemoryRecord(
+      { title: "Ali prefers Fridays", content: "Ali prefers Friday demos", area: "content", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_ali"], createdBy: "Ali" },
+      { store, embedder, recordAudit: async () => {}, now },
+    );
+    return { store, records, versions, rec };
+  }
+
+  it("applies a governed correction: before/after + version snapshot + attributed audit + notification", async () => {
+    const { store, versions, rec } = await aliRecord();
+    const audit: AuditEventInput[] = [];
+    const notes: { founder: string; actor: string; recordId: string }[] = [];
+    const result = await correctFounderMemory(
+      { recordId: rec.id, targetFounder: "ali", actor: "Moiz", content: "Ali prefers Tuesday demos", reason: "Ali told me in standup his preference changed", confirm: true },
+      { store, embedder, recordAudit: async (e) => void audit.push(e), notifyFounder: async (n) => void notes.push({ founder: n.founder, actor: n.actor, recordId: n.recordId }), now },
+    );
+    expect(result.before.content).toBe("Ali prefers Friday demos");
+    expect(result.after.content).toBe("Ali prefers Tuesday demos");
+    // Prior state versioned → Ali can restore it.
+    expect(versions.some((v) => v.memoryRecordId === rec.id && v.content === "Ali prefers Friday demos")).toBe(true);
+    // Audit attributes the SUPER-ADMIN as actor over ALI's record, with reason + before/after.
+    const ev = audit.find((e) => e.eventType === "memory.founder_corrected");
+    expect(ev).toBeTruthy();
+    expect(ev!.actor).toBe("Moiz");
+    expect((ev!.metadata as { targetFounder: string }).targetFounder).toBe("ali");
+    expect((ev!.metadata as { reason: string }).reason).toContain("standup");
+    expect((ev!.metadata as { superAdminOverride: boolean }).superAdminOverride).toBe(true);
+    // The affected founder was notified.
+    expect(notes).toEqual([{ founder: "ali", actor: "Moiz", recordId: rec.id }]);
+  });
+
+  it("REFUSES without explicit confirmation", async () => {
+    const { store, rec } = await aliRecord();
+    await expect(
+      correctFounderMemory({ recordId: rec.id, targetFounder: "ali", actor: "Moiz", content: "x", reason: "r", confirm: false }, { store, embedder, now }),
+    ).rejects.toThrow(/confirmation/i);
+  });
+
+  it("REFUSES without a reason", async () => {
+    const { store, rec } = await aliRecord();
+    await expect(
+      correctFounderMemory({ recordId: rec.id, targetFounder: "ali", actor: "Moiz", content: "x", reason: "   ", confirm: true }, { store, embedder, now }),
+    ).rejects.toThrow(/reason/i);
+  });
+
+  it("REFUSES a target mismatch — a record owned by Ali cannot be corrected as Haad's", async () => {
+    const { store, rec } = await aliRecord();
+    await expect(
+      correctFounderMemory({ recordId: rec.id, targetFounder: "haad", actor: "Moiz", content: "x", reason: "r", confirm: true }, { store, embedder, now }),
+    ).rejects.toThrow(/belongs to 'ali'.*not 'haad'|different founder/i);
+  });
+
+  it("REFUSES a record that is not a founder personal memory (shared company bank)", async () => {
+    const { store, records } = makeStore();
+    const rec = await createMemoryRecord(
+      { title: "Company positioning", content: "We sell outcomes", area: "company", memoryTier: "core", trustLevel: "founder_core", bankSlugs: ["company"], createdBy: "Moiz" },
+      { store, embedder, recordAudit: async () => {}, now },
+    );
+    void records;
+    await expect(
+      correctFounderMemory({ recordId: rec.id, targetFounder: "moiz", actor: "Moiz", content: "x", reason: "r", confirm: true }, { store, embedder, now }),
+    ).rejects.toThrow(/not a founder personal memory/i);
   });
 });
 
