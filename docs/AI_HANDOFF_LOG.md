@@ -5864,3 +5864,13 @@ message — FOUNDER SHOULD ROTATE it (UAT key, to be replaced by prod anyway). E
 ### Receipts
 typecheck 0 · 1193/1193 unit + new provider/capability tests · steps 1–6 of the expansion order proven.
 Builds are SLOW/flaky on this box (Turbopack stalls under load → prune + fresh + stay quiet during build).
+
+### CI fix (90ac242) — the db-proofs gate was RED since 7699774 (Jul 15)
+Of the 4 CI jobs, ONLY `db-proofs` (integrated gate) was red — typecheck+test+build, e2e Playwright,
+docker-safety were green throughout. Root cause: `verify-escalation-reroute-db.ts` used `publishing` as its
+example of a DRAFT department to prove "reroute to an inactive dept is rejected". 7699774 made publishing (all
+service depts) ACTIVE, so the reroute was rejected for the wrong reason ("not accepted" schema, not "not
+active") → assertion failed → every later commit inherited the red gate. FIX: the proof now creates its OWN
+unique-slug draft dept that accepts won_deal, so the only rejection is "not active". VERIFIED GREEN on CI run
+29621524245 (all 4 jobs pass). Also proved live: CRM 3-client isolation (each client's overview surfaces only
+its own canary; no foreign canary leaks). LESSON logged: check remote CI after EVERY push.
