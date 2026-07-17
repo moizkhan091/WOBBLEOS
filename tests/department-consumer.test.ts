@@ -8,6 +8,9 @@ import type { ProposalStore } from "@/lib/proposals";
 import type { SolutionSynthesis } from "@/lib/departments/verticals/proposal";
 import { dispatchBusinessAuditToProposal } from "@/lib/departments/verticals/paid-audit";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
+import { buildHandoffEnvelope } from "@/lib/domain/handoff";
+import { dispatchHandoff } from "@/lib/handoff";
+import type { ContentPacketRow } from "@/lib/domain/content-command";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -149,5 +152,62 @@ describe("Department consumer loop (autonomous inter-department chain)", () => {
     });
     expect(res.claimed).toBe(0);
     expect(res.completed).toBe(0);
+  });
+
+  /**
+   * WOB-UAT-023 — the Design Intelligence consumer GROUNDS its brief in the real content packet (reloaded
+   * by id), not a stale handoff copy. A carousel pack must yield a CAROUSEL asset carrying the pack's REAL
+   * design direction — the exact behavior proven live, pinned here so it cannot silently regress to the old
+   * `static` + generic-fallback path.
+   */
+  it("grounds the brief in the RELOADED packet: a carousel pack → carousel asset + the pack's real design direction", async () => {
+    const { store, rows } = makeClaimableHandoffStore();
+    const designDept = buildDepartmentRow(
+      { slug: "design_intelligence", name: "Design Intelligence", purpose: "p", status: "active", orchestratorAgentSlug: "design_intelligence_orchestrator", io: { acceptedHandoffSchemas: ["content_pack"], inboundCapabilities: ["produce_visual_direction"], outboundProducts: ["design_briefs"], downstreamConsumers: ["media_production"] }, permissions: { authorizedMemoryScopes: ["design", "brand", "content", "visual_reference"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] } },
+      { now },
+    );
+    const mediaDept = buildDepartmentRow(
+      { slug: "media_production", name: "Media Production", purpose: "p", status: "active", operatingModel: "service_department", io: { acceptedHandoffSchemas: ["design_briefs"], inboundCapabilities: ["produce_media"], outboundProducts: ["media_assets"], downstreamConsumers: [] }, permissions: { authorizedMemoryScopes: ["design"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] } },
+      { now },
+    );
+    const designMembers: DepartmentMemberRow[] = [
+      buildDepartmentMemberRow({ departmentSlug: "design_intelligence", memberType: "agent", memberRef: "visual_reference_analyst", role: "specialist", responsibility: "describe", priority: 10, capabilities: ["visual_analysis"], toolGrants: ["vision_model"], memoryGrants: ["design"] }, { now }),
+      buildDepartmentMemberRow({ departmentSlug: "design_intelligence", memberType: "agent", memberRef: "brand_voice_guardian", role: "evaluator", responsibility: "critique", priority: 20, capabilities: ["brand_critique"], toolGrants: [], memoryGrants: ["brand"] }, { now }),
+    ];
+
+    // The real pack the consumer must reload — carousel, with a distinctive design direction.
+    const packet = { id: "pk_carousel", format: "carousel", platform: "instagram", designDirection: "WOBBLE dark, heavy type, one idea per slide", carouselSlides: [{}, {}, {}] } as unknown as ContentPacketRow;
+
+    // Content routes a content_pack handoff to design_intelligence, carrying ONLY the packetId (the reload
+    // pattern). No designDirection/assets on the envelope — so a wrong brief would prove the reload failed.
+    const inbound = buildHandoffEnvelope(
+      { workflowId: "wf_design_1", department: "design_intelligence", sourceAgent: "content_orchestrator", destinationAgent: "design_intelligence_orchestrator", destinationCapability: "produce_visual_direction", objective: "Turn the content pack into a design brief", requestedAction: "consume content_pack", expectedOutputSchema: "content_pack", dataClassification: "client_confidential", authorizedMemoryScopes: ["design", "brand", "content"], companyId: "clientA", clientWorkspaceId: "clientA", previousAgentOutputs: { packetId: "pk_carousel" }, idempotencyKey: "wf_design_1:route:content->design_intelligence" },
+      { now },
+    );
+    await dispatchHandoff(inbound, { clientWorkspaceId: "clientA", grantedMemoryScopes: ["design", "brand", "content", "visual_reference"], permittedDataClassifications: ["internal", "client_confidential"] }, { store, recordAudit: async () => {}, now });
+
+    const res = await runDepartmentConsumerTick({
+      loadDepartments: async () => [designDept],
+      loadDepartment: async (slug: string) => (slug === "design_intelligence" ? designDept : slug === "media_production" ? mediaDept : null),
+      loadMembers: async (slug: string) => (slug === "design_intelligence" ? designMembers : []),
+      handoffStore: store,
+      loadPacket: async (id) => (id === "pk_carousel" ? packet : null),
+      // Advisory model deps stubbed → no provider call; the brief is still deterministic + grounded.
+      design: { describeReferences: async () => [], critiqueBrand: async () => ({ passed: true, notes: [] }) },
+      recordAudit: async () => {},
+      now,
+    });
+
+    expect(res.claimed).toBe(1);
+    expect(res.completed).toBe(1);
+    expect(res.failed).toBe(0);
+
+    // The design_briefs handoff routed to media_production carries a GROUNDED media request.
+    const toMedia = [...rows.values()].find((r) => r.department === "media_production");
+    expect(toMedia).toBeTruthy();
+    const requests = (toMedia!.envelope.previousAgentOutputs as { mediaRequests?: { kind: string; prompt: string; params: Record<string, unknown> }[] }).mediaRequests ?? [];
+    expect(requests).toHaveLength(1);
+    expect(requests[0].params.assetType).toBe("carousel"); // derived from the pack's format — NOT the old static default
+    expect(requests[0].prompt).toContain("WOBBLE dark, heavy type"); // the pack's REAL design direction, not the generic fallback
   });
 });

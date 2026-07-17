@@ -16,7 +16,7 @@ import { runProposalDepartment, type RunProposalDepartmentDeps } from "@/lib/dep
 import { openProposalRevision } from "@/lib/proposals/revision";
 import { runSalesCrmDepartment, type RunSalesCrmDepartmentDeps } from "@/lib/departments/verticals/sales-crm";
 import { runSecurityGovernanceDepartment } from "@/lib/departments/verticals/security-governance";
-import { runDesignIntelligenceDepartment, type RunDesignIntelligenceInput } from "@/lib/departments/verticals/design-intelligence";
+import { runDesignIntelligenceDepartment, type RunDesignIntelligenceInput, type RunDesignIntelligenceDeps } from "@/lib/departments/verticals/design-intelligence";
 import { getContentPacketDetail } from "@/lib/content";
 import type { ContentPacketRow } from "@/lib/domain/content-command";
 import { assetsForContentFormat } from "@/lib/domain/reference-selection";
@@ -51,6 +51,9 @@ export interface DepartmentConsumerDeps extends RunDepartmentDeps {
   salesCrm?: Partial<RunSalesCrmDepartmentDeps>;
   finance?: Partial<RunFinanceDepartmentDeps>;
   delivery?: Partial<RunDeliveryDepartmentDeps>;
+  /** Advisory provider deps for the Design Intelligence vertical (describeReferences / critiqueBrand).
+   *  Injectable so tests and proofs run without a live model; production omits them (real defaults). */
+  design?: Partial<RunDesignIntelligenceDeps>;
   /** Load a content packet by id so the Design Intelligence consumer grounds its brief in the REAL pack
    *  (design direction, format, slide count) instead of a stale handoff copy. Injectable for tests;
    *  defaults to the content store. Returns null when the pack cannot be loaded — the consumer then falls
@@ -136,7 +139,7 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
         requestedBy: env.sourceAgent ?? "content_orchestrator",
         workflowId: env.workflowId,
       },
-      { ...deps, handoffStore: deps.handoffStore, inboundEnvelope: env },
+      { ...deps, ...deps.design, handoffStore: deps.handoffStore, inboundEnvelope: env },
     );
   },
 
