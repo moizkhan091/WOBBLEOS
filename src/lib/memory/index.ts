@@ -368,6 +368,14 @@ export async function activateApprovedMemoryUpdate(
     store,
   );
 
+  // A suggestion about ANOTHER founder is only CONFIRMED by that founder (binding correction #5). A proposal
+  // whose target is a personal bank can therefore only be approved-into by its owner — the same rule
+  // `createMemoryRecord` enforces on a direct write, applied here so the approval path can't bypass it. A
+  // super-admin override does NOT come through here; it uses the governed `correctFounderMemory` path.
+  // Shared banks (company/brand/global) are unaffected — `canEditMemoryBanks` only guards personal banks.
+  const approverPermission = canEditMemoryBanks(opts.approvedBy, approvedBankSlugs);
+  if (!approverPermission.allowed) throw new Error(`only the owner may confirm a suggestion into their own memory: ${approverPermission.reason}`);
+
   const memoryRecord = buildMemoryRecordRow(
     {
       slug: opts.slug,

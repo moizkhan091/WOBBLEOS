@@ -417,6 +417,27 @@ describe("memory service", () => {
     expect(links).toHaveLength(linksAfterFirst);
   });
 
+  it("a suggestion into another founder's memory can only be CONFIRMED by that founder (binding correction #5)", async () => {
+    const proposal = buildMemoryUpdateProposalRow(
+      { proposedMemory: "Ali prefers Tuesday demos", reason: "Heard in standup.", affectedArea: "content", sourceId: "source_1", confidence: 0.8 },
+      { id: "proposal_ali", now },
+    );
+    // Someone other than Ali (here Moiz) trying to confirm a suggestion INTO Ali's personal bank is refused —
+    // a statement about another founder is theirs to confirm, not anyone else's.
+    const rejected = makeMemoryStore([proposal]);
+    await expect(
+      activateApprovedMemoryUpdate("proposal_ali", { slug: "ali-demo-day", title: "Ali demo day", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_ali"], approvedBy: "Moiz" }, { store: rejected.store, recordAudit: async () => {}, now }),
+    ).rejects.toThrow(/only the owner may confirm|personal memory bank/i);
+    expect(rejected.records).toHaveLength(0); // nothing written
+
+    // Ali (the owner) confirming their own suggestion is allowed.
+    const allowed = makeMemoryStore([proposal]);
+    const ok = await activateApprovedMemoryUpdate("proposal_ali", { slug: "ali-demo-day", title: "Ali demo day", memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["founder_ali"], approvedBy: "Ali" }, { store: allowed.store, recordAudit: async () => {}, now });
+    expect(ok).not.toBeNull();
+    expect(allowed.records).toHaveLength(1);
+    expect(allowed.records[0].bankSlugs).toContain("founder_ali");
+  });
+
   it("rejects a proposal without inserting memory", async () => {
     const proposal = buildMemoryUpdateProposalRow(
       {

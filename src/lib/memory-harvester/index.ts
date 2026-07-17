@@ -19,6 +19,7 @@ import {
   parseHarvestCandidates,
   type HarvestCandidate,
 } from "@/lib/domain/conversations";
+import { personalBankOwner } from "@/lib/domain/memory";
 
 /**
  * Memory Harvester — the background agent (model_scout/system-style) that turns
@@ -125,11 +126,17 @@ export async function harvestConversation(input: { conversationId: string }, dep
       );
 
       if (routing.action === "auto_save") {
+        // An auto-save only happens for the RESOLVED conversation founder's OWN preference into their own
+        // personal bank (an unresolved founder is routed to `propose` above). So the confirmation is attributed
+        // to that founder — it is THEIR memory, learned by the harvester (which stays the `proposedBy`). This
+        // also satisfies the owner-only confirmation guard: the system actor `memory_harvester` may not confirm
+        // an arbitrary founder's memory; only the owner (here, on whose behalf we auto-save) can.
+        const owner = routing.bankSlugs.map((b) => personalBankOwner(b)).find((o): o is string => Boolean(o)) ?? "memory_harvester";
         await approveMemoryUpdate(
           {
             proposalId: proposal.id,
             approvalId: approval.id,
-            approvedBy: "memory_harvester",
+            approvedBy: owner,
             slug: memorySlug(candidate.area),
             title: truncate(candidate.content, 80),
             memoryTier: routing.memoryTier,
