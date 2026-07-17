@@ -196,8 +196,22 @@ export async function convertLead(
   if (!lead || lead.status === "converted") return null;
   const now = deps.now ?? new Date();
 
-  const companyName = input.companyName || lead.companyName || lead.name;
-  const company = buildCompanyRow({ name: companyName, website: lead.website ?? undefined, industry: lead.industry ?? undefined, leadSource: lead.source ?? undefined, status: "qualified_prospect", createdBy: input.actor, metadata: { fromLeadId: leadId } }, { now });
+  // A lead already TIED to a company (e.g. captured against an existing client) converts UNDER that company —
+  // never a duplicate. Building a fresh company from the person's name orphaned the opportunity from the real
+  // client and fragmented its digital twin (WOB-UAT: an Alpha Dental lead spawned a "Dr. Alpha" company). Only
+  // when the lead has no company link do we create one from companyName/name.
+  let company: CompanyRow;
+  let companyIsNew = false;
+  if (lead.companyId) {
+    const existing = await store.getCompany(lead.companyId);
+    if (!existing) return null; // the lead references a company that no longer exists — refuse rather than orphan
+    company = existing;
+  } else {
+    const companyName = input.companyName || lead.companyName || lead.name;
+    company = buildCompanyRow({ name: companyName, website: lead.website ?? undefined, industry: lead.industry ?? undefined, leadSource: lead.source ?? undefined, status: "qualified_prospect", createdBy: input.actor, metadata: { fromLeadId: leadId } }, { now });
+    companyIsNew = true;
+  }
+  const companyName = company.name;
 
   const contactName = input.contactName || lead.contactName;
   const contact: ContactRow | null = contactName
@@ -215,7 +229,7 @@ export async function convertLead(
   // opportunity) and we return null. Audit only after the transaction commits.
   try {
     await withTransaction(store, async (tx) => {
-      await tx.insertCompany(company);
+      if (companyIsNew) await tx.insertCompany(company); // an existing company is reused, never re-inserted
       if (contact) await tx.insertContact(contact);
       await tx.insertOpportunity(opportunity);
       await tx.insertStageHistory({ id: newId("hist"), opportunityId: opportunity.id, oldStage: null, newStage: opportunity.stage, movedBy: input.actor ?? "system", reason: "converted from lead", createdAt: now });

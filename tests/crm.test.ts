@@ -146,6 +146,27 @@ describe("crm service", () => {
     expect(opps.size).toBe(1);
   });
 
+  it("converts a lead ALREADY tied to a company UNDER that company — no duplicate, no orphaned twin", async () => {
+    const { store, companies } = makeStore();
+    const company = buildCompanyRow({ name: "Alpha Dental", industry: "dental", createdBy: "Moiz" }, { now, id: "co_alpha" });
+    await store.insertCompany(company);
+    const lead = await addLead({ name: "Dr. Alpha", companyId: "co_alpha", source: "referral", intentLevel: "high", serviceInterest: ["ai-receptionist"] }, { store, now, recordAudit: async () => {} });
+    const before = companies.size;
+    const result = await convertLead(lead.id, { valueCents: 480000, actor: "Moiz" }, { store, now, recordAudit: async () => {} });
+    expect(result).not.toBeNull();
+    // The opportunity lands under the EXISTING company — not a new "Dr. Alpha" one.
+    expect(result!.company.id).toBe("co_alpha");
+    expect(result!.company.name).toBe("Alpha Dental");
+    expect(result!.opportunity.companyId).toBe("co_alpha");
+    expect(companies.size).toBe(before); // no duplicate company created
+  });
+
+  it("refuses to convert a lead whose linked company no longer exists — never orphans an opportunity", async () => {
+    const { store } = makeStore();
+    const lead = await addLead({ name: "Ghost", companyId: "co_missing", source: "referral", intentLevel: "high", serviceInterest: ["x"] }, { store, now, recordAudit: async () => {} });
+    expect(await convertLead(lead.id, { valueCents: 1000, actor: "Moiz" }, { store, now, recordAudit: async () => {} })).toBeNull();
+  });
+
   it("convertLead is atomic: a mid-chain failure rolls back with no orphaned company or half-converted lead", async () => {
     const { store, companies, contacts, opps } = makeStore();
     const lead = await addLead({ name: "Inbound", source: "referral", intentLevel: "high", serviceInterest: ["ai-receptionist"], problemStated: "missing calls" }, { store, now, recordAudit: async () => {} });
