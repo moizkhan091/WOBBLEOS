@@ -4,6 +4,8 @@ import {
   selectReferencesForBatch,
   scoreReference,
   collectAvoidTags,
+  contentFormatNeedsDesign,
+  assetsForContentFormat,
   type CreativeReference,
 } from "@/lib/domain/reference-selection";
 
@@ -78,5 +80,42 @@ describe("scoring + avoid tags", () => {
   });
   it("collects avoid tags from negative references", () => {
     expect(collectAvoidTags(refs)).toEqual(expect.arrayContaining(["clipart", "comic"]));
+  });
+});
+
+/**
+ * WOB-UAT-023 — the format→design mapping that decides whether a content pack goes to Design Intelligence
+ * and what asset it asks for. This is the SINGLE source of truth shared by the content router and the
+ * design consumer, so they can never disagree about "does this pack need a visual".
+ */
+describe("content format → design routing", () => {
+  it("visual formats need a design brief; text-only formats do not", () => {
+    expect(contentFormatNeedsDesign("static")).toBe(true);
+    expect(contentFormatNeedsDesign("carousel")).toBe(true);
+    expect(contentFormatNeedsDesign("reel_script")).toBe(true);
+    expect(contentFormatNeedsDesign("youtube_script")).toBe(true);
+    expect(contentFormatNeedsDesign("text")).toBe(false);
+    expect(contentFormatNeedsDesign("thread")).toBe(false);
+    expect(contentFormatNeedsDesign(null)).toBe(false);
+    expect(contentFormatNeedsDesign(undefined)).toBe(false);
+  });
+
+  it("maps each visual format to the right asset type", () => {
+    expect(assetsForContentFormat("static")).toEqual([{ assetType: "static", index: 0, platform: undefined }]);
+    expect(assetsForContentFormat("reel_script")).toEqual([{ assetType: "video", index: 0, platform: undefined }]);
+    expect(assetsForContentFormat("youtube_script")).toEqual([{ assetType: "video", index: 0, platform: undefined }]);
+  });
+
+  it("carousel carries its slide count (only when > 0) so reference matching can honor it", () => {
+    expect(assetsForContentFormat("carousel", { slideCount: 8, platform: "instagram" })).toEqual([
+      { assetType: "carousel", index: 0, platform: "instagram", slideCount: 8 },
+    ]);
+    // No slides known → no slideCount field rather than a misleading 0.
+    expect(assetsForContentFormat("carousel", { slideCount: 0 })).toEqual([{ assetType: "carousel", index: 0, platform: undefined }]);
+  });
+
+  it("returns NO assets for a text-only format — the caller must not invent a default image", () => {
+    expect(assetsForContentFormat("text")).toEqual([]);
+    expect(assetsForContentFormat("thread")).toEqual([]);
   });
 });

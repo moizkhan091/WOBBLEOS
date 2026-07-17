@@ -17,6 +17,9 @@ import { openProposalRevision } from "@/lib/proposals/revision";
 import { runSalesCrmDepartment, type RunSalesCrmDepartmentDeps } from "@/lib/departments/verticals/sales-crm";
 import { runSecurityGovernanceDepartment } from "@/lib/departments/verticals/security-governance";
 import { runDesignIntelligenceDepartment, type RunDesignIntelligenceInput } from "@/lib/departments/verticals/design-intelligence";
+import { getContentPacketDetail } from "@/lib/content";
+import type { ContentPacketRow } from "@/lib/domain/content-command";
+import { assetsForContentFormat } from "@/lib/domain/reference-selection";
 import { createMediaJob } from "@/lib/media";
 import { runFinanceDepartment, type RunFinanceDepartmentDeps } from "@/lib/departments/verticals/finance";
 import { runDeliveryDepartment, type RunDeliveryDepartmentDeps } from "@/lib/departments/verticals/delivery";
@@ -48,6 +51,11 @@ export interface DepartmentConsumerDeps extends RunDepartmentDeps {
   salesCrm?: Partial<RunSalesCrmDepartmentDeps>;
   finance?: Partial<RunFinanceDepartmentDeps>;
   delivery?: Partial<RunDeliveryDepartmentDeps>;
+  /** Load a content packet by id so the Design Intelligence consumer grounds its brief in the REAL pack
+   *  (design direction, format, slide count) instead of a stale handoff copy. Injectable for tests;
+   *  defaults to the content store. Returns null when the pack cannot be loaded — the consumer then falls
+   *  back to a truthful minimal brief rather than failing the handoff. */
+  loadPacket?: (packetId: string) => Promise<ContentPacketRow | null>;
   /** Only run consumers for these department slugs (defaults to every active department with a consumer). */
   onlyDepartments?: string[];
   /** Load the departments to sweep (defaults to the active departments from the registry). */
@@ -97,21 +105,40 @@ async function runResearchLessonsIngest(env: HandoffEnvelope, deps: DepartmentCo
  */
 export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
   // WOB-UAT-023. Content now routes here, so this consumer has a REAL producer.
-  design_intelligence: (env, deps) =>
-    runDesignIntelligenceDepartment(
+  design_intelligence: async (env, deps) => {
+    const packetId = str(out(env).packetId);
+    // Content carries `packetId`, not the pack body — the same re-load-by-id pattern proposal and finance
+    // use. Reload the ACTUAL persisted pack so the brief is grounded in its real design direction, format
+    // and slide count, not a handoff copy that could drift. A load failure is NOT fatal: fall back to the
+    // handoff-carried hints (or a truthful minimal brief) rather than dropping the handoff.
+    let packet: ContentPacketRow | null = null;
+    if (packetId) {
+      try {
+        packet = deps.loadPacket ? await deps.loadPacket(packetId) : (await getContentPacketDetail(packetId)).packet;
+      } catch {
+        packet = null;
+      }
+    }
+    const carriedAssets = out(env).assets as RunDesignIntelligenceInput["assets"] | undefined;
+    const derivedAssets = packet
+      ? assetsForContentFormat(packet.format, { slideCount: packet.carouselSlides?.length, platform: packet.platform })
+      : [];
+    // A visual format yields ≥1 asset; if the pack somehow carried none (e.g. a text pack mis-routed), fall
+    // back to a single static so the department still produces a truthful (possibly referenceless) brief.
+    const assets = (derivedAssets.length ? derivedAssets : carriedAssets) ?? [{ assetType: "static" as const }];
+    return runDesignIntelligenceDepartment(
       {
-        packetId: str(out(env).packetId),
-        // Content carries `packetId`, not the pack body — the same re-load-by-id pattern proposal and
-        // finance use. `designDirection` rides on the outputs when present.
-        designDirection: str(out(env).designDirection, "Follow the approved brand system for this pack."),
-        assets: (out(env).assets as RunDesignIntelligenceInput["assets"]) ?? [{ assetType: "static" }],
+        packetId,
+        designDirection: packet?.designDirection?.trim() || str(out(env).designDirection, "Follow the approved brand system for this pack."),
+        assets,
         references: (out(env).references as RunDesignIntelligenceInput["references"]) ?? [],
         companyId: env.companyId ?? null,
         requestedBy: env.sourceAgent ?? "content_orchestrator",
         workflowId: env.workflowId,
       },
       { ...deps, handoffStore: deps.handoffStore, inboundEnvelope: env },
-    ),
+    );
+  },
 
   // WOB-UAT-023. Registered because Design Intelligence now routes `design_briefs` here — without a
   // consumer that emission would be created, delivered and NEVER claimed: a decorative emission, the

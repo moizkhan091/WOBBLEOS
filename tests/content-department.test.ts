@@ -69,7 +69,7 @@ function makeGraphDeps(nodeResponses: string[], qualityPass = true): ContentGrap
 const contentDept = buildDepartmentRow(
   {
     slug: "content", name: "Content", purpose: "p", status: "active", orchestratorAgentSlug: "content_orchestrator",
-    io: { acceptedHandoffSchemas: ["creative_brief"], inboundCapabilities: ["generate_content_pack"], outboundProducts: ["content_pack"], downstreamConsumers: ["publishing"] },
+    io: { acceptedHandoffSchemas: ["creative_brief"], inboundCapabilities: ["generate_content_pack"], outboundProducts: ["content_pack"], downstreamConsumers: ["publishing", "design_intelligence"] },
     permissions: { authorizedMemoryScopes: ["content", "brand", "research", "founder_taste"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: ["run_node"], deniedTools: [] },
   },
   { now },
@@ -78,12 +78,18 @@ const publishingDept = buildDepartmentRow(
   { slug: "publishing", name: "Publishing", purpose: "p", status: "draft", io: { acceptedHandoffSchemas: ["content_pack", "media_assets"], inboundCapabilities: ["publish"], outboundProducts: ["published_content"], downstreamConsumers: [] }, permissions: { authorizedMemoryScopes: ["content"], permittedDataClassifications: ["internal", "public", "client_confidential"], allowedTools: [], deniedTools: [] } },
   { now },
 );
+// A VISUAL pack (the STRATEGY here is a carousel) must ALSO route to Design Intelligence — it turns the
+// pack into a design brief. A text/thread pack would not; see the format-routing test below.
+const designDept = buildDepartmentRow(
+  { slug: "design_intelligence", name: "Design Intelligence", purpose: "p", status: "active", orchestratorAgentSlug: "design_intelligence_orchestrator", io: { acceptedHandoffSchemas: ["content_pack"], inboundCapabilities: ["produce_visual_direction"], outboundProducts: ["design_briefs"], downstreamConsumers: ["media_production"] }, permissions: { authorizedMemoryScopes: ["design", "brand", "content"], permittedDataClassifications: ["internal", "client_confidential"], allowedTools: [], deniedTools: [] } },
+  { now },
+);
 const members: DepartmentMemberRow[] = Object.values(CONTENT_GRAPH_AGENTS).map((slug, i) =>
   buildDepartmentMemberRow({ departmentSlug: "content", memberType: "agent", memberRef: slug, role: "specialist", responsibility: "work", priority: (i + 1) * 10, capabilities: [["strategy", "research", "copywriting", "scoring"][i]], toolGrants: ["run_node"], memoryGrants: ["content"] }, { now }),
 );
 
 const registry = {
-  loadDepartment: async (slug: string) => (slug === "content" ? contentDept : slug === "publishing" ? publishingDept : null),
+  loadDepartment: async (slug: string) => (slug === "content" ? contentDept : slug === "publishing" ? publishingDept : slug === "design_intelligence" ? designDept : null),
   loadMembers: async (slug: string) => (slug === "content" ? members : []),
 };
 
@@ -100,7 +106,8 @@ describe("Content department vertical", () => {
     expect(res.product?.packetId).toBe("pk_1");
     expect(res.product?.qualityStatus).toBe("passed");
     expect(res.product?.approvalId).toBe("ap_1");
-    expect(res.routedTo.map((r) => r.department)).toEqual(["publishing"]);
+    // A carousel is a visual pack: it goes to Publishing AND Design Intelligence (→ brief → media job).
+    expect(res.routedTo.map((r) => r.department)).toEqual(["publishing", "design_intelligence"]);
 
     // The 4 distinct creative agents each ran through a CLAIMED handoff and completed (dept=content).
     const contentHandoffs = [...rows.values()].filter((r) => r.department === "content");
@@ -112,7 +119,24 @@ describe("Content department vertical", () => {
     expect(routed).toHaveLength(1);
     expect(routed[0].deliveryState).toBe("delivered");
     expect(routed[0].envelope.expectedOutputSchema).toBe("content_pack");
+
+    // ...and to Design Intelligence, which is what makes the visual chain (brief → media) reachable at all.
+    const toDesign = [...rows.values()].filter((r) => r.department === "design_intelligence");
+    expect(toDesign).toHaveLength(1);
+    expect(toDesign[0].deliveryState).toBe("delivered");
+    expect(toDesign[0].envelope.expectedOutputSchema).toBe("content_pack");
     expect(audits).toEqual(expect.arrayContaining(["department.accepted", "department.routed", "department.completed"]));
+  });
+
+  it("a TEXT pack routes to Publishing ONLY — no design brief for words-only content", async () => {
+    const { store, rows } = makeHandoffStore();
+    const TEXT_STRATEGY = JSON.stringify({ topic: "cold email", angle: "specificity beats volume", platform: "x", format: "text", targetAudience: "founders", objective: "book calls", rationale: "fresh angle" });
+    const res = await runContentDepartment(
+      { contentTrackId: "ct1", requestedBy: "Moiz", objective: "book more calls", companyId: "clientA", graphRunId: "wf_content_text" },
+      { ...registry, handoffStore: store, graph: makeGraphDeps([TEXT_STRATEGY, EVIDENCE, DRAFT, REVISE, SCORE]), recordAudit: async () => {}, now },
+    );
+    expect(res.routedTo.map((r) => r.department)).toEqual(["publishing"]);
+    expect([...rows.values()].some((r) => r.department === "design_intelligence")).toBe(false);
   });
 
   it("escalates (not silently) when the department has no registered strategist", async () => {

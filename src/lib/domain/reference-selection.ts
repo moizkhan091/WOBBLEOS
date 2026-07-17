@@ -61,6 +61,40 @@ const KIND_FOR_ASSET: Record<AssetType, ReferenceKind> = {
   video: "video",
 };
 
+/**
+ * Which content formats need a VISUAL design brief, and what asset each maps to.
+ *
+ * A `text` post or a `thread` is words only — routing it to Design Intelligence would manufacture a brief
+ * for an asset that will never be rendered, the decorative-emission failure this codebase forbids. A
+ * `static`/`carousel`/reel/short needs a rendered visual, so it earns a brief. The mapping is the single
+ * source of truth shared by the content router (does this pack go to design?) and the design consumer
+ * (what asset does it request?), so the two can never silently disagree.
+ */
+const ASSET_FOR_CONTENT_FORMAT: Record<string, AssetType> = {
+  static: "static",
+  carousel: "carousel",
+  reel_script: "video",
+  youtube_script: "video",
+};
+
+/** True when a content pack of this format needs a rendered visual asset (and thus a design brief). */
+export function contentFormatNeedsDesign(format: string | null | undefined): boolean {
+  return format != null && format in ASSET_FOR_CONTENT_FORMAT;
+}
+
+/**
+ * The design asset request(s) implied by a content pack's format. Returns `[]` for text-only formats —
+ * the caller must treat that as "no design needed", never as "one static asset by default", or a thread
+ * would silently sprout an image brief.
+ */
+export function assetsForContentFormat(format: string | null | undefined, opts: { slideCount?: number; platform?: string } = {}): AssetRequest[] {
+  if (!contentFormatNeedsDesign(format)) return [];
+  const assetType = ASSET_FOR_CONTENT_FORMAT[format as string];
+  const request: AssetRequest = { assetType, index: 0, platform: opts.platform };
+  if (assetType === "carousel" && opts.slideCount && opts.slideCount > 0) request.slideCount = opts.slideCount;
+  return [request];
+}
+
 function overlapCount(a: string[] = [], b: string[] = []): number {
   const set = new Set(a.map((s) => s.toLowerCase()));
   return b.reduce((n, t) => (set.has(t.toLowerCase()) ? n + 1 : n), 0);

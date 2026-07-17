@@ -3,6 +3,7 @@ import { runContentGraph, type RunContentGraphInput, type ContentGraphResult, ty
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
 import { runQaGate, type QaGateDeps } from "@/lib/qa/gate";
 import { contentQualityBoard, contentBrandBoard, buildContentSubmission } from "@/lib/qa/boards";
+import { contentFormatNeedsDesign } from "@/lib/domain/reference-selection";
 
 /**
  * OPT-IN QA gate for the content → publishing emission. When provided, TWO independent boards
@@ -123,6 +124,14 @@ export async function runContentDepartment(
         qaReviewIds: decision.reviews.map((r) => r.id),
       };
       if (!decision.released) routeTo = []; // BLOCK the emission to Publishing (the gate raised the escalation).
+    }
+
+    // A pack that needs a rendered visual (static/carousel/reel/short) ALSO routes to Design Intelligence,
+    // which turns it into a design brief → media job. Text-only formats (text/thread) do not — briefing an
+    // asset that will never render is the decorative emission this codebase forbids. Only a RELEASABLE pack
+    // is briefed: if QA blocked Publishing, it blocks design too (routeTo is already []), so we gate on it.
+    if (routeTo.includes("publishing") && contentFormatNeedsDesign(result.brief.format)) {
+      routeTo = [...routeTo, "design_intelligence"];
     }
 
     return {
