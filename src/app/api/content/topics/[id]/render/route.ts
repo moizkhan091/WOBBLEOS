@@ -38,6 +38,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const outputRefs = result.assets.flatMap((a) => a.outputRefs);
     if (!outputRefs.length) return NextResponse.json({ ok: false, error: "render produced no image" }, { status: 502 });
 
+    const art = result.concept ?? result.deck;
     const asset = await addContentAsset({
       title: topic.title,
       kind: kind === "carousel" ? "carousel" : "image",
@@ -45,7 +46,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       tags: [topic.pillar],
       ownerScope: "company",
       sourceType: "content_pack",
-      metadata: { topicId: id, concept: result.concept, model: result.model, treatment: result.concept.treatment },
+      metadata: { topicId: id, model: result.model, treatment: art?.treatment, slides: outputRefs.length, art },
     });
 
     // Link the produced asset back to the topic (approved → promoted; already-promoted is a no-op).

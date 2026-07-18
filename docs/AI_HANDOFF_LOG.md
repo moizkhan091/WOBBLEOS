@@ -6537,3 +6537,12 @@ fields. POST /api/org/[companyId]/audit assembles the client's qualification (gr
 of interest, and founder-approved discovery findings into the audit intake, then runs the paid-audit graph
 linked to the company. Org Workspace: a "⚡ Run Paid Audit from this client" button in the Journey tab.
 Typecheck + route-auth-coverage green.
+
+## 2026-07-18 — batch 15: carousels end-to-end (full teaching deck from one Produce)
+
+Carousel director (buildCarouselDirectorPrompt + carouselDeckSchema + parseCarouselDeck) designs a cohesive
+5-7 slide deck (cover → problem → mechanism steps → proof → CTA) from a topic; renderTopicAsset branches on
+kind=carousel → designCarouselDeck → renders every slide (shared treatment/colours) → all stored as one Library
+asset (mediaRefs[]). Topic Bank shows the produced slides as a horizontal strip. PROVEN LIVE: "dead-database
+revival" → 7-slide deck (cover: glowing crystal rising from dead floppy disks; STEP-1: 3D lead-sorting diagram),
+cohesive blue+orange system, wobble. wordmark, swipe affordance. Typecheck + render tests (14) green.

@@ -144,7 +144,7 @@ describe("art director (autonomous concept → render)", () => {
       { kind: "static", hook: "H", teachingJob: "T", topicId: "t1", requestedBy: "moiz" },
       { provider, loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: { getSpent: async () => 0 }, conceptProvider: async () => ({ text: conceptJson }) },
     );
-    expect(res.concept.treatment).toBe("cinematic_3d");
+    expect(res.concept?.treatment).toBe("cinematic_3d");
     expect(res.assets).toHaveLength(1);
     expect(calls[0].prompt).toContain("graveyard of $$$ tombstones"); // the designed metaphor reached the prompt
     expect(calls[0].prompt).toContain("FOR SALES TEAMS");

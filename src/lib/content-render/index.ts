@@ -6,7 +6,7 @@ import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
-import { buildRenderPlan, buildArtDirectorPrompt, parseRenderConcept, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment, type RenderConcept } from "@/lib/domain/content-render";
+import { buildRenderPlan, buildArtDirectorPrompt, parseRenderConcept, buildCarouselDirectorPrompt, parseCarouselDeck, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment, type RenderConcept, type CarouselDeck } from "@/lib/domain/content-render";
 
 /**
  * Content render service — turns a topic/packet into on-brand statics/carousels via the OpenRouter image
@@ -195,6 +195,39 @@ export async function designRenderConcept(
   );
 }
 
+/** Design a full teaching carousel DECK from a topic (cover → mechanism → CTA). Safe fallback so it never blocks. */
+export async function designCarouselDeck(
+  input: { hook: string; teachingJob: string; pillar?: string },
+  deps: { runProvider?: ConceptProvider; model?: string } = {},
+): Promise<CarouselDeck> {
+  const { system, user } = buildCarouselDirectorPrompt(input);
+  const runProvider = deps.runProvider ?? (async (i) => runTextProvider({ ...i, usageContext: { agentSlug: "content_art_director", module: CONTENT_RENDER_MODULE } }));
+  const r = await runProvider({
+    role: "content_copywriting",
+    module: CONTENT_RENDER_MODULE,
+    model: deps.model ?? "anthropic/claude-sonnet-4.5",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    maxTokens: 1400,
+    temperature: 0.6,
+  });
+  return (
+    parseCarouselDeck(r.text) ?? {
+      treatment: "hand_notebook",
+      accentColor: "electric orange",
+      colorField: "cream notebook paper",
+      labelTag: "",
+      slides: [
+        { role: "cover", heading: input.hook, body: "" },
+        { role: "mechanism", heading: "The mechanism", body: input.teachingJob.slice(0, 160) },
+        { role: "cta", heading: "Book a free AI audit", body: "" },
+      ],
+    }
+  );
+}
+
 export interface RenderTopicInput {
   kind: RenderKind;
   hook: string;
@@ -212,7 +245,33 @@ export interface RenderTopicInput {
 export async function renderTopicAsset(
   input: RenderTopicInput,
   deps: ContentRenderDeps & { conceptProvider?: ConceptProvider; conceptModel?: string; designConcept?: (i: { hook: string; teachingJob: string; pillar?: string; platform?: string }) => Promise<RenderConcept> } = {},
-): Promise<RenderContentResult & { concept: RenderConcept }> {
+): Promise<RenderContentResult & { concept?: RenderConcept; deck?: CarouselDeck }> {
+  // CAROUSEL: the carousel director designs a full teaching DECK (cover → mechanism → CTA); render every slide.
+  if (input.kind === "carousel") {
+    const deck = await designCarouselDeck({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar }, { runProvider: deps.conceptProvider, model: deps.conceptModel });
+    const result = await renderContent(
+      {
+        kind: "carousel",
+        hook: input.hook,
+        teachingJob: input.teachingJob,
+        pillar: input.pillar,
+        platform: input.platform,
+        slides: deck.slides,
+        cta: deck.slides.find((s) => s.role === "cta")?.heading,
+        model: input.model,
+        topicId: input.topicId,
+        requestedBy: input.requestedBy,
+        treatment: deck.treatment,
+        accentColor: deck.accentColor,
+        colorField: deck.colorField,
+        labelTag: deck.labelTag || undefined,
+      },
+      deps,
+    );
+    return { ...result, deck };
+  }
+
+  // STATIC: the art director designs a single scroll-stopping concept.
   const design = deps.designConcept ?? ((i) => designRenderConcept(i, { runProvider: deps.conceptProvider, model: deps.conceptModel }));
   const concept = await design({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform });
   const result = await renderContent(

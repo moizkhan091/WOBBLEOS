@@ -223,6 +223,44 @@ export function parseRenderConcept(text: string): RenderConcept | null {
   return parseJsonObject(text, renderConceptSchema);
 }
 
+// ── Carousel director (design a whole teaching DECK from a topic) ──────────────────────────────────────
+
+export const carouselDeckSchema = z.object({
+  treatment: z.enum(RENDER_TREATMENTS).default("hand_notebook"),
+  accentColor: z.string().trim().default("electric orange"),
+  colorField: z.string().trim().default("cream paper"),
+  labelTag: z.string().trim().default(""),
+  slides: z
+    .array(
+      z.object({
+        role: z.enum(CAROUSEL_SLIDE_ROLES).default("mechanism"),
+        heading: z.string().trim().min(1),
+        body: z.string().trim().default(""),
+      }),
+    )
+    .min(3)
+    .max(8),
+});
+export type CarouselDeck = z.infer<typeof carouselDeckSchema>;
+
+/** The Carousel Director: turn a topic into a cohesive teaching DECK (cover → problem → mechanism steps → proof → CTA). */
+export function buildCarouselDirectorPrompt(input: { hook: string; teachingJob: string; pillar?: string }): { system: string; user: string } {
+  const system = `You are WOBBLE's CAROUSEL DIRECTOR. Turn the topic into a cohesive 5-7 slide teaching carousel in the WOBBLE style — a viewer should SWIPE and actually learn the mechanism, then get one soft CTA. Every slide teaches a different layer (never repeat).
+
+${WOBBLE_VISUAL_SYSTEM}
+
+Structure: slide 1 = COVER (the hook), then PROBLEM, then 2-4 MECHANISM slides (the real steps — tools, inputs, actions, outputs, decisions, failure routes), optionally PROOF, then a CTA slide. Keep each slide's text tight and concrete.
+
+Respond with STRICT JSON only:
+{"treatment":"cinematic_3d|photographic_dataviz|hand_notebook","accentColor":"e.g. electric orange","colorField":"background colour field or paper","labelTag":"short pill label","slides":[{"role":"cover|problem|mechanism|proof|cta","heading":"short slide heading","body":"1-2 tight teaching lines"}]}`;
+  const user = `HOOK (slide 1 cover, exact): "${input.hook}"\nTEACHING JOB (the mechanism to actually teach across the deck): ${input.teachingJob}\n${input.pillar ? `PILLAR: ${input.pillar}\n` : ""}Design the deck. STRICT JSON only.`;
+  return { system, user };
+}
+
+export function parseCarouselDeck(text: string): CarouselDeck | null {
+  return parseJsonObject(text, carouselDeckSchema);
+}
+
 export type RenderKind = "static" | "carousel";
 
 export interface RenderPlanItem {

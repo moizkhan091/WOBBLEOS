@@ -5963,6 +5963,7 @@ function TopicBankPage() {
   const [count, setCount] = useState(8);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [producedSlides, setProducedSlides] = useState<Record<string, number>>({});
   const topics = topicsApi.data?.topics ?? [];
   const runs = runsApi.data?.runs ?? [];
 
@@ -5988,8 +5989,12 @@ function TopicBankPage() {
     try {
       const r = await fetch(`/api/content/topics/${id}/render${hero ? "?hero=1" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { setMsg("Produced ✓ — the on-brand asset is rendered and saved to your Library."); topicsApi.reload(); }
-      else setMsg("Error: " + String(j.error ?? r.status));
+      if (r.ok && j.ok !== false) {
+        const n = Number(j.images ?? 1);
+        setProducedSlides((s) => ({ ...s, [id]: n }));
+        setMsg(`Produced ✓ — ${n > 1 ? `a ${n}-slide carousel` : "the on-brand asset"} is rendered and saved to your Library.`);
+        topicsApi.reload();
+      } else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
 
@@ -6058,8 +6063,18 @@ function TopicBankPage() {
                 </div>
               ) : (
                 <div>
-                  {t.promotedPacketId ? <img src={`/api/library/assets/${t.promotedPacketId}/media`} alt={t.title} loading="lazy" style={{ width: "100%", maxWidth: 460, borderRadius: 10, marginTop: 4, display: "block", border: "1px solid rgba(255,255,255,0.08)" }} /> : null}
-                  <div style={{ fontSize: 11.5, color: faint, marginTop: 6 }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}{t.promotedPacketId ? " · in Library" : ""}</div>
+                  {t.promotedPacketId ? (
+                    (producedSlides[t.id] ?? 1) > 1 ? (
+                      <div style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 4, paddingBottom: 6 }}>
+                        {Array.from({ length: producedSlides[t.id] }).map((_, i) => (
+                          <img key={i} src={`/api/library/assets/${t.promotedPacketId}/media?i=${i}`} alt={`${t.title} slide ${i + 1}`} loading="lazy" style={{ height: 300, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", flex: "0 0 auto", display: "block" }} />
+                        ))}
+                      </div>
+                    ) : (
+                      <img src={`/api/library/assets/${t.promotedPacketId}/media`} alt={t.title} loading="lazy" style={{ width: "100%", maxWidth: 460, borderRadius: 10, marginTop: 4, display: "block", border: "1px solid rgba(255,255,255,0.08)" }} />
+                    )
+                  ) : null}
+                  <div style={{ fontSize: 11.5, color: faint, marginTop: 6 }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}{t.promotedPacketId ? ((producedSlides[t.id] ?? 1) > 1 ? ` · ${producedSlides[t.id]}-slide carousel in Library` : " · in Library") : ""}</div>
                 </div>
               )}
             </div>
