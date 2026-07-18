@@ -5829,6 +5829,22 @@ function OrgWorkspacePage() {
   useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
   const [tab, setTab] = useState<"journey" | "artifacts">("journey");
   const org = useApi<{ journey: OrgJourney; lineage: OrgLineage }>(`/api/org/${selectedId || "__none__"}`);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditMsg, setAuditMsg] = useState<string | null>(null);
+  async function runClientAudit() {
+    if (!selectedId) return;
+    setAuditBusy(true); setAuditMsg("Running a McKinsey-depth audit from this client's stored context (~1 min)…");
+    try {
+      const r = await fetch(`/api/org/${selectedId}/audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) {
+        const c = (j.inheritedContext ?? {}) as { discoveryFacts?: number; services?: number; qualification?: boolean };
+        const rep = (j.report ?? {}) as { opportunities?: number; serviceCount?: number };
+        setAuditMsg(`Audit complete ✓ — inherited ${c.discoveryFacts ?? 0} discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities across ${Number(rep.serviceCount ?? 0)} services. See the Artifacts tab.`);
+        org.reload();
+      } else setAuditMsg("Error: " + String(j.error ?? r.status));
+    } finally { setAuditBusy(false); }
+  }
 
   if (companiesApi.loading) return <StateBlock kind="loading" message="Loading organisations…" />;
   if (companiesApi.error) return <StateBlock kind="error" message={companiesApi.error} />;
@@ -5876,6 +5892,12 @@ function OrgWorkspacePage() {
                 <OrgMetric label="opportunities" value={j.opportunities.length} />
               </div>
               {j.qualification ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5, padding: "11px 14px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.14)", background: "rgba(184,255,44,0.03)" }}><b style={{ color: C.lime }}>Qualification {j.qualification.grade}</b> — {j.qualification.recommendation}</div> : null}
+              {/* Client-centric commercial action: create the paid audit FROM this client — it inherits the stored context. */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+                <button onClick={runClientAudit} disabled={auditBusy} style={auditBusy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{auditBusy ? "Running audit…" : "⚡ Run Paid Audit from this client"}</button>
+                <span style={{ fontSize: 11, color: faint }}>inherits this client&apos;s qualification + discovery findings + services — no re-typing</span>
+              </div>
+              {auditMsg ? <div style={{ fontSize: 12, color: auditMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{auditMsg}</div> : null}
               <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em", marginTop: 4 }}>MEETINGS & DISCOVERY</div>
               {j.meetings.length ? j.meetings.map((m) => (
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>

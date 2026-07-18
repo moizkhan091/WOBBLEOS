@@ -6529,3 +6529,11 @@ SOURCES, CONTENT STUDIO (topics/content/library/media/social/seo/webstats), REVE
 WOBBLE HQ, and a SYSTEM drawer (collapsed by default — the sidebar opens only the active group). Root now
 redirects to /ask; DEFAULT_MODULE = "ask". VERIFIED LIVE in the browser (real Chrome, dev-login): the new nav +
 Topic Bank render authed as founder Ali with real topics + stats + Approve/Reject.
+
+## 2026-07-18 — batch 14: client-centric paid audit
+
+The locked #1 restructure: a paid audit created FROM a client inherits stored context instead of 3 blank
+fields. POST /api/org/[companyId]/audit assembles the client's qualification (grade + recommendation), services
+of interest, and founder-approved discovery findings into the audit intake, then runs the paid-audit graph
+linked to the company. Org Workspace: a "⚡ Run Paid Audit from this client" button in the Journey tab.
+Typecheck + route-auth-coverage green.
