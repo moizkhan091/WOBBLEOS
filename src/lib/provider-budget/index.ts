@@ -30,6 +30,8 @@ export const PROVIDER_BUDGETS: Record<string, ProviderBudget> = {
   apify: { ceiling: 2.0, stop: 1.0, unit: "usd" },
   // ElevenLabs bills characters against the account quota (creator tier ≈ 232k). Stop well short.
   elevenlabs: { ceiling: 232285, stop: 210000, unit: "characters" },
+  // DataForSEO account holds only $1 — stop well under it so keyword/trend calls can never drain the balance.
+  dataforseo: { ceiling: 0.5, stop: 0.3, unit: "usd" },
 };
 
 export class ProviderBudgetExceededError extends Error {

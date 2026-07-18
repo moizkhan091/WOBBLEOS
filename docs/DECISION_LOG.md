@@ -452,3 +452,21 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Do NOT: mark council agents "paused" to dodge the gate (they really run); hand-list their slugs in the test.
 - Affects: tests/registry-integrity.test.ts, migration 0057, src/db/schema.ts, src/lib/domain/qualification.ts,
   src/lib/qualification/index.ts, src/lib/domain/agents.ts (+8), tests/qualification.test.ts, prove-qualification.ts.
+
+---
+
+## 2026-07-18 — DataForSEO as the keyword/trend provider (+ V2 infra decisions)
+
+- Chose **DataForSEO** over the Google Ads API for keyword data: pay-as-you-go (~$1.10/10k keywords), NO Google
+  Ads account or dev-token approval needed, and Google Trends at $0.001/req for the velocity signal. Google
+  Keyword Planner is free but needs an Ads account + only returns ranges without an active campaign.
+- Budget = **$0.30 stop / $0.50 ceiling** against a $1 balance — deliberately conservative ("use it wise"); the
+  ledger + kill switch enforce it. Worst-case per-call bounds (search 0.05 / ideas 0.03 / trends 0.01) gate
+  cumulative spend pessimistically.
+- Blocker (founder action): DataForSEO account must be VERIFIED in their panel before ANY data call works
+  (returns 40104). Adapter is done + tested; only live proof waits on this.
+- Other V2 infra decisions recorded in the blueprint §19: voice similarity_boost **0.75**; image gen via
+  **`openai/gpt-5.4-image-2` on OpenRouter** (reference images; no OpenAI key); analytics via **Plausible** (not
+  Netlify — no public API); website changes **suggestions-first** (auto-PR only once the site repo is connected).
+- Do NOT: call DataForSEO without a named ledger `item`; store the credential inside the repo; fake data on a
+  40104 (surface `DataForSeoAccountError` instead).

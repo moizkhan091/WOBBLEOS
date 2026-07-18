@@ -269,7 +269,7 @@ Founder command surface for the business itself: **Offers** (offer lab + the 34-
 
 ## 11. Open decisions (need the founder)
 
-1. **Voice similarity_boost:** 0.65 (content handoff) vs 0.75 (Phase-9 VOICE-SETTINGS)?  →
+1. **Voice similarity_boost:** RESOLVED → **0.75** (founder confirmed 2026-07-18).
 2. **GPT Image 2 path:** RESOLVED — route `openai/gpt-5.4-image-2` (GPT Image 2) through the EXISTING OpenRouter key
    (it accepts reference images). Only confirm the per-image cost + spend cap. No separate OpenAI key needed.
 3. **Web analytics:** Netlify Analytics (paid) vs Plausible?
@@ -375,7 +375,7 @@ repo; match/exceed their timing, music, SFX, transitions, density, and polish wh
 2. Write plain-language narration a smart 14-year-old follows (mechanism, not jargon).
 3. Generate Moiz's voice via ElevenLabs FIRST (before timing scenes) — voice lock: id 512Jeow4Rpsq80q0SYn7,
    eleven_multilingual_v2, speed 1.0, stability 0.4, style 0, speaker_boost on, mp3_44100_128.
-   OPEN: similarity_boost 0.65 (content handoff) vs 0.75 (Phase-9) — founder to confirm.
+   OPEN: similarity_boost **0.75** (founder-confirmed).
 4. Word/character timestamps are the SOURCE OF TRUTH (ElevenLabs timestamps API). Never eyeball timing.
 5. Derive EVERYTHING from the alignment: scene boundaries, captions, on-screen terms, callouts, transitions,
    SFX, and music beats all come from the same word timings -> perfect caption/narration sync.
@@ -504,3 +504,23 @@ Verified live against the OpenRouter model list 2026-07-18:
 > Best sources in (verified, fresh, winner-analyzed) → strongest ideas out (adversarially filtered, funnel-mapped,
 > founder-approved) → deepest teaching (mechanism, not filler) → rendered to the static/reel standard → published,
 > measured, and fed back so it compounds. Content is not a generator; it is a learning growth machine.
+
+---
+
+## 19. Resolved infra decisions (2026-07-18, founder-confirmed / researched)
+
+- **Voice similarity_boost = 0.75** (founder-confirmed).
+- **Image gen = `openai/gpt-5.4-image-2` via OpenRouter** (that IS the latest OpenAI image model on OpenRouter;
+  no literal `openai/gpt-image-2` id exists there). Accepts reference images + prompt; regen = image→image.
+  Cheap default `google/gemini-2.5-flash-image` for volume/covers. No OpenAI key needed.
+- **Web analytics = Plausible** (recommended), NOT Netlify Analytics. Netlify Analytics has NO official public
+  API (only an undocumented, unsupported endpoint Netlify says not to use in prod). Plausible = one script tag on
+  the Netlify site + a real Stats API the OS can auto-pull on a cadence; privacy-first; ~$9/mo. GA4 Data API is
+  the free alternative if the founder prefers Google's numbers.
+- **Website auto-change = suggestions-first.** The OS reads analytics → emits ranked CRO/lead suggestions
+  (headline, CTA, form placement, speed) the founder applies in Claude design. Auto-PR only once the site's git
+  repo is connected to the OS (safe, reviewable). The OS never blind-edits a site it didn't build.
+- **Keyword data = DataForSEO** (pay-as-you-go, ~$1.10 / 10k keywords, NO Google Ads account needed) for exact
+  volumes + keyword ideas, plus **Google Trends** ($0.001/request via DataForSEO) for the trend-velocity signal.
+  Google Keyword Planner (free) is the fallback but needs a Google Ads account + dev-token approval and only
+  returns ranges without an active campaign. All keyword/analytics spend runs under the provider-budget ledger.

@@ -6241,3 +6241,27 @@ next steps, a quantified exec summary ("~PKR 2.4M/month lost to 30 weekly missed
 chars, status=complete. Because it carries the companyId, it now appears in Nova Dental's Org Workspace →
 Artifacts tab — the full chain qualification → discovery → paid audit in one view. Spend ~$0.20; OpenRouter
 total $0.49 of $3.00.
+
+---
+
+## 2026-07-18 — V2 content-engine build wave (Claude) — batch 1: DataForSEO governed provider
+
+Founder handed a real DataForSEO Basic-auth credential ($1 balance, verified via the free `user_data` endpoint)
+and asked to integrate it WISELY. Added `dataforseo` as a GOVERNED external provider — same controls as
+Tavily/Apify: kill switch → USD budget allowance → max-1 concurrency → durable spend ledger.
+
+- `src/lib/dataforseo/index.ts` — `searchVolume` (Google Ads keyword demand), `keywordIdeas` (Labs), and
+  `trendsExplore` (Google Trends interest-over-time + a computed `computeTrendVelocity` momentum signal for the
+  "trend velocity" upgrade). Every call records ACTUAL cost (DataForSEO returns it per request).
+- `src/lib/provider-budget/index.ts` — `PROVIDER_BUDGETS.dataforseo { ceiling 0.5, stop 0.3, usd }` — stop set
+  well under the $1 balance so keyword/trend calls can never drain it.
+- Tests `tests/dataforseo-adapter.test.ts` (8 cases, all green): blocked-without-auth, budget-reject (no HTTP),
+  kill-switch reject (no HTTP), 40104 account-not-verified → typed `DataForSeoAccountError` (never faked),
+  search-volume/keyword-ideas/trends parsers, velocity sign. `provider-budget.test.ts` still green.
+- `src/scripts/prove-dataforseo.ts` — live proof (cheapest calls) READY, but DataForSEO data endpoints return
+  **40104 "verify your account"** until the founder verifies at app.dataforseo.com. The adapter surfaces that
+  truthfully; live proof is pending that one founder action. Credential stored in the vault OUTSIDE the repo
+  (`C:/Temp/wobble-local-uat/provider-secrets.clean.env`, `DATAFORSEO_AUTH`), never committed.
+
+Typecheck + full test batch green. Next: the persisted, review-gated TOPIC BANK (the net-new centerpiece —
+topics with real stats + human selection), then the intelligence-run orchestrator (manual + scheduled).
