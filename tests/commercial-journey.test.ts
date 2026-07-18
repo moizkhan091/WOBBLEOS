@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCommercialJourney, computeJourneyStage, type CommercialJourneyStore, type CommercialJourney } from "@/lib/commercial-journey";
+import { getCommercialJourney, computeJourneyStage, getArtifactLineage, type CommercialJourneyStore, type CommercialJourney, type LineageStore } from "@/lib/commercial-journey";
 
 const EMPTY: Omit<CommercialJourney, "stage"> = {
   company: { id: "co_1", name: "Nova Dental", industry: "dental", status: "prospect", clientType: null },
@@ -50,5 +50,34 @@ describe("Commercial journey — assembly", () => {
 
   it("throws when the company does not exist", async () => {
     await expect(getCommercialJourney("nope", { store: storeFor({ company: null }) })).rejects.toThrow(/not found/);
+  });
+});
+
+describe("Artifact lineage — derivation edges (never invented)", () => {
+  const lineageStore: LineageStore = {
+    async opportunities() { return [{ id: "opp1", name: "AI OS Audit" }]; },
+    async meetings() { return [{ id: "m1", title: "Readiness", opportunityId: "opp1" }, { id: "m2", title: "Orphan", opportunityId: null }]; },
+    async audits() { return [{ id: "a1", businessName: "Nova", opportunityId: "opp1" }]; },
+    async proposals() { return [{ id: "p1", title: "Proposal", opportunityId: "opp1", auditId: "a1" }]; },
+    async projects() { return [{ id: "pr1", name: "Buildout", opportunityId: "opp1", proposalId: "p1" }]; },
+  };
+
+  it("builds the provenance graph from real FKs only", async () => {
+    const l = await getArtifactLineage("co_1", { store: lineageStore });
+    expect(l.nodes).toHaveLength(6); // 1 opp + 2 meetings + 1 audit + 1 proposal + 1 project
+    // edges: m1→opp1, a1←opp1, p1←opp1, p1←a1, pr1←opp1, pr1←p1
+    const rels = l.edges.map((e) => e.relation).sort();
+    expect(rels).toEqual(["audit_proposal", "meeting_opp", "opp_audit", "opp_project", "opp_proposal", "proposal_project"]);
+    // the orphan meeting (no opportunityId) produces NO edge — provenance is never invented
+    expect(l.edges.some((e) => e.from === "m2" || e.to === "m2")).toBe(false);
+    // the full derivation chain is present: audit → proposal → project
+    expect(l.edges.some((e) => e.relation === "audit_proposal" && e.from === "a1" && e.to === "p1")).toBe(true);
+    expect(l.edges.some((e) => e.relation === "proposal_project" && e.from === "p1" && e.to === "pr1")).toBe(true);
+  });
+
+  it("drops edges whose FK points outside this company's node set", async () => {
+    const store: LineageStore = { ...lineageStore, async proposals() { return [{ id: "p1", title: "x", opportunityId: "opp_elsewhere", auditId: "a_elsewhere" }]; } };
+    const l = await getArtifactLineage("co_1", { store });
+    expect(l.edges.some((e) => e.to === "p1")).toBe(false); // both FKs point at foreign ids → no edge
   });
 });

@@ -72,6 +72,46 @@ export function computeJourneyStage(j: Omit<CommercialJourney, "stage">): string
   return "org";
 }
 
+// ---- Artifact lineage: the DERIVATION graph for an org's commercial artifacts (provenance edges). ----
+
+export interface ArtifactNode { id: string; type: "opportunity" | "meeting" | "audit" | "proposal" | "project"; label: string }
+export interface ArtifactEdge { from: string; to: string; relation: "opp_audit" | "opp_proposal" | "opp_project" | "audit_proposal" | "proposal_project" | "meeting_opp" }
+export interface ArtifactLineage { companyId: string; nodes: ArtifactNode[]; edges: ArtifactEdge[] }
+
+export interface LineageStore {
+  opportunities(companyId: string): Promise<Array<{ id: string; name: string }>>;
+  meetings(companyId: string): Promise<Array<{ id: string; title: string; opportunityId: string | null }>>;
+  audits(companyId: string): Promise<Array<{ id: string; businessName: string | null; opportunityId: string | null }>>;
+  proposals(companyId: string): Promise<Array<{ id: string; title: string; opportunityId: string | null; auditId: string | null }>>;
+  projects(companyId: string): Promise<Array<{ id: string; name: string; opportunityId: string | null; proposalId: string | null }>>;
+}
+
+/**
+ * Trace how a company's artifacts DERIVE from each other. Edges only exist where the underlying record carries
+ * the FK (proposal.auditId, project.proposalId, *.opportunityId) — provenance is never invented.
+ */
+export async function getArtifactLineage(companyId: string, deps: { store?: LineageStore } = {}): Promise<ArtifactLineage> {
+  const store = deps.store ?? defaultLineageStore();
+  const [opps, mtgs, auds, props, projs] = await Promise.all([
+    store.opportunities(companyId), store.meetings(companyId), store.audits(companyId), store.proposals(companyId), store.projects(companyId),
+  ]);
+  const nodes: ArtifactNode[] = [
+    ...opps.map((o) => ({ id: o.id, type: "opportunity" as const, label: o.name })),
+    ...mtgs.map((m) => ({ id: m.id, type: "meeting" as const, label: m.title })),
+    ...auds.map((a) => ({ id: a.id, type: "audit" as const, label: a.businessName ?? "audit" })),
+    ...props.map((p) => ({ id: p.id, type: "proposal" as const, label: p.title })),
+    ...projs.map((p) => ({ id: p.id, type: "project" as const, label: p.name })),
+  ];
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges: ArtifactEdge[] = [];
+  const link = (from: string | null, to: string, relation: ArtifactEdge["relation"]) => { if (from && nodeIds.has(from) && nodeIds.has(to)) edges.push({ from, to, relation }); };
+  for (const m of mtgs) link(m.opportunityId, m.id, "meeting_opp");
+  for (const a of auds) link(a.opportunityId, a.id, "opp_audit");
+  for (const p of props) { link(p.opportunityId, p.id, "opp_proposal"); link(p.auditId, p.id, "audit_proposal"); }
+  for (const p of projs) { link(p.opportunityId, p.id, "opp_project"); link(p.proposalId, p.id, "proposal_project"); }
+  return { companyId, nodes, edges };
+}
+
 export async function getCommercialJourney(companyId: string, deps: { store?: CommercialJourneyStore } = {}): Promise<CommercialJourney> {
   const store = deps.store ?? defaultStore();
   const company = await store.getCompany(companyId);
@@ -140,6 +180,31 @@ export function defaultStore(db: Db = getDb()): CommercialJourneyStore {
     async projects(companyId) {
       const rows = await db.select().from(projectsTable).where(and(eq(projectsTable.companyId, companyId), isNull(projectsTable.archivedAt)));
       return rows.map((p) => ({ id: p.id, name: p.name, status: p.status, healthScore: p.healthScore ?? null }));
+    },
+  };
+}
+
+export function defaultLineageStore(db: Db = getDb()): LineageStore {
+  return {
+    async opportunities(companyId) {
+      const r = await db.select().from(crmOpportunities).where(and(eq(crmOpportunities.companyId, companyId), isNull(crmOpportunities.archivedAt)));
+      return r.map((o) => ({ id: o.id, name: o.name }));
+    },
+    async meetings(companyId) {
+      const r = await db.select().from(meetingsTable).where(and(eq(meetingsTable.companyId, companyId), isNull(meetingsTable.archivedAt)));
+      return r.map((m) => ({ id: m.id, title: m.title, opportunityId: m.opportunityId ?? null }));
+    },
+    async audits(companyId) {
+      const r = await db.select().from(auditsTable).where(eq(auditsTable.companyId, companyId));
+      return r.map((a) => ({ id: a.id, businessName: a.businessName ?? null, opportunityId: a.opportunityId ?? null }));
+    },
+    async proposals(companyId) {
+      const r = await db.select().from(proposalsTable).where(and(eq(proposalsTable.companyId, companyId), isNull(proposalsTable.archivedAt)));
+      return r.map((p) => ({ id: p.id, title: p.title, opportunityId: p.opportunityId ?? null, auditId: p.auditId ?? null }));
+    },
+    async projects(companyId) {
+      const r = await db.select().from(projectsTable).where(and(eq(projectsTable.companyId, companyId), isNull(projectsTable.archivedAt)));
+      return r.map((p) => ({ id: p.id, name: p.name, opportunityId: p.opportunityId ?? null, proposalId: p.proposalId ?? null }));
     },
   };
 }

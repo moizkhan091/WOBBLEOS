@@ -6178,3 +6178,20 @@ rotating chevron; expanded groups render their module rows unchanged (icon + lab
 Safe for the e2e gate: the Playwright specs navigate by direct `page.goto("/module")`, NOT by clicking sidebar
 links, so collapsing non-active groups does not hide anything the tests depend on. Verified: typecheck clean;
 CI build + e2e are the functional gate; live visual after a stack rebuild.
+
+---
+
+## Organisation workspace — artifact lineage backend (step 11, provable half)
+
+`getArtifactLineage(companyId)` in the commercial-journey module (no new schema): traces how an org's
+commercial artifacts DERIVE from each other as a provenance graph — nodes (opportunity / meeting / audit /
+proposal / project) + edges built ONLY from the real FKs the records carry (proposal.auditId, project.proposalId,
+*.opportunityId). Provenance is never invented: an orphan meeting (no opportunityId) gets no edge, and an FK
+pointing outside the company's node set is dropped. This is the data layer under the org-workspace "tabs" view.
+- 2 unit tests (full derivation chain audit→proposal→project + orphan/foreign-FK dropping); typecheck clean.
+- The org-workspace UI (tabs) itself is UI that needs a container rebuild to browser-prove — deferred while the
+  box's Docker-build network is failing `npm ci`; the data layer (this + getCommercialJourney) is done + tested.
+
+NOTE (sidebar #15 visual): confirmed live via a dev server (Docker rebuild blocked on npm-ci network) — the
+collapsible groups render with wired/total counts + chevrons, WORKSPACE auto-expands for the active module, and
+clicking a header toggles (PIPELINE expanded on click). Product simplification proven visually.
