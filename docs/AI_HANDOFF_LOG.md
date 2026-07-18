@@ -6099,3 +6099,25 @@ a POLICY role falls back to policy-only (never fabricates a rationale); on a no-
 Pakistan) → GRADE **B (79/100)** "Pursue — qualify the weaker filters then book the audit". Roles: access 93
 [policy], real_problem 85, owner_urgency 85, operational_complexity 83 [policy], budget/learn/phased/workflow
 70. Persisted 1 assessment + 8 role rows. Spend: 8 gpt-4o-mini ($0.0005). OpenRouter total $0.1037/$3.
+
+---
+
+## Discovery & Meeting Intelligence — transcript → typed facts (confidence + snippet) → review (step 8)
+
+New module (migration 0058: meeting_intelligence). extractMeetingIntelligence reads a meeting's transcript/
+notes and extracts typed discovery facts across 9 kinds (pain / budget / authority / need / timeline /
+current_stack / objection / next_step / risk), EACH with a confidence (0-100) AND a verbatim source snippet, so
+a founder can check it against what was actually said. Nothing is trusted until reviewed — every fact lands
+`pending_review`; reviewMeetingFact approves/rejects (idempotent). parseExtraction drops malformed facts and
+never invents (throws on unparseable / missing facts[]).
+- domain (`src/lib/domain/meeting-intelligence.ts`, pure + tested): kinds, parseExtraction, builder (clamps
+  confidence, forces pending_review).
+- 1 agent registered (meeting_intelligence_analyst, module meeting_intelligence) — runs synchronously inside
+  extractMeetingIntelligence; declared in registry-integrity SYNC_OR_SUBROUTINE_AGENTS.
+- 11 unit tests; registry-integrity green with the new agent.
+
+**Proven live** (`src/scripts/prove-meeting-intelligence.ts`): a real AI-readiness-call transcript (linked to
+the Nova Dental prospect from #9) → 7 facts — pain 90, authority 90, next_step 90, budget 85, objection 85,
+need 80, current_stack 80 — each quoting the transcript verbatim. Founder APPROVED the top pain fact → 1
+approved / 6 pending. Audit: meeting_intelligence.extracted (analyst) + .approved (Moiz). Spend: 1 gpt-4o-mini
+($0.00022). OpenRouter total $0.1039/$3.

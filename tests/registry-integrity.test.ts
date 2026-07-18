@@ -72,6 +72,7 @@ const SYNC_OR_SUBROUTINE_AGENTS = [
   "ask_wobble", // Ask WOBBLE — synchronous /api/ask router
   "content_excellence_gate", // deterministic quality gate inside the content worker
   "memory_router", // memory-bank routing role used by the memory harvester
+  "meeting_intelligence_analyst", // runs synchronously inside extractMeetingIntelligence (transcript → facts)
 ];
 
 // Offer Validation Lab — each dimension agent runs as a synchronous subroutine of runOfferValidation

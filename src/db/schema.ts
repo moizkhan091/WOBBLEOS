@@ -1571,6 +1571,28 @@ export const qualificationRoles = pgTable("qualification_roles", {
   index("qualification_roles_assessment_idx").on(table.assessmentId),
 ]);
 
+// Discovery & Meeting Intelligence: typed discovery facts extracted from a meeting transcript/notes, each with
+// a confidence + verbatim source snippet, landing pending_review (nothing trusted until a founder approves).
+export const meetingIntelligence = pgTable("meeting_intelligence", {
+  id: id(),
+  meetingId: text("meeting_id").notNull(),
+  companyId: text("company_id"),
+  kind: varchar("kind", { length: 24 }).notNull(), // pain|budget|authority|need|timeline|current_stack|objection|next_step|risk
+  content: text("content").notNull(),
+  confidence: integer("confidence").notNull().default(0),
+  sourceSnippet: text("source_snippet").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("pending_review"), // pending_review|approved|rejected
+  reviewedBy: varchar("reviewed_by", { length: 120 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  model: varchar("model", { length: 120 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("meeting_intelligence_meeting_idx").on(table.meetingId),
+  index("meeting_intelligence_status_idx").on(table.status),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 
