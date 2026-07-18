@@ -11,6 +11,8 @@ import { CONTENT_GENERATE_JOB_TYPE } from "@/lib/domain/content-worker";
 import { CONTENT_GRAPH_JOB_TYPE } from "@/lib/domain/content-graph";
 import { PAID_AUDIT_JOB_TYPE } from "@/lib/domain/paid-audit-graph";
 import { DEFAULT_CAPABILITIES } from "@/lib/domain/ask";
+import { OFFER_VALIDATION_DIMENSIONS } from "@/lib/domain/offer-validation";
+import { QUALIFICATION_ROLES } from "@/lib/domain/qualification";
 import { generalRegistry, knownJobTypes, hasHandler } from "@/lib/workers/registry";
 
 /**
@@ -72,6 +74,14 @@ const SYNC_OR_SUBROUTINE_AGENTS = [
   "memory_router", // memory-bank routing role used by the memory harvester
 ];
 
+// Offer Validation Lab — each dimension agent runs as a synchronous subroutine of runOfferValidation
+// (scoreDimension → runTextProvider). Derived from the lab's own dimension constants so it cannot drift.
+const OFFER_VALIDATION_AGENTS = OFFER_VALIDATION_DIMENSIONS.map((d) => d.agentSlug);
+
+// Qualification Council — each role agent runs as a synchronous subroutine of runQualification
+// (scoreRole → deterministic policy signal + runTextProvider). Derived from the council's role constants.
+const QUALIFICATION_COUNCIL_AGENTS = QUALIFICATION_ROLES.map((r) => r.agentSlug);
+
 // Backed by a queue job type — the pair is asserted against the handler registry below.
 const JOB_BACKED_AGENTS: Array<{ slug: string; jobType: string }> = [
   { slug: "content_worker", jobType: CONTENT_GENERATE_JOB_TYPE },
@@ -88,6 +98,8 @@ const EXECUTABLE_SLUGS = new Set<string>([
   ...DEPARTMENT_ORCHESTRATOR_AGENTS,
   ...DEPARTMENT_SPECIALIST_AGENTS,
   ...SYNC_OR_SUBROUTINE_AGENTS,
+  ...OFFER_VALIDATION_AGENTS,
+  ...QUALIFICATION_COUNCIL_AGENTS,
   ...DETERMINISTIC_GOVERNANCE_AGENTS,
   ...DESIGN_INTELLIGENCE_AGENTS,
   ...JOB_BACKED_AGENTS.map((j) => j.slug),

@@ -6071,3 +6071,31 @@ dimension agents, each scoring 0-100 with an evidence-grounded rationale, rolled
 offer skews to home-services/dental, a narrower ICP). Persisted: 1 run + 11 dimension rows. Spend tracked: 11
 `offer_validation:default` gpt-4o-mini ($0.0018) + 1 `offer-validation` Tavily (1 credit). Running: OpenRouter
 $0.1032/$3, Tavily 2/500, Apify $0.10/$2, ElevenLabs 100/232285.
+
+---
+
+## Qualification Council + a registry-integrity fix (step 9)
+
+### CI fix — the Offer Validation Lab agents tripped the "no decorative agents" gate
+3004fba went RED on `tests/registry-integrity.test.ts` ("every ACTIVE agent has a declared, real execution
+path"): the 11 offer-validation agents are active but weren't in the test's EXECUTABLE_SLUGS. The test is the
+honest execution map — an active agent with no run path is a defect. FIX (forward, on this commit): declared
+both councils' execution paths as new EXECUTABLE_SLUGS groups DERIVED from the domain constants
+(OFFER_VALIDATION_DIMENSIONS / QUALIFICATION_ROLES) so they can't drift — they run as synchronous subroutines
+of runOfferValidation / runQualification (scoreDimension/scoreRole → runTextProvider).
+
+### Qualification Council — 8-role A–E qualification (migration 0057)
+New module (qualification_assessments + qualification_roles). runQualification assesses a CRM company across
+the 8 WOBBLE qualification filters (WOBBLE_COMPANY_OS.md §8): each role blends a DETERMINISTIC policy signal
+from CRM data (budget←company size, access←website/notes, complexity←ICP industry) with an evidence-LLM score
+(gpt-4o-mini), then a weighted roll-up → A–E grade + recommendation, versioned per subject. The LLM failing on
+a POLICY role falls back to policy-only (never fabricates a rationale); on a no-signal role it rethrows.
+- domain (`src/lib/domain/qualification.ts`, pure + tested): 8 roles + weights, policySignal, blendScore,
+  computeQualificationScore, gradeFor (A≥85/B≥70/C≥55/D≥40/E), parseRoleResult.
+- 8 council agents registered (qual_real_problem_agent … qual_complexity_agent, module qualification_council).
+- 13 unit tests; registry-integrity + agents + offer-validation all green together (35 tests).
+
+**Proven live** (`src/scripts/prove-qualification.ts`): a real prospect "Nova Dental Karachi" (dental SMB,
+Pakistan) → GRADE **B (79/100)** "Pursue — qualify the weaker filters then book the audit". Roles: access 93
+[policy], real_problem 85, owner_urgency 85, operational_complexity 83 [policy], budget/learn/phased/workflow
+70. Persisted 1 assessment + 8 role rows. Spend: 8 gpt-4o-mini ($0.0005). OpenRouter total $0.1037/$3.

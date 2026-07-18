@@ -434,3 +434,21 @@ Log founder conversations too (not just code). If a founder states intent in cha
   evidence source for competitor scraping where Tavily is thin.
 - Affects: migration 0056, src/db/schema.ts, src/lib/domain/offer-validation.ts, src/lib/offer-validation/index.ts,
   src/lib/domain/agents.ts (+11), tests/offer-validation.test.ts, src/scripts/prove-offer-validation.ts.
+
+---
+
+## Decision: council/lab agents declare their execution path in registry-integrity via the domain constants
+
+- Context: registry-integrity enforces "no decorative agents" — every active agent must run through a declared
+  path in EXECUTABLE_SLUGS. The 11 offer-validation + 8 qualification agents run as synchronous subroutines of
+  their service (not a job/graph/department), a path the test didn't yet know.
+- Decision: add two EXECUTABLE_SLUGS groups, each `= <DOMAIN_CONSTANT>.map(x => x.agentSlug)` (OFFER_VALIDATION_
+  DIMENSIONS / QUALIFICATION_ROLES) — NOT a hand-typed slug list.
+- Why derive from the constant: the same constant the service iterates to actually RUN the agents is the one
+  the test trusts, so the declaration cannot drift into fiction (a new dimension/role auto-appears in both).
+- Also (design): the Qualification Council is deliberately HALF deterministic. Budget/access/complexity carry a
+  CRM-derived policy score blended 50/50 with the LLM; the other five are LLM-only. This makes the grade
+  defensible (a policy role survives an LLM outage) and matches "deterministic policy + evidence LLM".
+- Do NOT: mark council agents "paused" to dodge the gate (they really run); hand-list their slugs in the test.
+- Affects: tests/registry-integrity.test.ts, migration 0057, src/db/schema.ts, src/lib/domain/qualification.ts,
+  src/lib/qualification/index.ts, src/lib/domain/agents.ts (+8), tests/qualification.test.ts, prove-qualification.ts.

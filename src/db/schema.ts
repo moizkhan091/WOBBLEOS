@@ -1537,6 +1537,40 @@ export const offerValidationDimensions = pgTable("offer_validation_dimensions", 
   index("offer_validation_dimensions_run_idx").on(table.runId),
 ]);
 
+// Qualification Council: an 8-role assessment of a prospect (a CRM company) → an A–E qualification grade with
+// a recommendation. Deterministic policy signals + evidence-LLM scores. Versioned per subject.
+export const qualificationAssessments = pgTable("qualification_assessments", {
+  id: id(),
+  subjectType: varchar("subject_type", { length: 16 }).notNull(), // company|lead|opportunity
+  subjectId: text("subject_id").notNull(),
+  version: integer("version").notNull().default(1),
+  grade: varchar("grade", { length: 2 }).notNull(), // A|B|C|D|E
+  overallScore: integer("overall_score").notNull().default(0),
+  recommendation: text("recommendation").notNull(),
+  summary: text("summary"),
+  model: varchar("model", { length: 120 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("qualification_assessments_subject_idx").on(table.subjectType, table.subjectId),
+  uniqueIndex("qualification_assessments_subject_version_uq").on(table.subjectType, table.subjectId, table.version),
+]);
+
+export const qualificationRoles = pgTable("qualification_roles", {
+  id: id(),
+  assessmentId: text("assessment_id").notNull(),
+  role: varchar("role", { length: 60 }).notNull(),
+  agentSlug: varchar("agent_slug", { length: 80 }).notNull(),
+  score: integer("score").notNull().default(0),
+  weight: numeric("weight", { precision: 4, scale: 2 }).notNull().default("1"),
+  rationale: text("rationale").notNull(),
+  policyNote: text("policy_note"),
+  createdAt: createdAt(),
+}, (table) => [
+  index("qualification_roles_assessment_idx").on(table.assessmentId),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 
