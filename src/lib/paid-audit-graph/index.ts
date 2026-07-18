@@ -119,7 +119,7 @@ export interface PaidAuditResult {
 
 function makeDefaultRunNode(usageContext?: import("@/lib/domain/provider-usage").ProviderUsageContext): NonNullable<PaidAuditDeps["runNode"]> {
   return async (input) => {
-    const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 6000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId, usageContext: usageContext ? { ...usageContext, agentSlug: input.role } : undefined });
+    const result = await runTextProvider({ role: input.role, module: input.module, messages: input.messages, maxTokens: 8000, temperature: 0.5, linkedEntityType: "audit", linkedEntityId: input.linkedEntityId, usageContext: usageContext ? { ...usageContext, agentSlug: input.role } : undefined });
     return { text: result.text, runId: result.run?.id, cost: result.run?.estimatedCost ? Number(result.run.estimatedCost) : undefined };
   };
 }

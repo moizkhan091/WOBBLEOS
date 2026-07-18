@@ -6221,3 +6221,23 @@ New OS module `org` (REVENUE group, "Org Workspace") in os-ui.tsx + modules.ts. 
   rendered as "label ─relation→ label".
 Reuses useApi + the shared C/Tag/StateBlock helpers; typecheck clean. Verified via dev server (Docker rebuild
 still blocked on npm-ci network).
+
+---
+
+## Paid AI Audit — fixed a live truncation bug (found by running it; "make sure it works")
+
+Running a real paid audit via the UI surfaced "paid-audit: opportunity node returned unparseable output".
+Root cause (from model_runs): the OPPORTUNITY node hit output_tokens = 6000 EXACTLY (the maxTokens cap) →
+truncated JSON → parse failure. The prompt asked for "12 to 20" richly-detailed opportunities, which overflows
+6000 tokens. Discovery (4585 tokens) fit and parsed fine.
+
+Fix (2 lines): opportunity prompt "12 to 20" → "10 to 14, each entry TIGHT" (bounds the length); consume()
+maxTokens 6000 → 8000 (headroom, still under the model's output cap). The tightened prompt keeps output down;
+the headroom is the safety net.
+
+**Proven live** (`src/scripts/prove-paid-audit.ts`, real claude-sonnet-4.5): Nova Dental Karachi (linked to the
+company) → ALL 5 nodes ran, **18 opportunities** parsed cleanly (no truncation), 4 roadmap phases, 6 risks, 10
+next steps, a quantified exec summary ("~PKR 2.4M/month lost to 30 weekly missed bookings"), report 50,605
+chars, status=complete. Because it carries the companyId, it now appears in Nova Dental's Org Workspace →
+Artifacts tab — the full chain qualification → discovery → paid audit in one view. Spend ~$0.20; OpenRouter
+total $0.49 of $3.00.
