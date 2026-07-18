@@ -6299,3 +6299,33 @@ review-gated topic bank (the one genuinely-absent piece; sources/graph/scheduler
 
 Next: the intelligence-run orchestrator (gather active sources → generateTopicBank; manual + scheduled cadence),
 then wire approved-topic → content graph promotion.
+
+---
+
+## 2026-07-18 — V2 content-engine build wave (Claude) — batch 3: INTELLIGENCE-RUN orchestrator (manual + scheduled)
+
+The standing loop that turns the founder's ACTIVE sources into a scored, review-gated topic bank — runnable
+MANUALLY and on a daily CADENCE (the founder asked for BOTH). Every run re-reads the active source set, so
+add/drop/remove auto-picks-up with no rewiring (proven: a live run gathered 45 active sources).
+
+- Migration 0060 `content_intelligence_runs` — founder-visible run history (trigger manual|scheduled, status
+  running|completed|failed, objective, sourceCount, topicCount, model, timing, error).
+- `src/lib/domain/content-intelligence.ts` — job type `content.intelligence`, run-row builder, and the DAILY
+  cadence key (UTC-date keyed, checked against ANY job status per the WOB-UAT-036 rule so exactly one run/day).
+- `src/lib/content-intelligence/index.ts` — `runContentIntelligence` (create run → `defaultGatherContext`
+  [listApprovedSourcesForJobs + retrieveKnowledge + core memory brain] → `generateTopicBank` → complete/fail
+  the run), `enqueueContentIntelligenceJob` (manual trigger + how the cadence fires), the job handler, and
+  run listing.
+- Wiring: registered `content.intelligence` in `generalRegistry`; added the daily cadence block to
+  `runScheduledTick`; added the type to registry-integrity's ENQUEUED_JOB_TYPES.
+- Tests `tests/content-intelligence.test.ts` (6, green): run lifecycle (running→completed w/ counts), standing
+  objective, failure path (marked failed + rethrow), cadence key stability. registry-integrity + scheduler
+  tests still green.
+- DB proof `verify-content-intelligence-db.ts` (auto-discovered; canned providers, real Postgres, cleanup):
+  run→completed with counts, topics persisted + linked to run id, failed run recorded (no dangling running).
+- PROVEN LIVE (`prove-content-intelligence.ts`, real claude-sonnet-4.5 on the UAT DB): gathered 45 active
+  sources, produced 6 mechanism-first Pakistan-first WOBBLE topics (scored 64-75), run tracked, topics
+  pending_review. DataForSEO enrichment skipped gracefully (account unverified).
+
+The intelligence engine's front half is now end-to-end: sources → intelligence run (manual + scheduled) →
+topic bank with stats → founder review → (next) promote approved topic into the content graph.

@@ -1638,6 +1638,28 @@ export const contentTopics = pgTable("content_topics", {
   index("content_topics_score_idx").on(table.overallScore),
 ]);
 
+// Content Intelligence Runs: each run gathers the ACTIVE sources + knowledge + brand brain and asks the
+// strategist team for a fresh topic bank. Triggered manually OR on a daily cadence (both). The run row is the
+// founder-visible history (what fed it, how many topics, timing, status).
+export const contentIntelligenceRuns = pgTable("content_intelligence_runs", {
+  id: id(),
+  trigger: varchar("trigger", { length: 12 }).notNull().default("manual"), // manual|scheduled
+  status: varchar("status", { length: 12 }).notNull().default("running"), // running|completed|failed
+  objective: text("objective").notNull(),
+  sourceCount: integer("source_count").notNull().default(0),
+  topicCount: integer("topic_count").notNull().default(0),
+  model: varchar("model", { length: 120 }),
+  requestedBy: varchar("requested_by", { length: 120 }).notNull(),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("content_intelligence_runs_status_idx").on(table.status),
+  index("content_intelligence_runs_created_idx").on(table.createdAt),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 

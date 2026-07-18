@@ -14,6 +14,8 @@ import type { JobRow as PaidAuditJobRow } from "@/lib/domain/jobs";
 import { runScoutJobHandler, runAnalyzeJobHandler, runDreamerJobHandler } from "@/lib/intelligence/jobs";
 import { runSourceIntakeJobHandler } from "@/lib/source-intake";
 import { GOVERNANCE_REVIEW_JOB_TYPE, runGovernanceReviewJobHandler } from "@/lib/security-governance/job";
+import { runContentIntelligenceJobHandler } from "@/lib/content-intelligence";
+import { CONTENT_INTELLIGENCE_JOB_TYPE } from "@/lib/domain/content-intelligence";
 
 /**
  * Chunk 07: Worker handler registry.
@@ -177,6 +179,9 @@ export const generalRegistry: JobHandlerRegistry = {
   "intelligence.analyze": runAnalyzeJobHandler,
   "intelligence.dream": runDreamerJobHandler,
   "source.intake": runSourceIntakeJobHandler,
+  // Content intelligence: gather active sources → strategist team → scored, review-gated topic bank.
+  // Fired manually or on a daily cadence (scheduler). Auto-picks-up the current active source set each run.
+  [CONTENT_INTELLIGENCE_JOB_TYPE]: runContentIntelligenceJobHandler,
   // WOB-UAT-024: governance survives restart + runs on a cadence. The handler DISPATCHES a typed handoff
   // to the department (it does not run the review itself), so governance work arrives through the same
   // backbone as every other department's work — and the department's consumer has a real producer.

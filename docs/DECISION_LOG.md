@@ -490,3 +490,23 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Do NOT: let generation crash on a provider error; score by demand alone; auto-promote an unreviewed topic.
 - Affects: migration 0059, src/db/schema.ts, src/lib/domain/content-topics.ts, src/lib/content-topics/index.ts,
   tests/content-topics.test.ts, prove-topic-bank.ts, verify-content-topics-db.ts.
+
+---
+
+## 2026-07-18 — Intelligence run: both triggers, active-set re-read, run-as-record
+
+- BOTH triggers by design: a durable `content.intelligence` job (manual) AND a daily scheduler cadence. The
+  cadence enqueues the SAME job, so there is one code path; the cadence key is UTC-date + ANY-status checked so
+  it can never flood (the governance WOB-UAT-036 lesson).
+- Active-set RE-READ each run (not a stored source list): `defaultGatherContext` calls
+  listApprovedSourcesForJobs at run time, so the founder adding/dropping/removing a source auto-picks-up on the
+  next run with zero rewiring. Proven live (45 sources).
+- Run row IS the record: running→completed|failed with counts + error, so the founder sees run history and a
+  crash never leaves a dangling "running" or loses the reason.
+- Reused (did NOT duplicate): the jobs queue, the scheduler, listApprovedSourcesForJobs, retrieveKnowledge,
+  listMemoryRecords, and generateTopicBank. No new agent (actor = existing content_orchestrator).
+- Do NOT: store a frozen source list; fire the cadence on enqueueJob dedupe alone (use the day key); swallow a
+  generation failure (mark the run failed + rethrow).
+- Affects: migration 0060, schema.ts, domain/content-intelligence.ts, content-intelligence/index.ts,
+  workers/registry.ts, scheduler/index.ts, registry-integrity.test.ts, content-intelligence.test.ts,
+  verify-content-intelligence-db.ts, prove-content-intelligence.ts.

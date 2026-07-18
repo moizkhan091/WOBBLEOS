@@ -421,6 +421,13 @@
       "when": 1784395264705,
       "tag": "0059_lovely_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1784396281473,
+      "tag": "0060_stale_garia",
+      "breakpoints": true
     }
   ]
 }

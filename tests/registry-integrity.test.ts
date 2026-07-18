@@ -10,6 +10,7 @@ import { KNOWLEDGE_COMPILER_AGENT_SLUG, KNOWLEDGE_COMPILE_JOB_TYPE } from "@/lib
 import { CONTENT_GENERATE_JOB_TYPE } from "@/lib/domain/content-worker";
 import { CONTENT_GRAPH_JOB_TYPE } from "@/lib/domain/content-graph";
 import { PAID_AUDIT_JOB_TYPE } from "@/lib/domain/paid-audit-graph";
+import { CONTENT_INTELLIGENCE_JOB_TYPE } from "@/lib/domain/content-intelligence";
 import { DEFAULT_CAPABILITIES } from "@/lib/domain/ask";
 import { OFFER_VALIDATION_DIMENSIONS } from "@/lib/domain/offer-validation";
 import { QUALIFICATION_ROLES } from "@/lib/domain/qualification";
@@ -117,6 +118,7 @@ const ENQUEUED_JOB_TYPES = [
   "intelligence.analyze",
   "intelligence.dream",
   "source.intake",
+  CONTENT_INTELLIGENCE_JOB_TYPE,
 ];
 
 describe("registry integrity — agents", () => {

@@ -18,6 +18,8 @@ import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs } from "@/lib/jobs";
+import { enqueueContentIntelligenceJob } from "@/lib/content-intelligence";
+import { intelligenceCadenceKey } from "@/lib/domain/content-intelligence";
 import { writeAuditEvent } from "@/lib/audit";
 import type { ResearchCadence } from "@/lib/domain/intelligence";
 
@@ -79,6 +81,7 @@ export interface SchedulerResult {
   continuousResearchInsights: number;
   optimizerOpportunities: number;
   maintenanceRan: boolean;
+  intelligenceRunsEnqueued?: number;
   errors: string[];
 }
 
@@ -159,6 +162,19 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     // without treating it as an error the operator must chase.
     const msg = e instanceof Error ? e.message : String(e);
     if (!/kill switch/i.test(msg)) result.errors.push(`governance-review: ${msg}`);
+  }
+  // Content intelligence runs on a DAILY cadence (the founder can also trigger it manually). Keyed by UTC
+  // DATE and checked against ANY job status (the WOB-UAT-036 rule) so exactly one run fires per day —
+  // restart-proof, never a flood. Each run re-reads the ACTIVE source set, so add/drop/remove auto-picks-up.
+  try {
+    const dayKey = intelligenceCadenceKey(now);
+    if (!(await jobExistsForIdempotencyKey(dayKey))) {
+      await enqueueContentIntelligenceJob({ trigger: "scheduled", requestedBy: "scheduler", idempotencyKey: dayKey }, { now });
+      result.intelligenceRunsEnqueued = (result.intelligenceRunsEnqueued ?? 0) + 1;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/kill switch/i.test(msg)) result.errors.push(`content-intelligence: ${msg}`);
   }
   // Release abandoned budget reservations (work that reserved spend but never settled) so a crashed job
   // can't hold a department's budget hostage.
