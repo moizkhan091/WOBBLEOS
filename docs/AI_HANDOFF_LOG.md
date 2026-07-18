@@ -6513,3 +6513,11 @@ meter (EXPIRED flag, 00:00, patina coin slot) chained+padlocked to an acrylic br
 figures, dead gray figures scattered, hard-key 5600K lighting, 50mm f2.8, Kodak Portra grade,
 ISO-400 grain → gpt-5.4-image-2 rendered a genuinely agency-grade, magazine-quality static (28¢).
 A massive level-up from the earlier bland output. Tests (14) + typecheck green.
+
+## 2026-07-18 — batch 12: VPS deploy-readiness (ship brand refs + document keys)
+
+- Dockerfile: the runner + worker images now COPY /app/assets — WITHOUT this the VPS render would fall back to
+  generic images (the brand-reference exemplars content-render auto-feeds live in assets/brand-references and
+  were NOT in the standalone image). Critical for on-brand quality on the VPS.
+- .env.example: documented DATAFORSEO_AUTH (optional; free autocomplete fallback covers its absence) +
+  OPENROUTER_MEDIA_TIMEOUT_MS. PLAUSIBLE_* already present. STORAGE_ROOT persists rendered media on the volume.

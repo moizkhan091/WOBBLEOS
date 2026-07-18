@@ -55,6 +55,9 @@ RUN addgroup -S wobble && adduser -S wobble -G wobble
 COPY --from=build --chown=wobble:wobble /app/.next/standalone ./
 COPY --from=build --chown=wobble:wobble /app/.next/static ./.next/static
 COPY --from=build --chown=wobble:wobble /app/public ./public
+# Brand reference exemplars — content-render auto-feeds these to the image model so VPS output matches the
+# real WOBBLE craft (without them the render falls back to generic-looking images). MUST ship in the image.
+COPY --from=build --chown=wobble:wobble /app/assets ./assets
 # Migrations are applied by the compose `migrate` step (drizzle-kit) before the app starts; the schema files ride along.
 COPY --from=build --chown=wobble:wobble /app/src/db/migrations ./src/db/migrations
 # Durable media is a mounted volume at runtime (docker-compose.prod.yml) — created empty + owned by the app user.
@@ -80,6 +83,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
+# Brand reference exemplars — the worker renders durable media jobs too, so it needs the references as well.
+COPY assets ./assets
 RUN mkdir -p /app/storage && chown -R wobble:wobble /app/storage
 USER wobble
 CMD ["npm", "run", "worker"]
