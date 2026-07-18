@@ -270,8 +270,8 @@ Founder command surface for the business itself: **Offers** (offer lab + the 34-
 ## 11. Open decisions (need the founder)
 
 1. **Voice similarity_boost:** 0.65 (content handoff) vs 0.75 (Phase-9 VOICE-SETTINGS)?  →
-2. **GPT Image 2 path:** direct OpenAI (the Phase-9 key) vs via OpenRouter — confirm the key is an OpenAI key +
-   whether we may spend on image gen (and the per-run cap).
+2. **GPT Image 2 path:** RESOLVED — route `openai/gpt-5.4-image-2` (GPT Image 2) through the EXISTING OpenRouter key
+   (it accepts reference images). Only confirm the per-image cost + spend cap. No separate OpenAI key needed.
 3. **Web analytics:** Netlify Analytics (paid) vs Plausible?
 4. **Keyword provider:** which SEO data API (budget)?
 5. **Build order:** recommended → (a) CRM client-hub consolidation first (unblocks the richer audit + declutters),
@@ -430,3 +430,77 @@ same stack on a **VPS**, with real domains, TLS, and object storage.
 **Recommendation:** one VPS runs everything to start (the compose stack). Split the DB to managed Postgres and
 media to object storage only when volume demands it. The local Windows box stays a dev/UAT convenience — the VPS
 is the real home, and CI (not the flaky local build) is the gate that guarantees what deploys there compiles.
+
+---
+
+# PART III — Making the content engine best-in-class
+
+Content is the growth engine, so it must be the strongest module. Two things here: (17) the CONFIRMED image
+capability (use the OpenRouter key — no OpenAI key needed), and (18) the upgrades that take the content system
+from "good generator" to "best-in-class."
+
+## 17. Image generation — CONFIRMED via OpenRouter (use the existing OpenRouter key)
+
+Verified live against the OpenRouter model list 2026-07-18:
+- **`openai/gpt-5.4-image-2`** = GPT Image 2. `input = [image, text, file]` → **accepts reference images + prompt.**
+- `openai/gpt-5-image`, `openai/gpt-5-image-mini` — same (take reference images).
+- Cheaper for volume / carousel covers: `google/gemini-2.5-flash-image` (~$0.04/img, tested), `gemini-3-pro-image`.
+- EVERY image-output model on OpenRouter accepts image INPUT, so both jobs work through the OpenRouter key:
+  1. **Generate** a static/infographic from a 100-line prompt + reference images.
+  2. **Regen** = send the image back as a reference + a change-only prompt → surgical edit.
+- **DECISION: no separate OpenAI key needed** — route GPT Image 2 through OpenRouter. Keep `gemini-2.5-flash-image`
+  as the cheap default for high-volume/covers, GPT-Image-2 for the hero statics/infographics that need perfect
+  text rendering.
+- OPEN: GPT-Image-2's per-image price isn't in the model list — confirm cost + set a per-run cap before spend.
+  The provider-budget ledger already enforces caps + a kill switch.
+
+## 18. Upgrades to be best-in-class (fold into the design)
+
+### 18.1 Sourcing (the input sets the ceiling)
+1. **Vision-analyze the winners, not just transcripts.** The LLM *looks* at top statics/reels and extracts WHY
+   they worked (hook, hierarchy, the bold-character attention pattern, motion beats) — not just reads captions.
+   (We already proved live vision on the static library; make it a standing analysis over winners.)
+2. **Trend velocity.** Score topic MOMENTUM — catch rising topics + breaking AI releases early, before
+   saturation, instead of teaching what's already everywhere.
+3. **Competitor white-space.** Map what competitors teach → target the GAPS nobody explains well (differentiated,
+   not a rehash).
+4. **Audience-language mining.** Pull the EXACT words the ICP uses (Reddit, comments, DMs, forums) so hooks sound
+   like the reader's own thoughts.
+5. **Own performance as a first-class source.** WOBBLE's winners/losers feed back: which hook type / format /
+   angle / topic drove saves + leads → double down. (Closes the loop from section 14.)
+6. **Source scoring + pruning.** Rate every source by relevance / freshness / reliability; auto-retire weak ones;
+   founder can add/remove. (A `source_quality_checker` agent already exists in the registry — activate it.)
+
+### 18.2 Pillars (strategy, not a frozen quota)
+1. **Evidence-driven mix.** The pillar % SHIFTS toward what converts (saves/leads), not a fixed table — big
+   shifts need founder approval.
+2. **Funnel-mapped pillars.** Each pillar carries an intent: awareness/viral (TOFU), trust (MOFU), lead-gen
+   (BOFU). Balance the FUNNEL, not just topic spread.
+3. **Series, not just one-offs.** Multi-part campaigns (e.g. a 5-part "build your AI receptionist") build
+   anticipation and bring people back — a narrative, not scattered posts.
+4. **Depth ladder per pillar.** Beginner → advanced within each pillar so the audience LEVELS UP over time — that
+   is what creates dependence and authority (and pulls them toward the paid service).
+
+### 18.3 System (what separates world-class from a generator)
+1. **Adversarial quality.** A skeptic agent tries to REFUTE each topic's value + a differentiation agent kills
+   rehashes; only survivors ship. (Same multi-agent adversarial pattern as the golden-mission gate + the
+   Offer Validation Lab already built.)
+2. **Taste learning.** The founder's approvals / rejections / edits TRAIN the system's taste (the `taste` module
+   + `founder_taste` memory bank exist) → the topic bank + drafts get more "Moiz/WOBBLE" every week without
+   overwriting brand truth.
+3. **Cross-format repurposing.** One deeply-researched, verified topic → a reel + a carousel + a static + a lead
+   magnet, so the expensive research is amortized and WOBBLE OWNS a topic across formats.
+4. **Novelty enforcement.** Measure similarity vs past content AND references; never rehash a topic/angle within
+   N posts; require a distinct teaching job from nearby assets.
+5. **Hook + format A/B learning.** Test hook styles + formats, learn which drive ICP saves/leads, feed back into
+   the strategist's scoring.
+6. **The verification moat.** Always-current, primary-source-verified tool intel (section 5) is the single thing
+   that separates a TRUSTED teacher from every other AI creator posting stale or wrong claims. This is the
+   defensible edge — guard it hardest.
+7. **Reference-DNA that learns.** WOBBLE's own top performers get added BACK as references → the visual/narrative
+   standard compounds instead of drifting.
+
+### 18.4 The one-line north star for the module
+> Best sources in (verified, fresh, winner-analyzed) → strongest ideas out (adversarially filtered, funnel-mapped,
+> founder-approved) → deepest teaching (mechanism, not filler) → rendered to the static/reel standard → published,
+> measured, and fed back so it compounds. Content is not a generator; it is a learning growth machine.
