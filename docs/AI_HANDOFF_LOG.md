@@ -6164,3 +6164,17 @@ grade + meeting + 3 facts, and computes stage=discovery. HARD RULE proven: the c
 the deterministic services persist every row. ISOLATED + REPEATABLE + SAFE ON A POPULATED DB: unique ids per
 run, full cleanup (verified 0 leftover `zz_golden_%` rows). Complements the existing downstream
 `verify-commercial-chain-db.ts` (proposal→delivery) — together the commercial spine is a CI-enforced gate.
+
+---
+
+## Sidebar / nav — progressive-disclosure redesign (step 15, product simplification)
+
+`src/components/os/os-ui.tsx` Sidebar: the 42-module nav was a always-expanded flat scroll. Now each NAV_GROUP
+is a COLLAPSIBLE section — collapsed by default, the group containing the active module auto-expands, and any
+group the founder opens is remembered for the session. Collapsed groups show a `wired/total` count and a
+rotating chevron; expanded groups render their module rows unchanged (icon + label + wired dot). Keeps a
+42-module OS scannable instead of a wall. Data-driven by NAV_GROUPS (no new data).
+
+Safe for the e2e gate: the Playwright specs navigate by direct `page.goto("/module")`, NOT by clicking sidebar
+links, so collapsing non-active groups does not hide anything the tests depend on. Verified: typecheck clean;
+CI build + e2e are the functional gate; live visual after a stack rebuild.

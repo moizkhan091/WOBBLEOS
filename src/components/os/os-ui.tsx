@@ -126,30 +126,48 @@ function PageHeader({ mod }: { mod: ModuleDef }) {
 }
 
 function Sidebar({ activeId }: { activeId: string }) {
+  // Progressive disclosure: groups collapse by default; the group containing the active module stays open, and
+  // any group the founder expands is remembered for the session. Keeps a 42-module OS scannable, not a wall.
+  const activeGroup = NAV_GROUPS.find((g) => g.items.includes(activeId))?.label ?? NAV_GROUPS[0]?.label ?? "";
+  const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [activeGroup]: true }));
+  const toggle = (label: string) => setOpen((o) => ({ ...o, [label]: !o[label] }));
   return (
     <aside style={{ width: 262, flex: "none", height: "100%", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 14, borderRight: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))", backdropFilter: "blur(26px) saturate(130%)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 2px" }}>
         <div style={{ fontWeight: 600, fontSize: 25, letterSpacing: "-0.04em", lineHeight: 1 }}>wobble<span style={{ color: C.lime }}>.</span></div>
         <div style={{ fontSize: 9, letterSpacing: "0.22em", color: faint, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "3px 6px", fontWeight: 500 }}>OS</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", flex: 1, padding: "2px 2px 10px" }}>
-        {NAV_GROUPS.map((g) => (
-          <div key={g.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 9.5, letterSpacing: "0.2em", color: "rgba(242,244,241,0.32)", fontWeight: 600, padding: "0 10px 4px" }}>{g.label}</div>
-            {g.items.map((id) => {
-              const m = MODULES[id];
-              if (!m) return null;
-              const on = id === activeId;
-              return (
-                <Link key={id} href={"/" + id} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 11px", borderRadius: 11, textDecoration: "none", border: "1px solid " + (on ? "rgba(184,255,44,0.22)" : "transparent"), background: on ? "linear-gradient(135deg,rgba(184,255,44,0.13),rgba(184,255,44,0.03))" : "transparent", color: on ? C.white : "rgba(242,244,241,0.66)" }}>
-                  <span style={{ color: on ? C.lime : "rgba(242,244,241,0.55)", display: "inline-flex", flex: "none" }}><Icon name={m.icon} size={16} /></span>
-                  <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: on ? 600 : 500, letterSpacing: "-0.01em" }}>{m.label}</span>
-                  {m.status === "wired" ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.lime, boxShadow: "0 0 7px " + C.lime }} /> : null}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", flex: 1, padding: "2px 2px 10px" }}>
+        {NAV_GROUPS.map((g) => {
+          const isOpen = Boolean(open[g.label]);
+          const hasActive = g.items.includes(activeId);
+          const wiredCount = g.items.filter((id) => MODULES[id]?.status === "wired").length;
+          return (
+            <div key={g.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <button
+                onClick={() => toggle(g.label)}
+                aria-expanded={isOpen}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 10px 5px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+              >
+                <span style={{ display: "inline-flex", transition: "transform 0.15s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", color: hasActive ? C.lime : "rgba(242,244,241,0.4)", flex: "none" }}><Icon name="ChevronRight" size={12} /></span>
+                <span style={{ fontSize: 9.5, letterSpacing: "0.2em", color: hasActive ? "rgba(184,255,44,0.7)" : "rgba(242,244,241,0.32)", fontWeight: 600, flex: 1 }}>{g.label}</span>
+                {!isOpen ? <span style={{ fontSize: 9.5, color: "rgba(242,244,241,0.28)", fontWeight: 600 }}>{wiredCount}/{g.items.length}</span> : null}
+              </button>
+              {isOpen ? g.items.map((id) => {
+                const m = MODULES[id];
+                if (!m) return null;
+                const on = id === activeId;
+                return (
+                  <Link key={id} href={"/" + id} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "9px 11px", borderRadius: 11, textDecoration: "none", border: "1px solid " + (on ? "rgba(184,255,44,0.22)" : "transparent"), background: on ? "linear-gradient(135deg,rgba(184,255,44,0.13),rgba(184,255,44,0.03))" : "transparent", color: on ? C.white : "rgba(242,244,241,0.66)" }}>
+                    <span style={{ color: on ? C.lime : "rgba(242,244,241,0.55)", display: "inline-flex", flex: "none" }}><Icon name={m.icon} size={16} /></span>
+                    <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: on ? 600 : 500, letterSpacing: "-0.01em" }}>{m.label}</span>
+                    {m.status === "wired" ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.lime, boxShadow: "0 0 7px " + C.lime }} /> : null}
+                  </Link>
+                );
+              }) : null}
+            </div>
+          );
+        })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 14, border: "1px solid rgba(184,255,44,0.18)", background: "linear-gradient(135deg, rgba(184,255,44,0.10), rgba(184,255,44,0.02))" }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.lime, boxShadow: "0 0 10px " + C.lime, flex: "none" }} />
