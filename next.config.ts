@@ -35,6 +35,10 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Playwright (used ONLY server-side to rasterise HTML carousel slides) is a heavy native package that must
+  // not be bundled into the standalone trace — it's require()'d at runtime, and the render path falls back to
+  // the image model if it (or chromium) is absent.
+  serverExternalPackages: ["playwright", "playwright-core"],
   // Standalone output → a self-contained server bundle for the isolated Docker/VPS deploy (small runtime image).
   output: "standalone",
   // Pin the file-tracing root to this project and EXCLUDE non-runtime trees from the standalone trace.

@@ -6,7 +6,8 @@ import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
-import { buildRenderPlan, buildArtDirectorPrompt, parseRenderConcept, buildCarouselDirectorPrompt, parseCarouselDeck, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment, type RenderConcept, type CarouselDeck } from "@/lib/domain/content-render";
+import { buildRenderPlan, buildArtDirectorPrompt, parseRenderConcept, buildCarouselDirectorPrompt, parseCarouselDeck, HERO_IMAGE_MODEL, VOLUME_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment, type RenderConcept, type CarouselDeck } from "@/lib/domain/content-render";
+import { renderHtmlSlideToFile } from "@/lib/content-render/html-slide";
 
 /**
  * Content render service — turns a topic/packet into on-brand statics/carousels via the OpenRouter image
@@ -246,29 +247,44 @@ export async function renderTopicAsset(
   input: RenderTopicInput,
   deps: ContentRenderDeps & { conceptProvider?: ConceptProvider; conceptModel?: string; designConcept?: (i: { hook: string; teachingJob: string; pillar?: string; platform?: string }) => Promise<RenderConcept> } = {},
 ): Promise<RenderContentResult & { concept?: RenderConcept; deck?: CarouselDeck }> {
-  // CAROUSEL: the carousel director designs a full teaching DECK (cover → mechanism → CTA); render every slide.
+  // CAROUSEL (hybrid, per the handoff spec): the COVER is a GPT-Image-2 attention-grabbing 3D static (it must
+  // stop the scroll for the whole deck); the text-heavy INNER slides are deterministic HTML/CSS for exact
+  // typography (no AI text glitches). If chromium is unavailable, inner slides fall back to the image model.
   if (input.kind === "carousel") {
     const deck = await designCarouselDeck({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar }, { runProvider: deps.conceptProvider, model: deps.conceptModel });
-    const result = await renderContent(
-      {
-        kind: "carousel",
-        hook: input.hook,
-        teachingJob: input.teachingJob,
-        pillar: input.pillar,
-        platform: input.platform,
-        slides: deck.slides,
-        cta: deck.slides.find((s) => s.role === "cta")?.heading,
-        model: input.model,
-        topicId: input.topicId,
-        requestedBy: input.requestedBy,
-        treatment: deck.treatment,
-        accentColor: deck.accentColor,
-        colorField: deck.colorField,
-        labelTag: deck.labelTag || undefined,
-      },
+
+    // COVER — art-directed GPT-Image-2 static (the attention grabber).
+    const coverConcept = deps.designConcept
+      ? await deps.designConcept({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform })
+      : await designRenderConcept({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform }, { runProvider: deps.conceptProvider, model: deps.conceptModel });
+    const cover = await renderContent(
+      { kind: "static", hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform, model: input.model ?? HERO_IMAGE_MODEL, topicId: input.topicId, requestedBy: input.requestedBy, treatment: coverConcept.treatment, metaphor: coverConcept.metaphor, subject: coverConcept.subject || undefined, light: coverConcept.light || undefined, camera: coverConcept.camera || undefined, grade: coverConcept.grade || undefined, texture: coverConcept.texture || undefined, mood: coverConcept.mood || undefined, accentPhrase: coverConcept.accentPhrase, accentColor: coverConcept.accentColor, colorField: coverConcept.colorField, labelTag: coverConcept.labelTag || undefined },
       deps,
     );
-    return { ...result, deck };
+    const assets: RenderedAsset[] = cover.assets.map((a) => ({ ...a, role: "cover" }));
+    let totalCents = cover.totalCostCents;
+
+    // INNER slides — HTML/CSS rasterised (exact text). Fall back to the image model per-slide if chromium fails.
+    const inner = deck.slides.slice(1);
+    const storageRoot = process.env.STORAGE_ROOT;
+    let htmlOk = true;
+    for (let i = 0; i < inner.length; i++) {
+      const s = inner[i];
+      if (htmlOk) {
+        try {
+          const ref = await renderHtmlSlideToFile({ role: s.role, heading: s.heading, body: s.body, index: i + 2, total: deck.slides.length, accentColor: deck.accentColor }, { storageRoot });
+          assets.push({ slideIndex: i + 1, role: s.role, outputRefs: [ref], costCents: 0 });
+          continue;
+        } catch {
+          htmlOk = false; // chromium unavailable on this host — fall back for the rest
+        }
+      }
+      const r = await renderContent({ kind: "carousel", hook: input.hook, teachingJob: input.teachingJob, slides: [s], model: VOLUME_IMAGE_MODEL, topicId: input.topicId, requestedBy: input.requestedBy, treatment: deck.treatment, accentColor: deck.accentColor, colorField: deck.colorField }, deps);
+      for (const a of r.assets) assets.push({ ...a, slideIndex: i + 1, role: s.role });
+      totalCents += r.totalCostCents;
+    }
+
+    return { renderId: cover.renderId, kind: "carousel", model: `${input.model ?? HERO_IMAGE_MODEL}+html`, assets, totalCostCents: totalCents, deck };
   }
 
   // STATIC: the art director designs a single scroll-stopping concept.

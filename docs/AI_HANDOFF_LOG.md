@@ -6546,3 +6546,19 @@ kind=carousel → designCarouselDeck → renders every slide (shared treatment/c
 asset (mediaRefs[]). Topic Bank shows the produced slides as a horizontal strip. PROVEN LIVE: "dead-database
 revival" → 7-slide deck (cover: glowing crystal rising from dead floppy disks; STEP-1: 3D lead-sorting diagram),
 cohesive blue+orange system, wobble. wordmark, swipe affordance. Typecheck + render tests (14) green.
+
+## 2026-07-18 — batch 16: HYBRID carousel (GPT-Image-2 cover + HTML/CSS inner slides)
+
+Per the founder's correction + the handoff spec: the carousel COVER is a GPT-Image-2 attention-grabbing 3D
+static (it must stop the scroll for the whole deck), and the text-heavy INNER slides are deterministic HTML/CSS
+rasterised to PNG with headless chromium — EXACT typography, zero AI text glitches.
+
+- `src/lib/content-render/html-slide.ts`: on-brand 1080x1350 slide HTML (near-black + accent, role/STEP label,
+  huge condensed heading, bulleted teaching lines, wobble. wordmark, N/total) + Playwright chromium rasterise.
+- renderTopicAsset carousel branch → cover via the static art director (HERO GPT-Image-2), inner slides via
+  renderHtmlSlideToFile; per-slide FALLBACK to the image model if chromium is unavailable (VPS without it).
+- next.config serverExternalPackages: playwright (not bundled into the standalone; require'd at runtime).
+- PROVEN: "speed-to-lead" → 7-slide deck; the HTML NODE slides render with perfect crisp text (STEP label +
+  headline + orange-bulleted teaching + wobble. wordmark + "3/7"). Cover via GPT-Image-2 (proven earlier; hit a
+  402 tonight — the OpenRouter key ran out of credits from many hero renders, so the proof used the gemini
+  cover). Typecheck + render tests (14) green. Total carousel cost ~cover-only (HTML slides are FREE).
