@@ -6195,3 +6195,13 @@ pointing outside the company's node set is dropped. This is the data layer under
 NOTE (sidebar #15 visual): confirmed live via a dev server (Docker rebuild blocked on npm-ci network) — the
 collapsible groups render with wired/total counts + chevrons, WORKSPACE auto-expands for the active module, and
 clicking a header toggles (PIPELINE expanded on click). Product simplification proven visually.
+
+---
+
+## Organisation workspace — API endpoint (step 11 API layer)
+
+`GET /api/org/[companyId]` (`src/app/api/org/[companyId]/route.ts`): founder-gated (requireFounder), read-only,
+returns `{ journey, lineage }` — the commercial-journey assembly + the artifact-provenance graph for one org.
+Thin wrapper over the already-tested getCommercialJourney + getArtifactLineage; standard route pattern; passes
+route-auth coverage (gated). This is the data endpoint the org-workspace tabs UI will fetch; the tabs UI itself
+is deferred (needs a container rebuild to browser-prove; the box's npm-ci build network is currently failing).
