@@ -17,6 +17,7 @@
 !drizzle.config.ts
 !src
 !public
+!assets
 !scripts
 
 # --- Defense in depth: re-exclude nested non-runtime material under allow-listed dirs ---
