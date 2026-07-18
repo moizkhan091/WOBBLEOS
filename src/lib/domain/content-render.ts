@@ -72,34 +72,53 @@ export interface StaticPromptInput {
   colorField?: string; // background colour field / paper
   treatment?: RenderTreatment; // which of the three real looks to commit to
   metaphor?: string; // an explicit physical-metaphor scene to build (optional; else the model invents one)
+  subject?: string; // hero object(s): material, finish, condition
+  light?: string; // physics lighting
+  camera?: string; // focal-length feel + aperture + viewpoint + framing
+  grade?: string; // film stock / tone curve
+  texture?: string; // grain / fibre / imperfection
+  mood?: string; // anchor words
   labelTag?: string; // pill label like "FOR SMB FOUNDERS"
   cta?: string; // pill CTA text
   brandNotes?: string; // extra art-direction from the design DNA bank
 }
 
-/** Build a rich, art-directed GPT-Image-2 prompt for a single premium on-brand static. Pair with reference images. */
+/** Build a decision-dense, art-directed GPT-Image-2 prompt (11-slot method, block-structured) for a premium
+ *  on-brand static. Pair with reference images. Physics lighting + camera + grade + texture + EXACT TEXT +
+ *  negative list = a directed photograph, not a bland AI poster. */
 export function buildStaticImagePrompt(input: StaticPromptInput): string {
   const treatment = input.treatment ?? "cinematic_3d";
   const accent = input.accentColor ?? "electric lime (#B8FF2C)";
   return [
-    `Art-direct and render a PREMIUM, scroll-stopping social STATIC for the WOBBLE brand in ${aspectFor(input.platform ?? "multi")}. Match the craft and finish of the attached reference images.`,
+    // block 1 — intent / artifact
+    `Art-direct and render a PREMIUM, scroll-stopping WOBBLE social STATIC as a directed PHOTOGRAPH/render (NOT a flat AI poster), ${aspectFor(input.platform ?? "multi")}. STUDY the attached WOBBLE reference images and MATCH their craft, density, lighting and finish. Use each reference only for composition/lighting/finish grammar — NOT for its wording, logo, or subject.`,
     ``,
     WOBBLE_VISUAL_SYSTEM,
     input.brandNotes ? `\nExtra art-direction from WOBBLE's design DNA: ${input.brandNotes}` : ``,
     ``,
-    `THIS ASSET:`,
     TREATMENT_BRIEF[treatment],
-    `- THE PHYSICAL METAPHOR (this is the whole image — make it clever, literal and dramatic): ${input.metaphor ?? `invent a striking real-world physical metaphor that makes this idea instantly obvious and memorable — ${input.teachingJob}`}`,
-    `- HEADLINE (render this EXACT text, huge, ultra-bold condensed, dominating the top): "${input.hook}"`,
-    input.accentPhrase ? `- Set ONLY the phrase "${input.accentPhrase}" in ${accent}; the rest of the headline heavy near-black.` : `- Put ${accent} on the single most important word of the headline; the rest heavy near-black.`,
-    input.subhead ? `- Supporting line (italic serif or handwritten marker, smaller): "${input.subhead}"` : ``,
-    input.colorField ? `- Background colour field: ${input.colorField}.` : `- Choose a saturated, confident background colour field that suits the metaphor (never a plain flat black slab).`,
-    input.labelTag ? `- A pill-shaped label tag reading "${input.labelTag}" top-left.` : ``,
-    input.cta ? `- A pill-shaped CTA button reading "${input.cta}".` : ``,
-    input.pillar ? `- Editorial tone: a "${input.pillar.replace(/_/g, " ")}" piece.` : ``,
-    `- A small "wobble." wordmark in a lower corner.`,
     ``,
-    `Output ONE finished, ready-to-post image. Expensive, distinctive, art-directed — it must stop the scroll and look unmistakably like the WOBBLE references. All text crisp and spelled exactly as given.`,
+    // block 2 — subject / scene
+    `SCENE / SET (this IS the image — a clever, literal, dramatic physical metaphor built from real objects): ${input.metaphor ?? `invent a striking real-world physical metaphor that makes this instantly obvious — ${input.teachingJob}`}`,
+    input.subject ? `SUBJECT (hero object, exact material/finish/condition): ${input.subject}` : ``,
+    // block 3 — light / camera / composition / grade / texture (the realism)
+    `LIGHT (physics, not vibe): ${input.light ?? "a single motivated key light with a clear direction and colour temperature, gentle fill, a thin separating rim, and a soft believable contact shadow"}.`,
+    `CAMERA: ${input.camera ?? "deliberate framing with a real focal-plane — subject sharp, background falling gently soft; reserve clean space at the top for the headline"}.`,
+    `GRADE: ${input.grade ?? "a filmic tone curve — lifted shadows, rolled-off highlights, true-to-life colour"}.`,
+    `TEXTURE: ${input.texture ?? "fine film grain, real material texture, dust and micro-imperfections, honest contact shadows — reads photographed, never synthetic"}.`,
+    input.mood ? `MOOD: ${input.mood}.` : ``,
+    ``,
+    // block 4 — the exact copy
+    `HEADLINE — EXACT TEXT, render VERBATIM, huge ultra-bold condensed, dominating the top: "${input.hook}"`,
+    input.accentPhrase ? `Set ONLY the phrase "${input.accentPhrase}" in ${accent}; the rest of the headline heavy near-black. No other words coloured.` : `Put ${accent} on the single most important word; the rest heavy near-black.`,
+    input.subhead ? `Supporting line (italic serif or handwritten marker, smaller) — EXACT TEXT: "${input.subhead}"` : ``,
+    input.labelTag ? `A pill-shaped label tag, EXACT TEXT: "${input.labelTag}", top area.` : ``,
+    input.cta ? `A pill-shaped CTA button, EXACT TEXT: "${input.cta}".` : ``,
+    `A small "wobble." wordmark in a lower corner.`,
+    ``,
+    // block 5 — constraints + negative list
+    `CONSTRAINTS: ${aspectFor(input.platform ?? "multi")}. Background colour field: ${input.colorField ?? "a saturated, confident colour that suits the metaphor (never a plain flat black slab)"}. Render ALL text crisp and spelled EXACTLY as written — no extra words, no duplicate text, no invented labels.`,
+    `NEGATIVE (avoid all of): ${RENDER_NEGATIVE_LIST}.`,
   ]
     .filter((l) => l !== ``)
     .join("\n");
@@ -153,9 +172,22 @@ export function buildCarouselSlidePrompts(input: CarouselPromptInput): string[] 
 
 // ── Art director (auto-design a great concept from a topic) ───────────────────────────────────────────
 
+/** The anti-synthetic negative list — attached to every prompt so the output reads photographed, not AI. */
+export const RENDER_NEGATIVE_LIST =
+  "neon, glowing, excessive bloom, fake bokeh, dramatic over-lighting, lens flare, generic 3d-render look, cgi sheen, plastic surfaces, waxy texture, over-glossy, over-symmetry, oversaturation, muddy grey wash, warped or duplicate text, garbled letters, extra invented words, distorted logo, watermark, busy cluttered background, sparse empty AI-poster feel";
+
+// The art director now fills a full 11-slot art-direction spec (from the creative playbooks) so the prompt is
+// decision-dense — physics lighting, camera/lens, grade, texture — not a bland description. Every slot is a
+// real decision a photographer/gaffer/colourist would make.
 export const renderConceptSchema = z.object({
   treatment: z.enum(RENDER_TREATMENTS),
-  metaphor: z.string().trim().min(1), // a vivid, literal physical-metaphor SCENE to build
+  metaphor: z.string().trim().min(1), // the SCENE: a vivid, literal physical-metaphor set built from real objects
+  subject: z.string().trim().default(""), // the hero object(s): exact material, finish, condition
+  light: z.string().trim().default(""), // PHYSICS: source, direction/angle, Kelvin, hard/soft, fill, rim, the shadow it casts
+  camera: z.string().trim().default(""), // focal-length feel + aperture/depth + viewpoint + height + framing
+  grade: z.string().trim().default(""), // film stock / tone curve (lifted shadows, rolled-off highlights)
+  texture: z.string().trim().default(""), // grain, paper fibre, dust, wear, imperfection — the realism cues
+  mood: z.string().trim().default(""), // 1-2 anchor words / named aesthetic
   accentPhrase: z.string().trim().min(1), // the exact words from the hook to colour
   accentColor: z.string().trim().min(1), // e.g. "electric orange"
   colorField: z.string().trim().min(1), // background colour field / paper
@@ -168,15 +200,21 @@ export type RenderConcept = z.infer<typeof renderConceptSchema>;
 /** The Art Director prompt: given a topic, design a scroll-stopping WOBBLE render concept (treatment + a real
  *  physical metaphor + accent + colour), matching the reference library's craft. */
 export function buildArtDirectorPrompt(input: { hook: string; teachingJob: string; pillar?: string; platform?: string }): { system: string; user: string } {
-  const system = `You are WOBBLE's ART DIRECTOR. Design ONE scroll-stopping concept for a social static in the real WOBBLE / Moiz Khan style.
+  const system = `You are WOBBLE's ART DIRECTOR + photographer + gaffer + colourist. Design ONE scroll-stopping social static in the real WOBBLE / Moiz Khan style — a directed PHOTOGRAPH/render, not a bland AI poster.
 
 ${WOBBLE_VISUAL_SYSTEM}
 
-Your job: turn the topic into a concrete, cleverly LITERAL physical metaphor and choose the treatment + colours that hit hardest. Think like the reference ads: a giant magnet labelled AGENCY pulling clay houses; mini shopping carts forming a donut chart; a hand-drawn notebook page. Be specific and visual — describe a real SCENE a photographer/3D artist could build, not an abstract idea.
+METHOD — decide every slot like a real shoot (the difference between amateur and pro is how much YOU decide vs. let the model default):
+- Turn the topic into a concrete, cleverly LITERAL physical metaphor built from real objects (like: a giant glossy magnet labelled AGENCY pulling clay houses; mini shopping carts arranged as a donut chart; a hand-drawn notebook page). Describe a real SCENE.
+- LIGHT is physics, never vibe: name the source, direction/angle, colour temperature (Kelvin), hard/soft quality, fill, rim, and the exact SHADOW it casts.
+- CAMERA: framing (close/wide/top-down), viewpoint (eye-level/low), the focal-length + aperture FEEL (e.g. "50mm three-quarter, f4, background falling gently soft"), and reserved clean space for the headline.
+- GRADE: a film stock / tone curve (lifted shadows, rolled-off highlights) — not "cinematic".
+- TEXTURE: real imperfection — grain, paper fibre, dust, wear, contact shadows, uneven exposure — so it reads photographed, not synthetic.
+- Choose the treatment + a saturated colour field. Pick ONE accent phrase FROM the headline.
 
-Respond with STRICT JSON only:
-{"treatment":"cinematic_3d|photographic_dataviz|hand_notebook","metaphor":"a vivid, literal scene to build (objects, arrangement, lighting)","accentPhrase":"the exact words FROM the headline to colour","accentColor":"e.g. electric orange","colorField":"background colour field or paper","labelTag":"short pill label e.g. FOR SMB FOUNDERS","subhead":"one short supporting line","cta":"short pill CTA"}`;
-  const user = `HEADLINE (exact): "${input.hook}"\nTEACHING IDEA: ${input.teachingJob}\n${input.pillar ? `PILLAR: ${input.pillar}\n` : ""}${input.platform ? `PLATFORM: ${input.platform}\n` : ""}Design the concept. STRICT JSON only.`;
+Respond with STRICT JSON only (every field filled, specific and physical):
+{"treatment":"cinematic_3d|photographic_dataviz|hand_notebook","metaphor":"the SCENE: objects, arrangement, setting","subject":"the hero object(s): exact material, finish, condition","light":"source + direction/angle + Kelvin + hard/soft + fill + rim + the shadow it casts","camera":"framing + viewpoint + focal-length/aperture feel + reserved copy space","grade":"film stock / tone curve","texture":"grain / fibre / dust / wear / imperfection cues","mood":"1-2 anchor words","accentPhrase":"exact words FROM the headline to colour","accentColor":"e.g. electric orange","colorField":"background colour field or paper","labelTag":"short pill label e.g. FOR SMB FOUNDERS","subhead":"one short supporting line","cta":"short pill CTA"}`;
+  const user = `HEADLINE (exact, render verbatim): "${input.hook}"\nTEACHING IDEA: ${input.teachingJob}\n${input.pillar ? `PILLAR: ${input.pillar}\n` : ""}${input.platform ? `PLATFORM: ${input.platform}\n` : ""}Direct the shot. Fill EVERY slot with specific, physical decisions. STRICT JSON only.`;
   return { system, user };
 }
 
@@ -219,6 +257,12 @@ export interface BuildRenderPlanInput {
   colorField?: string;
   treatment?: RenderTreatment;
   metaphor?: string;
+  subject?: string;
+  light?: string;
+  camera?: string;
+  grade?: string;
+  texture?: string;
+  mood?: string;
   labelTag?: string;
   subhead?: string;
 }
@@ -242,6 +286,12 @@ export function buildRenderPlan(input: BuildRenderPlanInput, opts: { id?: string
     colorField: input.colorField,
     treatment: input.treatment,
     metaphor: input.metaphor,
+    subject: input.subject,
+    light: input.light,
+    camera: input.camera,
+    grade: input.grade,
+    texture: input.texture,
+    mood: input.mood,
     labelTag: input.labelTag,
     cta: input.cta,
     brandNotes: input.brandNotes,

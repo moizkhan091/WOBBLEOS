@@ -6496,3 +6496,20 @@ Wired the "Produce this" button to the render engine end-to-end + PROVEN LIVE th
 The content module now runs the WHOLE loop live: sources → intelligence → topic bank (real stats) → founder
 approve → Produce → art-directed on-brand render → Library. Remaining: carousel multi-image display, zernio
 post, lead magnets, reels, CRM hub, sidebar consolidation.
+
+---
+
+## 2026-07-18 — batch 11: 11-slot art-direction prompts (photoreal, from the creative playbooks)
+
+Founder handed the CLAUDE_CONTENT_PRODUCTION_HANDOFF + pointed at the creative playbooks
+(C:\Claude projects\Static Creative Agency\_MASTER\). Rebuilt the prompt engine to the 11-slot
+art-direction METHOD: physics lighting (source/direction/Kelvin/shadow), camera & lens
+(focal/aperture/angle), grade (film stock/tone curve), texture/imperfection, EXACT TEXT markers,
+block structure, and the anti-synthetic NEGATIVE list. The art director now fills the full spec
+(subject/light/camera/grade/texture/mood on top of treatment/metaphor/accent).
+
+PROVEN: "You're paying an agency to rent you leads" → the art director designed a chrome parking
+meter (EXPIRED flag, 00:00, patina coin slot) chained+padlocked to an acrylic briefcase of clay
+figures, dead gray figures scattered, hard-key 5600K lighting, 50mm f2.8, Kodak Portra grade,
+ISO-400 grain → gpt-5.4-image-2 rendered a genuinely agency-grade, magazine-quality static (28¢).
+A massive level-up from the earlier bland output. Tests (14) + typecheck green.

@@ -54,6 +54,12 @@ export interface RenderContentInput {
   colorField?: string;
   treatment?: RenderTreatment;
   metaphor?: string;
+  subject?: string;
+  light?: string;
+  camera?: string;
+  grade?: string;
+  texture?: string;
+  mood?: string;
   labelTag?: string;
   subhead?: string;
   /** reference images as data: URLs — guide the style / enable image→image regen. */
@@ -172,7 +178,13 @@ export async function designRenderConcept(
   return (
     concept ?? {
       treatment: "cinematic_3d",
-      metaphor: `A dramatic 3D-rendered scene that literally embodies: ${input.teachingJob}. Cinematic studio lighting, real materials, depth of field.`,
+      metaphor: `A dramatic scene built from real clay/3D objects that literally embodies: ${input.teachingJob}.`,
+      subject: "tactile clay/3D props with real material and finish",
+      light: "a single motivated key light from camera-left ~45°, warm ~4800K, soft quality, gentle bounce fill camera-right, a thin rim separating subject from the field, a soft contact shadow falling right",
+      camera: "three-quarter view, ~50mm feel at f4, eye-level, subject sharp with the field falling gently soft; top area kept clean for the headline",
+      grade: "filmic tone curve, lifted shadows, rolled-off highlights, true-to-life colour",
+      texture: "fine film grain, real material texture, faint dust and micro-imperfections, honest contact shadows",
+      mood: "confident, editorial",
       accentPhrase: input.hook.split(" ").slice(0, 2).join(" "),
       accentColor: "electric orange",
       colorField: "saturated electric-orange studio backdrop",
@@ -216,6 +228,12 @@ export async function renderTopicAsset(
       requestedBy: input.requestedBy,
       treatment: concept.treatment,
       metaphor: concept.metaphor,
+      subject: concept.subject || undefined,
+      light: concept.light || undefined,
+      camera: concept.camera || undefined,
+      grade: concept.grade || undefined,
+      texture: concept.texture || undefined,
+      mood: concept.mood || undefined,
       accentPhrase: concept.accentPhrase,
       accentColor: concept.accentColor,
       colorField: concept.colorField,
