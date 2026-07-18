@@ -6265,3 +6265,37 @@ Tavily/Apify: kill switch → USD budget allowance → max-1 concurrency → dur
 
 Typecheck + full test batch green. Next: the persisted, review-gated TOPIC BANK (the net-new centerpiece —
 topics with real stats + human selection), then the intelligence-run orchestrator (manual + scheduled).
+
+---
+
+## 2026-07-18 — V2 content-engine build wave (Claude) — batch 2: TOPIC BANK (net-new centerpiece)
+
+The founder's #1 content requirement: "topics are given WITH stats, the human selects which to make — never
+blind, but give enough correct statistics on each to make a data-driven decision." Built the persisted,
+review-gated topic bank (the one genuinely-absent piece; sources/graph/scheduler/jobs already exist).
+
+- Migration 0059 `content_topics` — pillar, title, angle, teachingJob (the real MECHANISM, anti-filler),
+  funnelStage, suggested platform/format, freshness, + DECISION-SUPPORT STATS: demandVolume (DataForSEO),
+  trendVelocity (Google Trends), competitorGap, founderJobValue, noveltyScore, proofAvailable, and a weighted
+  overallScore + scoreBreakdown. status pending_review|approved|rejected|promoted, review fields, promotion refs.
+- `src/lib/domain/content-topics.ts` — 7 WOBBLE pillars, 3 funnel stages; `computeTopicScore` is deliberately
+  ANTI-POPULARITY (founder-job value 30% + novelty 20% dominate; raw demand only 15%); log-normalised demand +
+  velocity; `buildTopicBankPrompt` (mechanism-first, novelty-grounded); `parseTopicProposals` (tolerant, drops
+  malformed, never invents).
+- `src/lib/content-topics/index.ts` — `generateTopicBank` (strategist → DataForSEO enrichment that DEGRADES
+  GRACEFULLY to null when the account is unverified → deterministic score → persist pending_review), the human
+  gate `reviewTopic` (idempotent, audited), `markTopicPromoted` (approved→promoted only), list/get + numeric
+  coercion on read.
+- Tests `tests/content-topics.test.ts` (13, green): anti-popularity scoring, normalisation, parse tolerance,
+  service generate/review/promote with in-memory mocks. Registry-integrity still green (reused content_strategist,
+  no new agent).
+- PROVEN LIVE (`prove-topic-bank.ts`, real claude-sonnet-4.5 on the UAT DB): 8 real WOBBLE topics, mechanism-first
+  (e.g. "I Paid an Agency $800/mo for 'AI Lead Qualification' — Here's the 6-Node Workflow They Hid From Me"),
+  scored 67-75, human gate held (approved top → 7 pending / 1 approved). DataForSEO enrichment skipped gracefully
+  (account unverified) → demand n/a, as designed.
+- CI release gate `verify-content-topics-db.ts` (auto-discovered; canned providers, real Postgres, isolated +
+  cleanup): 14 checks incl. numeric velocity round-trips as a NUMBER, anti-popularity ranking, and the human
+  gate (promote only after approve; idempotent; rejected never promotable).
+
+Next: the intelligence-run orchestrator (gather active sources → generateTopicBank; manual + scheduled cadence),
+then wire approved-topic → content graph promotion.

@@ -470,3 +470,23 @@ Log founder conversations too (not just code). If a founder states intent in cha
   Netlify — no public API); website changes **suggestions-first** (auto-PR only once the site repo is connected).
 - Do NOT: call DataForSEO without a named ledger `item`; store the credential inside the repo; fake data on a
   40104 (surface `DataForSeoAccountError` instead).
+
+---
+
+## 2026-07-18 — Topic Bank: scoring is anti-popularity + human-gated by design
+
+- WHY a new table (not reuse creativeBrief): the strategist's brief was EPHEMERAL — it flowed straight into a
+  content packet with no reviewable, stat-bearing topic. The founder explicitly wants a BANK of topics with
+  statistics to choose from. So `content_topics` is net-new, modelled on the meeting_intelligence
+  pending_review→approved/rejected pattern.
+- Scoring weights (founderJobValue 0.30, novelty 0.20, competitorGap 0.15, demand 0.15, velocity 0.10, proof
+  0.05, freshness 0.05) are DELIBERATELY anti-popularity — the founder's north star is founder-job value +
+  teaching a real mechanism, not search volume. Demand/velocity are minority, evidence-style inputs.
+- Enrichment is NON-FATAL: DataForSEO demand/velocity are best-effort. If the provider is unverified/over
+  budget, demand stays null and the topic still scores on the qualitative signals (unknown velocity = neutral
+  50, never a bonus/penalty). The ledger records every failed call truthfully.
+- Human loop is HARD: a topic promotes to production ONLY after founder approval; review is idempotent; a
+  rejected topic is never promotable. Nothing posts blindly.
+- Do NOT: let generation crash on a provider error; score by demand alone; auto-promote an unreviewed topic.
+- Affects: migration 0059, src/db/schema.ts, src/lib/domain/content-topics.ts, src/lib/content-topics/index.ts,
+  tests/content-topics.test.ts, prove-topic-bank.ts, verify-content-topics-db.ts.

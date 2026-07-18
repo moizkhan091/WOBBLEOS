@@ -1593,6 +1593,51 @@ export const meetingIntelligence = pgTable("meeting_intelligence", {
   index("meeting_intelligence_status_idx").on(table.status),
 ]);
 
+// Topic Bank: the intelligence run proposes content topics, each carrying real decision-support statistics
+// (search demand, trend velocity, competitor gap, founder-job value, novelty, proof, freshness) so a founder
+// picks data-driven — never blind. Every topic lands pending_review; only an approved topic is promoted to
+// production. Scoring is anti-popularity: founder-job value + novelty dominate.
+export const contentTopics = pgTable("content_topics", {
+  id: id(),
+  pillar: varchar("pillar", { length: 40 }).notNull(), // buildable_automations|tool_stack_decisions|...
+  title: text("title").notNull(),
+  angle: text("angle").notNull(),
+  teachingJob: text("teaching_job").notNull(), // the real MECHANISM it teaches (anti-filler)
+  targetAudience: text("target_audience").notNull(),
+  rationale: text("rationale").notNull(),
+  funnelStage: varchar("funnel_stage", { length: 16 }).notNull().default("awareness"), // awareness|trust|lead_gen
+  suggestedPlatform: varchar("suggested_platform", { length: 16 }).notNull().default("instagram"),
+  suggestedFormat: varchar("suggested_format", { length: 24 }).notNull().default("carousel"),
+  freshness: varchar("freshness", { length: 16 }).notNull().default("evergreen"), // breaking|fresh|evergreen|stale
+  demandKeyword: text("demand_keyword"),
+  demandVolume: integer("demand_volume"), // monthly searches (DataForSEO), null until enriched
+  trendVelocity: numeric("trend_velocity"), // fractional momentum (Google Trends), null until enriched
+  competitorGap: integer("competitor_gap").notNull().default(0), // 0-100 white-space
+  founderJobValue: integer("founder_job_value").notNull().default(0), // 0-100
+  noveltyScore: integer("novelty_score").notNull().default(0), // 0-100
+  proofAvailable: boolean("proof_available").notNull().default(false),
+  overallScore: integer("overall_score").notNull().default(0), // 0-100 weighted composite
+  scoreBreakdown: jsonb("score_breakdown").$type<Record<string, number>>().notNull().default({}),
+  sourceRefs: jsonb("source_refs").$type<string[]>().notNull().default([]),
+  status: varchar("status", { length: 16 }).notNull().default("pending_review"), // pending_review|approved|rejected|promoted
+  reviewedBy: varchar("reviewed_by", { length: 120 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNotes: text("review_notes"),
+  intelligenceRunId: text("intelligence_run_id"),
+  promotedGraphRunId: text("promoted_graph_run_id"),
+  promotedPacketId: text("promoted_packet_id"),
+  createdByAgent: varchar("created_by_agent", { length: 120 }),
+  model: varchar("model", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("content_topics_status_idx").on(table.status),
+  index("content_topics_pillar_idx").on(table.pillar),
+  index("content_topics_run_idx").on(table.intelligenceRunId),
+  index("content_topics_score_idx").on(table.overallScore),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 
