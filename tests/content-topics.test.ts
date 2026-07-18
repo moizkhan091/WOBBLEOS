@@ -63,6 +63,16 @@ describe("topic scoring (anti-popularity, deterministic)", () => {
     const stale = computeTopicScore({ ...baseStats, freshness: "stale" });
     expect(breaking.overall).toBeGreaterThan(stale.overall);
   });
+
+  it("falls back to the FREE demand signal when paid volume is absent", () => {
+    const withSignal = computeTopicScore({ ...baseStats, demandVolume: null, demandSignal: 90 });
+    const noSignal = computeTopicScore({ ...baseStats, demandVolume: null, demandSignal: 0 });
+    expect(withSignal.breakdown.demand).toBe(90); // the free signal drives the demand component
+    expect(withSignal.overall).toBeGreaterThan(noSignal.overall);
+    // real paid volume still takes precedence over the free signal when present
+    const paid = computeTopicScore({ ...baseStats, demandVolume: 100000, demandSignal: 10 });
+    expect(paid.breakdown.demand).toBeGreaterThan(50);
+  });
 });
 
 const validProposalJson = JSON.stringify({

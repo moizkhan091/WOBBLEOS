@@ -6,6 +6,7 @@ import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { searchVolume, trendsExplore } from "@/lib/dataforseo";
+import { freeDemandSignal } from "@/lib/keyword-research";
 import {
   buildTopicBankPrompt,
   buildContentTopicRow,
@@ -35,9 +36,10 @@ export interface ContentTopicStore {
 }
 
 /** Turns demand keywords into demand/velocity signals. Failures (account unverified, budget, no key) degrade
- *  gracefully to empty maps — topic generation never breaks on a provider hiccup; the ledger records the truth. */
+ *  gracefully to empty maps — topic generation never breaks on a provider hiccup; the ledger records the truth.
+ *  `signals` is the FREE (Google/DDG autocomplete) 0-100 demand proxy used as the fallback for paid volume. */
 export interface TopicEnricher {
-  enrich(keywords: string[], item: string, locationName?: string): Promise<{ volumes: Map<string, number | null>; velocities: Map<string, number> }>;
+  enrich(keywords: string[], item: string, locationName?: string): Promise<{ volumes: Map<string, number | null>; velocities: Map<string, number>; signals?: Map<string, number> }>;
 }
 
 export type TopicProvider = (input: { role: string; module: string; model?: string; messages: ProviderChatMessage[]; maxTokens?: number; temperature?: number }) => Promise<{ text: string }>;
@@ -108,9 +110,10 @@ export async function generateTopicBank(input: GenerateTopicBankInput, deps: Con
     return [];
   }
 
-  // Enrich demand keywords with REAL search demand + trend velocity (graceful if DataForSEO is unavailable).
+  // Enrich demand keywords with REAL search demand + trend velocity (DataForSEO), plus the FREE autocomplete
+  // demand signal as the fallback (graceful if DataForSEO is unavailable).
   const enricher = deps.enricher ?? defaultTopicEnricher();
-  const { volumes, velocities } = await enricher.enrich(
+  const { volumes, velocities, signals } = await enricher.enrich(
     proposals.map((p) => p.demandKeyword),
     `topic-bank:${runId}`,
     input.locationName,
@@ -121,6 +124,7 @@ export async function generateTopicBank(input: GenerateTopicBankInput, deps: Con
     const stats: TopicStats = {
       demandKeyword: p.demandKeyword,
       demandVolume: volumes.has(key) ? volumes.get(key) ?? null : null,
+      demandSignal: signals?.has(key) ? signals.get(key) ?? null : null,
       trendVelocity: velocities.has(key) ? velocities.get(key) ?? null : null,
       competitorGap: p.competitorGap,
       founderJobValue: p.founderJobValue,
@@ -218,19 +222,21 @@ export async function getTopic(id: string, deps: ContentTopicsDeps = {}): Promis
   return (deps.store ?? defaultStore()).getTopic(id);
 }
 
-/** Real DataForSEO enricher — one batched search-volume call + chunked trends; swallows provider errors. */
+/** Enricher — DataForSEO for paid volume + trend velocity (best-effort), plus the FREE Google/DDG autocomplete
+ *  demand signal ALWAYS (no key), so demand scoring works even when DataForSEO is unavailable. Swallows errors. */
 export function defaultTopicEnricher(): TopicEnricher {
   return {
     async enrich(keywords, item, locationName) {
       const volumes = new Map<string, number | null>();
       const velocities = new Map<string, number>();
+      const signals = new Map<string, number>();
       const uniq = [...new Set(keywords.map((k) => k.trim().toLowerCase()).filter(Boolean))];
-      if (!uniq.length) return { volumes, velocities };
+      if (!uniq.length) return { volumes, velocities, signals };
       try {
         const vols = await searchVolume({ keywords: uniq, item, locationName });
         for (const v of vols) volumes.set(v.keyword.toLowerCase(), v.searchVolume);
       } catch (e) {
-        console.warn(`[topic-bank] demand enrichment skipped: ${e instanceof Error ? e.message : String(e)}`);
+        console.warn(`[topic-bank] paid demand (DataForSEO) skipped: ${e instanceof Error ? e.message : String(e)}`);
       }
       try {
         for (let i = 0; i < uniq.length; i += 5) {
@@ -239,9 +245,16 @@ export function defaultTopicEnricher(): TopicEnricher {
           for (const t of tr) velocities.set(t.keyword.toLowerCase(), t.velocity);
         }
       } catch (e) {
-        console.warn(`[topic-bank] trend enrichment skipped: ${e instanceof Error ? e.message : String(e)}`);
+        console.warn(`[topic-bank] trend velocity (DataForSEO) skipped: ${e instanceof Error ? e.message : String(e)}`);
       }
-      return { volumes, velocities };
+      // FREE demand signal (always) — real autocomplete demand, the DataForSEO fallback.
+      try {
+        const sig = await Promise.all(uniq.map(async (k) => [k, (await freeDemandSignal(k)).signal] as const));
+        for (const [k, s] of sig) signals.set(k, s);
+      } catch (e) {
+        console.warn(`[topic-bank] free demand signal skipped: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return { volumes, velocities, signals };
     },
   };
 }

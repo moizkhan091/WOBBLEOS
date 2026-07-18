@@ -6376,3 +6376,26 @@ PROMOTION — the "a selected topic picks up into production" step.
 
 Lesson: ALWAYS run the FULL `npm run test` (or at least route-auth-coverage) before pushing a new API route —
 targeted test runs miss the cross-cutting security-coverage gate.
+
+---
+
+## 2026-07-18 — V2 content-engine wave (Claude) — batch 6: FREE keyword research fallback + Plausible connected
+
+Founder connected Plausible + said DataForSEO is verified (but it STILL returns 40104 — not propagated). Per
+their instruction "if DataForSEO not working find a free alternative", built a free keyword research provider.
+
+- **Plausible CONNECTED**: key works against site `wobblepk.com` (0 traffic = pre-launch, expected). Stored
+  PLAUSIBLE_API_KEY + PLAUSIBLE_SITE_ID=wobblepk.com in the vault (outside repo). The existing `webstats` module
+  reads these — needs them in the app container env on deploy (VPS).
+- **Free keyword research** (`src/lib/keyword-research/index.ts`): Google Autocomplete + DuckDuckGo autocomplete
+  → real related search queries (with buyer-intent modifiers) + a 0-100 `freeDemandSignal` (demand proxy). NO
+  key, no budget. Never fabricates — a fetch failure returns empty.
+- Wired as the DataForSEO FALLBACK: `TopicStats.demandSignal`; `computeTopicScore` uses paid volume when present
+  else the free signal (so a topic is never unfairly zeroed on demand); `defaultTopicEnricher` now ALWAYS
+  computes the free signal alongside the best-effort DataForSEO volume. UI shows "~N signal" when no paid volume.
+- Tests: `tests/keyword-research.test.ts` (5) + a scoring-fallback case. PROVEN LIVE
+  (`prove-free-keyword.ts`): every WOBBLE seed → signal 100/100, commercial intent detected, real related
+  terms; enricher fills freeSignal=100 while DataForSEO 40104s. Typecheck + tests green.
+
+DataForSEO stays wired (kicks in automatically once the account verification propagates); the free provider
+means keyword research is never blocked meanwhile.

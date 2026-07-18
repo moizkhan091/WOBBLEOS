@@ -5914,7 +5914,7 @@ function OrgWorkspacePage() {
   );
 }
 
-type TopicRow = { id: string; pillar: string; title: string; teachingJob: string; angle: string; funnelStage: string; suggestedFormat: string; freshness: string; demandKeyword: string | null; demandVolume: number | null; trendVelocity: number | null; competitorGap: number; founderJobValue: number; noveltyScore: number; proofAvailable: boolean; overallScore: number; status: string; reviewedBy: string | null };
+type TopicRow = { id: string; pillar: string; title: string; teachingJob: string; angle: string; funnelStage: string; suggestedFormat: string; freshness: string; demandKeyword: string | null; demandVolume: number | null; trendVelocity: number | null; competitorGap: number; founderJobValue: number; noveltyScore: number; proofAvailable: boolean; overallScore: number; scoreBreakdown?: { demand?: number }; status: string; reviewedBy: string | null };
 type IntelRun = { id: string; trigger: string; status: string; topicCount: number; sourceCount: number; createdAt: string; objective: string };
 
 const PILLAR_LABEL: Record<string, string> = { buildable_automations: "Buildable automation", tool_stack_decisions: "Tool & stack", skills_prompts_repos: "Skills & prompts", copy_paste_assets: "Copy-paste asset", agency_teardowns: "Agency teardown", ai_for_operators: "AI for operators", build_proof_lessons: "Build proof" };
@@ -6018,7 +6018,7 @@ function TopicBankPage() {
                 <TopicStat label="FOUNDER-JOB" value={t.founderJobValue} tone={C.lime} />
                 <TopicStat label="NOVELTY" value={t.noveltyScore} />
                 <TopicStat label="COMPETITOR GAP" value={t.competitorGap} />
-                <TopicStat label="DEMAND" value={t.demandVolume == null ? "n/a" : `${t.demandVolume}/mo`} />
+                <TopicStat label="DEMAND" value={t.demandVolume != null ? `${t.demandVolume}/mo` : t.scoreBreakdown?.demand ? `~${Math.round(t.scoreBreakdown.demand)} signal` : "n/a"} />
                 <TopicStat label="TREND" value={t.trendVelocity == null ? "n/a" : (t.trendVelocity > 0 ? "↑ " : "↓ ") + Math.abs(t.trendVelocity).toFixed(2)} tone={t.trendVelocity != null && t.trendVelocity > 0 ? C.lime : undefined} />
                 <TopicStat label="PROOF" value={t.proofAvailable ? "yes" : "no"} tone={t.proofAvailable ? C.lime : C.gray} />
               </div>

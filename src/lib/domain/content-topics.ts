@@ -51,6 +51,7 @@ const FRESHNESS_SCORE: Record<ContentTopicFreshness, number> = { breaking: 100, 
 export interface TopicStats {
   demandKeyword: string | null;
   demandVolume: number | null; // monthly searches (DataForSEO) — null until enriched
+  demandSignal?: number | null; // 0-100 FREE demand proxy (Google/DDG autocomplete) when no paid volume
   trendVelocity: number | null; // fractional momentum (Google Trends) — null until enriched
   competitorGap: number; // 0-100, higher = more white-space (fewer teaching it well)
   founderJobValue: number; // 0-100, how much it advances a REAL founder job
@@ -90,7 +91,9 @@ export function computeTopicScore(stats: TopicStats): { overall: number; breakdo
     founderJobValue: clamp(stats.founderJobValue),
     noveltyScore: clamp(stats.noveltyScore),
     competitorGap: clamp(stats.competitorGap),
-    demand: normalizeDemand(stats.demandVolume),
+    // Prefer real paid volume (DataForSEO); fall back to the FREE autocomplete demand signal so a topic is
+    // never unfairly zeroed on demand just because the paid provider is unavailable/unverified.
+    demand: stats.demandVolume != null ? normalizeDemand(stats.demandVolume) : clamp(stats.demandSignal ?? 0),
     trendVelocity: normalizeVelocity(stats.trendVelocity),
     proofAvailable: stats.proofAvailable ? 100 : 0,
     freshness: FRESHNESS_SCORE[stats.freshness] ?? 50,
