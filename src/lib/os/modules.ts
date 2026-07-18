@@ -39,6 +39,7 @@ export const MODULES: Record<string, ModuleDef> = {
   sources: { id: "sources", label: "Source Registry", title: "Source Registry", icon: "Library", status: "wired", chunk: 53, api: "/api/sources,/api/sources/types", tagline: "Every source type, intake run, connected agent, processing status, memory route and approval gate that feeds the hive mind." },
   intelligence: { id: "intelligence", label: "Intelligence Inbox", title: "Intelligence Review Inbox", icon: "Inbox", status: "wired", chunk: 55, api: "/api/intelligence/inbox", tagline: "The review gate where raw agent/source findings become approved knowledge, get rejected with reasons, merge, or route into Memory." },
   learning: { id: "learning", label: "Learning Engine", title: "Learning Engine", icon: "GraduationCap", status: "wired", chunk: 13, api: "/api/knowledge", tagline: "The Knowledge Compiler: approved sources become atomic, interlinked knowledge notes that compound — the compiled brain every agent reads." },
+  topics: { id: "topics", label: "Topic Bank", title: "Content Intelligence — Topic Bank", icon: "Lightbulb", status: "wired", api: "/api/content/topics,/api/content/intelligence", tagline: "The strategist team proposes content topics with real decision stats — search demand, trend velocity, competitor gap, founder-job value, novelty, proof. You pick what is worth making; nothing posts blindly. Run intelligence on demand or on a daily cadence." },
   content: { id: "content", label: "Content Command", title: "Content Command", icon: "PenTool", status: "wired", chunk: 14, api: "/api/content", tagline: "Every piece of content from idea to handoff. Nothing publishes without a founder." },
   library: { id: "library", label: "Library & Scheduler", title: "Content Library & Scheduler", icon: "CalendarClock", status: "wired", api: "/api/library", tagline: "Every publishable asset in one place - your existing content plus approved packs - queued and scheduled to each platform through a pluggable publisher." },
   media: { id: "media", label: "Media Studio", title: "Media Studio", icon: "Clapperboard", status: "wired", api: "/api/media", tagline: "Submit a media generation job — durable, worker-driven, with bounded retries + crash recovery + budget caps. The provider-independent pipeline is BUILT; the live fal.ai call is the only blocked piece (set FAL_KEY). Until a provider is configured a job is truthfully 'blocked', never faked." },
@@ -87,7 +88,7 @@ export const MODULES: Record<string, ModuleDef> = {
 
 export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "departments", "ask", "brain", "agents"] },
-  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media"] },
+  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "topics", "content", "library", "media"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
   { label: "REVENUE", items: ["org", "audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },

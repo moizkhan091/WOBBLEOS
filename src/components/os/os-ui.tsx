@@ -5914,8 +5914,122 @@ function OrgWorkspacePage() {
   );
 }
 
+type TopicRow = { id: string; pillar: string; title: string; teachingJob: string; angle: string; funnelStage: string; suggestedFormat: string; freshness: string; demandKeyword: string | null; demandVolume: number | null; trendVelocity: number | null; competitorGap: number; founderJobValue: number; noveltyScore: number; proofAvailable: boolean; overallScore: number; status: string; reviewedBy: string | null };
+type IntelRun = { id: string; trigger: string; status: string; topicCount: number; sourceCount: number; createdAt: string; objective: string };
+
+const PILLAR_LABEL: Record<string, string> = { buildable_automations: "Buildable automation", tool_stack_decisions: "Tool & stack", skills_prompts_repos: "Skills & prompts", copy_paste_assets: "Copy-paste asset", agency_teardowns: "Agency teardown", ai_for_operators: "AI for operators", build_proof_lessons: "Build proof" };
+const FUNNEL_COLOR: Record<string, string> = { awareness: C.blue, trust: C.lime, lead_gen: C.orange };
+
+function TopicStat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 9.5, color: faint, letterSpacing: "0.06em" }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: tone ?? C.white }}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Topic Bank — the human-in-the-loop selection surface. The strategist team proposes topics with real decision
+ * stats; the founder reviews the numbers and picks what to make. Nothing posts blindly.
+ */
+function TopicBankPage() {
+  const [status, setStatus] = useState<"pending_review" | "approved" | "rejected" | "promoted">("pending_review");
+  const topicsApi = useApi<{ topics: TopicRow[] }>(`/api/content/topics?status=${status}&limit=100`);
+  const runsApi = useApi<{ runs: IntelRun[] }>("/api/content/intelligence?limit=6");
+  const [objective, setObjective] = useState("");
+  const [count, setCount] = useState(8);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const topics = topicsApi.data?.topics ?? [];
+  const runs = runsApi.data?.runs ?? [];
+
+  async function runIntelligence() {
+    setBusy("run"); setMsg(null);
+    try {
+      const r = await fetch("/api/content/intelligence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objective: objective.trim() || undefined, count }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg(`Generated ${Number(j.topicCount ?? 0)} topics from ${Number(j.sourceCount ?? 0)} active sources.`); setStatus("pending_review"); topicsApi.reload(); runsApi.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
+  async function review(id: string, decision: "approved" | "rejected") {
+    setBusy(id); setMsg(null);
+    try {
+      const r = await fetch(`/api/content/topics/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) topicsApi.reload(); else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Run content intelligence</div>
+        <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>The strategist team reads your <b>active sources</b> + knowledge and proposes a fresh topic bank with real decision stats. It runs on a daily cadence too — this is the manual trigger. Nothing posts blindly; you pick what is worth making.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Objective (optional) — e.g. push lead-gen this week" style={{ ...inputStyle, width: 320 }} />
+          <input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Math.max(1, Math.min(20, Number(e.target.value) || 8)))} style={{ ...inputStyle, width: 64 }} />
+          <button onClick={runIntelligence} disabled={busy === "run"} style={busy === "run" ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy === "run" ? "Running the team…" : "⚡ Run intelligence"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 9 }}>{msg}</div> : null}
+        {runs.length ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {runs.map((r) => (<span key={r.id} style={{ fontSize: 10.5, color: faint, padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.06)" }}>{r.trigger} · {r.status} · {r.topicCount} topics</span>))}
+          </div>
+        ) : null}
+      </Panel>
+
+      <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        {(["pending_review", "approved", "rejected", "promoted"] as const).map((t) => (
+          <button key={t} onClick={() => setStatus(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (status === t ? C.lime : "transparent"), color: status === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: status === t ? 600 : 500 }}>{t.replace("_", " ")}</button>
+        ))}
+      </div>
+
+      {topicsApi.loading ? <StateBlock kind="loading" message="Loading topics…" /> :
+        topicsApi.error ? (topicsApi.status === 503 ? <StateBlock kind="offline" /> : <StateBlock kind="error" message={topicsApi.error} />) :
+        !topics.length ? <StateBlock kind="empty" message={status === "pending_review" ? "No topics waiting. Run intelligence above to generate a fresh bank." : `No ${status.replace("_", " ")} topics yet.`} /> :
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {topics.map((t) => (
+            <div key={t.id} style={{ ...glass, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: t.overallScore >= 70 ? C.lime : t.overallScore >= 55 ? C.blue : C.gray, minWidth: 40 }}>{t.overallScore}</div>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.3 }}>{t.title}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
+                    <Tag text={PILLAR_LABEL[t.pillar] ?? t.pillar} color={C.blue} />
+                    <Tag text={t.funnelStage.replace("_", " ")} color={FUNNEL_COLOR[t.funnelStage] ?? C.gray} />
+                    <Tag text={t.freshness} color={t.freshness === "breaking" ? C.orange : t.freshness === "fresh" ? C.lime : C.gray} />
+                    <Tag text={t.suggestedFormat.replace("_", " ")} color={C.gray} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5 }}>{t.teachingJob}</div>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                <TopicStat label="FOUNDER-JOB" value={t.founderJobValue} tone={C.lime} />
+                <TopicStat label="NOVELTY" value={t.noveltyScore} />
+                <TopicStat label="COMPETITOR GAP" value={t.competitorGap} />
+                <TopicStat label="DEMAND" value={t.demandVolume == null ? "n/a" : `${t.demandVolume}/mo`} />
+                <TopicStat label="TREND" value={t.trendVelocity == null ? "n/a" : (t.trendVelocity > 0 ? "↑ " : "↓ ") + Math.abs(t.trendVelocity).toFixed(2)} tone={t.trendVelocity != null && t.trendVelocity > 0 ? C.lime : undefined} />
+                <TopicStat label="PROOF" value={t.proofAvailable ? "yes" : "no"} tone={t.proofAvailable ? C.lime : C.gray} />
+              </div>
+              {t.status === "pending_review" ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={() => review(t.id, "approved")} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>✓ Approve — make this</button>
+                  <button onClick={() => review(t.id, "rejected")} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>Reject</button>
+                  {t.demandKeyword ? <span style={{ fontSize: 10.5, color: faint }}>demand keyword: {t.demandKeyword}</span> : null}
+                </div>
+              ) : <div style={{ fontSize: 11.5, color: faint }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</div>}
+            </div>
+          ))}
+        </div>}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   org: OrgWorkspacePage,
+  topics: TopicBankPage,
   cockpit: CockpitPage,
   comms: CommsPage,
   optimizer: OptimizerPage,

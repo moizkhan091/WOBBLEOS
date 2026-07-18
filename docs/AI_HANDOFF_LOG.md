@@ -6329,3 +6329,28 @@ add/drop/remove auto-picks-up with no rewiring (proven: a live run gathered 45 a
 
 The intelligence engine's front half is now end-to-end: sources → intelligence run (manual + scheduled) →
 topic bank with stats → founder review → (next) promote approved topic into the content graph.
+
+---
+
+## 2026-07-18 — V2 content-engine build wave (Claude) — batch 4: Topic Bank API + UI (the human loop)
+
+The founder-facing surface for "see topics with real stats, pick what to make — never blind." Backend was
+proven; this makes it usable.
+
+- API: `GET /api/content/topics` (list/filter by status/pillar, ranked), `POST /api/content/topics/[id]/review`
+  (the human gate — approve/reject, founder-gated, idempotent), `GET /api/content/intelligence` (run history),
+  `POST /api/content/intelligence` (MANUAL trigger — runs the loop inline so results show immediately without a
+  worker rebuild; the scheduled path stays the durable job). All mirror existing route conventions.
+- UI: new `topics` module (Topic Bank, PIPELINE group) + `TopicBankPage` in os-ui.tsx — a "Run intelligence"
+  panel (objective + count), run-history chips, status tabs (pending_review/approved/rejected/promoted), and
+  topic cards showing the STATS the founder decides on (score, founder-job value, novelty, competitor gap,
+  demand, trend velocity, proof, freshness, pillar, funnel) with Approve/Reject. Mirrors OrgWorkspacePage
+  primitives (useApi/Panel/Tag/StateBlock).
+- VERIFIED LIVE via the dev server against the UAT DB (minted a dev session with the app's own secret for an
+  existing founder — no password): GET topics → 13 real topics with scores; GET intelligence → run history;
+  POST review approve → the human gate persisted (status→approved, attributed to the founder). MCP browser
+  sandbox blocked JS cookie-set, so verified via curl+cookie (proves API + global auth gate + persisted
+  mutation end-to-end). Dev-verify side effects reverted; bank left clean (13 pending, 1 proof approval).
+
+Note discovered: `webstats` (Plausible-backed) + `seo` + `social` modules already exist — task 7 (Website & SEO)
+extends these, does not duplicate. Plausible connects via PLAUSIBLE_API_KEY + PLAUSIBLE_SITE_ID (already wired).
