@@ -6399,3 +6399,28 @@ their instruction "if DataForSEO not working find a free alternative", built a f
 
 DataForSEO stays wired (kicks in automatically once the account verification propagates); the free provider
 means keyword research is never blocked meanwhile.
+
+---
+
+## 2026-07-18 — V2 content-engine wave (Claude) — batch 7: GPT-Image-2 render engine (statics + carousels, on-brand)
+
+The "best content visually" centerpiece. Turns a topic/packet into finished, stand-out, on-brand statics +
+carousels via the OpenRouter image adapter — PROVEN LIVE with real images.
+
+- `src/lib/media/openrouter-provider.ts`: extended for REFERENCE IMAGES (params.referenceImages = data: URLs →
+  multimodal content; enables image→image regen; only inline data accepted — no SSRF). Timeout 120s→300s
+  (env OPENROUTER_MEDIA_TIMEOUT_MS) because GPT-Image-2 legitimately takes minutes.
+- `src/lib/domain/content-render.ts`: the WOBBLE_VISUAL_SYSTEM art-direction (near-black + white + ONE lime
+  #B8FF2C accent, bold condensed type, editorial grid, node-arrow motifs, wobble. wordmark) + buildStaticImagePrompt
+  + buildCarouselSlidePrompts (cohesive per-slide, cover→mechanism→cta roles) + buildRenderPlan (static→GPT-Image-2
+  hero, carousel→gemini volume; per-platform aspect).
+- `src/lib/content-render/index.ts`: `renderContent` — budget-gated (image spend recorded against the OpenRouter
+  allowance, worst-case per image, slide cap), kill-switch guarded, BLOCKED (never faked) without a key.
+- Tests `tests/content-render.test.ts` (11) + reference-image transport test in openrouter-media. PROVEN LIVE
+  (`prove-content-render.ts`): a real WOBBLE static rendered by BOTH models — gemini-2.5-flash-image (4¢) and
+  openai/gpt-5.4-image-2 (25¢) — both perfectly on-brand (bold headline with lime accent word, the 4-node
+  missed-call→AI-text-back→booking→CRM mechanism with custom icons, wobble. wordmark, crisp correct text).
+
+Model policy (blueprint §17): GPT-Image-2 for hero statics/infographics (best text + quality), gemini for
+volume/carousel slides. Reference images (from the WOBBLE library) supported for style-lock + regen.
+Next: wire "Produce this" → renderContent so an approved topic auto-renders its asset.

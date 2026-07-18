@@ -41,8 +41,11 @@ function resolveKey(opts: OpenRouterMediaOptions): string {
   return (opts.apiKey ?? process.env.OPENROUTER_API_KEY ?? "").trim();
 }
 
+// Image models can take minutes (GPT-Image-2 in particular). Default 5 min, tunable via env.
+const MEDIA_TIMEOUT_MS = Number(process.env.OPENROUTER_MEDIA_TIMEOUT_MS ?? 300_000) || 300_000;
+
 async function defaultTransport(url: string, init: { method: string; headers: Record<string, string>; body: string }): Promise<OpenRouterMediaResponse> {
-  const res = await fetch(url, { method: init.method, headers: init.headers, body: init.body, redirect: "manual", signal: AbortSignal.timeout(120_000) });
+  const res = await fetch(url, { method: init.method, headers: init.headers, body: init.body, redirect: "manual", signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) });
   const text = await res.text();
   let json: Record<string, unknown> | null = null;
   try { json = text ? (JSON.parse(text) as Record<string, unknown>) : null; } catch { json = null; }
@@ -96,7 +99,17 @@ export function createOpenRouterMediaProvider(opts: OpenRouterMediaOptions = {})
       }
       const model = (typeof params.model === "string" && params.model) || modelForKind(kind);
       const headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
-      const body = JSON.stringify({ model, messages: [{ role: "user", content: prompt }], modalities: ["image", "text"] });
+      // Reference images (params.referenceImages = data: URLs) turn the request MULTIMODAL: the prompt + the
+      // reference frames guide the generation/edit (the founder's "send reference images along with the prompt").
+      // Image→image regen is just this with the image-to-change as the reference. Non-data URLs are ignored
+      // (no SSRF/remote fetch — only inline data is accepted).
+      const refs = Array.isArray(params.referenceImages)
+        ? (params.referenceImages as unknown[]).filter((x): x is string => typeof x === "string" && x.startsWith("data:"))
+        : [];
+      const content = refs.length
+        ? [{ type: "text", text: prompt }, ...refs.map((url) => ({ type: "image_url", image_url: { url } }))]
+        : prompt;
+      const body = JSON.stringify({ model, messages: [{ role: "user", content }], modalities: ["image", "text"] });
 
       const res = await transport(`${baseUrl}/chat/completions`, { method: "POST", headers, body });
       if (res.status >= 400 || !res.json) {
