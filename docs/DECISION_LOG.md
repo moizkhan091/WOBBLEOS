@@ -299,3 +299,27 @@ Log founder conversations too (not just code). If a founder states intent in cha
   A new ungated read route must fail CI.
 - Risks / open questions: this closes the read bypass, not the underlying design — a JWT-only edge remains a
   latent trap for any future route that forgets the gate. The guard is what makes forgetting fail loudly.
+
+---
+
+## Decision: the WOBBLE Company Twin is built from existing primitives, not a new "company profile" table
+
+- Context: execution-order step "onboard WOBBLE itself (Company Twin)". The instinct is a dedicated
+  company_profile / brand_dna / design_dna table. CLAUDE.md forbids duplicating schemas — extend what exists.
+- Decision: the Company Twin = a `crm_companies` self-record (status `internal`, client_type `self`) +
+  WOBBLE truth seeded into the ALREADY-EXISTING memory banks (`company`, `brand`, `design`, `offer`) +
+  the offers module as the service catalogue. Zero new tables, zero migrations.
+- Why: (1) the banks already exist with exactly the right scopes/purposes — `company` = "internal WOBBLE
+  truth, positioning, strategy", `brand` = "voice, do-not-say, guardrails", `design` = "visual taste,
+  creative direction", `offer` = "offers, pricing, positioning". (2) Memory is embedded + vector-searchable,
+  so the twin is queryable by Ask WOBBLE the moment it is seeded — a bespoke table would need its own
+  retrieval wiring. (3) `crm_companies` already anchors contacts/opportunities/proposals/projects, so a
+  self-record lets WOBBLE's own pipeline hang off the same backbone as clients.
+- Source of truth: every fact was condensed from docs/WOBBLE_COMPANY_OS.md (nothing invented) — brand mode,
+  the four-step commercial spine, ICP, the anti-agency-dependency enemy, the payment boundary, the internal
+  data-moat caveat, the voice/controversy/do-not-say rules, the language system, and Design DNA (#B8FF2C).
+- Do NOT: add a parallel "brand"/"company profile" table later — extend the banks or `crm_companies`.
+  Do NOT publicly frame the data-moat as "we monetize client data" (seeded as an internal-only caveat).
+- Risks / open: the running app container has no OPENROUTER_API_KEY, so query-embedding-backed retrieval
+  is proven via a host script that carries the key; wiring the key into the app is a separate step before
+  Ask WOBBLE can semantically retrieve twin facts in-browser.

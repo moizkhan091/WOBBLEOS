@@ -5874,3 +5874,32 @@ active") → assertion failed → every later commit inherited the red gate. FIX
 unique-slug draft dept that accepts won_deal, so the only rejection is "not active". VERIFIED GREEN on CI run
 29621524245 (all 4 jobs pass). Also proved live: CRM 3-client isolation (each client's overview surfaces only
 its own canary; no foreign canary leaks). LESSON logged: check remote CI after EVERY push.
+
+---
+
+## Company Twin — WOBBLE onboarded as the OS's canonical first company (cdc31d2 app; UAT DB)
+
+Execution-order step 7–8. WOBBLE itself is now the first "company" in the OS, built from EXISTING
+primitives only — NO new table, NO migration (extends `crm_companies` + the memory banks, per the
+"never duplicate schemas" rule).
+
+Proven live against the UAT DB (host-forwarded :15432), with real OpenRouter embeddings:
+- **Self-record**: `crm_companies` row `co_ab4dd1c8…` name=WOBBLE, status=`internal`, client_type=`self`,
+  metadata.isCompanyTwin=true, createdBy=Moiz. Audit `crm.company_created` actor=Moiz.
+- **Service catalogue**: offers module holds the 34-sheet WOBBLE catalogue (36 offers total), createdBy=Moiz.
+- **Twin knowledge**: 16 memory facts seeded faithfully from docs/WOBBLE_COMPANY_OS.md across four banks —
+  `company`×8 (identity, mission, offer-process, pricing, ICP, enemy, payment-boundary, data-moat),
+  `brand`×5 (voice, controversy doctrine, do-not-say, language system, master positioning),
+  `design`×2 (Design DNA palette #B8FF2C + motifs), `offer`×1 (AI OS Audit). Nothing invented.
+- **Semantic layer real**: 16/16 chunks carry embeddings; 16 bank links connect each record to its bank
+  (company=8, brand=5, design=2, offer=1); 16 `memory_record.created` audits, actor=Moiz.
+
+Scripts (idempotent — company matched by name, memory dedupes on content):
+`src/scripts/prove-company-twin.ts` (seed), `src/scripts/prove-twin-retrieval.ts` (queryable proof),
+`src/scripts/prove-offer-catalogue.ts` (catalogue ingest). tsx cold-start is slow on this box (~3min to
+first line) but the work commits before exit — verified by direct SQL, not by the script's stdout.
+
+**Queryable proof** (`prove-twin-retrieval.ts`, real OpenRouter query embeddings → pgvector):
+"what does WOBBLE sell/pricing?" → company identity + the 4-step commercial spine; "brand voice / never
+say?" → brand voice + controversy doctrine + enemy; "primary brand colour / visual design?" → BOTH design
+DNA facts (motifs + #B8FF2C) ranked top. The twin answers WOBBLE's own questions from its seeded banks.
