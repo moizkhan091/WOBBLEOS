@@ -8,7 +8,7 @@ import {
   HERO_IMAGE_MODEL,
   VOLUME_IMAGE_MODEL,
 } from "@/lib/domain/content-render";
-import { renderContent, type RenderMediaProvider } from "@/lib/content-render";
+import { renderContent, designRenderConcept, renderTopicAsset, type RenderMediaProvider } from "@/lib/content-render";
 import { extractOpenRouterImageDataUrls, createOpenRouterMediaProvider } from "@/lib/media/openrouter-provider";
 
 /**
@@ -118,6 +118,36 @@ describe("render service (governed)", () => {
     const slides = Array.from({ length: 20 }, (_, i) => ({ heading: `s${i}` }));
     const res = await renderContent({ kind: "carousel", hook: "H", teachingJob: "T", slides, referenceImages: [], requestedBy: "moiz" }, { provider: okProvider(calls), loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: budget, maxSlides: 5 });
     expect(res.assets).toHaveLength(5); // capped
+  });
+});
+
+describe("art director (autonomous concept → render)", () => {
+  const conceptJson = JSON.stringify({ treatment: "cinematic_3d", metaphor: "a graveyard of $$$ tombstones with a glowing phone reviving them", accentPhrase: "graveyard of deals", accentColor: "electric orange", colorField: "deep emerald green", labelTag: "FOR SALES TEAMS", subhead: "bring dead leads back", cta: "Revive your database" });
+
+  it("designs a concept (treatment + metaphor + accent) from a topic", async () => {
+    const concept = await designRenderConcept({ hook: "Your CRM is a graveyard of deals", teachingJob: "reactivate dead leads" }, { runProvider: async () => ({ text: conceptJson }) });
+    expect(concept.treatment).toBe("cinematic_3d");
+    expect(concept.accentPhrase).toBe("graveyard of deals");
+    expect(concept.metaphor).toContain("tombstones");
+  });
+
+  it("falls back to a safe concept on a bad parse — never blocks a render", async () => {
+    const concept = await designRenderConcept({ hook: "Hook words here now", teachingJob: "T" }, { runProvider: async () => ({ text: "sorry, no json" }) });
+    expect(concept.treatment).toBe("cinematic_3d");
+    expect(concept.accentPhrase).toBe("Hook words"); // first-2-words fallback
+  });
+
+  it("renderTopicAsset designs then renders — the metaphor flows into the image prompt", async () => {
+    const calls: Array<{ prompt: string; params: Record<string, unknown> }> = [];
+    const provider: RenderMediaProvider = { configured: () => true, async generate({ prompt, params }) { calls.push({ prompt, params }); return { outputRefs: ["media/x.png"], actualCostCents: 4 }; } };
+    const res = await renderTopicAsset(
+      { kind: "static", hook: "H", teachingJob: "T", topicId: "t1", requestedBy: "moiz" },
+      { provider, loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: { getSpent: async () => 0 }, conceptProvider: async () => ({ text: conceptJson }) },
+    );
+    expect(res.concept.treatment).toBe("cinematic_3d");
+    expect(res.assets).toHaveLength(1);
+    expect(calls[0].prompt).toContain("graveyard of $$$ tombstones"); // the designed metaphor reached the prompt
+    expect(calls[0].prompt).toContain("FOR SALES TEAMS");
   });
 });
 

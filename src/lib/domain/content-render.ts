@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { newId } from "@/lib/ids";
+import { parseJsonObject } from "@/lib/domain/content-graph";
 
 /**
  * Content rendering — the pure core. Turns an approved topic / content packet into image-generation PROMPTS
@@ -147,6 +149,40 @@ export function buildCarouselSlidePrompts(input: CarouselPromptInput): string[] 
       .filter((l) => l !== ``)
       .join("\n");
   });
+}
+
+// ── Art director (auto-design a great concept from a topic) ───────────────────────────────────────────
+
+export const renderConceptSchema = z.object({
+  treatment: z.enum(RENDER_TREATMENTS),
+  metaphor: z.string().trim().min(1), // a vivid, literal physical-metaphor SCENE to build
+  accentPhrase: z.string().trim().min(1), // the exact words from the hook to colour
+  accentColor: z.string().trim().min(1), // e.g. "electric orange"
+  colorField: z.string().trim().min(1), // background colour field / paper
+  labelTag: z.string().trim().default(""), // pill label like "FOR SMB FOUNDERS"
+  subhead: z.string().trim().default(""), // italic serif / marker supporting line
+  cta: z.string().trim().default("Book a free AI audit"),
+});
+export type RenderConcept = z.infer<typeof renderConceptSchema>;
+
+/** The Art Director prompt: given a topic, design a scroll-stopping WOBBLE render concept (treatment + a real
+ *  physical metaphor + accent + colour), matching the reference library's craft. */
+export function buildArtDirectorPrompt(input: { hook: string; teachingJob: string; pillar?: string; platform?: string }): { system: string; user: string } {
+  const system = `You are WOBBLE's ART DIRECTOR. Design ONE scroll-stopping concept for a social static in the real WOBBLE / Moiz Khan style.
+
+${WOBBLE_VISUAL_SYSTEM}
+
+Your job: turn the topic into a concrete, cleverly LITERAL physical metaphor and choose the treatment + colours that hit hardest. Think like the reference ads: a giant magnet labelled AGENCY pulling clay houses; mini shopping carts forming a donut chart; a hand-drawn notebook page. Be specific and visual — describe a real SCENE a photographer/3D artist could build, not an abstract idea.
+
+Respond with STRICT JSON only:
+{"treatment":"cinematic_3d|photographic_dataviz|hand_notebook","metaphor":"a vivid, literal scene to build (objects, arrangement, lighting)","accentPhrase":"the exact words FROM the headline to colour","accentColor":"e.g. electric orange","colorField":"background colour field or paper","labelTag":"short pill label e.g. FOR SMB FOUNDERS","subhead":"one short supporting line","cta":"short pill CTA"}`;
+  const user = `HEADLINE (exact): "${input.hook}"\nTEACHING IDEA: ${input.teachingJob}\n${input.pillar ? `PILLAR: ${input.pillar}\n` : ""}${input.platform ? `PLATFORM: ${input.platform}\n` : ""}Design the concept. STRICT JSON only.`;
+  return { system, user };
+}
+
+/** Parse the art director's JSON concept (tolerant of fences/prose). Returns null if it can't be trusted. */
+export function parseRenderConcept(text: string): RenderConcept | null {
+  return parseJsonObject(text, renderConceptSchema);
 }
 
 export type RenderKind = "static" | "carousel";

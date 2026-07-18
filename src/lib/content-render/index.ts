@@ -5,7 +5,8 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { buildRenderPlan, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment } from "@/lib/domain/content-render";
+import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { buildRenderPlan, buildArtDirectorPrompt, parseRenderConcept, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment, type RenderConcept } from "@/lib/domain/content-render";
 
 /**
  * Content render service — turns a topic/packet into on-brand statics/carousels via the OpenRouter image
@@ -142,4 +143,87 @@ export async function renderContent(input: RenderContentInput, deps: ContentRend
 
   await audit(deps, { eventType: "content_render.completed", module: CONTENT_RENDER_MODULE, entityType: "content_topic", entityId: input.topicId ?? plan.renderId, actor: input.requestedBy, metadata: { kind: plan.kind, model: plan.model, images: assets.length, costCents: totalCents } });
   return { renderId: plan.renderId, kind: plan.kind, model: plan.model, assets, totalCostCents: totalCents };
+}
+
+// ── Art director → render (the autonomous "produce a great asset from a topic" path) ──────────────────
+
+export type ConceptProvider = (input: { role: string; module: string; model?: string; messages: ProviderChatMessage[]; maxTokens?: number; temperature?: number }) => Promise<{ text: string }>;
+
+/** Given a topic, ask the ART DIRECTOR to design a scroll-stopping concept (treatment + metaphor + accent). */
+export async function designRenderConcept(
+  input: { hook: string; teachingJob: string; pillar?: string; platform?: string },
+  deps: { runProvider?: ConceptProvider; model?: string } = {},
+): Promise<RenderConcept> {
+  const { system, user } = buildArtDirectorPrompt(input);
+  const runProvider = deps.runProvider ?? (async (i) => runTextProvider({ ...i, usageContext: { agentSlug: "content_art_director", module: CONTENT_RENDER_MODULE } }));
+  const r = await runProvider({
+    role: "content_copywriting",
+    module: CONTENT_RENDER_MODULE,
+    model: deps.model ?? "anthropic/claude-sonnet-4.5",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    maxTokens: 900,
+    temperature: 0.7,
+  });
+  const concept = parseRenderConcept(r.text);
+  // Never block a render on a bad parse — fall back to a sensible cinematic concept derived from the topic.
+  return (
+    concept ?? {
+      treatment: "cinematic_3d",
+      metaphor: `A dramatic 3D-rendered scene that literally embodies: ${input.teachingJob}. Cinematic studio lighting, real materials, depth of field.`,
+      accentPhrase: input.hook.split(" ").slice(0, 2).join(" "),
+      accentColor: "electric orange",
+      colorField: "saturated electric-orange studio backdrop",
+      labelTag: "",
+      subhead: "",
+      cta: "Book a free AI audit",
+    }
+  );
+}
+
+export interface RenderTopicInput {
+  kind: RenderKind;
+  hook: string;
+  teachingJob: string;
+  pillar?: string;
+  platform?: string;
+  slides?: CarouselSlideInput[];
+  model?: string;
+  topicId?: string;
+  requestedBy: string;
+}
+
+/** Autonomous: art-direct a concept from the topic, then render the on-brand asset. This is what "Produce
+ *  this" runs — the founder gets a library-grade image without hand-writing a prompt. */
+export async function renderTopicAsset(
+  input: RenderTopicInput,
+  deps: ContentRenderDeps & { conceptProvider?: ConceptProvider; conceptModel?: string; designConcept?: (i: { hook: string; teachingJob: string; pillar?: string; platform?: string }) => Promise<RenderConcept> } = {},
+): Promise<RenderContentResult & { concept: RenderConcept }> {
+  const design = deps.designConcept ?? ((i) => designRenderConcept(i, { runProvider: deps.conceptProvider, model: deps.conceptModel }));
+  const concept = await design({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform });
+  const result = await renderContent(
+    {
+      kind: input.kind,
+      hook: input.hook,
+      teachingJob: input.teachingJob,
+      pillar: input.pillar,
+      platform: input.platform,
+      slides: input.slides,
+      model: input.model,
+      topicId: input.topicId,
+      requestedBy: input.requestedBy,
+      treatment: concept.treatment,
+      metaphor: concept.metaphor,
+      accentPhrase: concept.accentPhrase,
+      accentColor: concept.accentColor,
+      colorField: concept.colorField,
+      labelTag: concept.labelTag || undefined,
+      subhead: concept.subhead || undefined,
+      cta: concept.cta || undefined,
+    },
+    deps,
+  );
+  return { ...result, concept };
 }

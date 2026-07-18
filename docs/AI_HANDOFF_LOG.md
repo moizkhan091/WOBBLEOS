@@ -6451,3 +6451,24 @@ phrase, a real PHYSICAL METAPHOR, rich texture/lighting, pill tag + pill CTA, wo
 
 LESSON (critical): image quality = reference images + a detailed physical-metaphor prompt in the real
 treatment. NEVER render from a bland text-only brand description. Always feed the library exemplars.
+
+---
+
+## 2026-07-18 — V2 content-engine wave (Claude) — batch 9: AI ART DIRECTOR (autonomous great visuals)
+
+Makes the visual system AUTONOMOUS: given a topic, an LLM art director designs a scroll-stopping concept, then
+renders it. The founder gets library-grade images without hand-writing a prompt.
+
+- `buildArtDirectorPrompt` + `renderConceptSchema` + `parseRenderConcept` (domain): the art director returns
+  {treatment, metaphor (a vivid literal scene), accentPhrase, accentColor, colorField, labelTag, subhead, cta}.
+- `designRenderConcept` (service): claude-sonnet-4.5 (content_art_director) → concept, with a safe cinematic
+  fallback so a bad parse never blocks a render.
+- `renderTopicAsset`: design → renderContent (auto-feeds the treatment's bundled reference exemplar).
+- Tests (3 new, 14 total) + PROVEN LIVE: topic "Your CRM is a graveyard of deals you already paid for" → the
+  art director INVENTED an original metaphor (a graveyard of $$$ tombstones in a CRM grid, a glowing phone
+  reviving dead leads with cracks of orange light + clay hands reaching up, deep emerald green, "FOR SALES
+  TEAMS" pill, "Revive your database" CTA) → gpt-5.4-image-2 rendered it flawlessly. Genuinely agency-grade,
+  arguably better than the reference library. 27¢.
+
+This is the content module's creative core: topic → art-directed concept → on-brand render, all autonomous.
+Next: wire renderTopicAsset behind "Produce this" + store to the Library so it displays.
