@@ -6121,3 +6121,28 @@ the Nova Dental prospect from #9) → 7 facts — pain 90, authority 90, next_st
 need 80, current_stack 80 — each quoting the transcript verbatim. Founder APPROVED the top pain fact → 1
 approved / 6 pending. Audit: meeting_intelligence.extracted (analyst) + .approved (Moiz). Spend: 1 gpt-4o-mini
 ($0.00022). OpenRouter total $0.1039/$3.
+
+---
+
+## Additive commercial architecture — the commercial-journey lineage (step 10) + fix 16b1fc0 red
+
+### CI fix — 16b1fc0 went RED (3 jobs) on a stale-typecheck miss
+`prove-meeting-intelligence.ts` passed `status` to addMeeting (not an input field → TS2353); the build failed
+and cascaded to docker-safety + e2e. Local `npm run typecheck` had FALSELY passed because tsconfig has
+`incremental: true` and `tsconfig.tsbuildinfo` was stale (clean:next-dev-types doesn't clear it). LESSON:
+`rm -f tsconfig.tsbuildinfo` before trusting a pre-commit typecheck. Fixed the driver; a fresh typecheck then
+ALSO caught a real commercial-journey type error (crmOpportunities.serviceInterest is string[], not string) —
+both fixed. Zod strips the bad key at runtime, which is why the driver still ran.
+
+### Commercial journey (no new schema — pure read/assembly)
+`src/lib/commercial-journey/index.ts`: getCommercialJourney(companyId) assembles the full lineage from EXISTING
+tables — org (crm_companies) → qualification (latest) → opportunities (Opportunity Snapshots, with linked
+audit/proposal/project ids) → meetings → discovery facts (meeting_intelligence) → artifacts (Paid Transformation
+Audits = audits kind=paid; proposals) → projects — and computes the furthest-reached journey stage. The three
+founder aliases are VIEWS over existing records (no destructive rename). Ties together CRM + qualification +
+meeting-intelligence + offers/audits/proposals/projects.
+- 5 unit tests (stage computation + assembly); no migration.
+
+**Proven live** (`src/scripts/prove-commercial-journey.ts`): the SAME Nova Dental prospect built across #8/#9 →
+stage **DISCOVERY**; Grade B (79/100) qualification, 1 meeting (AI Readiness Call) with 7 discovery facts (1
+approved), 0 downstream artifacts. The whole session's commercial modules now compose into one journey view.

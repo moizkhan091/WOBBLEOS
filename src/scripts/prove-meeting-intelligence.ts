@@ -24,7 +24,7 @@ async function main() {
   const company = (await listCompanies({ includeArchived: true, limit: 500 })).find((c) => /Nova Dental/i.test(c.name));
   let meeting = (await listMeetings({ limit: 500 })).find((m) => m.title === TITLE);
   if (!meeting) {
-    meeting = await addMeeting({ title: TITLE, meetingType: "ai_readiness_call", companyId: company?.id, notes: TRANSCRIPT, status: "completed", createdBy: "Moiz" });
+    meeting = await addMeeting({ title: TITLE, meetingType: "ai_readiness_call", companyId: company?.id, notes: TRANSCRIPT, createdBy: "Moiz" });
     console.log(`  created meeting ${meeting.id}${company ? ` (company ${company.id})` : ""}`);
   } else {
     console.log(`  reusing meeting ${meeting.id}`);
