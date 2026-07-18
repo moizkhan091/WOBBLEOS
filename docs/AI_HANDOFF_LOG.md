@@ -6146,3 +6146,21 @@ meeting-intelligence + offers/audits/proposals/projects.
 **Proven live** (`src/scripts/prove-commercial-journey.ts`): the SAME Nova Dental prospect built across #8/#9 →
 stage **DISCOVERY**; Grade B (79/100) qualification, 1 meeting (AI Readiness Call) with 7 discovery facts (1
 approved), 0 downstream artifacts. The whole session's commercial modules now compose into one journey view.
+
+---
+
+## Golden mission — the upstream commercial spine as a CI release gate (step 21)
+
+`src/scripts/verify-commercial-journey-db.ts` — a filesystem-discovered DB-proof (auto-runs in CI's db-proofs
+gate vs fresh pgvector, no keys). It runs the WHOLE upstream prospect journey end-to-end against live Postgres
+with the LLM steps CANNED (injected deterministic providers — no spend):
+
+  company → QUALIFICATION (8-role A-E) → MEETING + DISCOVERY (typed facts, pending_review) →
+  OFFER + OFFER VALIDATION (11-dimension verdict) → COMMERCIAL JOURNEY (lineage + furthest stage).
+
+11 assertions, all green: 8 council roles + an A-E grade + a real policy signal; 3 discovery facts all
+pending_review; 11 validation dimensions + a verdict; the journey resolves the org, surfaces the qualification
+grade + meeting + 3 facts, and computes stage=discovery. HARD RULE proven: the canned judgment NEVER mutates —
+the deterministic services persist every row. ISOLATED + REPEATABLE + SAFE ON A POPULATED DB: unique ids per
+run, full cleanup (verified 0 leftover `zz_golden_%` rows). Complements the existing downstream
+`verify-commercial-chain-db.ts` (proposal→delivery) — together the commercial spine is a CI-enforced gate.
