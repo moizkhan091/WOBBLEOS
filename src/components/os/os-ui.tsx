@@ -5961,6 +5961,15 @@ function TopicBankPage() {
       if (r.ok && j.ok !== false) topicsApi.reload(); else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
+  async function produce(id: string) {
+    setBusy(id); setMsg(null);
+    try {
+      const r = await fetch(`/api/content/topics/${id}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg("Sent to production — the content team is generating the asset (see Content Command)."); topicsApi.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -6018,6 +6027,11 @@ function TopicBankPage() {
                   <button onClick={() => review(t.id, "approved")} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>✓ Approve — make this</button>
                   <button onClick={() => review(t.id, "rejected")} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>Reject</button>
                   {t.demandKeyword ? <span style={{ fontSize: 10.5, color: faint }}>demand keyword: {t.demandKeyword}</span> : null}
+                </div>
+              ) : t.status === "approved" ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={() => produce(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>⚡ Produce this</button>
+                  <span style={{ fontSize: 11.5, color: faint }}>approved{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</span>
                 </div>
               ) : <div style={{ fontSize: 11.5, color: faint }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</div>}
             </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireFounder, isAuthError } from "@/lib/auth/route";
 import { listTopics } from "@/lib/content-topics";
 import { CONTENT_TOPIC_STATUSES, CONTENT_TOPIC_PILLARS } from "@/lib/domain/content-topics";
 
@@ -6,11 +7,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/content/topics — the topic bank (default: highest-scored first). Read-only, so a founder can review
- * the stats before selecting. Filter by ?status= (pending_review|approved|rejected|promoted), ?pillar=, ?limit.
+ * GET /api/content/topics — the topic bank (default: highest-scored first). Founder-gated (founder-only data),
+ * so a founder reviews the stats before selecting. Filter by ?status=, ?pillar=, ?limit.
  */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const pillar = searchParams.get("pillar");

@@ -6354,3 +6354,25 @@ proven; this makes it usable.
 
 Note discovered: `webstats` (Plausible-backed) + `seo` + `social` modules already exist — task 7 (Website & SEO)
 extends these, does not duplicate. Plausible connects via PLAUSIBLE_API_KEY + PLAUSIBLE_SITE_ID (already wired).
+
+---
+
+## 2026-07-18 — V2 content-engine build wave (Claude) — batch 5: promotion + CI auth fix
+
+Two things: (1) FIX — batch 4's two GET routes relied on the global middleware but the route-auth-coverage
+gate (WOB-AUD-004) requires each READ route to call a session gate explicitly or be allow-listed. The topic
+bank is founder-only data, so `GET /api/content/topics` + `GET /api/content/intelligence` now call
+requireFounder (matches actual behaviour; the local targeted test runs had missed the full-suite gate). (2)
+PROMOTION — the "a selected topic picks up into production" step.
+
+- `promoteTopicToProduction` (content-topics): enqueues the content graph with the APPROVED topic's full
+  teaching context as the objective (+ platform/format focus), then marks the topic `promoted` linking the
+  graph run. Only an approved topic produces; enqueue is injectable for tests.
+- `POST /api/content/topics/[id]/promote` — founder-gated; resolves a default content track if none given.
+- UI: a "⚡ Produce this" button on approved topics → the content team generates the asset (appears in Content
+  Command). Completes the loop: sources → intelligence run → topic bank → founder approve → produce.
+- Test: promote enqueues the graph with the topic context + marks promoted, refuses a non-approved topic.
+  Full local suite: 1275 pass (the one route-auth failure fixed).
+
+Lesson: ALWAYS run the FULL `npm run test` (or at least route-auth-coverage) before pushing a new API route —
+targeted test runs miss the cross-cutting security-coverage gate.

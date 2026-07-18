@@ -6,9 +6,11 @@ import { runContentIntelligence, listContentIntelligenceRuns } from "@/lib/conte
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/content/intelligence — founder-visible run history (most recent first). */
+/** GET /api/content/intelligence — founder-visible run history (most recent first). Founder-gated. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { searchParams } = new URL(request.url);
   const limitParam = searchParams.get("limit");
   try {

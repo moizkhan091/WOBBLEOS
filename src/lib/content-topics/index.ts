@@ -180,6 +180,36 @@ export async function markTopicPromoted(topicId: string, refs: { graphRunId?: st
   return { ...topic, ...fields };
 }
 
+export type GraphEnqueuer = (input: { contentTrackId: string; requestedBy: string; objective: string; platformFocus?: string[]; formatFocus?: string[] }) => Promise<unknown>;
+
+export interface PromoteTopicInput {
+  topicId: string;
+  contentTrackId: string;
+  requestedBy: string;
+}
+export interface PromoteTopicResult {
+  topic: ContentTopicRow | null;
+  jobId: string | null;
+}
+
+/**
+ * Promote an APPROVED topic into production: enqueue the content graph with the topic's full teaching context
+ * as the objective, then mark the topic `promoted` (linking the graph run). This is the "a selected topic
+ * picks up into production" step — only an approved topic produces; nothing bypasses the founder's pick.
+ */
+export async function promoteTopicToProduction(input: PromoteTopicInput, deps: ContentTopicsDeps & { enqueueGraph?: GraphEnqueuer } = {}): Promise<PromoteTopicResult> {
+  const store = deps.store ?? defaultStore();
+  const topic = await store.getTopic(input.topicId);
+  if (!topic) return { topic: null, jobId: null };
+  if (topic.status !== "approved") return { topic, jobId: null }; // only an approved topic produces
+  const objective = `${topic.title} — angle: ${topic.angle}. Teaching job (the real mechanism to show): ${topic.teachingJob}. Pillar: ${topic.pillar}. Audience: ${topic.targetAudience}. Funnel intent: ${topic.funnelStage}.`;
+  const enqueue = deps.enqueueGraph ?? (async (i) => (await import("@/lib/content-graph")).enqueueContentGraphJob(i));
+  const res = (await enqueue({ contentTrackId: input.contentTrackId, requestedBy: input.requestedBy, objective, platformFocus: [topic.suggestedPlatform], formatFocus: [topic.suggestedFormat] })) as { job?: { id?: string } } | undefined;
+  const jobId = res?.job?.id ?? null;
+  const promoted = await markTopicPromoted(input.topicId, { graphRunId: jobId ?? undefined, actor: input.requestedBy }, { store, recordAudit: deps.recordAudit, now: deps.now });
+  return { topic: promoted, jobId };
+}
+
 export async function listTopics(filter: { status?: ContentTopicStatus; pillar?: ContentTopicPillar; intelligenceRunId?: string; limit?: number } = {}, deps: ContentTopicsDeps = {}): Promise<ContentTopicRow[]> {
   return (deps.store ?? defaultStore()).listTopics(filter);
 }

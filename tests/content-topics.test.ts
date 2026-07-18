@@ -12,6 +12,7 @@ import {
   generateTopicBank,
   reviewTopic,
   markTopicPromoted,
+  promoteTopicToProduction,
   type ContentTopicStore,
   type TopicEnricher,
   type ContentTopicsDeps,
@@ -189,5 +190,24 @@ describe("topic bank service (generate → review → promote)", () => {
     const promoted = await markTopicPromoted(t.id, { actor: "moiz", graphRunId: "g1", packetId: "p1" }, deps(store));
     expect(promoted?.status).toBe("promoted");
     expect(promoted?.promotedPacketId).toBe("p1");
+  });
+
+  it("promoteTopicToProduction enqueues the graph with the topic context — approved only", async () => {
+    const store = memStore();
+    const calls: Array<{ objective: string; contentTrackId: string }> = [];
+    const enqueueGraph = async (i: { objective: string; contentTrackId: string }) => { calls.push(i); return { job: { id: "job_1" } }; };
+    const [t] = await generateTopicBank({ objective: "grow", requestedBy: "moiz" }, deps(store));
+    // pending → refuses to produce (no enqueue)
+    const pending = await promoteTopicToProduction({ topicId: t.id, contentTrackId: "track_1", requestedBy: "moiz" }, { store, enqueueGraph, recordAudit: async () => {} });
+    expect(pending.jobId).toBeNull();
+    expect(calls).toHaveLength(0);
+    // approve → produce enqueues the graph + marks promoted with the run id
+    await reviewTopic({ topicId: t.id, decision: "approved", reviewedBy: "moiz" }, deps(store));
+    const res = await promoteTopicToProduction({ topicId: t.id, contentTrackId: "track_1", requestedBy: "moiz" }, { store, enqueueGraph, recordAudit: async () => {} });
+    expect(res.jobId).toBe("job_1");
+    expect(res.topic?.status).toBe("promoted");
+    expect(res.topic?.promotedGraphRunId).toBe("job_1");
+    expect(calls[0].contentTrackId).toBe("track_1");
+    expect(calls[0].objective).toContain(t.title);
   });
 });
