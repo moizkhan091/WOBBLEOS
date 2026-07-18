@@ -5795,7 +5795,127 @@ function FindingDrawer({ finding, onClose, onAct, busy }: { finding: SecFinding;
   );
 }
 
+// Organisation Workspace (step 11) — one org's whole commercial journey + artifact provenance, in tabs.
+type OrgJourney = {
+  company: { id: string; name: string; industry: string | null; status: string | null; clientType: string | null };
+  qualification: { grade: string; overallScore: number; recommendation: string; version: number } | null;
+  opportunities: Array<{ id: string; name: string; stage: string | null; valueCents: number; linkedAuditIds: string[]; linkedProposalId: string | null; linkedProjectIds: string[] }>;
+  meetings: Array<{ id: string; title: string; meetingType: string; discoveryFactCount: number; approvedDiscoveryFacts: number }>;
+  discoveryFactCount: number;
+  paidTransformationAudits: Array<{ id: string; status: string; businessName: string | null }>;
+  freeAudits: number;
+  proposals: Array<{ id: string; title: string; status: string; version: number }>;
+  projects: Array<{ id: string; name: string; status: string; healthScore: number | null }>;
+  stage: string;
+};
+type OrgLineage = { nodes: Array<{ id: string; type: string; label: string }>; edges: Array<{ from: string; to: string; relation: string }> };
+
+function OrgMetric({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  return (
+    <div style={{ flex: 1, minWidth: 130, padding: "13px 15px", borderRadius: 13, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+      <div style={{ fontSize: 24, fontWeight: 600, color: tone ?? C.white, letterSpacing: "-0.02em" }}>{value}</div>
+      <div style={{ fontSize: 10.5, color: faint, marginTop: 3, letterSpacing: "0.04em" }}>{label}</div>
+    </div>
+  );
+}
+
+const ORG_STAGE_ORDER = ["org", "qualified", "opportunity", "discovery", "paid_audit", "proposal", "won", "project"];
+function stageColor(s: string) { return s === "project" || s === "won" ? C.lime : s === "org" ? C.gray : C.blue; }
+
+function OrgWorkspacePage() {
+  const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=200");
+  const companies = companiesApi.data?.companies ?? [];
+  const [selectedId, setSelectedId] = useState<string>("");
+  useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
+  const [tab, setTab] = useState<"journey" | "artifacts">("journey");
+  const org = useApi<{ journey: OrgJourney; lineage: OrgLineage }>(`/api/org/${selectedId || "__none__"}`);
+
+  if (companiesApi.loading) return <StateBlock kind="loading" message="Loading organisations…" />;
+  if (companiesApi.error) return <StateBlock kind="error" message={companiesApi.error} />;
+  if (!companies.length) return <StateBlock kind="empty" message="No organisations yet — create a company in Pipeline / CRM." />;
+
+  const j = org.data?.journey;
+  const l = org.data?.lineage;
+  const relLabel: Record<string, string> = { meeting_opp: "meeting → opportunity", opp_audit: "opportunity → audit", opp_proposal: "opportunity → proposal", audit_proposal: "audit → proposal", opp_project: "opportunity → project", proposal_project: "proposal → project" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {companies.map((c) => (
+          <button key={c.id} onClick={() => setSelectedId(c.id)} style={{ padding: "7px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, border: "1px solid " + (c.id === selectedId ? "rgba(184,255,44,0.3)" : "rgba(255,255,255,0.1)"), background: c.id === selectedId ? "rgba(184,255,44,0.1)" : "rgba(255,255,255,0.03)", color: c.id === selectedId ? C.white : muted }}>{c.name}</button>
+        ))}
+      </div>
+      {org.loading ? <StateBlock kind="loading" message="Assembling the org's journey…" /> : org.error ? <StateBlock kind="error" message={org.error} /> : j ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 500 }}>{j.company.name}</h2>
+            <Tag text={"stage: " + j.stage} color={stageColor(j.stage)} />
+            {j.company.industry ? <span style={{ fontSize: 12, color: faint }}>{j.company.industry}</span> : null}
+          </div>
+          {/* the journey rail — the furthest-reached stage lit in lime */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            {ORG_STAGE_ORDER.map((s, i) => {
+              const reached = ORG_STAGE_ORDER.indexOf(j.stage) >= i;
+              return <span key={s} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 7, background: reached ? "rgba(184,255,44,0.12)" : "rgba(255,255,255,0.03)", color: reached ? C.lime : faint, border: "1px solid " + (reached ? "rgba(184,255,44,0.25)" : "rgba(255,255,255,0.06)") }}>{s.replace("_", " ")}</span>
+                {i < ORG_STAGE_ORDER.length - 1 ? <span style={{ color: faint, fontSize: 10 }}>→</span> : null}
+              </span>;
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+            {(["journey", "artifacts"] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{t === "journey" ? "Journey" : "Artifacts & Lineage"}</button>
+            ))}
+          </div>
+          {tab === "journey" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "—"} tone={j.qualification ? C.lime : undefined} />
+                <OrgMetric label="meetings" value={j.meetings.length} />
+                <OrgMetric label="discovery facts" value={j.discoveryFactCount} />
+                <OrgMetric label="opportunities" value={j.opportunities.length} />
+              </div>
+              {j.qualification ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5, padding: "11px 14px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.14)", background: "rgba(184,255,44,0.03)" }}><b style={{ color: C.lime }}>Qualification {j.qualification.grade}</b> — {j.qualification.recommendation}</div> : null}
+              <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em", marginTop: 4 }}>MEETINGS & DISCOVERY</div>
+              {j.meetings.length ? j.meetings.map((m) => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                  <Tag text={m.meetingType.replace(/_/g, " ")} color={C.blue} />
+                  <span style={{ fontSize: 13, flex: 1 }}>{m.title}</span>
+                  <span style={{ fontSize: 11.5, color: faint }}>{m.approvedDiscoveryFacts}/{m.discoveryFactCount} facts approved</span>
+                </div>
+              )) : <div style={{ fontSize: 12.5, color: faint }}>No meetings yet.</div>}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <OrgMetric label="paid transformation audits" value={j.paidTransformationAudits.length} tone={j.paidTransformationAudits.length ? C.lime : undefined} />
+                <OrgMetric label="free audits" value={j.freeAudits} />
+                <OrgMetric label="proposals" value={j.proposals.length} />
+                <OrgMetric label="projects" value={j.projects.length} />
+              </div>
+              {j.paidTransformationAudits.length ? <>
+                <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PAID TRANSFORMATION AUDITS</div>
+                {j.paidTransformationAudits.map((a) => <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}><Tag text={a.status} color={a.status === "complete" ? C.lime : C.gray} /><span style={{ fontSize: 12.5 }}>{a.businessName ?? a.id}</span></div>)}
+              </> : null}
+              {j.proposals.length ? <>
+                <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PROPOSALS</div>
+                {j.proposals.map((p) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}><Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} /><span style={{ fontSize: 12.5, flex: 1 }}>{p.title}</span><span style={{ fontSize: 11, color: faint }}>v{p.version}</span></div>)}
+              </> : null}
+              <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PROVENANCE ({l?.edges.length ?? 0} derivation edges)</div>
+              {l && l.edges.length ? l.edges.map((e, i) => {
+                const from = l.nodes.find((n) => n.id === e.from), to = l.nodes.find((n) => n.id === e.to);
+                return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
+              }) : <div style={{ fontSize: 12.5, color: faint }}>No artifact derivation edges yet — this org hasn't produced downstream artifacts.</div>}
+            </div>
+          )}
+        </>
+      ) : <StateBlock kind="empty" message="Select an organisation above." />}
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
+  org: OrgWorkspacePage,
   cockpit: CockpitPage,
   comms: CommsPage,
   optimizer: OptimizerPage,

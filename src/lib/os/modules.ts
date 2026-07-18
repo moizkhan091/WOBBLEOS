@@ -48,6 +48,7 @@ export const MODULES: Record<string, ModuleDef> = {
   offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "wired", api: "/api/offers", tagline: "Design, test and iterate offers. Run experiments, score what works, promote the winner — low-confidence bets never reach a founder cold." },
 
   // REVENUE (Wobble ERP Control Layer)
+  org: { id: "org", label: "Org Workspace", title: "Organisation Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "One organisation's whole commercial journey in one place — qualification grade, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a company; the lineage assembles itself." },
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone — companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
   audit_workspace: { id: "audit_workspace", label: "Audit Workspace", title: "Audit Workspace", icon: "FolderKanban", status: "wired", api: "/api/audit/workspace", tagline: "Run a client through the whole audit in one place — Doc 1 pitch → Doc 2 internal interview roadmap → record findings → Doc 3 final McKinsey deck. Each client's data stays isolated." },
   free_audit: { id: "free_audit", label: "Quick Pitch", title: "Free AI Audit / Pitch", icon: "ClipboardCheck", status: "wired", api: "/api/audit/free", tagline: "The fast top-of-funnel: map a prospect's gaps to the full Wobble service menu + generate a niche-customized pitch. The full 3-stage flow lives in Audit Workspace." },
@@ -88,7 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["command", "departments", "ask", "brain", "agents"] },
   { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "content", "library", "media"] },
   { label: "STRATEGY", items: ["decision", "offers"] },
-  { label: "REVENUE", items: ["audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
+  { label: "REVENUE", items: ["org", "audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
   { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
   { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "comms", "skills", "workers", "handoff"] },
   { label: "SYSTEM", items: ["cockpit", "security", "memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },

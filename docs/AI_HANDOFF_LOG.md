@@ -6205,3 +6205,19 @@ returns `{ journey, lineage }` — the commercial-journey assembly + the artifac
 Thin wrapper over the already-tested getCommercialJourney + getArtifactLineage; standard route pattern; passes
 route-auth coverage (gated). This is the data endpoint the org-workspace tabs UI will fetch; the tabs UI itself
 is deferred (needs a container rebuild to browser-prove; the box's npm-ci build network is currently failing).
+
+---
+
+## Organisation Workspace — the tabs UI (step 11 presentation, completes the module)
+
+New OS module `org` (REVENUE group, "Org Workspace") in os-ui.tsx + modules.ts. OrgWorkspacePage: pick a company
+→ fetch GET /api/org/[companyId] → render the org's whole commercial journey in tabs:
+- a stage RAIL (org→qualified→opportunity→discovery→paid_audit→proposal→won→project) with the furthest-reached
+  stage lit in lime;
+- **Journey tab**: qualification grade/score + recommendation, meetings with approved/total discovery facts,
+  opportunity/discovery-fact metrics;
+- **Artifacts & Lineage tab**: Paid Transformation Audits (the audit thing), free audits, proposals, projects,
+  and the PROVENANCE graph — every derivation edge (meeting→opp, opp→audit, audit→proposal, proposal→project…)
+  rendered as "label ─relation→ label".
+Reuses useApi + the shared C/Tag/StateBlock helpers; typecheck clean. Verified via dev server (Docker rebuild
+still blocked on npm-ci network).
