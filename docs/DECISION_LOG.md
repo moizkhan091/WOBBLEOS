@@ -411,3 +411,26 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Follow-ups: the ≤1 ACCEPTANCE VO (final, on an approved script) still to run; word-timing/caption sync
   (VOICE-SETTINGS.md references a tag-stripping parser for v3) is a separate reel-assembly concern.
 - Affects: src/lib/elevenlabs/index.ts, tests/elevenlabs-adapter.test.ts, src/scripts/prove-elevenlabs-voiceover.ts.
+
+---
+
+## Decision: Offer Validation Lab = 11 dimension agents + ONE shared evidence search, weighted verdict, versioned
+
+- Context: founder spec — "Offer Validation Lab (11 agents), Tavily/Apify evidence, dimension scores, verdicts, versioned."
+- Decision: a new module with two tables (0056), 11 registered dimension agents, and runOfferValidation that gathers
+  ONE governed Tavily search shared across all 11 dimension LLM calls, then rolls up a weighted go/pivot/kill verdict
+  and persists a VERSIONED run (re-validation → v2, never overwrite).
+- Why one shared evidence search (not per-agent): 11 separate searches would burn ~11 Tavily credits per validation
+  for little marginal signal; one broad demand/competitor/objection search grounds all dimensions and keeps the paid
+  footprint tiny (1 credit + 11 cheap gpt-4o-mini calls ≈ $0.002). Evidence is GRACEFUL — a null adapter or a failed
+  search still validates on the offer text (evidenceCount 0), so the lab never hard-blocks on the web.
+- Why weighted, normalized scoring: dimensions differ in importance (market_demand/pain/icp_fit weigh more than
+  message_clarity); normalizing by the weights actually scored means a partial run still yields a sane 0-100.
+- Verdict thresholds go≥70 / pivot≥45 / kill: a pivot band exists on purpose so a near-miss offer gets "fix the weak
+  dimension", not a binary kill. The summary names the weakest dimension so the pivot is actionable.
+- Do NOT: overwrite prior validation runs (version them); do one Tavily search PER dimension; treat a graceful
+  no-evidence run as a failure.
+- Follow-ups: wire it as a department consumer (accept an offer handoff) + a founder route/UI; Apify as a second
+  evidence source for competitor scraping where Tavily is thin.
+- Affects: migration 0056, src/db/schema.ts, src/lib/domain/offer-validation.ts, src/lib/offer-validation/index.ts,
+  src/lib/domain/agents.ts (+11), tests/offer-validation.test.ts, src/scripts/prove-offer-validation.ts.

@@ -6050,3 +6050,24 @@ worker-video claimed the lease (queued → generating @ t+12s) → generated →
 provider=openrouter, status=succeeded, actual_cost_cents=4, 1 output, requestedBy=Moiz. Artifact
 `media/a058d382….png` = 827 KB real PNG in the wobble_storage volume. So the OpenRouter image adapter (#12) is
 now proven the WHOLE way: durable job → live worker → provider → artifact → cost, not just direct generate().
+
+---
+
+## Offer Validation Lab — 11 dimension agents → evidence-backed go/pivot/kill verdict (step 7)
+
+New module (migration 0056: offer_validation_runs + offer_validation_dimensions). Validates an offer across 11
+dimension agents, each scoring 0-100 with an evidence-grounded rationale, rolled up (weighted) into a verdict.
+- Domain (`src/lib/domain/offer-validation.ts`, pure + unit-tested): the 11 dimensions + weights, computeOverallScore
+  (weighted, clamped, normalized), decideVerdict (go≥70 / pivot≥45 / kill), parseDimensionResult (strict + fenced JSON).
+- Service (`src/lib/offer-validation/index.ts`): runOfferValidation — ONE governed Tavily evidence search (shared by
+  all dimensions) → 11 gpt-4o-mini dimension calls (budget-guarded via runTextProvider) → verdict → versioned run +
+  11 dimension rows. Evidence is graceful (null adapter / failure → validates on offer text, evidenceCount 0). Versions
+  re-validations (v2, v3…) instead of overwriting.
+- 11 agents registered in DEFAULT_AGENTS (module offer_validation): offer_market_demand_agent … offer_risk_agent.
+- 10 unit tests (domain + service, injected store/provider/evidence); agents.test still green (asserts length ≥ 5).
+
+**Proven live** (`src/scripts/prove-offer-validation.ts`): validated "AI Receptionist System" → VERDICT **PIVOT @
+66/100** (v1, evidence 5). Strongest market_demand (85) + pain_acuity (85); weakest icp_fit (40 — the LLM flagged the
+offer skews to home-services/dental, a narrower ICP). Persisted: 1 run + 11 dimension rows. Spend tracked: 11
+`offer_validation:default` gpt-4o-mini ($0.0018) + 1 `offer-validation` Tavily (1 credit). Running: OpenRouter
+$0.1032/$3, Tavily 2/500, Apify $0.10/$2, ElevenLabs 100/232285.

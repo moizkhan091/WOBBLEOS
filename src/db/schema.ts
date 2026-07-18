@@ -1504,6 +1504,39 @@ export const offers = pgTable("offers", {
   index("offers_status_idx").on(table.status),
 ]);
 
+// Offer Validation Lab: each run scores an offer across 11 dimension agents (evidence-backed) → a go/pivot/kill
+// verdict. Versioned per offer (version increments) so re-validations are kept, not overwritten.
+export const offerValidationRuns = pgTable("offer_validation_runs", {
+  id: id(),
+  offerId: text("offer_id").notNull(),
+  version: integer("version").notNull().default(1),
+  verdict: varchar("verdict", { length: 12 }).notNull(), // go|pivot|kill
+  overallScore: integer("overall_score").notNull().default(0),
+  summary: text("summary"),
+  evidenceCount: integer("evidence_count").notNull().default(0),
+  model: varchar("model", { length: 120 }),
+  createdBy: varchar("created_by", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("offer_validation_runs_offer_idx").on(table.offerId),
+  uniqueIndex("offer_validation_runs_offer_version_uq").on(table.offerId, table.version),
+]);
+
+export const offerValidationDimensions = pgTable("offer_validation_dimensions", {
+  id: id(),
+  runId: text("run_id").notNull(),
+  dimension: varchar("dimension", { length: 60 }).notNull(),
+  agentSlug: varchar("agent_slug", { length: 80 }).notNull(),
+  score: integer("score").notNull().default(0),
+  weight: numeric("weight", { precision: 4, scale: 2 }).notNull().default("1"),
+  rationale: text("rationale").notNull(),
+  evidenceRefs: jsonb("evidence_refs").$type<string[]>().notNull().default([]),
+  createdAt: createdAt(),
+}, (table) => [
+  index("offer_validation_dimensions_run_idx").on(table.runId),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 
