@@ -6030,3 +6030,23 @@ charged) then a `succeeded` (100 characters). ElevenLabs char spend now 100 of 2
 
 GOTCHA logged: the ELEVENLABS_VOICE_ID secret carries an inline "# annotation" (and can list 3 voices) — parse
 the bare id with `.split(/[#,]/)[0].trim()`.
+
+---
+
+## Media queue chain — PROVEN LIVE end-to-end (closes the OpenRouter-image known gap)
+
+Per founder direction ("rebuild + wire the key"), the full UAT stack was rebuilt to HEAD (f5a6ccf) via
+`scripts/stack-build.sh` — app/worker/worker-video all on the same build id, version parity ok. The provider
+keys were wired stack-wide through a combined env file (`env/uat-combined.env` = uat.env + the REAL provider
+values from provider-secrets.clean.env, inline `#` annotations stripped).
+
+GOTCHA logged: the FIRST rebuild wired an EMPTY OpenRouter key (I sourced it from the running worker's env,
+which only had an empty var — the real value lives only in provider-secrets.clean.env). Symptom: the job still
+BLOCKED with "provider not configured" even on HEAD, because configured() = Boolean(OPENROUTER_API_KEY). Fixed
+by rebuilding the combined env with the real values + `up -d --force-recreate --no-build` (no image rebuild).
+
+Proof (`src/scripts/prove-media-queue-live.ts`): host createMediaJob(provider="openrouter") → the LIVE
+worker-video claimed the lease (queued → generating @ t+12s) → generated → SUCCEEDED. media_jobs row:
+provider=openrouter, status=succeeded, actual_cost_cents=4, 1 output, requestedBy=Moiz. Artifact
+`media/a058d382….png` = 827 KB real PNG in the wobble_storage volume. So the OpenRouter image adapter (#12) is
+now proven the WHOLE way: durable job → live worker → provider → artifact → cost, not just direct generate().
