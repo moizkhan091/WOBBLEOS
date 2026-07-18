@@ -86,17 +86,22 @@ export const MODULES: Record<string, ModuleDef> = {
   settings: { id: "settings", label: "Settings", title: "Settings", icon: "Settings", status: "wired", api: "/api/settings", tagline: "Operational config for the whole OS — which integration keys are connected, the model-role map, and every provider's status." },
 };
 
+// Consolidated navigation (V2 restructure): Ask WOBBLE first, Command second, then the primary work areas —
+// Intelligence & Sources, Content Studio, Revenue/CRM, Delivery & Ops, WOBBLE HQ — with everything operational
+// tucked into a collapsed SYSTEM drawer. Fewer top-level areas, clearer mental model.
 export const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", items: ["command", "departments", "ask", "brain", "agents"] },
-  { label: "PIPELINE", items: ["radar", "sources", "intelligence", "learning", "topics", "content", "library", "media"] },
-  { label: "STRATEGY", items: ["decision", "offers"] },
-  { label: "REVENUE", items: ["org", "audit_workspace", "free_audit", "paid_audit", "crm", "docs", "invoices"] },
-  { label: "GROWTH & BUSINESS", items: ["seo", "social", "webstats"] },
-  { label: "OPERATIONS", items: ["tasks", "meetings", "projects", "automations", "connections", "approvals", "comms", "skills", "workers", "handoff"] },
-  { label: "SYSTEM", items: ["cockpit", "security", "memory", "taste", "costs", "audit", "optimizer", "backup", "settings"] },
+  { label: "WORKSPACE", items: ["ask", "command", "cockpit", "departments", "agents"] },
+  { label: "INTELLIGENCE & SOURCES", items: ["radar", "sources", "intelligence", "learning", "brain", "memory"] },
+  { label: "CONTENT STUDIO", items: ["topics", "content", "library", "media", "social", "seo", "webstats"] },
+  { label: "REVENUE / CRM", items: ["crm", "org", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
+  { label: "DELIVERY & OPS", items: ["projects", "meetings", "tasks", "automations", "comms"] },
+  { label: "WOBBLE HQ", items: ["decision", "offers", "taste", "optimizer"] },
+  { label: "SYSTEM", items: ["approvals", "security", "connections", "skills", "workers", "handoff", "costs", "audit", "backup", "settings"] },
 ];
 
-export const DEFAULT_MODULE = "command";
+// (The sidebar opens only the active group by default, so SYSTEM and other non-active groups render as
+// collapsed drawers automatically — operational modules stay out of the way until opened.)
+export const DEFAULT_MODULE = "ask";
 
 export function getModule(id: string): ModuleDef | undefined {
   return MODULES[id];

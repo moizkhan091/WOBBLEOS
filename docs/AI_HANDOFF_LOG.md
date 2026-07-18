@@ -6521,3 +6521,11 @@ A massive level-up from the earlier bland output. Tests (14) + typecheck green.
   were NOT in the standalone image). Critical for on-brand quality on the VPS.
 - .env.example: documented DATAFORSEO_AUTH (optional; free autocomplete fallback covers its absence) +
   OPENROUTER_MEDIA_TIMEOUT_MS. PLAUSIBLE_* already present. STORAGE_ROOT persists rendered media on the volume.
+
+## 2026-07-18 — batch 13: nav consolidation (Ask-first, 7 areas + System drawer)
+
+Reorganised NAV_GROUPS into the V2 restructure shape: Ask WOBBLE first, Command second, then INTELLIGENCE &
+SOURCES, CONTENT STUDIO (topics/content/library/media/social/seo/webstats), REVENUE / CRM, DELIVERY & OPS,
+WOBBLE HQ, and a SYSTEM drawer (collapsed by default — the sidebar opens only the active group). Root now
+redirects to /ask; DEFAULT_MODULE = "ask". VERIFIED LIVE in the browser (real Chrome, dev-login): the new nav +
+Topic Bank render authed as founder Ali with real topics + stats + Approve/Reject.
