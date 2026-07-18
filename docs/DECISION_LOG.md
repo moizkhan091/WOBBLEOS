@@ -323,3 +323,20 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Risks / open: the running app container has no OPENROUTER_API_KEY, so query-embedding-backed retrieval
   is proven via a host script that carries the key; wiring the key into the app is a separate step before
   Ask WOBBLE can semantically retrieve twin facts in-browser.
+
+---
+
+## Decision: Static Creative DNA = structural facts (free) + a SMALL live vision sample, not a full 196-image scan
+
+- Context: founder asked for "Static Creative DNA" from the ~196/250-asset WOBBLE social library.
+- Decision: seed the `design` bank with (1) structural + angle DNA counted from the manifest/folder taxonomy
+  (free, deterministic, exhaustive), and (2) observed visual DNA from a 3-image vision sample only.
+- Why sample, not all 196: at ~25.6k tokens/image gpt-4o-mini vision costs ~$0.0039/image, so 196 = ~$0.76 —
+  affordable but wasteful when 3 representative frames (pain/outcome/system of the top campaign) already
+  reveal the execution pattern. Founder budget posture is STRICT; spend only what the finding needs. If a
+  future task wants full per-asset tagging, the path is proven — scale the same script with a hard item cap.
+- Payoff beyond confirmation: the sample surfaced a real pattern (pain frame = light/black old-world; outcome
+  & system frames = dark + #B8FF2C future-world), i.e. lime is a SOLUTION-frame signal, not a global wash.
+- Do NOT: run an unbounded vision loop over the whole library without a budget check + item cap; do NOT treat
+  the 3-sample visual note as exhaustive per-asset truth (it is a sampled DNA signal).
+- Affects: design memory bank; external_provider_spend (3 tracked calls); src/scripts/prove-static-creative-dna.ts.

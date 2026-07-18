@@ -5903,3 +5903,30 @@ first line) but the work commits before exit — verified by direct SQL, not by 
 "what does WOBBLE sell/pricing?" → company identity + the 4-step commercial spine; "brand voice / never
 say?" → brand voice + controversy doctrine + enemy; "primary brand colour / visual design?" → BOTH design
 DNA facts (motifs + #B8FF2C) ranked top. The twin answers WOBBLE's own questions from its seeded banks.
+
+---
+
+## Static Creative DNA — design bank extended from the real 196-asset WOBBLE social library (+ live vision)
+
+Execution-order step "WOBBLE Design DNA / Static Creative DNA". Extends the `design` memory bank (no new
+table). Source: the actual WOBBLE-Social-Library-UPLOAD (196 PNGs) + its manifest — nothing invented.
+
+Two layers, both proven against the UAT DB:
+- **Structural + angle DNA** (free, deterministic): 196 feed-native assets, ALL 880x1168 portrait, 0 exact
+  dupes (sha256), 35 campaigns mapping 1:1 to the service portfolio. Angle system = a Pain→Outcome→System
+  triad spine (~66 ads: 28 pain / 20 outcome / 18 system) diversified across **129 distinct angles**, plus
+  format cuts (~16) and niche cuts (~14) and a long tail of named visual metaphors (vs-old-way,
+  tools-vs-system, tug-of-war, switchboard-midnight…).
+- **Observed visual DNA** (LIVE, budget-guarded): 3-static ai-receptionist sample sent through the OpenRouter
+  VISION path (gpt-4o-mini) via runTextProvider. Real finding: the **pain** frame is light beige + black
+  (the "old world" before-state, NO lime); the **outcome** and **system** frames are dark + electric lime
+  #B8FF2C (the WOBBLE future-state). So the stated Design DNA (dark + #B8FF2C) is genuinely used — and used
+  deliberately on the solution frames, not the pain frame.
+
+Design bank now = 5 records (palette, motifs, SCD library, SCD angles, SCD observed-visual); all embedded.
+
+### Vision provider path — PROVEN LIVE + BUDGET-TRACKED
+3 gpt-4o-mini vision calls recorded in `external_provider_spend`: item=design_intelligence:default,
+~25.6k tokens/image, ~$0.00387 each, result=succeeded, actor=static_creative_dna. Running OpenRouter total
+= $0.0116 of the $3.00 budget (0.4%). The budget guard engages on multimodal calls too (DATABASE_URL set →
+budgetActive). Script: `src/scripts/prove-static-creative-dna.ts`.
