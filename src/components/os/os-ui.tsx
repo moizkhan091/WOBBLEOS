@@ -5914,7 +5914,7 @@ function OrgWorkspacePage() {
   );
 }
 
-type TopicRow = { id: string; pillar: string; title: string; teachingJob: string; angle: string; funnelStage: string; suggestedFormat: string; freshness: string; demandKeyword: string | null; demandVolume: number | null; trendVelocity: number | null; competitorGap: number; founderJobValue: number; noveltyScore: number; proofAvailable: boolean; overallScore: number; scoreBreakdown?: { demand?: number }; status: string; reviewedBy: string | null };
+type TopicRow = { id: string; pillar: string; title: string; teachingJob: string; angle: string; funnelStage: string; suggestedFormat: string; freshness: string; demandKeyword: string | null; demandVolume: number | null; trendVelocity: number | null; competitorGap: number; founderJobValue: number; noveltyScore: number; proofAvailable: boolean; overallScore: number; scoreBreakdown?: { demand?: number }; status: string; reviewedBy: string | null; promotedPacketId: string | null };
 type IntelRun = { id: string; trigger: string; status: string; topicCount: number; sourceCount: number; createdAt: string; objective: string };
 
 const PILLAR_LABEL: Record<string, string> = { buildable_automations: "Buildable automation", tool_stack_decisions: "Tool & stack", skills_prompts_repos: "Skills & prompts", copy_paste_assets: "Copy-paste asset", agency_teardowns: "Agency teardown", ai_for_operators: "AI for operators", build_proof_lessons: "Build proof" };
@@ -5961,12 +5961,12 @@ function TopicBankPage() {
       if (r.ok && j.ok !== false) topicsApi.reload(); else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
-  async function produce(id: string) {
-    setBusy(id); setMsg(null);
+  async function produce(id: string, hero = false) {
+    setBusy(id); setMsg(hero ? "Rendering hero with GPT-Image-2 (~1-2 min)…" : "The art director is designing + rendering your asset…");
     try {
-      const r = await fetch(`/api/content/topics/${id}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const r = await fetch(`/api/content/topics/${id}/render${hero ? "?hero=1" : ""}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { setMsg("Sent to production — the content team is generating the asset (see Content Command)."); topicsApi.reload(); }
+      if (r.ok && j.ok !== false) { setMsg("Produced ✓ — the on-brand asset is rendered and saved to your Library."); topicsApi.reload(); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
@@ -6029,11 +6029,17 @@ function TopicBankPage() {
                   {t.demandKeyword ? <span style={{ fontSize: 10.5, color: faint }}>demand keyword: {t.demandKeyword}</span> : null}
                 </div>
               ) : t.status === "approved" ? (
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => produce(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>⚡ Produce this</button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={() => produce(t.id, false)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>⚡ Produce</button>
+                  <button onClick={() => produce(t.id, true)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>✨ Hero (GPT-Image-2)</button>
                   <span style={{ fontSize: 11.5, color: faint }}>approved{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</span>
                 </div>
-              ) : <div style={{ fontSize: 11.5, color: faint }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</div>}
+              ) : (
+                <div>
+                  {t.promotedPacketId ? <img src={`/api/library/assets/${t.promotedPacketId}/media`} alt={t.title} loading="lazy" style={{ width: "100%", maxWidth: 460, borderRadius: 10, marginTop: 4, display: "block", border: "1px solid rgba(255,255,255,0.08)" }} /> : null}
+                  <div style={{ fontSize: 11.5, color: faint, marginTop: 6 }}>{t.status}{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}{t.promotedPacketId ? " · in Library" : ""}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>}

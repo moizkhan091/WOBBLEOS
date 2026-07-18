@@ -6472,3 +6472,27 @@ renders it. The founder gets library-grade images without hand-writing a prompt.
 
 This is the content module's creative core: topic → art-directed concept → on-brand render, all autonomous.
 Next: wire renderTopicAsset behind "Produce this" + store to the Library so it displays.
+
+---
+
+## 2026-07-18 — V2 content-engine wave (Claude) — batch 10: Produce → render → Library (full loop LIVE)
+
+Wired the "Produce this" button to the render engine end-to-end + PROVEN LIVE through the running dev server.
+
+- `POST /api/content/topics/[id]/render` (founder-gated, maxDuration 300s): approved/promoted topic →
+  `renderTopicAsset` (art director designs concept → GPT-Image-2/gemini renders, auto-feeding the treatment's
+  reference exemplar) → `addContentAsset` (mediaRefs = the render outputRefs, under STORAGE_ROOT/media where
+  `serveLibraryMedia` reads them) → `markTopicPromoted` links the asset. `?hero=1` = GPT-Image-2 (best, slow),
+  default = gemini (fast, ~15s).
+- UI: "Produce" (gemini) + "✨ Hero (GPT-Image-2)" buttons on approved topics; produced topics show the actual
+  image inline via `/api/library/assets/{promotedPacketId}/media` + "in Library".
+- PROVEN LIVE (dev server, UAT DB, real providers + a minted founder session): approved topic "The 4-Node
+  WhatsApp Recovery Loop…" → Produce → the art director chose the hand_notebook treatment (fitting!) → gemini
+  rendered a genuine on-brand spiral-notebook infographic with the real 4-node flowchart, orange accents,
+  highlighter, pill tag + CTA, wobble. wordmark (4¢) → stored as Library asset → media served HTTP 200 image/png
+  1.29MB → displays in the UI. Full chain: topic → approve → produce → on-brand asset in the Library.
+- route-auth-coverage + content-render + content-topics green (36). Typecheck green.
+
+The content module now runs the WHOLE loop live: sources → intelligence → topic bank (real stats) → founder
+approve → Produce → art-directed on-brand render → Library. Remaining: carousel multi-image display, zernio
+post, lead magnets, reels, CRM hub, sidebar consolidation.
