@@ -362,3 +362,30 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Do NOT: dump marketing knowledge straight into memory banks; treat the 55 notes without explicit chunk
   provenance as un-sourced (they are sheet-level synthesis, still linked to their source).
 - Affects: sources (34), source_chunks (476), knowledge_notes (249), external_provider_spend (34 tracked).
+
+---
+
+## Decision: OpenRouter image gen is a new MediaProvider alongside fal, not a replacement; image-only for now
+
+- Context: founder wants OpenRouter as the unified media provider (text/vision/image/video), fal preserved
+  and truthfully disabled without FAL_KEY.
+- Decision: add `openrouterMediaProvider` implementing the existing `MediaProvider` interface and register it
+  in `defaultProviderRegistry()` next to fal. Scope THIS adapter to `kind: "image"`; refuse video/audio/3d
+  with a clear error (fal's domain).
+- Why image via chat-completions: OpenRouter's image-output models (verified live: 11 of them, e.g.
+  google/gemini-2.5-flash-image ~$0.04/img) return the image INLINE as a base64 data URL on
+  `choices[0].message.images[].image_url.url` — no separate images endpoint, no CDN download, no SSRF surface.
+  Cost is authoritative from `usage.cost`.
+- Why not extend fal-provider: fal uses a submit→poll→download QUEUE flow with CDN URLs; OpenRouter is a
+  single synchronous call with inline bytes. Different enough that a separate adapter is cleaner than
+  branching fal. Both satisfy the same 3-method interface, so the registry/worker treat them identically.
+- Proof scope: proved the adapter directly (generate → real image → storage → cost) + registry membership +
+  configured-gating, NOT the full queue chain — the LIVE worker runs an old build without the provider/key and
+  races the shared media_jobs table, blocking openrouter jobs. That path needs a worker rebuild.
+- Do NOT: claim video via OpenRouter (image models don't do video — #13 needs its own adapter); remove fal
+  (it stays for video/audio/3d, truthfully blocked without FAL_KEY).
+- Follow-ups: wire OPENROUTER_API_KEY into the worker env + rebuild so queue→worker→artifact lands live;
+  unify media spend into the assertProviderAllowance PRE-check (today media has its own per-job cent cap +
+  post-hoc external_provider_spend recording).
+- Affects: src/lib/domain/media.ts, src/lib/media/openrouter-provider.ts, src/lib/media/index.ts,
+  tests/openrouter-media-provider.test.ts, src/scripts/prove-openrouter-image.ts.

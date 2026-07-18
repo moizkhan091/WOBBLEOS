@@ -6,6 +6,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { newId } from "@/lib/ids";
 import { recordProviderRun, type RecordProviderRunInput } from "@/lib/provider-runs";
 import { falMediaProvider } from "@/lib/media/fal-provider";
+import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
 import {
   MEDIA_KINDS,
   validateMediaRequest,
@@ -41,12 +42,13 @@ export const deterministicMediaProvider: MediaProvider = {
 // `configured()` is true only when FAL_KEY/FAL_API_KEY is set; an unconfigured environment keeps a job
 // truthfully BLOCKED (never a fabricated success).
 export { falMediaProvider };
+export { openrouterMediaProvider };
 
 /** The PRODUCTION registry contains ONLY real providers. `deterministicMediaProvider` is intentionally NOT here — it
  *  fabricates a synthetic ref and is available ONLY via explicit injection (tests/proofs), so a founder request can
  *  never get a synthetic "success" in production; an unknown provider is truthfully BLOCKED. */
 export function defaultProviderRegistry(): Record<string, MediaProvider> {
-  return { fal: falMediaProvider };
+  return { fal: falMediaProvider, openrouter: openrouterMediaProvider };
 }
 
 // ---- Store ----

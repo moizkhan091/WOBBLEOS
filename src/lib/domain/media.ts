@@ -86,3 +86,11 @@ export function dispatchDecision(
 export function falConfigured(env: Record<string, string | undefined> = process.env): boolean {
   return Boolean((env.FAL_KEY ?? env.FAL_API_KEY ?? "").trim());
 }
+
+/** OpenRouter media (image generation) is configured when the OpenRouter key is set. */
+export function openrouterMediaConfigured(env: Record<string, string | undefined> = process.env): boolean {
+  return Boolean((env.OPENROUTER_API_KEY ?? "").trim());
+}
+
+/** OpenRouter kinds this adapter can serve today — image only; video/audio/3d stay with fal (truthfully blocked without FAL_KEY). */
+export const OPENROUTER_MEDIA_KINDS: readonly MediaKind[] = ["image"];

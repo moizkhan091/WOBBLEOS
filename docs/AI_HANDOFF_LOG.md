@@ -5978,3 +5978,31 @@ State now: **design bank = 7 records** (2 Design DNA + 3 Static Creative + 2 Mot
 sources / 322 notes** (all embedded). 45 knowledge_compiler calls tracked, OpenRouter total **$0.0613 of
 $3.00** (2%). NB: the 103 Phase-9 TTS JSONs are ElevenLabs voice configs (text/model_id/voice_settings) —
 relevant to the ElevenLabs voiceover item (#17). Script: `src/scripts/prove-motion-dna.ts`.
+
+---
+
+## OpenRouter image generation adapter — the unified media provider (step 12)
+
+The founder's "OpenRouter as the unified provider (text/vision/image/video)" for IMAGE, with fal preserved
+and truthfully disabled without FAL_KEY. New code:
+- `src/lib/domain/media.ts` — `openrouterMediaConfigured()` + `OPENROUTER_MEDIA_KINDS = ["image"]`.
+- `src/lib/media/openrouter-provider.ts` — a `MediaProvider` (slug "openrouter"). OpenRouter returns the
+  generated image INLINE as a base64 data URL on `choices[0].message.images[].image_url.url` (verified live —
+  no CDN download / SSRF surface). Injectable transport + FS so the extract/decode/store flow is unit-tested
+  without a live paid call; real call only when OPENROUTER_API_KEY set; `configured()` gates it (unconfigured
+  → job BLOCKED, never fabricated). Cost = OpenRouter's reported `usage.cost` (→ cents, ceil so sub-cent ≠ 0).
+- `src/lib/media/index.ts` — registered in `defaultProviderRegistry()` → `{ fal, openrouter }`.
+- 8 unit tests (`tests/openrouter-media-provider.test.ts`): generate/extract/decode/config-gating/kind-refusal/
+  http-error/no-image — all green.
+
+**Proven live** (`src/scripts/prove-openrouter-image.ts`): registry = {fal, openrouter}; openrouter.configured()
+= true, fal.configured() = FALSE (no FAL_KEY, truthfully disabled). Generated a real on-brand WOBBLE key
+visual (electric-lime #B8FF2C orb + motion trail on near-black + 'WOBBLE' wordmark) → 750.9 KB PNG on disk,
+cost 4¢; video kind truthfully refused. Spend recorded in external_provider_spend; unified OpenRouter total
+now $0.1013 of $3.00.
+
+KNOWN GAP (truthful): the LIVE media worker (wobbleuat-worker-video-1) runs the OLD build (cdc31d2) which has
+neither this provider nor the key, so it races the media_jobs queue and BLOCKS openrouter jobs. The full
+createMediaJob→dispatch→worker→artifact chain lands once the worker image is rebuilt + OPENROUTER_API_KEY is
+wired into the worker env. The adapter itself (the new code) is proven via direct generate(). Video-GEN (#13)
+= a separate adapter (OpenRouter's image models don't do video); fal remains the video path.
