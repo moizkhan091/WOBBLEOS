@@ -281,3 +281,152 @@ Founder command surface for the business itself: **Offers** (offer lab + the 34-
 ---
 
 *This document is the shared plan. Update it as decisions land; do not keep restructure decisions only in chat.*
+
+---
+
+# PART II — Deep detail (content engine, pillars, growth, reels, VPS)
+
+## 12. Content lifecycle — how ONE piece of content is born, shipped, and learned from
+
+The engine is a LOOP, not a one-shot generator. A single asset moves through these stages; the intelligence
+layer runs continuously underneath.
+
+1. **Intelligence & Sources (always on).** YouTube learning folders, competitor content, Reddit/communities,
+   keyword demand, AI provider docs/changelogs, and WOBBLE's own past-post performance are ingested — with a
+   **freshness + dedup guard** (content hash + upsert, so it never rescrapes the same stable item and never pays
+   twice; latest, not stale).
+2. **Knowledge notes feed the Strategist**, which proposes a **BANK of topic ideas**, each scored by founder-job
+   value, authority, freshness, setup friction, risk, outcome, and a proof-test — NOT popularity.
+3. **Founder approves topics (human gate #1).** Only approved topics proceed.
+4. **Research/Verification layer** verifies every tool/fact against its CURRENT official source, ranks
+   alternatives, and drops anything unverified (the credibility guard, section 5).
+5. **Copywriter** writes the teaching in WOBBLE voice, mechanism-first, with a self-critique -> revise loop.
+6. **Content-value contract check (blocking) + Scorer + Quality + Brand reviewers (human gate #2).**
+7. **Format decision** — static / carousel / infographic / reel, chosen per topic + the pillar mix.
+8. **Render** — GPT Image 2 (statics/infographics), HTML/CSS (carousel interiors), HyperFrames + VO (reels);
+   reference images auto-selected by role; regen = image->image surgical edit.
+9. **QA gates** — technical render -> visual/auditory inspection -> EXACT-VERSION founder approval (human gate #3).
+10. **Lead-magnet check** — inventory-first: attach an existing magnet if one fits, else the magnet team builds one.
+11. **Publish (zernio)** — Post now / Schedule / Mark posted (for the manual poster).
+12. **Performance ingest** — impressions, saves, shares, profile actions, leads, downstream outcomes -> feeds
+    back into the Strategist. The loop learns what works and does more of it.
+
+Three human gates (topic, content, exact-asset). Nothing publishes without a founder, and every correction mints
+a new immutable version (approval never transfers to a changed file).
+
+## 13. Content pillars (concrete for WOBBLE)
+
+A planning prior, not a rigid quota (never force a weak topic to hit a %). Evaluate the last 12 posts; no pillar
+above ~34% without a written reason; once 8 posts exist, cover 4+ pillars; don't repeat the same business
+problem within 3 posts unless it teaches a genuinely different capability.
+
+| Pillar | ~Mix | The teaching job (WOBBLE, Pakistan-first SMBs) |
+|---|---:|---|
+| Buildable business automations (flagship) | 25% | A COMPLETE workflow a founder can build/test: missed-call -> text-back recovery, speed-to-lead, review-request on autopilot, WhatsApp follow-up, no-show reduction. Show the tool (n8n/Make), nodes, inputs/outputs, decisions, failure routes, proof test. |
+| Tool & stack decisions | 15% | Honest comparison for ONE real job — n8n vs Make vs Zapier for WhatsApp automation; which CRM; which voice-AI. Show switching conditions. |
+| Skills / prompts / repos | 15% | A verified resource ranked by founder job, authority, freshness, setup friction, risk, outcome — with a safe example + output check. |
+| Copy-paste operating assets | 15% | Prompt packs, checklists, field maps, templates, scorecards, test suites a founder can use today. |
+| Agency teardowns | 10% | Reveal the real layers behind what agencies charge for — inputs, decisions, handoffs, QA, costs, human boundaries. (Ties to the anti-agency-dependency positioning.) |
+| AI-for-operators | 10% | A current AI release translated into ONE operator decision — who acts, who ignores it, what changed. |
+| Build proof & lessons | 10% | A real WOBBLE artifact/test/failure/repair with a measured result + limitations. Earns trust honestly. |
+
+Every topic passes the five-second test (what problem / what outcome / why now). Reject "simplify your process,"
+"use AI to be productive." The WOBBLE voice spine (WOBBLE_COMPANY_OS): lead with rebellion (anti-agency-
+dependency), close with trust; AI employees + automations INSIDE the business.
+
+## 14. Growth / virality / leads — the actual engine (not vanity)
+
+**Success is defined narrowly:** qualified profile visits, relevant audience growth, **saves + shares from the
+intended ICP**, qualified inbound conversations, booked calls, sales opportunities, and **content-influenced
+revenue** — NOT followers, NOT generic likes. Until a 28-day owned baseline exists we REPORT baseline collection,
+never invent uplift.
+
+**The levers the system actually pulls:**
+1. **The hook.** From the studied YouTube hook science (6-word hooks, curiosity gaps, pattern interrupts). Every
+   asset opens with a hook impossible to skip, and the hook maps to a promise the body delivers (a hook->
+   fulfilment map is required).
+2. **Educational depth = saves + shares.** People save/share what makes them smarter — this is why "actually
+   teach" is the North Star: depth IS the growth mechanism. Never beg ("save this / follow for more").
+3. **Format + angle variety.** The reel format library (16 archetypes) x angles x hook-triggers = hundreds of
+   distinct assets before anything rhymes; the static angle system (Pain -> Outcome -> System spine). Variety
+   keeps the feed fresh and tests what resonates.
+4. **Consistency + cadence.** A dependable output rhythm (the scheduler drives it), not sporadic bursts.
+5. **Distribution.** LinkedIn (Moiz personal + WOBBLE company), Instagram reels/carousels; re-skin winners across
+   services.
+6. **Lead capture, two rails.** (a) A soft CTA — "Book a free AI audit." (b) **Lead magnets** — a genuinely
+   useful n8n workflow / prompt pack / checklist behind a landing page + form -> the lead lands in the CRM
+   pipeline (section 2), where the whole commercial flow picks it up.
+7. **The learning loop.** Performance (saves/shares/leads by ICP) feeds the strategist; it doubles down on
+   winners, retires losers. Weekly learning updates tactical beliefs ONLY with variable + sample + evidence +
+   confidence + rollback recorded. Positioning/offer/brand changes stay proposals until the founder approves.
+8. **Attribution.** UTM/source on every magnet + link -> CRM mapping -> content-influenced pipeline is
+   measurable, so "which content made money" is answerable, not guessed.
+
+Virality is a BY-PRODUCT of depth + hook + variety + consistency, verified by real ICP saves/shares — not a
+trick we chase.
+
+## 15. Reel production — the detailed pipeline (HyperFrames + voice)
+
+HyperFrames is the ONLY motion-composition engine (not Remotion). Study the Phase-9 renders + the HeyGen launch
+repo; match/exceed their timing, music, SFX, transitions, density, and polish while staying original.
+
+**Production sequence (locked):**
+1. Approve the content-value packet (topic + teaching job cleared through the gates).
+2. Write plain-language narration a smart 14-year-old follows (mechanism, not jargon).
+3. Generate Moiz's voice via ElevenLabs FIRST (before timing scenes) — voice lock: id 512Jeow4Rpsq80q0SYn7,
+   eleven_multilingual_v2, speed 1.0, stability 0.4, style 0, speaker_boost on, mp3_44100_128.
+   OPEN: similarity_boost 0.65 (content handoff) vs 0.75 (Phase-9) — founder to confirm.
+4. Word/character timestamps are the SOURCE OF TRUTH (ElevenLabs timestamps API). Never eyeball timing.
+5. Derive EVERYTHING from the alignment: scene boundaries, captions, on-screen terms, callouts, transitions,
+   SFX, and music beats all come from the same word timings -> perfect caption/narration sync.
+6. Build varied scenes in HyperFrames using the reel format library grammar (16 archetypes): universal spine =
+   Hook (1.5s) -> Value/Proof -> mechanism reveal -> soft CTA; DR reels 9-30s, teaching 45-60s. Clean white/grid
+   where it helps, occasional louder color moments, vary the FIRST FRAME + backgrounds so no two reels rhyme.
+   Guardrails: no format twice in a row, cap any format at 15-20% of the slate.
+7. Readability: exact captions, safe regions, clear causality, enough dwell time for a nontechnical viewer to
+   understand each step. ONE soft CTA — "Book a free AI audit" — never comment-bait.
+8. Verify: render -> probe the file -> inspect sampled frames -> listen to the FULL audio -> confirm
+   caption == narration. A tag-stripping parser keeps any [expression tags] out of on-screen captions.
+
+**Infra note:** HyperFrames compositions are HTML/JS (34 HTML + 31 JS in Phase-9). Rendering them to MP4 needs a
+**headless-browser render worker** (Puppeteer/Playwright capturing frames) + **ffmpeg** to encode and mux the VO,
+music, and SFX. That render worker runs on the VPS (section 16), not in the web process — it's heavy and
+long-running, so it's a durable media job (the worker-video lane already exists for exactly this).
+
+## 16. VPS / production architecture — how the whole thing runs
+
+The OS is a Next.js app + Postgres(+pgvector) + worker processes + a media/storage volume. Today it runs as a
+docker-compose stack (docker-compose.prod.yml: app / worker / worker-video / migrator / db). Production = that
+same stack on a **VPS**, with real domains, TLS, and object storage.
+
+**Target topology (a 4-8 vCPU / 16-32 GB VPS):**
+- DNS/Cloudflare -> Caddy/nginx (TLS, reverse proxy) -> app (Next.js :3000).
+- Postgres 16 + pgvector on a persistent volume.
+- worker = general jobs + the scheduler LEADER (one Postgres advisory-lock holder, so cadences never double-fire).
+- worker-video = heavy media: HyperFrames render (headless browser + ffmpeg) + image gen, so it can't starve the
+  general worker.
+- Durable jobs: content generation, scrape/intake, knowledge compile, scheduled posts (zernio), performance sync.
+- Storage volume (or S3-compatible object storage): images, reels, voiceovers, backups.
+- Netlify hosts the marketing SITE separately; the Website&SEO module reads its analytics over an API.
+
+**Production concerns + how they're handled (mostly already built):**
+- **Build/deploy:** CI builds the images (stable network -> npm ci works there, unlike the local box). Deploy the
+  CI-built images to the VPS via scripts/stack-build.sh (or pull pre-built). ONE build id stamps every service ->
+  the version-parity gate refuses a split-brain stack.
+- **Secrets:** all provider keys in the VPS env only (OpenRouter, OpenAI/GPT-Image-2, ElevenLabs, Tavily, Apify,
+  zernio, Plausible/Netlify, keyword API). Never baked into the image. The provider-budget ledger + kill switches
+  already cap and can freeze spend.
+- **Workers + scheduler:** exactly one worker holds scheduler leadership (no double-firing). worker-video runs the
+  heavy render/gen. Both heartbeat to /api/health/worker.
+- **Durability:** jobs + media_jobs with leases + bounded retries + dead-letter recovery already exist — a crash
+  mid-render is reclaimable and never double-spends.
+- **Scheduled publishing:** the scheduler dispatches due posts to zernio at their time; earned-autonomy decides
+  whether a post auto-fires or waits for a founder confirm.
+- **Storage:** media on a persistent volume for a single VPS; move to S3-compatible object storage when scaling to
+  multiple app replicas. Backups via the backup module (on-demand full JSON export; never auto-delete).
+- **Scaling path:** scale worker/worker-video horizontally for more throughput (scheduler leadership stays single);
+  managed Postgres when the DB grows; a CDN in front of served media.
+
+**Recommendation:** one VPS runs everything to start (the compose stack). Split the DB to managed Postgres and
+media to object storage only when volume demands it. The local Windows box stays a dev/UAT convenience — the VPS
+is the real home, and CI (not the flaky local build) is the gate that guarantees what deploys there compiles.
