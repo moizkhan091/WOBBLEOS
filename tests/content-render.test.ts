@@ -4,6 +4,7 @@ import {
   buildCarouselSlidePrompts,
   buildRenderPlan,
   WOBBLE_VISUAL_SYSTEM,
+  WOBBLE_REFERENCE_EXEMPLARS,
   HERO_IMAGE_MODEL,
   VOLUME_IMAGE_MODEL,
 } from "@/lib/domain/content-render";
@@ -40,6 +41,31 @@ describe("render prompt builders (on-brand)", () => {
     for (const p of prompts) expect(p).toContain(WOBBLE_VISUAL_SYSTEM); // cohesive set
   });
 
+  it("a rich static prompt commits to a treatment, colours the accent phrase, and builds the metaphor", () => {
+    const p = buildStaticImagePrompt({
+      hook: "Stop renting your growth from agencies",
+      accentPhrase: "renting",
+      accentColor: "electric orange",
+      treatment: "cinematic_3d",
+      metaphor: "a giant magnet labelled AGENCY pulling clay storefronts",
+      teachingJob: "you own nothing if growth is rented",
+      labelTag: "FOR SMB FOUNDERS",
+      cta: "Book a free AI audit",
+    });
+    expect(p).toContain("CINEMATIC 3D RENDER");
+    expect(p).toContain('phrase "renting" in electric orange');
+    expect(p).toContain("giant magnet labelled AGENCY");
+    expect(p).toContain("FOR SMB FOUNDERS");
+    expect(p).toContain("Book a free AI audit");
+    expect(p).toContain("STUDY THE ATTACHED REFERENCE IMAGES");
+  });
+
+  it("every treatment has at least one bundled reference exemplar", () => {
+    for (const t of ["cinematic_3d", "photographic_dataviz", "hand_notebook"] as const) {
+      expect(WOBBLE_REFERENCE_EXEMPLARS[t].length).toBeGreaterThan(0);
+    }
+  });
+
   it("buildRenderPlan defaults static→hero model, carousel→volume model, one item per slide", () => {
     const st = buildRenderPlan({ kind: "static", hook: "H", teachingJob: "T" });
     expect(st.model).toBe(HERO_IMAGE_MODEL);
@@ -67,7 +93,7 @@ describe("render service (governed)", () => {
 
   it("renders a static (hero model) and records the asset + cost", async () => {
     const calls: Array<{ prompt: string; params: Record<string, unknown> }> = [];
-    const res = await renderContent({ kind: "static", hook: "Stop renting your growth", teachingJob: "text-back flow", topicId: "topic_1", requestedBy: "moiz" }, { provider: okProvider(calls), loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: budget });
+    const res = await renderContent({ kind: "static", hook: "Stop renting your growth", teachingJob: "text-back flow", topicId: "topic_1", referenceImages: [], requestedBy: "moiz" }, { provider: okProvider(calls), loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: budget });
     expect(res.kind).toBe("static");
     expect(res.model).toBe(HERO_IMAGE_MODEL);
     expect(res.assets).toHaveLength(1);
@@ -90,7 +116,7 @@ describe("render service (governed)", () => {
   it("respects the slide cap (spend guard)", async () => {
     const calls: Array<{ prompt: string; params: Record<string, unknown> }> = [];
     const slides = Array.from({ length: 20 }, (_, i) => ({ heading: `s${i}` }));
-    const res = await renderContent({ kind: "carousel", hook: "H", teachingJob: "T", slides, requestedBy: "moiz" }, { provider: okProvider(calls), loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: budget, maxSlides: 5 });
+    const res = await renderContent({ kind: "carousel", hook: "H", teachingJob: "T", slides, referenceImages: [], requestedBy: "moiz" }, { provider: okProvider(calls), loadKillSwitches: async () => [], recordAudit: async () => {}, budgetDeps: budget, maxSlides: 5 });
     expect(res.assets).toHaveLength(5); // capped
   });
 });

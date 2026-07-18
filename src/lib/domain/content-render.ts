@@ -8,15 +8,19 @@ import { newId } from "@/lib/ids";
  * generic AI picture. Provider-free + unit-tested.
  */
 
-// The WOBBLE visual system (from docs/WOBBLE_COMPANY_OS.md). Every prompt is anchored to this so the whole
-// slate looks like ONE brand: editorial, high-contrast, rebellious, unmistakably WOBBLE.
-export const WOBBLE_VISUAL_SYSTEM = `WOBBLE brand visual system — follow EXACTLY:
-- Palette: near-black background (#06070A / #0A0B0F), crisp white (#F2F4F1) text, ONE electric-lime accent (#B8FF2C) used sparingly for emphasis (a keyword, an underline, an arrow, a highlight box). No other colours except muted grey (#7a7f74) for secondary text.
-- Typography: bold, heavy, condensed geometric sans-serif (Neue-Haas / Helvetica-Now / Archivo energy). Massive headline, tight leading, high contrast in weight between the hook and the body. NEVER thin/elegant/serif.
-- Layout: clean editorial grid, generous negative space, strong left alignment or a centred hero. One dominant focal point. Deliberate, premium, not busy.
-- Mood: rebellious, fast, intelligent, confident — an anti-agency challenger brand for Pakistan-first SMB founders. Feels like a sharp tech-founder's slide, not a stock template.
-- Motifs (subtle, optional): thin lime grid lines, a small node-and-arrow automation diagram, a monospace label, a tiny "wobble." wordmark lower-corner. Flat vector / editorial infographic style — NOT photorealistic, NOT 3D-render, NOT clip-art.
-- Render the on-image TEXT crisply and correctly, spelled exactly as given, with clear hierarchy.`;
+// The WOBBLE / Moiz Khan creative system, reverse-engineered from the real 196-asset library + LinkedIn
+// infographics. These are PREMIUM, art-directed, editorial social designs with real craft — NOT flat vector
+// graphics. Every prompt is anchored here AND paired with reference images so the model matches the real look.
+export const WOBBLE_VISUAL_SYSTEM = `WOBBLE / Moiz Khan creative system — STUDY THE ATTACHED REFERENCE IMAGES and match their craft, energy, and finish exactly. These are top-studio editorial social ads, NOT flat vector graphics, NOT generic minimalism. Non-negotiable rules on EVERY asset:
+- ONE bold idea, made unmissable. A HUGE ultra-bold CONDENSED sans-serif headline (Druk / Anton / Archivo Black energy) dominates the top. The single most important phrase is set in ONE saturated ACCENT colour; the rest is heavy near-black. Tight leading, confident, oversized.
+- A vivid, TACTILE SCENE that turns the idea into a real physical metaphor — commit fully to ONE of these treatments:
+  (A) CINEMATIC 3D RENDER: a dramatic hero object + clay/3D figures acting out the metaphor (e.g. a giant glossy magnet pulling little clay houses & people), on a saturated colour field, cinematic studio lighting, real shadows, depth of field, rich texture.
+  (B) REAL-OBJECT PHOTOGRAPHIC DATA-VIZ: real photographed miniature objects arranged into a chart/diagram (e.g. mini shopping carts forming a donut chart) on cream/textured paper, soft daylight, accent-colour segments.
+  (C) HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on key phrases, hand-drawn doodle icons, numbered steps — looks genuinely hand-made and smart.
+- Background: a saturated single colour (electric orange, deep green, cobalt, crimson) OR cream paper OR notebook paper — high contrast and confident, NEVER a plain flat black slab.
+- Supporting line in ITALIC SERIF or handwritten marker. A pill-shaped label tag (like "FOR REALTORS") and/or a pill-shaped CTA button.
+- A small "wobble." wordmark or "Follow Moiz Khan on LinkedIn" in a corner.
+- The finish must read as expensive, distinctive, scroll-stopping — art-directed by a great studio. Render ALL on-image text crisply and spelled EXACTLY as given.`;
 
 export type RenderPlatform = "instagram" | "linkedin" | "x" | "youtube" | "multi";
 
@@ -33,32 +37,67 @@ function aspectFor(platform: string): string {
   return RENDER_ASPECTS[(platform as RenderPlatform)] ?? RENDER_ASPECTS.multi;
 }
 
+/** Visual treatments observed in the real library — the prompt commits fully to one. */
+export const RENDER_TREATMENTS = ["cinematic_3d", "photographic_dataviz", "hand_notebook"] as const;
+export type RenderTreatment = (typeof RENDER_TREATMENTS)[number];
+
+/** Repo-bundled brand reference exemplars (from the real 196-asset library) — auto-fed to the model by
+ *  treatment so every render matches the real WOBBLE craft, on dev AND on the VPS (no external dependency). */
+export const BRAND_REFERENCE_DIR = "assets/brand-references";
+export const WOBBLE_REFERENCE_EXEMPLARS: Record<RenderTreatment, string[]> = {
+  cinematic_3d: ["cinematic-magnet.png", "cinematic-speed.png"],
+  photographic_dataviz: ["photographic-donut.png"],
+  hand_notebook: ["notebook-database.png"],
+};
+
+const TREATMENT_BRIEF: Record<RenderTreatment, string> = {
+  cinematic_3d:
+    "TREATMENT A — CINEMATIC 3D RENDER: build a dramatic hero object + clay/3D figures that act out the metaphor, on a saturated colour field with cinematic studio lighting, real shadows, depth of field and rich texture (like the giant magnet pulling clay houses reference).",
+  photographic_dataviz:
+    "TREATMENT B — REAL-OBJECT PHOTOGRAPHIC DATA-VIZ: photograph real miniature objects arranged into a chart/diagram on cream textured paper with soft daylight and accent-colour segments (like the mini shopping-carts donut-chart reference).",
+  hand_notebook:
+    "TREATMENT C — HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on the key phrases, hand-drawn doodle icons and numbered steps (like the 'wake your dead database' reference).",
+};
+
 export interface StaticPromptInput {
-  hook: string; // the scroll-stopping headline (rendered on-image)
-  teachingJob: string; // the real mechanism to convey visually
+  hook: string; // the scroll-stopping headline (rendered on-image), exactly as given
+  teachingJob: string; // the real mechanism — the basis for the physical metaphor
   pillar?: string;
   platform?: string;
-  subhead?: string; // optional supporting line
+  subhead?: string; // supporting line (italic serif / marker)
+  accentPhrase?: string; // the exact words of the hook to set in the accent colour
+  accentColor?: string; // e.g. "electric orange", "electric lime", "crimson"
+  colorField?: string; // background colour field / paper
+  treatment?: RenderTreatment; // which of the three real looks to commit to
+  metaphor?: string; // an explicit physical-metaphor scene to build (optional; else the model invents one)
+  labelTag?: string; // pill label like "FOR SMB FOUNDERS"
+  cta?: string; // pill CTA text
   brandNotes?: string; // extra art-direction from the design DNA bank
 }
 
-/** Build a rich, structured GPT-Image-2 prompt for a single on-brand static. */
+/** Build a rich, art-directed GPT-Image-2 prompt for a single premium on-brand static. Pair with reference images. */
 export function buildStaticImagePrompt(input: StaticPromptInput): string {
+  const treatment = input.treatment ?? "cinematic_3d";
+  const accent = input.accentColor ?? "electric lime (#B8FF2C)";
   return [
-    `Design a premium social STATIC for the WOBBLE brand in ${aspectFor(input.platform ?? "multi")}.`,
+    `Art-direct and render a PREMIUM, scroll-stopping social STATIC for the WOBBLE brand in ${aspectFor(input.platform ?? "multi")}. Match the craft and finish of the attached reference images.`,
     ``,
     WOBBLE_VISUAL_SYSTEM,
-    input.brandNotes ? `\nAdditional brand art-direction: ${input.brandNotes}` : ``,
+    input.brandNotes ? `\nExtra art-direction from WOBBLE's design DNA: ${input.brandNotes}` : ``,
     ``,
-    `THE ASSET:`,
-    `- Dominant headline (render this exact text, large and bold): "${input.hook}"`,
-    input.subhead ? `- Supporting line (smaller, muted): "${input.subhead}"` : ``,
-    `- Visual concept: convey this teaching idea simply and cleverly with editorial graphics (icons, a small node-and-arrow flow, a highlighted keyword) — do NOT just decorate: the visual should make the idea instantly graspable. Teaching idea: ${input.teachingJob}`,
-    input.pillar ? `- Editorial tone for a "${input.pillar.replace(/_/g, " ")}" piece.` : ``,
-    `- Use the electric-lime accent on ONE focal word or element only.`,
-    `- Add a tiny "wobble." wordmark in a lower corner.`,
+    `THIS ASSET:`,
+    TREATMENT_BRIEF[treatment],
+    `- THE PHYSICAL METAPHOR (this is the whole image — make it clever, literal and dramatic): ${input.metaphor ?? `invent a striking real-world physical metaphor that makes this idea instantly obvious and memorable — ${input.teachingJob}`}`,
+    `- HEADLINE (render this EXACT text, huge, ultra-bold condensed, dominating the top): "${input.hook}"`,
+    input.accentPhrase ? `- Set ONLY the phrase "${input.accentPhrase}" in ${accent}; the rest of the headline heavy near-black.` : `- Put ${accent} on the single most important word of the headline; the rest heavy near-black.`,
+    input.subhead ? `- Supporting line (italic serif or handwritten marker, smaller): "${input.subhead}"` : ``,
+    input.colorField ? `- Background colour field: ${input.colorField}.` : `- Choose a saturated, confident background colour field that suits the metaphor (never a plain flat black slab).`,
+    input.labelTag ? `- A pill-shaped label tag reading "${input.labelTag}" top-left.` : ``,
+    input.cta ? `- A pill-shaped CTA button reading "${input.cta}".` : ``,
+    input.pillar ? `- Editorial tone: a "${input.pillar.replace(/_/g, " ")}" piece.` : ``,
+    `- A small "wobble." wordmark in a lower corner.`,
     ``,
-    `Output a single finished, ready-to-post image. Crisp correctly-spelled text, premium and distinctive — it must stand out in a busy feed and look unmistakably WOBBLE.`,
+    `Output ONE finished, ready-to-post image. Expensive, distinctive, art-directed — it must stop the scroll and look unmistakably like the WOBBLE references. All text crisp and spelled exactly as given.`,
   ]
     .filter((l) => l !== ``)
     .join("\n");
@@ -138,6 +177,14 @@ export interface BuildRenderPlanInput {
   cta?: string;
   brandNotes?: string;
   model?: string;
+  // rich art-direction (statics) — see StaticPromptInput
+  accentPhrase?: string;
+  accentColor?: string;
+  colorField?: string;
+  treatment?: RenderTreatment;
+  metaphor?: string;
+  labelTag?: string;
+  subhead?: string;
 }
 
 /** Assemble the full render plan (one prompt for a static, N for a carousel) with the chosen model. */
@@ -148,6 +195,20 @@ export function buildRenderPlan(input: BuildRenderPlanInput, opts: { id?: string
     const prompts = buildCarouselSlidePrompts({ hook: input.hook, slides, pillar: input.pillar, platform: input.platform, cta: input.cta, brandNotes: input.brandNotes });
     return { renderId: opts.id ?? newId("render"), kind: "carousel", model, items: prompts.map((prompt, i) => ({ slideIndex: i, role: slides[i]?.role ?? (i === 0 ? "cover" : "mechanism"), prompt })) };
   }
-  const prompt = buildStaticImagePrompt({ hook: input.hook, teachingJob: input.teachingJob, pillar: input.pillar, platform: input.platform, subhead: input.slides?.[0]?.body, brandNotes: input.brandNotes });
+  const prompt = buildStaticImagePrompt({
+    hook: input.hook,
+    teachingJob: input.teachingJob,
+    pillar: input.pillar,
+    platform: input.platform,
+    subhead: input.subhead ?? input.slides?.[0]?.body,
+    accentPhrase: input.accentPhrase,
+    accentColor: input.accentColor,
+    colorField: input.colorField,
+    treatment: input.treatment,
+    metaphor: input.metaphor,
+    labelTag: input.labelTag,
+    cta: input.cta,
+    brandNotes: input.brandNotes,
+  });
   return { renderId: opts.id ?? newId("render"), kind: "static", model, items: [{ slideIndex: 0, role: "static", prompt }] };
 }

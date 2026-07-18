@@ -6424,3 +6424,30 @@ carousels via the OpenRouter image adapter — PROVEN LIVE with real images.
 Model policy (blueprint §17): GPT-Image-2 for hero statics/infographics (best text + quality), gemini for
 volume/carousel slides. Reference images (from the WOBBLE library) supported for style-lock + regen.
 Next: wire "Produce this" → renderContent so an approved topic auto-renders its asset.
+
+---
+
+## 2026-07-18 — V2 content-engine wave (Claude) — batch 8: VISUAL QUALITY FIX (reference-driven prompts)
+
+Founder rejected batch-7 output as "bland/distasteful" — correctly. The flat black+lime minimalism looked
+NOTHING like the real 196-asset library. Vision-analysed the actual references and found THREE premium
+editorial systems: (A) cinematic 3D-render ads (giant magnet pulling clay houses, saturated colour), (B)
+real-object photographic data-viz (mini carts as a donut chart on cream paper), (C) hand-drawn notebook
+infographics (marker + highlighter + doodles). Common DNA: HUGE condensed headline w/ ONE accent-colour key
+phrase, a real PHYSICAL METAPHOR, rich texture/lighting, pill tag + pill CTA, wobble. wordmark.
+
+- Rewrote `WOBBLE_VISUAL_SYSTEM` + `buildStaticImagePrompt` around this real DNA: treatment selection
+  (cinematic_3d / photographic_dataviz / hand_notebook), explicit physical-metaphor, accent phrase/colour,
+  colour field, label tag, CTA — a rich art-directed prompt, not a generic description.
+- Bundled 4 real exemplars into the repo (`assets/brand-references/`) and `renderContent` now AUTO-FEEDS the
+  treatment's exemplar as an image reference to GPT-Image-2 (works on VPS too — no OneDrive dependency;
+  `WOBBLE_BRAND_REF_ROOT` overridable). `loadReferenceImages` reads files → data URLs, skips missing.
+- Adapter reference-image support (batch 7) is what makes this land: prompt + reference frames → the model
+  matches the real craft.
+- PROVEN: re-rendered "Stop renting your growth from agencies" via gpt-5.4-image-2 + the magnet reference →
+  a genuinely on-brand cinematic ad (giant AGENCY magnet pulling clay storefronts/phones/customers on orange,
+  huge condensed headline w/ "renting" in orange, FOR SMB FOUNDERS pill, italic serif subline, pill CTA,
+  wobble. wordmark). Dramatically better; belongs next to the real library. Tests (13) + typecheck green.
+
+LESSON (critical): image quality = reference images + a detailed physical-metaphor prompt in the real
+treatment. NEVER render from a bland text-only brand description. Always feed the library exemplars.

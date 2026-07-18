@@ -3,7 +3,9 @@ import { assertProviderAllowance, recordExternalSpend, type ProviderBudgetDeps }
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
-import { buildRenderPlan, HERO_IMAGE_MODEL, type RenderKind, type CarouselSlideInput } from "@/lib/domain/content-render";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { buildRenderPlan, HERO_IMAGE_MODEL, BRAND_REFERENCE_DIR, WOBBLE_REFERENCE_EXEMPLARS, type RenderKind, type CarouselSlideInput, type RenderTreatment } from "@/lib/domain/content-render";
 
 /**
  * Content render service — turns a topic/packet into on-brand statics/carousels via the OpenRouter image
@@ -45,10 +47,37 @@ export interface RenderContentInput {
   cta?: string;
   brandNotes?: string;
   model?: string;
+  // rich art-direction (statics)
+  accentPhrase?: string;
+  accentColor?: string;
+  colorField?: string;
+  treatment?: RenderTreatment;
+  metaphor?: string;
+  labelTag?: string;
+  subhead?: string;
   /** reference images as data: URLs — guide the style / enable image→image regen. */
   referenceImages?: string[];
   topicId?: string;
   requestedBy: string;
+}
+
+const REF_EXT_CT: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
+
+/** Read image files (WOBBLE reference statics) → data: URLs for GPT-Image-2 style reference. Missing files skipped. */
+export async function loadReferenceImages(paths: string[], maxEach = 4_000_000): Promise<string[]> {
+  const out: string[] = [];
+  for (const p of paths) {
+    try {
+      const bytes = await fs.readFile(p);
+      if (!bytes.byteLength || bytes.byteLength > maxEach) continue;
+      const ext = p.slice(p.lastIndexOf(".")).toLowerCase();
+      const ct = REF_EXT_CT[ext] ?? "image/png";
+      out.push(`data:${ct};base64,${bytes.toString("base64")}`);
+    } catch {
+      /* missing reference — skip, never fail the render */
+    }
+  }
+  return out;
 }
 
 export interface RenderedAsset {
@@ -82,6 +111,15 @@ export async function renderContent(input: RenderContentInput, deps: ContentRend
   const items = plan.items.slice(0, maxSlides);
   const worst = worstCasePerImage(plan.model);
 
+  // Auto-feed the repo-bundled WOBBLE reference exemplars for the treatment (unless the caller supplied their
+  // own references) — this is what makes the output match the real brand craft instead of generic AI art.
+  let refs = input.referenceImages;
+  if (refs === undefined) {
+    const root = process.env.WOBBLE_BRAND_REF_ROOT ?? process.cwd();
+    const files = (WOBBLE_REFERENCE_EXEMPLARS[input.treatment ?? "cinematic_3d"] ?? []).map((f) => path.join(root, BRAND_REFERENCE_DIR, f));
+    refs = await loadReferenceImages(files);
+  }
+
   const budgetDeps = deps.budgetDeps ?? {};
   const assets: RenderedAsset[] = [];
   let totalCents = 0;
@@ -91,7 +129,7 @@ export async function renderContent(input: RenderContentInput, deps: ContentRend
     const ledgerItem = `content-render:${plan.kind}:${input.topicId ?? plan.renderId}:${item.slideIndex}`;
     const started = Date.now();
     try {
-      const r = await provider.generate({ kind: "image", prompt: item.prompt, params: { model: plan.model, referenceImages: input.referenceImages ?? [] } });
+      const r = await provider.generate({ kind: "image", prompt: item.prompt, params: { model: plan.model, referenceImages: refs ?? [] } });
       const cents = r.actualCostCents ?? 0;
       totalCents += cents;
       assets.push({ slideIndex: item.slideIndex, role: item.role, outputRefs: r.outputRefs, costCents: cents });
