@@ -5959,3 +5959,22 @@ AI sounds robotic?" → [objection] notes (Robotic Responses / AI Voice) + raw P
 "six-ad angle matrix for missed-lead recovery?" → [definition]/[framework] notes + raw sheet chunks. The
 compiler classified notes by type (hook_pattern/objection/framework/definition/claim) and retrieval returns
 synthesis + fidelity together.
+
+---
+
+## Motion DNA — completes the creative-intelligence trilogy (step 19; Design DNA + Static + Motion)
+
+Same primitives, no new table. From the real Phase-9 reel library (140 reels / 600 voice clips / 103 TTS
+configs / 34 HTML + 31 JS HyperFrames compositions):
+- **Structural Motion DNA → design bank** (2 facts, from REEL-FORMAT-LIBRARY.md): the reel manifest + the
+  universal spine (Hook 1.5s → Value/Proof → mechanism reveal → soft CTA; DR 9-30s, teaching 45-60s;
+  80-90% education + 10-20% 'why us'; ONE soft CTA 'Book a free AI audit', no comment-bait) + the 16 format
+  archetypes and the 576-reel variety engine (16 formats × 6 angles × 6 hook-triggers) with slate guardrails.
+- **Motion playbooks → knowledge engine** (11 docs: REEL-FORMAT-LIBRARY, EFFECTS-LIBRARY, RETENTION-PLAYBOOK,
+  ANGLE-BANK, VIDEO-SCRIPT-PLAYBOOK, CONVERSION-PSYCHOLOGY, VISUAL-VARIETY-EXPANSION, VIDEO-REEL-SYSTEM,
+  PRODUCTION-PROCESS, REEL-MASTER-PLAN, CAMPAIGN-PLAN) → 96 raw chunks + 73 cited notes, all embedded.
+
+State now: **design bank = 7 records** (2 Design DNA + 3 Static Creative + 2 Motion); **knowledge = 45
+sources / 322 notes** (all embedded). 45 knowledge_compiler calls tracked, OpenRouter total **$0.0613 of
+$3.00** (2%). NB: the 103 Phase-9 TTS JSONs are ElevenLabs voice configs (text/model_id/voice_settings) —
+relevant to the ElevenLabs voiceover item (#17). Script: `src/scripts/prove-motion-dna.ts`.
