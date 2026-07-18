@@ -340,3 +340,25 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Do NOT: run an unbounded vision loop over the whole library without a budget check + item cap; do NOT treat
   the 3-sample visual note as exhaustive per-asset truth (it is a sampled DNA signal).
 - Affects: design memory bank; external_provider_spend (3 tracked calls); src/scripts/prove-static-creative-dna.ts.
+
+---
+
+## Decision: marketing knowledge goes through the real knowledge engine (source→chunks→compile), not memory banks
+
+- Context: step-7 split said the offer sheets are BOTH the service catalogue (→ offers module, done) AND
+  marketing knowledge (hook banks, ad angles, psychology, copy banks). This is the marketing-knowledge half.
+- Decision: ingest the 34 Phase-4 sheets through the `knowledge` module — createSource(internal_company_document)
+  + attachSourceChunks (immutable raw, one chunk per `##` section) + compileSource (LLM → cited notes). NOT a
+  flat dump into a memory bank.
+- Why the knowledge engine over memory: it is the documented "immutable raw + compiled + citations +
+  supersession" contract step 20 asks for. Raw chunks preserve fidelity (the actual 50-hook banks, copy
+  banks, ad-angle matrices); compiled notes carry provenance_chunk_ids back to those chunks; findSimilarNotes
+  gives dedup/reinforcement over time. A memory-bank dump would lose provenance and the raw/understanding split.
+- Budget: compiler role = gpt-4o-mini (cheap); 34 compiles = $0.041, worst-case reservation ($0.44/call) still
+  clears $2.70 because actual spend stays tiny. Chose to compile ALL 34, not a sample — the model is cheap
+  enough that full coverage costs pennies and there is no reason to leave 29 sheets uncompiled.
+- Gotcha logged: SOURCE trust levels are a separate tiered enum (tier_1_core_wobble…tier_4_experimental),
+  distinct from the memory TrustLevel enum. Using a memory trust level throws in resolveSourceTrust.
+- Do NOT: dump marketing knowledge straight into memory banks; treat the 55 notes without explicit chunk
+  provenance as un-sourced (they are sheet-level synthesis, still linked to their source).
+- Affects: sources (34), source_chunks (476), knowledge_notes (249), external_provider_spend (34 tracked).

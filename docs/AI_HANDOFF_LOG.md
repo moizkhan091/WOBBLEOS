@@ -5930,3 +5930,32 @@ Design bank now = 5 records (palette, motifs, SCD library, SCD angles, SCD obser
 ~25.6k tokens/image, ~$0.00387 each, result=succeeded, actor=static_creative_dna. Running OpenRouter total
 = $0.0116 of the $3.00 budget (0.4%). The budget guard engages on multimodal calls too (DATABASE_URL set →
 budgetActive). Script: `src/scripts/prove-static-creative-dna.ts`.
+
+---
+
+## Marketing Knowledge System — 34 Phase-4 offer sheets → immutable raw + compiled cited notes (step 20)
+
+Runs the REAL knowledge engine (no new table): per offer sheet, createSource(internal_company_document) →
+approveSource → attachSourceChunks (one chunk per `##` section, so Hook Bank / Copy Bank / Six-Ad Angle
+Matrix / Psychology & Objections stay individually retrievable) → compileSource (gpt-4o-mini, budget-guarded)
+synthesising cited knowledge_notes with provenance back to the raw chunks.
+
+Proven against the UAT DB:
+- **34 sources** (internal_company_document, approved, trust tier_2_approved_expert, addedBy=Moiz)
+- **476 raw chunks** (14/sheet — immutable fidelity layer), all embedded
+- **249 compiled notes** (6–8/sheet), ALL embedded; **194/249 carry explicit chunk-level provenance**
+  (the rest are synthesised across the sheet); 0 duplicates (findSimilarNotes dedup ran, 0 reinforced)
+- **Spend tracked**: 34 `learning_engine:knowledge_compiler` calls = $0.0407, all succeeded. Running
+  OpenRouter total = $0.0523 of the $3.00 budget (1.7%). The knowledge compiler is budget-guarded end to end.
+
+Scripts: `src/scripts/prove-marketing-knowledge.ts` (ingest+compile, idempotent by source title),
+`src/scripts/prove-marketing-knowledge-retrieval.ts` (hybrid queryable proof). NB: the trust vocabulary for
+SOURCES is tiered (tier_1_core_wobble…tier_4_experimental), NOT the memory TrustLevel enum — first run failed
+on `approved_expert`, fixed to `tier_2_approved_expert`.
+
+**Queryable proof** (`prove-marketing-knowledge-retrieval.ts`, hybrid notes+chunks, real embeddings):
+"hooks for an AI receptionist / missed calls?" → [hook_pattern] notes + raw Identity chunks; "objection that
+AI sounds robotic?" → [objection] notes (Robotic Responses / AI Voice) + raw Psychology & Objections chunks;
+"six-ad angle matrix for missed-lead recovery?" → [definition]/[framework] notes + raw sheet chunks. The
+compiler classified notes by type (hook_pattern/objection/framework/definition/claim) and retrieval returns
+synthesis + fidelity together.
