@@ -389,3 +389,25 @@ Log founder conversations too (not just code). If a founder states intent in cha
   post-hoc external_provider_spend recording).
 - Affects: src/lib/domain/media.ts, src/lib/media/openrouter-provider.ts, src/lib/media/index.ts,
   tests/openrouter-media-provider.test.ts, src/scripts/prove-openrouter-image.ts.
+
+---
+
+## Decision: ElevenLabs is a standalone governed provider (characters), not a MediaProvider
+
+- Context: founder's ElevenLabs addendum — controlled voiceover (≤1 audition, ≤1 acceptance, ≤1 retry, NO
+  cloning), locked v2 settings, a UAT key + voice id in the secrets store.
+- Decision: `src/lib/elevenlabs/index.ts` mirrors the tavily/apify adapters (kill-switch → budget → slot →
+  record), NOT the media MediaProvider interface.
+- Why not a MediaProvider: the media system meters cost in CENTS; ElevenLabs bills in CHARACTERS against a
+  quota (232285). Forcing chars→cents would fabricate a rate and lose the real budget unit. The provider-budget
+  ledger already models a `characters` unit + an `elevenlabs` budget, so the standalone adapter tracks the true
+  unit. (A thin MediaProvider wrapper for kind:"audio" can be added later if the job queue needs it.)
+- TTS-only by construction: one endpoint (/v1/text-to-speech/{voiceId}); the code never references a
+  voice-creation/cloning endpoint — the "no cloning" rule is structural, and a unit test asserts the URL.
+- v2 lock: default model eleven_multilingual_v2 + VOICE-SETTINGS.md settings; NEVER v3 for the Moiz voice
+  (client hard rule — v3 "doesn't sound like me"). voiceId is a required caller param so the personal clone id
+  is never committed to the repo.
+- Do NOT: switch the Moiz voice to v3; hardcode a voice-clone id in code; call any ElevenLabs cloning endpoint.
+- Follow-ups: the ≤1 ACCEPTANCE VO (final, on an approved script) still to run; word-timing/caption sync
+  (VOICE-SETTINGS.md references a tag-stripping parser for v3) is a separate reel-assembly concern.
+- Affects: src/lib/elevenlabs/index.ts, tests/elevenlabs-adapter.test.ts, src/scripts/prove-elevenlabs-voiceover.ts.

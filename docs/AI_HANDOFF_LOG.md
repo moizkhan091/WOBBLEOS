@@ -6006,3 +6006,27 @@ neither this provider nor the key, so it races the media_jobs queue and BLOCKS o
 createMediaJob→dispatch→worker→artifact chain lands once the worker image is rebuilt + OPENROUTER_API_KEY is
 wired into the worker env. The adapter itself (the new code) is proven via direct generate(). Video-GEN (#13)
 = a separate adapter (OpenRouter's image models don't do video); fal remains the video path.
+
+---
+
+## ElevenLabs voiceover adapter — governed, TTS-only, character-budgeted (step 17)
+
+A GOVERNED external provider mirroring the tavily/apify pattern (`src/lib/elevenlabs/index.ts`): kill switch →
+budget allowance (CHARACTERS, ElevenLabs bills per char) → max-1 concurrency → record actual chars on BOTH
+success and failure. TTS-ONLY — it calls exactly one endpoint (POST /v1/text-to-speech/{voiceId}) and NEVER a
+cloning endpoint (founder "no cloning" rule). Defaults are the client-LOCKED v2 config from VOICE-SETTINGS.md
+(eleven_multilingual_v2, stability 0.40 / similarity 0.75 / style 0 / speaker_boost on) — NEVER v3 for the
+Moiz voice. The voiceId is always caller-supplied so a personal voice-clone id is never baked into the repo.
+Key read from ELEVENLABS_API_KEY; absent → truthfully BLOCKED (never faked). Per-call char cap 5000.
+
+- 7 unit tests (`tests/elevenlabs-adapter.test.ts`): blocked-without-key, voiceId-required, budget-reject
+  (no HTTP), kill-switch-reject (no HTTP), char-cap, governed success (asserts the URL is /v1/text-to-speech/
+  and NOT a cloning endpoint), HTTP-error. All green.
+
+**Proven live** (`src/scripts/prove-elevenlabs-voiceover.ts`, founder cap ≤1 audition): one audition VO of a
+100-char WOBBLE line via Moiz's v2 clone (512Jeow4…) → real 111.5 KB MP3 (audio/mpeg). external_provider_spend
+recorded a `failed` (a first attempt with an annotated voice-id string → truthful ElevenLabs 400, 0 chars
+charged) then a `succeeded` (100 characters). ElevenLabs char spend now 100 of 210000 (stop) / 232285.
+
+GOTCHA logged: the ELEVENLABS_VOICE_ID secret carries an inline "# annotation" (and can list 3 voices) — parse
+the bare id with `.split(/[#,]/)[0].trim()`.
