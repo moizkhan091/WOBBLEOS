@@ -45,7 +45,10 @@ export interface CapabilityRoute {
 export const DEFAULT_CAPABILITIES: Record<IntentType, CapabilityRoute> = {
   question: { intent: "question", module: "ask_wobble", status: "available" },
   content_generation: { intent: "content_generation", module: "content_command", queue: "general", jobType: "content.generate", status: "available" },
-  research: { intent: "research", module: "research_radar", queue: "research", jobType: "research.run", status: "planned" },
+  // Research is LIVE: asking Ask to research runs the intelligence ANALYST (analyses recent observations into
+  // insight proposals for founder review) — a registered handler + an active department, so it never says
+  // "planned". The analyst auto-chains to the Dreamer for proactive suggestions.
+  research: { intent: "research", module: "research_radar", queue: "general", jobType: "intelligence.analyze", status: "available" },
   decision_brief: { intent: "decision_brief", module: "decision_room", queue: "general", jobType: "decision.brief", status: "planned" },
   source_search: { intent: "source_search", module: "source_library", queue: "research", jobType: "source.search", status: "planned" },
   memory_update: { intent: "memory_update", module: "memory", queue: "general", jobType: "memory.propose", status: "planned" },

@@ -148,6 +148,8 @@ export interface BuildContentGenerationPromptInput {
   // Chunk 34: an approved prompt-skill loaded from the registry drives the
   // system instruction. When absent, the built-in default below is used.
   skill?: { promptBody: string; rules: string[] };
+  /** Learned founder-taste guidance block (formatTasteGuidance) — the read-back half of the taste loop. */
+  taste?: string;
 }
 
 export interface ContentGenerationPrompt {
@@ -184,6 +186,7 @@ export function buildContentGenerationPrompt(input: BuildContentGenerationPrompt
     "Passing packets should be useful, original, clear, WOBBLE-fit, proof-aware, and approval-ready. If an angle is risky, score it honestly.",
     "If the supplied Brain and approved source chunks are sufficient, produce at least one approval-ready packet with all selfReview scores >= 7 and postWorthiness='pass'. Failed exploratory drafts are allowed, but at least one packet should be strong enough for founder review.",
     "Quality bar: avoid generic business cliches, vague transformation language, broad AI hashtags, and weak CTAs like 'learn more'. Be specific, operator-grade, teach-first, and grounded in the approved source primitives.",
+    ...(input.taste ? [input.taste] : []),
     "Every serious or educational claim must be tied to sourceIdsUsed, memoryChunksUsed, and an evidenceSummary. Mention concrete workflow primitives from the source when useful.",
     "Avoid tired question-hook formulas such as 'Tired of...', 'Are you...', 'Why settle...', and generic 'It's time...' openings unless the source context makes them unusually strong.",
     "Self-review rubric: usefulness = practical teaching value; originality = non-generic WOBBLE POV; brandFit = premium teach-first WOBBLE voice; clarity = easy to understand; aggressionControl = the sharpness is controlled and within the track's range, so calm educational content should score high; proofStrength = source/memory evidence directly supports the claims. postWorthiness must be 'fail' if any score is below 7.",

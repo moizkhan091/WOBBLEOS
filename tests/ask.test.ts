@@ -203,6 +203,21 @@ describe("askWobble - question intent", () => {
 describe("askWobble - router", () => {
   it("returns a PLANNED route (no fake job) for unbuilt modules", async () => {
     const enqueueJob = vi.fn();
+    // decision_brief is still planned (research is now LIVE → intelligence.analyze).
+    const result = await askWobble(
+      { question: "Should we raise prices next quarter?" },
+      deps({ enqueueJob: enqueueJob as never }),
+    );
+    expect(result.type).toBe("route");
+    if (result.type !== "route") throw new Error("expected route");
+    expect(result.intent).toBe("decision_brief");
+    expect(result.status).toBe("planned");
+    expect(result.jobId).toBeUndefined();
+    expect(enqueueJob).not.toHaveBeenCalled(); // never enqueue when module is planned
+  });
+
+  it("routes a research question to the LIVE intelligence analyst job", async () => {
+    const enqueueJob = vi.fn(async () => ({ job: { id: "job_res" } }));
     const result = await askWobble(
       { question: "Research competitor pricing trends" },
       deps({ enqueueJob: enqueueJob as never }),
@@ -210,9 +225,8 @@ describe("askWobble - router", () => {
     expect(result.type).toBe("route");
     if (result.type !== "route") throw new Error("expected route");
     expect(result.intent).toBe("research");
-    expect(result.status).toBe("planned");
-    expect(result.jobId).toBeUndefined();
-    expect(enqueueJob).not.toHaveBeenCalled(); // never enqueue when module is planned
+    expect(result.status).toBe("available");
+    expect(enqueueJob).toHaveBeenCalledWith(expect.objectContaining({ type: "intelligence.analyze" }));
   });
 
   it("routes content generation to the real content worker job by default", async () => {

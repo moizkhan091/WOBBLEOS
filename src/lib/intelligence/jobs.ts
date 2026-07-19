@@ -61,7 +61,27 @@ export async function runAnalyzeJobHandler(job: JobRow): Promise<Record<string, 
       },
     },
   );
-  return { ...result };
+
+  // Auto-chain analysis → DREAMER: once fresh insights exist, run the Dreamer as a DURABLE job (deduped per
+  // scope/day) so proactive suggestions are produced without a manual trigger — closes the previously-orphan
+  // `intelligence.dream` handler (it had a registration but no enqueue site).
+  const proposed = typeof (result as { proposedInsights?: unknown }).proposedInsights === "number" ? (result as { proposedInsights: number }).proposedInsights : 0;
+  if (proposed > 0 && process.env.DATABASE_URL) {
+    try {
+      const { enqueueJob } = await import("@/lib/jobs");
+      const day = job.createdAt instanceof Date ? job.createdAt.toISOString().slice(0, 10) : "";
+      await enqueueJob({
+        queue: "general",
+        type: "intelligence.dream",
+        payload: { scope, clientId },
+        linkedModule: "intelligence",
+        idempotencyKey: `intelligence.dream:${scope ?? "wobble"}:${clientId ?? "all"}:${day}`,
+      });
+    } catch (error) {
+      console.error("analyze -> dream chaining failed:", error instanceof Error ? error.message : error);
+    }
+  }
+  return { ...result, dreamChained: proposed > 0 };
 }
 
 export async function runDreamerJobHandler(job: JobRow): Promise<Record<string, unknown>> {

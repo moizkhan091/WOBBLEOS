@@ -136,6 +136,30 @@ export function profileKeyForFeedbackScope(input: { scope: TasteProfileScope; su
   return `${input.scope}:${normalizeTasteSubjectId(input.subjectId)}`;
 }
 
+/**
+ * The READ-BACK half of the taste loop: turn a learned taste profile into a generation-prompt guidance block so
+ * approvals/rejections/edits actually shape future output. Hard constraints become NEVER rules; the strongest
+ * preference weights become FAVOUR (positive) / AVOID (negative) nudges. Returns "" when nothing is learned yet
+ * (empty / weak weights) so an un-trained profile never injects noise. Founder taste tunes but never overrides
+ * approved brand rules (stated in the block).
+ */
+export function formatTasteGuidance(
+  profile: { hardConstraints?: string[]; preferenceWeights?: Record<string, number> } | null | undefined,
+): string {
+  if (!profile) return "";
+  const constraints = (profile.hardConstraints ?? []).filter((c) => typeof c === "string" && c.trim());
+  const weights = Object.entries(profile.preferenceWeights ?? {}).filter(([, w]) => Number.isFinite(w) && Math.abs(Number(w)) >= 0.15);
+  if (!constraints.length && !weights.length) return "";
+  weights.sort((a, b) => Math.abs(Number(b[1])) - Math.abs(Number(a[1])));
+  const favour = weights.filter(([, w]) => Number(w) > 0).slice(0, 6).map(([k]) => k);
+  const avoid = weights.filter(([, w]) => Number(w) < 0).slice(0, 6).map(([k]) => k);
+  const lines: string[] = ["LEARNED FOUNDER TASTE (from real approvals / rejections / edits — apply as a strong preference; it tunes but never overrides approved brand rules):"];
+  if (favour.length) lines.push(`- FAVOUR: ${favour.join(", ")}`);
+  if (avoid.length) lines.push(`- AVOID: ${avoid.join(", ")}`);
+  for (const c of constraints.slice(0, 8)) lines.push(`- CONSTRAINT: ${c}`);
+  return lines.join("\n");
+}
+
 export const DEFAULT_TASTE_PROFILES: TasteProfileInput[] = [
   {
     profileKey: "brand:wobble",

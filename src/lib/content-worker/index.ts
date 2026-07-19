@@ -46,6 +46,8 @@ export interface ContentGenerationDeps {
   retrieveBrain?: () => Promise<ContentWorkerBrainRecord[]>;
   retrieveMemory?: (query: string, request: ParsedContentGenerationRequest) => Promise<ContentWorkerMemoryChunk[]>;
   retrieveSources?: (request: ParsedContentGenerationRequest) => Promise<ContentWorkerSourceRef[]>;
+  /** Learned founder-taste guidance (read-back half of the taste loop). Default reads the brand:wobble profile. */
+  loadTasteGuidance?: () => Promise<string>;
   runProvider?: (input: RunProviderInput) => Promise<{ text: string; run: { id: string } }>;
   /**
    * Chunk 17 objective Content Excellence Gate. When provided, a draft must pass
@@ -103,6 +105,20 @@ async function defaultLoadSkill(slug: string): Promise<{ promptBody: string; rul
   }
 }
 
+// The READ-BACK of the taste loop: fold the learned WOBBLE brand taste (approvals/rejections/edits →
+// preferenceWeights + hardConstraints) into the generation prompt so feedback actually shapes future content.
+// Safe fallback: "" (no injection) with no DB / no learned profile — an un-trained profile never adds noise.
+async function defaultLoadTasteGuidance(): Promise<string> {
+  if (!process.env.DATABASE_URL) return "";
+  try {
+    const { getTasteProfile } = await import("@/lib/taste");
+    const { formatTasteGuidance } = await import("@/lib/domain/taste");
+    return formatTasteGuidance(await getTasteProfile("brand:wobble"));
+  } catch {
+    return "";
+  }
+}
+
 export async function enqueueContentGenerationJob(
   input: ContentGenerationRequest,
   deps: ContentGenerationDeps = {},
@@ -153,16 +169,17 @@ export async function runContentGenerationJob(
   });
 
   try {
-    const [track, brain, memory, sources] = await Promise.all([
+    const [track, brain, memory, sources, taste] = await Promise.all([
       (deps.getContentTrack ?? defaultGetContentTrack)(parsed.contentTrackId),
       (deps.retrieveBrain ?? defaultRetrieveBrain)(),
       (deps.retrieveMemory ?? defaultRetrieveMemory)(contentQuery(parsed), parsed),
       (deps.retrieveSources ?? defaultRetrieveSources)(parsed),
+      (deps.loadTasteGuidance ?? defaultLoadTasteGuidance)(),
     ]);
 
     assertContentGenerationContext({ brain, sources });
     const skill = (await (deps.loadSkill ?? defaultLoadSkill)("content_generation")) ?? undefined;
-    const prompt = buildContentGenerationPrompt({ request: parsed, track, brain, memory, sources, skill });
+    const prompt = buildContentGenerationPrompt({ request: parsed, track, brain, memory, sources, skill, taste });
     const provider = deps.runProvider ?? defaultRunProvider;
     const providerResult = await provider({
       role: CONTENT_STRATEGY_ROLE,
