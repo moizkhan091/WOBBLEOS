@@ -42,6 +42,7 @@
     "verify:intel-propagation": "tsx src/scripts/verify-intel-propagation-db.ts",
     "verify:source-value": "tsx src/scripts/verify-source-value-db.ts",
     "verify:source-discovery": "tsx src/scripts/verify-source-discovery-db.ts",
+    "verify:source-discovery-loop": "tsx src/scripts/verify-source-discovery-loop-db.ts",
     "verify:founder-taste": "tsx src/scripts/verify-founder-taste-db.ts",
     "verify:context-os": "tsx src/scripts/verify-context-os-db.ts",
     "verify:context-failure": "tsx src/scripts/verify-context-failure-telemetry-db.ts",

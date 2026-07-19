@@ -6710,3 +6710,23 @@ Follow-on to batch 21, closing the single-instance-relevant worker MEDs:
   poll no longer seq-scans job history (MED-8). Migration 0062, applies clean from scratch.
 Green: typecheck + media proof + jobs/scheduler/media tests + build. STILL OPEN: general-queue lease (HIGH-2,
 ≥2-worker double-run) + freshness MEDs (finance stale valueCents, lapsed brand-memory) — next batch.
+
+## 2026-07-19 — batch 23: autonomous SOURCE DISCOVERY loop (Ali suggests fresh sources to approve)
+
+Founder ask: the OS should auto-SUGGEST new sources for founders to approve + flag stale ones. Audit found the
+building blocks existed (`proposeResearchSource`, `listStaleSources`) but had ZERO autonomous callers — the
+capability was built and never wired. Fixed:
+- `src/lib/source-discovery/index.ts`: `discoverAndProposeSources` — a scout agent reads recent observations +
+  the tracked set and files NEW sources as PENDING, evidence-cited proposals (never auto-active), deduped against
+  everything already tracked/proposed/rejected (self-limiting). `flagStaleSources` raises ONE deduped founder
+  escalation per approved source overdue on cadence. LLM provider injectable (cheap model in prod; canned in the
+  proof). Tolerant JSON parser + safe field clamping.
+- Wired BOTH into the scheduler daily-maintenance block (guarded on DATABASE_URL; degrades to no-op on no credit).
+- PROVEN: new DB proof `verify-source-discovery-loop-db.ts` (auto-discovered, now 60 in the CI gate) — a new
+  source is proposed PENDING with evidence + the founder sees it, a duplicate is skipped, a stale source raises
+  exactly one deduped escalation across repeat sweeps. Unit test for the parser. typecheck + build green.
+- From the 3 completeness audits (saved in scratchpad): 18/22 autonomy loops fully wired+surfaced+proven; 44/44
+  modules render live data; 15/15 departments reachable. REMAINING gaps (next batches): Daily Brief has no UI
+  surface; decision-policy proposals unseen; optimizer MONITOR→auto-rollback not on cadence; taste-learning is
+  write-only (no read-back into generation); event-triggered automations never fire (fireEventRules uncalled);
+  intelligence.dream job never enqueued; Ask "research" intent still returns "planned".

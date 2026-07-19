@@ -18,6 +18,7 @@ import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs, purgeTerminalJobs, JOBS_RETENTION_MS } from "@/lib/jobs";
+import { discoverAndProposeSources, flagStaleSources } from "@/lib/source-discovery";
 import { enqueueContentIntelligenceJob } from "@/lib/content-intelligence";
 import { intelligenceCadenceKey } from "@/lib/domain/content-intelligence";
 import { writeAuditEvent } from "@/lib/audit";
@@ -82,6 +83,8 @@ export interface SchedulerResult {
   optimizerOpportunities: number;
   maintenanceRan: boolean;
   intelligenceRunsEnqueued?: number;
+  sourcesProposed?: number;
+  staleSourcesFlagged?: number;
   errors: string[];
 }
 
@@ -270,6 +273,14 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // the research gate LIVE on a real production cadence.
       if (deps.researchTick || process.env.DATABASE_URL) {
         await (deps.researchTick ?? defaultResearchTick)(now).then((r) => { result.continuousResearchInsights = r.insights; }).catch((e) => result.errors.push(`continuous-research: ${e?.message ?? e}`));
+      }
+      // Source DISCOVERY (the founder's "suggest new sources to approve" loop): the scout reads recent
+      // observations + the tracked set and files NEW sources as PENDING proposals (evidence-cited, never auto-
+      // active) — self-limiting since it dedups against everything already tracked/proposed/rejected. And flag
+      // APPROVED sources that went STALE so a decaying source is surfaced, never silently degraded.
+      if (process.env.DATABASE_URL) {
+        await discoverAndProposeSources({ scope: "wobble" }).then((r) => { result.sourcesProposed = r.proposed.length; }).catch((e) => result.errors.push(`source-discovery: ${e?.message ?? e}`));
+        await flagStaleSources({ now }).then((r) => { result.staleSourcesFlagged = r.flagged; }).catch((e) => result.errors.push(`stale-sources: ${e?.message ?? e}`));
       }
       // Controlled Dream / Optimizer (Phase 8): ONCE/day, run a cycle that OBSERVES real signals (QA, revisions,
       // dead letters, provider cost) and PROPOSES evidence-backed opportunities. It never approves/activates/
