@@ -428,6 +428,13 @@
       "when": 1784396281473,
       "tag": "0060_stale_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1784419267199,
+      "tag": "0061_last_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

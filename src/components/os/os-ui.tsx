@@ -5984,6 +5984,15 @@ function TopicBankPage() {
       if (r.ok && j.ok !== false) topicsApi.reload(); else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
+  async function leadMagnet(id: string) {
+    setBusy(id); setMsg("Building a deeply-educational lead magnet from this topic…");
+    try {
+      const r = await fetch(`/api/content/topics/${id}/lead-magnet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { const m = (j.magnet ?? {}) as { magnetType?: string; title?: string }; setMsg(`Lead magnet ready ✓ — "${m.title ?? ""}" (${String(m.magnetType ?? "").replace(/_/g, " ")}). Pending your review.`); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
   async function produce(id: string, hero = false) {
     setBusy(id); setMsg(hero ? "Rendering hero with GPT-Image-2 (~1-2 min)…" : "The art director is designing + rendering your asset…");
     try {
@@ -6059,6 +6068,7 @@ function TopicBankPage() {
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button onClick={() => produce(t.id, false)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>⚡ Produce</button>
                   <button onClick={() => produce(t.id, true)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>✨ Hero (GPT-Image-2)</button>
+                  <button onClick={() => leadMagnet(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>📄 Lead magnet</button>
                   <span style={{ fontSize: 11.5, color: faint }}>approved{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</span>
                 </div>
               ) : (

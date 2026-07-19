@@ -6562,3 +6562,15 @@ rasterised to PNG with headless chromium — EXACT typography, zero AI text glit
   headline + orange-bulleted teaching + wobble. wordmark + "3/7"). Cover via GPT-Image-2 (proven earlier; hit a
   402 tonight — the OpenRouter key ran out of credits from many hero renders, so the proof used the gemini
   cover). Typecheck + render tests (14) green. Total carousel cost ~cover-only (HTML slides are FREE).
+
+## 2026-07-18 — batch 17: lead-magnet engine (deeply-educational, portfolio-first, review-gated)
+
+A magnet is a USABLE OUTCOME (n8n workflow pack / prompt pack / checklist / SOP / scorecard / calculator), not a
+pretty PDF — mechanism-first, no fluff. migration 0061 lead_magnets. domain/lead-magnets (7 types, generator
+prompt that demands the ACTUAL workflow/prompts + a worked example + failure route + test, tolerant parser).
+lead-magnets service: generateLeadMagnet (→ pending_review), reviewLeadMagnet (approve idempotent; retire only
+from approved), approvedInventory (inventory-first). Routes: POST /api/content/topics/[id]/lead-magnet (build
+from a topic), GET /api/lead-magnets, POST /api/lead-magnets/[id]/review. Topic Bank: "📄 Lead magnet" button on
+approved topics. Tests (6) + verify-lead-magnets-db.ts (8 checks, canned provider, real Postgres, cleanup) +
+route-auth green. NB: live LLM generation blocked tonight by the OpenRouter credit exhaustion (402) — the DB
+proof uses a canned provider; live generation works once credits are topped up.

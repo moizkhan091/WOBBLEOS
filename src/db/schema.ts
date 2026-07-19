@@ -1660,6 +1660,32 @@ export const contentIntelligenceRuns = pgTable("content_intelligence_runs", {
   index("content_intelligence_runs_created_idx").on(table.createdAt),
 ]);
 
+// Lead Magnets: a small, EXCELLENT, deeply-educational portfolio (n8n workflow packs, prompt packs, checklists,
+// SOPs, scorecards, calculators) — inventory-first + review-gated. A magnet is a usable OUTCOME, not a pretty PDF.
+export const leadMagnets = pgTable("lead_magnets", {
+  id: id(),
+  title: text("title").notNull(),
+  magnetType: varchar("magnet_type", { length: 24 }).notNull(), // workflow_pack|prompt_pack|checklist|template|sop|scorecard|calculator
+  audience: text("audience").notNull(),
+  promise: text("promise").notNull(), // the concrete outcome the user gets
+  sections: jsonb("sections").$type<Array<{ heading: string; body: string }>>().notNull().default([]),
+  deliverable: text("deliverable"), // the actual usable asset (n8n JSON outline, the prompts, the checklist, etc.)
+  usableOutcome: boolean("usable_outcome").notNull().default(true),
+  status: varchar("status", { length: 16 }).notNull().default("pending_review"), // pending_review|approved|rejected|retired
+  pillar: varchar("pillar", { length: 40 }),
+  topicId: text("topic_id"),
+  reviewedBy: varchar("reviewed_by", { length: 120 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdByAgent: varchar("created_by_agent", { length: 120 }),
+  model: varchar("model", { length: 120 }),
+  metadata: metadata(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  index("lead_magnets_status_idx").on(table.status),
+  index("lead_magnets_type_idx").on(table.magnetType),
+]);
+
 // ---------------------------------------------------------------- Automations (operations)
 // Recurring/triggered rules: a trigger fires an action (enqueue a real job). No fake automation.
 
