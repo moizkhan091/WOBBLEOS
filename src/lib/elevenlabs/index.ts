@@ -63,6 +63,67 @@ export class ElevenLabsNotConfiguredError extends Error {
   }
 }
 
+export interface ElevenLabsAlignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+export interface ElevenLabsTimestampedOutput extends ElevenLabsVoiceoverOutput {
+  alignment: ElevenLabsAlignment | null;
+}
+
+/**
+ * TTS WITH per-character timestamps — the source of truth for reel caption/scene sync. Same governance as the
+ * plain call. Returns the audio bytes + the character alignment. v3 returns [tags] as characters in the
+ * alignment (strip them for captions with alignmentToWords in @/lib/domain/reel-voice).
+ */
+export async function elevenLabsVoiceoverWithTimestamps(input: ElevenLabsVoiceoverInput, deps: ElevenLabsDeps = {}): Promise<ElevenLabsTimestampedOutput> {
+  const apiKey = deps.apiKey ?? process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new ElevenLabsNotConfiguredError();
+  if (!input.voiceId?.trim()) throw new Error("voiceId is required for ElevenLabs voiceover");
+  const text = input.text?.trim() ?? "";
+  if (!text) throw new Error("text is required for ElevenLabs voiceover");
+  if (text.length > ELEVENLABS_MAX_CHARS) throw new Error(`text exceeds ${ELEVENLABS_MAX_CHARS} chars (${text.length}) — split it`);
+
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const modelId = input.modelId ?? ELEVENLABS_DEFAULT_MODEL;
+  const outputFormat = input.outputFormat ?? ELEVENLABS_DEFAULT_OUTPUT_FORMAT;
+  const chars = text.length;
+
+  const switches: KillSwitchRow[] = deps.loadKillSwitches ? await deps.loadKillSwitches() : await loadEngagedSwitches();
+  assertNotKilled(switches, "provider", ELEVENLABS_PROVIDER);
+  try {
+    await assertProviderAllowance(ELEVENLABS_PROVIDER, chars, deps);
+  } catch (e) {
+    await recordExternalSpend({ provider: ELEVENLABS_PROVIDER, item: input.item, model: modelId, estimatedMaxCost: chars, actualCost: 0, unit: "characters", result: "rejected_budget", actor: input.actor }, deps).catch(() => {});
+    throw e;
+  }
+
+  return withExternalProviderSlot(async () => {
+    const started = Date.now();
+    try {
+      const url = `${ELEVENLABS_TTS_BASE}/${encodeURIComponent(input.voiceId)}/with-timestamps?output_format=${encodeURIComponent(outputFormat)}`;
+      const resp = await fetchImpl(url, {
+        method: "POST",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ text, model_id: modelId, voice_settings: { ...ELEVENLABS_DEFAULT_SETTINGS, ...input.voiceSettings } }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        throw new Error(`ElevenLabs TTS(timestamps) failed (${resp.status}): ${body.slice(0, 200)}`);
+      }
+      const json = (await resp.json()) as { audio_base64?: string; alignment?: ElevenLabsAlignment | null };
+      const audio = json.audio_base64 ? new Uint8Array(Buffer.from(json.audio_base64, "base64")) : new Uint8Array();
+      if (audio.byteLength === 0) throw new Error("ElevenLabs returned empty audio (validation failed)");
+      await recordExternalSpend({ provider: ELEVENLABS_PROVIDER, item: input.item, model: modelId, estimatedMaxCost: chars, actualCost: chars, unit: "characters", latencyMs: Date.now() - started, result: "succeeded", actor: input.actor, metadata: { bytes: audio.byteLength, voiceId: input.voiceId, timestamps: true } }, deps).catch(() => {});
+      return { audio, contentType: "audio/mpeg", charactersUsed: chars, voiceId: input.voiceId, modelId, alignment: json.alignment ?? null };
+    } catch (err) {
+      await recordExternalSpend({ provider: ELEVENLABS_PROVIDER, item: input.item, model: modelId, estimatedMaxCost: chars, actualCost: 0, unit: "characters", latencyMs: Date.now() - started, result: "failed", actor: input.actor, metadata: { error: err instanceof Error ? err.message : String(err) } }, deps).catch(() => {});
+      throw err;
+    }
+  }, deps);
+}
+
 export async function elevenLabsVoiceover(input: ElevenLabsVoiceoverInput, deps: ElevenLabsDeps = {}): Promise<ElevenLabsVoiceoverOutput> {
   const apiKey = deps.apiKey ?? process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new ElevenLabsNotConfiguredError();

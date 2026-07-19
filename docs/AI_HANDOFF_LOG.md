@@ -6574,3 +6574,16 @@ from a topic), GET /api/lead-magnets, POST /api/lead-magnets/[id]/review. Topic 
 approved topics. Tests (6) + verify-lead-magnets-db.ts (8 checks, canned provider, real Postgres, cleanup) +
 route-auth green. NB: live LLM generation blocked tonight by the OpenRouter credit exhaustion (402) — the DB
 proof uses a canned provider; live generation works once credits are topped up.
+
+## 2026-07-18 — batch 18: reel VOICE foundation (ElevenLabs v2 Moiz + v3 Hale, timestamps, tag-strip)
+
+CORRECTION: reels need HyperFrames + ElevenLabs, NOT image gen (founder was right; OpenRouter credits don't
+block reels). ElevenLabs key stored (creator tier, 216k chars left). `src/lib/domain/reel-voice.ts`: REEL_VOICES
+roster (Moiz=eleven_multilingual_v2 locked settings + NO tags + 1.05x speed-up; Hale/Female=eleven_v3 EXPRESSIVE),
+resolveReelVoice, REEL_EXPRESSION_TAGS (client-approved; no plain [pause]), stripExpressionTags,
+reelNarrationGuidance (per-voice LLM instruction), alignmentToWords (char alignment → word timings, SKIPPING
+[tag] chars so tags never caption). Extended elevenlabs adapter with `elevenLabsVoiceoverWithTimestamps` (governed,
+/with-timestamps). PROVEN LIVE: Moiz v2 (10 word-timings, no tags) + Hale v3 ([excited]/[thoughtful] stripped from
+captions, per-word timings with the pause reflected). Tests (6) + typecheck green.
+NEXT for reels: the HyperFrames MP4 composition (match the reference reels' visual style — watch DELIVERY/*/reel.mp4)
++ render worker (headless chromium capture) + ffmpeg mux (VO + music + sfx) + the 1.05x Moiz speed-up.
