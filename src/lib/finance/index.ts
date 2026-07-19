@@ -131,6 +131,36 @@ export async function invoiceAction(id: string, action: InvoiceAction, input: { 
   return { ...inv, ...fields };
 }
 
+/**
+ * Cadence sweep: flip past-due open invoices to `overdue`. An invoice that is sent/viewed/partially_paid, past
+ * its dueDate, and still has an open balance is transitioned (validated by canTransitionInvoice) + audited — so
+ * the invoice STATUS matches reality instead of only the dashboard's derived overdue figure. Idempotent (an
+ * already-overdue invoice isn't a candidate). Best-effort per invoice.
+ */
+export async function sweepOverdueInvoices(deps: FinanceDeps = {}): Promise<{ marked: number }> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const candidates = (await listInvoices({ limit: 5000 }, deps)).filter(
+    (inv) =>
+      ["sent", "viewed", "partially_paid"].includes(inv.status) &&
+      inv.dueDate != null &&
+      inv.dueDate.getTime() < now.getTime() &&
+      inv.totalCents - inv.amountPaidCents > 0 &&
+      canTransitionInvoice(inv.status, "overdue"),
+  );
+  let marked = 0;
+  for (const inv of candidates) {
+    try {
+      await store.updateInvoice(inv.id, { status: "overdue", updatedAt: now });
+      await audit(deps, { eventType: "finance.invoice_overdue", module: FINANCE_MODULE, entityType: "invoice", entityId: inv.id, actor: "scheduler", metadata: { number: inv.invoiceNumber, dueDate: inv.dueDate, openCents: inv.totalCents - inv.amountPaidCents } });
+      marked += 1;
+    } catch {
+      /* one bad row never blocks the sweep */
+    }
+  }
+  return { marked };
+}
+
 /** Dashboard rollups: pulls invoices + open/won opportunities and computes revenue KPIs. */
 export async function getRevenueSummary(deps: FinanceDeps = {}): Promise<RevenueSummary> {
   // Sum up to 5000 invoices/opportunities (years of runway for an agency; add SQL-side aggregation

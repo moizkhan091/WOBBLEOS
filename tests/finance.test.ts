@@ -69,7 +69,7 @@ describe("finance domain", () => {
 
 // ---------------------------------------------------------------- service
 
-import { createInvoice, invoiceAction, type FinanceStore } from "@/lib/finance";
+import { createInvoice, invoiceAction, sweepOverdueInvoices, type FinanceStore } from "@/lib/finance";
 
 function makeStore() {
   const invoices = new Map<string, InvoiceRow>();
@@ -101,6 +101,24 @@ describe("finance service", () => {
     expect(inv.invoiceNumber).toBe("INV-2026-0001");
     expect(inv.status).toBe("draft");
     expect(inv.totalCents).toBe(600000);
+  });
+
+  it("sweepOverdueInvoices flips a past-due open invoice to overdue, leaves a not-yet-due one alone", async () => {
+    const { store, invoices } = makeStore();
+    const later = new Date(now.getTime() + 30 * 86_400_000);
+    const past = await createInvoice({ lineItems: [{ description: "A", quantity: 1, unitPriceCents: 100000 }] }, { store, now, recordAudit: async () => {} });
+    const future = await createInvoice({ lineItems: [{ description: "B", quantity: 1, unitPriceCents: 100000 }] }, { store, now, recordAudit: async () => {} });
+    // Both sent + unpaid; `past` is overdue by its dueDate, `future` is not yet due.
+    invoices.set(past.id, { ...invoices.get(past.id)!, status: "sent", dueDate: new Date(now.getTime() - 5 * 86_400_000) });
+    invoices.set(future.id, { ...invoices.get(future.id)!, status: "sent", dueDate: later });
+
+    const res = await sweepOverdueInvoices({ store, now, recordAudit: async () => {} });
+    expect(res.marked).toBe(1);
+    expect(invoices.get(past.id)?.status).toBe("overdue");
+    expect(invoices.get(future.id)?.status).toBe("sent"); // not yet due — untouched
+
+    // Idempotent: a second sweep does nothing (already overdue is not a candidate).
+    expect((await sweepOverdueInvoices({ store, now, recordAudit: async () => {} })).marked).toBe(0);
   });
 
   it("retries on a concurrent numbering collision instead of 500ing (unique-violation recovery)", async () => {
