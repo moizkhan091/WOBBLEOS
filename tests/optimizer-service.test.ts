@@ -4,6 +4,7 @@ import {
   approveProposal,
   activateProposal,
   recordMonitoring,
+  runOptimizerMonitoring,
   rollbackProposal,
   rejectProposal,
   type OptimizerStore,
@@ -107,5 +108,27 @@ describe("optimizer service — cycle + governance + rollback (no IO)", () => {
     await store.insertProposal({ id: "p1", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "proposed", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1 });
     expect((await rejectProposal("p1", { rejectedBy: "Moiz", reason: "no" }, { store, recordAudit: noAudit })).ok).toBe(true);
     expect((await rollbackProposal("p1", { rolledBackBy: "Moiz", reason: "x" }, { store, recordAudit: noAudit })).ok).toBe(false);
+  });
+
+  it("auto-monitor re-measures each active activation's metric and rolls back only the degraded one", async () => {
+    const { store, proposals, activations } = makeStore();
+    // Two ACTIVE improvements, each pinned to a baseline via its activation, tagged with its metricKey.
+    await store.insertProposal({ id: "p_qa", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "active", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1, metadata: { metricKey: "qa_pass_rate" } });
+    await store.insertActivation({ id: "a_qa", proposalId: "p_qa", version: 1, baselineMetric: "0.80", status: "active", activatedBy: "Moiz" });
+    await store.insertProposal({ id: "p_cost", pattern: "p", hypothesis: "h", targetType: "parameter", evidence: [], status: "active", riskLevel: "low", estimatedValue: "1", estimatedCostCents: 0, version: 1, metadata: { metricKey: "cost_efficiency" } });
+    await store.insertActivation({ id: "a_cost", proposalId: "p_cost", version: 1, baselineMetric: "0.50", status: "active", activatedBy: "Moiz" });
+
+    // Live reality: qa DROPPED below its baseline (0.55 < 0.80 → degraded), cost IMPROVED (0.70 > 0.50 → keep).
+    const collectors: EvidenceCollector[] = [collector([
+      { signalType: "qa_failure", metricKey: "qa_pass_rate", metricValue: 0.55, sampleSize: 20, evidenceRef: {} },
+      { signalType: "provider_cost", metricKey: "cost_efficiency", metricValue: 0.70, sampleSize: 20, evidenceRef: {} },
+    ])];
+
+    const res = await runOptimizerMonitoring({ store, recordAudit: noAudit, collectors });
+    expect(res.monitored).toBe(2);
+    expect(res.rolledBack).toBe(1);
+    expect(proposals.get("p_qa")?.status).toBe("rolled_back"); // degraded → auto-rolled-back
+    expect(activations.get("a_qa")?.status).toBe("rolled_back");
+    expect(proposals.get("p_cost")?.status).toBe("active"); // improved → kept
   });
 });

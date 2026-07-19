@@ -284,7 +284,8 @@ export async function runOptimizerCycle(opts: { trigger?: "scheduled" | "manual"
       id: proposalId, cycleId, pattern: spec.pattern(o), hypothesis: spec.hypothesis(o), targetType: spec.targetType, targetRef: spec.targetRef,
       evidence: [o.id], estimatedValue: String(estimatedValue), estimatedCostCents: spec.costCents, riskLevel: spec.risk, score: String(score),
       historicalBaselineMetric: String(baseline), historicalCandidateMetric: String(projectedTarget), historicalSampleSize: o.sampleSize,
-      metadata: { evaluation, projectedTarget, estimateNote: "projectedTarget is an estimate of the gap worth closing — NOT a backtest of the change" },
+      // Persist the signal + metricKey so the auto-monitor can re-measure THIS activation's target metric later.
+      metadata: { evaluation, projectedTarget, signalType: o.signalType, metricKey: o.metricKey, estimateNote: "projectedTarget is an estimate of the gap worth closing — NOT a backtest of the change" },
       status: "proposed", version: 1, createdAt: now, updatedAt: now,
     });
     await audit(deps, { eventType: "optimizer.opportunity_proposed", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: proposalId, actor: "optimizer", metadata: { signalType: o.signalType, targetType: spec.targetType, estimatedValue, score, baseline, projectedTarget, evaluationPassed: evaluation.passed } });
@@ -293,6 +294,57 @@ export async function runOptimizerCycle(opts: { trigger?: "scheduled" | "manual"
 
   await store.updateCycle(cycleId, { status: "complete", observationCount: observations.length, opportunityCount: proposalIds.length, completedAt: now });
   return { cycleId, observations: observations.length, opportunities: proposalIds.length, proposalIds };
+}
+
+export interface MonitorResult {
+  monitored: number;
+  degraded: number;
+  rolledBack: number;
+}
+
+/**
+ * AUTO-MONITOR the self-improvement loop's tail (closes the loop the founder named). For every ACTIVE
+ * activation, RE-MEASURE its target metric NOW — by running the same evidence collectors and matching each
+ * activation's persisted `metricKey` to the freshly-observed value — then `recordMonitoring(..., autoRollback:true)`.
+ * If the live metric has dropped below the activation's pinned baseline, the improvement is automatically ROLLED
+ * BACK (and the event audited). So an activated change that turns out to hurt is caught + reverted on the daily
+ * cadence instead of never being measured. Best-effort per activation; a failure on one never blocks the rest.
+ */
+export async function runOptimizerMonitoring(deps: OptimizerDeps = {}): Promise<MonitorResult> {
+  let db: Db;
+  try { db = deps.db ?? getDb(); } catch { db = undefined as unknown as Db; }
+  const store = deps.store ?? defaultStore(db);
+  const now = deps.now ?? new Date();
+  const since = new Date(now.getTime() - (deps.windowMs ?? 30 * 86400_000));
+  const collectors = deps.collectors ?? DEFAULT_COLLECTORS;
+
+  // Re-measure every metric ONCE (the current production reality).
+  const currentByMetric = new Map<string, { value: number; sampleSize: number }>();
+  for (const collect of collectors) {
+    try {
+      for (const o of await collect({ db, since, now })) {
+        currentByMetric.set(o.metricKey, { value: o.metricValue, sampleSize: o.sampleSize });
+      }
+    } catch {
+      // a broken collector must never abort monitoring of the others
+    }
+  }
+
+  const active = await store.listProposals({ status: "active", limit: 200 });
+  const result: MonitorResult = { monitored: 0, degraded: 0, rolledBack: 0 };
+  for (const row of active) {
+    const metricKey = (row.metadata as { metricKey?: unknown } | null)?.metricKey;
+    if (typeof metricKey !== "string") continue; // pre-metricKey proposal — nothing to re-measure against
+    const current = currentByMetric.get(metricKey);
+    if (!current) continue; // no fresh signal for this metric this window — skip (never fabricate a measurement)
+    const r = await recordMonitoring(String(row.id), { measuredMetric: current.value, sampleSize: current.sampleSize, autoRollback: true }, deps).catch(() => null);
+    if (r?.ok) {
+      result.monitored += 1;
+      if (r.degraded) result.degraded += 1;
+      if (r.rolledBack) result.rolledBack += 1;
+    }
+  }
+  return result;
 }
 
 // Hydrate a DB proposal row into the pure-domain shape for the governance functions.

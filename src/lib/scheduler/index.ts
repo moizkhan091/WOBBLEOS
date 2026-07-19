@@ -14,7 +14,7 @@ import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
-import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
+import { runOptimizerCycle, optimizerCycleDue, runOptimizerMonitoring } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs, purgeTerminalJobs, JOBS_RETENTION_MS } from "@/lib/jobs";
@@ -85,6 +85,7 @@ export interface SchedulerResult {
   intelligenceRunsEnqueued?: number;
   sourcesProposed?: number;
   staleSourcesFlagged?: number;
+  optimizerRolledBack?: number;
   errors: string[];
 }
 
@@ -288,6 +289,12 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // repeated ticks in a day never re-run it.
       if (process.env.DATABASE_URL && await optimizerCycleDue(20 * 3600_000, { now })) {
         await runOptimizerCycle({ trigger: "scheduled" }, { now }).then((r) => { result.optimizerOpportunities = r.opportunities; }).catch((e) => result.errors.push(`optimizer: ${e?.message ?? e}`));
+      }
+      // AUTO-MONITOR the self-improvement loop: re-measure every ACTIVE activation's target metric and auto-roll-
+      // back any that degraded below its pinned baseline. Runs each maintenance pass (daily) — closes the loop so
+      // an activated change that hurts is caught + reverted, not left unmeasured forever.
+      if (process.env.DATABASE_URL) {
+        await runOptimizerMonitoring({ now }).then((r) => { result.optimizerRolledBack = r.rolledBack; }).catch((e) => result.errors.push(`optimizer-monitor: ${e?.message ?? e}`));
       }
       result.maintenanceRan = true;
     } catch (e) { result.errors.push(`maintenance: ${e instanceof Error ? e.message : e}`); }
