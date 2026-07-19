@@ -510,3 +510,27 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Affects: migration 0060, schema.ts, domain/content-intelligence.ts, content-intelligence/index.ts,
   workers/registry.ts, scheduler/index.ts, registry-integrity.test.ts, content-intelligence.test.ts,
   verify-content-intelligence-db.ts, prove-content-intelligence.ts.
+
+## 2026-07-19 — Reel pipeline: seek-driven HyperFrames + chromium capture (NOT Remotion), narration decoupled from render
+
+- Context: reels are the last major content piece. The Phase-9 reference reels are HyperFrames HTML compositions
+  (GSAP timeline seeked deterministically), NOT Remotion. Decision: reuse that exact contract rather than adopt a
+  new video framework — `buildReelComposition` emits the same #comp/`.scene[data-in/out]`/`.w[data-t]` structure
+  and paused `window.__timelines["master"]`, and the render worker seeks it frame-by-frame with headless chromium
+  (already a dep for HTML carousel slides) + ffmpeg (already used). No new heavy runtime.
+- WHY frame-by-frame chromium screenshot (vs CDP screencast / Remotion): deterministic — each frame is the timeline
+  seeked to an exact time, so word reveals land precisely on the ElevenLabs word timings. JPEG q92 intermediate
+  frames (identical after H.264) keep a full ~20s reel renderable inside the 300s request budget.
+- WHY narration is decoupled from render (narrationOverride / route `narration` body): the writer LLM needs
+  OpenRouter credit (currently 402). The VO (ElevenLabs) + composition + render have NO such dependency, so the
+  route renders a finished reel from a supplied script TODAY and auto-writes once credit returns. Never fake a VO
+  or a frame — no key / no chromium / no ffmpeg → throw.
+- WHY speed-up is applied at the FINAL mux to BOTH video (setpts) + audio (atempo) uniformly: keeps the kinetic
+  reveals in sync with the sped-up Moiz VO (1.05x per VOICE-SETTINGS.md); v3 voices pass 1.0 (loudnorm still runs).
+- Reused (did NOT duplicate): elevenLabsVoiceoverWithTimestamps + reel-voice (batch 18), addContentAsset + the
+  `reel`/`video` asset kinds + byte-range media serve, runTextProvider (role `reel_writer` → default fallback),
+  the Topic Bank produce-button pattern. No new provider, no new table.
+- Do NOT: bake a personal voice-clone id into the repo (voiceId always resolved from the roster); let Moiz emit
+  [expression tags] (stripped even if the model slips one in); commit rendered MP4s (storage/ is gitignored).
+- Affects: domain/reel-composition.ts, reel-render/index.ts, reel/index.ts, api/content/topics/[id]/reel/route.ts,
+  components/os/os-ui.tsx (TopicBankPage voice selector + Reel button), tests/reel-composition.test.ts, prove-reel.ts.

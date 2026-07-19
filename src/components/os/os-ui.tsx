@@ -5964,6 +5964,7 @@ function TopicBankPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [producedSlides, setProducedSlides] = useState<Record<string, number>>({});
+  const [reelVoice, setReelVoice] = useState<"moiz" | "hale" | "female">("moiz");
   const topics = topicsApi.data?.topics ?? [];
   const runs = runsApi.data?.runs ?? [];
 
@@ -6004,6 +6005,15 @@ function TopicBankPage() {
         setMsg(`Produced ✓ — ${n > 1 ? `a ${n}-slide carousel` : "the on-brand asset"} is rendered and saved to your Library.`);
         topicsApi.reload();
       } else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
+  async function reel(id: string) {
+    setBusy(id); setMsg(`Writing narration → ${reelVoice === "moiz" ? "Moiz" : reelVoice === "hale" ? "Hale" : "Female"} voiceover → rendering the reel (a few minutes)…`);
+    try {
+      const r = await fetch(`/api/content/topics/${id}/reel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: reelVoice }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg(`Reel ready ✓ — a ${Number(j.durationSec ?? 0)}s vertical reel (${j.voice} voice, ${Number(j.scenes ?? 0)} scenes) is saved to your Library.`); topicsApi.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
 
@@ -6069,6 +6079,14 @@ function TopicBankPage() {
                   <button onClick={() => produce(t.id, false)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...primaryBtn, padding: "7px 16px", fontSize: 12 }}>⚡ Produce</button>
                   <button onClick={() => produce(t.id, true)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>✨ Hero (GPT-Image-2)</button>
                   <button onClick={() => leadMagnet(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>📄 Lead magnet</button>
+                  <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <select value={reelVoice} onChange={(e) => setReelVoice(e.target.value as "moiz" | "hale" | "female")} disabled={busy === t.id} style={{ ...selectStyle, padding: "7px 8px", cursor: "pointer" }} title="Voice for the reel narration">
+                      <option value="moiz">🎙 Moiz (v2)</option>
+                      <option value="hale">🎙 Hale (v3 expressive)</option>
+                      <option value="female">🎙 Female (v3)</option>
+                    </select>
+                    <button onClick={() => reel(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>🎬 Reel</button>
+                  </span>
                   <span style={{ fontSize: 11.5, color: faint }}>approved{t.reviewedBy ? ` · by ${t.reviewedBy}` : ""}</span>
                 </div>
               ) : (

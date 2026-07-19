@@ -6587,3 +6587,35 @@ reelNarrationGuidance (per-voice LLM instruction), alignmentToWords (char alignm
 captions, per-word timings with the pause reflected). Tests (6) + typecheck green.
 NEXT for reels: the HyperFrames MP4 composition (match the reference reels' visual style — watch DELIVERY/*/reel.mp4)
 + render worker (headless chromium capture) + ffmpeg mux (VO + music + sfx) + the 1.05x Moiz speed-up.
+
+## 2026-07-19 — batch 19: FULL reel pipeline (HyperFrames composition + render worker + orchestrator + UI)
+
+The remaining big piece: a topic + a chosen voice becomes a finished vertical MP4. Built on the reel voice
+foundation (batch 18) and modelled on the real Phase-9 reference reels (watched `graveyard/reel.mp4` +
+`pilot-01` composition frame-by-frame — kinetic typography, 3-colour narrative dark→cream→blue, ONE accent
+word per line, grain+vignette, seek-driven GSAP timeline on `window.__timelines["master"]`).
+
+- `src/lib/domain/reel-composition.ts`: `buildReelComposition` (pure HTML generator honouring the HyperFrames
+  contract — #comp data-duration, `.scene[data-in/out]` beat-cuts, `.w[data-t]` word reveals on the spoken beat,
+  `<audio id=vo>`, paused master timeline) + `planScenesFromWords` (auto scene plan: groups word timings into
+  lines, colours the arc, accents pain words orange + fix/brand words blue). HTML-escaped (no injection).
+- `src/lib/reel-render/index.ts`: `renderReelToFile` — headless chromium seeks the timeline frame-by-frame,
+  screenshots each (JPEG q92 default — ~4x faster than PNG, identical after H.264), ffmpeg frames→silent video
+  then muxes the VO with the voice speed-up (setpts+atempo) + loudnorm, -ar 44100. Never fakes (throws w/o
+  chromium/ffmpeg/audio).
+- `src/lib/reel/index.ts`: orchestrator. `generateReelNarration` (writer LLM, WOBBLE hook→agitate→fix→mechanism
+  →soft-CTA, per-voice tag rules) + `produceReel` (narration → elevenLabsVoiceoverWithTimestamps → alignmentToWords
+  → planScenes → composition → render) + `wordsToSrt` (captions scaled to the speed-up). narrationOverride lets
+  the VO→render half run without the (credit-exhausted) LLM.
+- Route `POST /api/content/topics/[id]/reel` (founder-gated, maxDuration 300): body `voice` (moiz|hale|female) +
+  optional `narration`; stores a Library `reel` asset (video/mp4, already served w/ byte-range) + links to topic.
+- Topic Bank UI: voice `<select>` (🎙 Moiz v2 / Hale v3 / Female v3) + 🎬 Reel button on approved topics.
+- PROVEN LIVE END-TO-END: Moiz VO (real ElevenLabs, timestamps) → 64 word beats → 15 scenes → 600 frames →
+  1080x1920 30fps h264 + aac reel (18.7s, 1.05x + loudnorm), saved to storage/media. Frame-checked across the
+  arc: dark "Your CRM is a graveyard." (graveyard = orange) → cream "the ones who reply" → blue "Book a free AI
+  audit." — kinetic reveals land on the beat, genuinely agency-grade.
+- Green: typecheck, full suite (1313 tests, +6 reel-composition), build, reel route compiled. `reel_writer` role
+  falls back to the `default` model (consistent w/ other content agents). `prove-reel.ts` host driver committed.
+- NB: writer LLM narration needs OpenRouter credit (402 blocker) — the route accepts `narration` verbatim so
+  reels render TODAY with a supplied script; auto-writes once credit is topped up. ElevenLabs voice + render are
+  NOT blocked. NEXT: music bed + SFX layer, UI-mockup scene types (Kanban/chips), two exports (organic/paid CTA).
