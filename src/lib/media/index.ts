@@ -96,6 +96,15 @@ export interface CreateMediaJobInput {
 
 export interface CreateMediaJobResult { ok: boolean; error?: string; errors?: string[]; job?: MediaJobRow; deduped?: boolean }
 
+/**
+ * The DEFAULT media provider by kind. OpenRouter is the PRIMARY gateway — image generation works with the same
+ * OPENROUTER_API_KEY the whole OS already uses, so an image job needs no extra credential. fal stays the OPTIONAL
+ * adapter for video/audio/3d and is truthfully BLOCKED without FAL_KEY — it is never auto-selected for images.
+ */
+export function defaultMediaProvider(kind: string): string {
+  return kind === "image" ? "openrouter" : "fal";
+}
+
 /** Create a queued media job after validation + budget-cap enforcement. Idempotent via dedupeKey. */
 export async function createMediaJob(input: CreateMediaJobInput, deps: MediaDeps = {}): Promise<CreateMediaJobResult> {
   const store = deps.store ?? defaultStore();
@@ -108,7 +117,7 @@ export async function createMediaJob(input: CreateMediaJobInput, deps: MediaDeps
     if (existing) return { ok: true, job: existing, deduped: true };
   }
   const row: MediaJobRow = {
-    id: newId("mediajob"), kind: input.kind as MediaKind, prompt: input.prompt.trim(), provider: input.provider ?? "fal",
+    id: newId("mediajob"), kind: input.kind as MediaKind, prompt: input.prompt.trim(), provider: input.provider ?? defaultMediaProvider(input.kind),
     params: input.params ?? {}, status: "queued", attempts: 0, maxAttempts: input.maxAttempts ?? 3,
     estimatedCostCents: input.estimatedCostCents, budgetCapCents: input.budgetCapCents, actualCostCents: null,
     outputRefs: [], error: null, scopeType: input.scopeType ?? "company", companyId: input.companyId ?? null,

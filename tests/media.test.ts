@@ -53,3 +53,13 @@ describe("falConfigured resolves FAL_KEY vs FAL_API_KEY", () => {
     expect(falConfigured({ FAL_KEY: "  " })).toBe(false);
   });
 });
+
+import { defaultMediaProvider } from "@/lib/media";
+describe("default media provider (OpenRouter primary, fal optional)", () => {
+  it("images default to OpenRouter (works with the existing OPENROUTER_API_KEY), other kinds to fal", () => {
+    expect(defaultMediaProvider("image")).toBe("openrouter");
+    expect(defaultMediaProvider("video")).toBe("fal");
+    expect(defaultMediaProvider("audio")).toBe("fal");
+    expect(defaultMediaProvider("3d")).toBe("fal");
+  });
+});
