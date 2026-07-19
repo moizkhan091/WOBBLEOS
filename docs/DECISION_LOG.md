@@ -587,3 +587,38 @@ Log founder conversations too (not just code). If a founder states intent in cha
   retention + claim index are growth/perf items for the next migration batch.
 - Affects: db/index.ts, workers/runtime.ts, scheduler/leader.ts, workers/worker.ts, workers/video-worker.ts,
   scripts/deploy.sh, config/validate.ts, domain/intelligence.ts, tests (config-validate, intelligence).
+
+## 2026-07-19 — batch 24: completeness sweep + live acceptance (decisions/context)
+- WHY close the loops as READ-BACKS, not new features: the batch-23 audit found the hard parts (taste learning,
+  decision policies, optimizer proposals, dream, source discovery) were already BUILT but write-only or
+  dead-wired — nothing consumed them. The correct, minimal fix is to wire the CONSUMER (fold learned taste/policy
+  into the prompt; run the monitor on cadence; enqueue the dream) rather than rebuild. A capability that nothing
+  reads is indistinguishable from missing — so "surfaced + proven firing" is the definition of done here.
+- WHY the general-queue LEASE now (was deferred in batch 22): the founder's target is "used by ALL founders on
+  the VPS", which implies scaling past a single worker. Under ≥2 workers the old claim (locked_at only, no owner)
+  can double-run a job whose worker stalled. The lease (owner + expiry + renewal + CAS terminal writes) is the
+  same pattern the media queue already proved, so it's low-risk to lift into the general queue. Shipping it now
+  removes the one documented blocker to horizontal scaling.
+- WHY OpenRouter is the PRIMARY media provider (FAL optional): I had been calling FAL_KEY the Media Studio
+  blocker, but the OpenRouter image adapter was already registered and works with the OS's existing
+  OPENROUTER_API_KEY. Media jobs merely DEFAULTED to provider 'fal'. Correcting the default (image→openrouter)
+  makes Media Studio work with zero new credentials; FAL stays honestly-blocked-without-key for video/audio/3d.
+  Proven with ONE minimal 4¢ live call, respecting the external budget cap.
+- WHY acceptance is DB-level (tsx against live PG), not a docker-UAT browser pass: running the HEAD source
+  directly against a fresh migrated Postgres IS runtime acceptance of HEAD and is deterministic + CI-repeatable
+  (auto-discovered by the release gate). The docker UAT image predates the batch (it lacks the new Daily Brief),
+  so a browser pass there would accept a stale artifact. I browser-accepted the flagship new screen against the
+  DEV server at HEAD instead (Daily Brief rendered 105 live signals + refresh POST 201), which guarantees parity.
+- WHY the decision-policy read-back proof stubs the provider: it must prove the REAL read-back path (active
+  policy → defaultLoadPolicyGuidance → scorer messages) without a paid LLM call, so the scorer's provider is
+  injected to CAPTURE the prompt and assert the policy statement is present (and scope-correct: absent for an
+  unrelated category). Real DB, real read-back, zero spend.
+- WHY the client-isolation proof uses unique clientIds + fixed canary tokens: unique ids isolate the proof from
+  a shared/populated gate DB; the fixed tripwire tokens (ALPHA/BETA/GAMMA-ONLY-*) make a cross-client leak
+  impossible to miss. The ledger proof uses a unique provider name so the authoritative-spend SUM reconciles
+  against exactly the rows it seeded, and injects getSpent for the budget-guard arithmetic (no DB pollution).
+- STILL PARKED (explicit founder call): HyperFrames/reels authoring quality (real-reel exemplars + contrast/
+  overflow fixes + educative script). No reel product code touched this batch.
+- Affects: proposals, finance, decisions, decision-learning consumer, n8n callback, library, analytics,
+  optimizer, source-discovery, taste, content-worker, media default provider, os-ui (brief), jobs lease
+  (migrations 0062/0063), + new proofs verify-maintenance-acceptance-db.ts, verify-client-isolation-ledger-db.ts.

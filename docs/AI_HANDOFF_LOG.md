@@ -6730,3 +6730,50 @@ capability was built and never wired. Fixed:
   surface; decision-policy proposals unseen; optimizer MONITOR→auto-rollback not on cadence; taste-learning is
   write-only (no read-back into generation); event-triggered automations never fire (fireEventRules uncalled);
   intelligence.dream job never enqueued; Ask "research" intent still returns "planned".
+
+## 2026-07-19 — batch 24: completeness sweep — close the remaining autonomy loops, multi-worker safety, live acceptance
+
+Founder directive (/goal): get EVERYTHING working, no gaps, ready to run on the VPS for all founders — every AI
+team/department/worker/scheduler running, communicating, data fresh + auto-updating, dreamer + self-improvement
+live, fresh-source suggestions for approval. (HyperFrames/reels explicitly PARKED for a later pass.) This batch
+closed the "REMAINING gaps" the batch-23 audit listed, added multi-worker safety, corrected the media provider
+story, and ADDED live acceptance proofs so the effects are shown firing, not just coded.
+
+Autonomy loops closed (each write-only or dead-wired loop now runs + is surfaced + is proven):
+- TASTE read-back: `formatTasteGuidance` folds the learned brand:wobble taste profile into content-generation
+  prompts (was write-only). 
+- EVENT automations: audit-event → `fireEventRules` now fires on the event bus (was never called).
+- DAILY BRIEF: new `/brief` module + screen (RankedSignal-driven), decision-policy review + Radar suggested-
+  sources surfaces, SEO "→ Draft this in Content" action. Browser-accepted live at HEAD (105 ranked signals,
+  refresh POST 201, honest coverage-gap reporting — never faked).
+- OPTIMIZER monitor: `runOptimizerMonitoring` re-runs collectors on cadence and auto-rolls-back a proposal whose
+  guarded metric regressed (was propose-only, no monitor).
+- ASK research intent: research route flipped planned→available (jobType intelligence.analyze); the analyze
+  handler chains to `intelligence.dream` (deduped per scope/day) — the dreamer now actually gets enqueued.
+- DECISION-POLICY read-back: `defaultLoadPolicyGuidance` injects founder-APPROVED active policies into the
+  Decision Room scorer's prompt — activating a policy now changes future scoring (was activation-with-no-effect).
+
+Durability / multi-worker (VPS safety):
+- GENERAL job-queue EXECUTION LEASE (closes HIGH-2): lease_owner + lease_expires_at + renewal + compare-and-set
+  terminal writes on the general queue (the media queue already had it). No double-run under ≥2 workers; a
+  crashed worker's job is reclaimed only after its lease expires; a worker that lost the lease can't complete.
+  Migration 0063 (lease cols) + 0062 (partial claim index). Proven: `verify-worker-lease-db.ts`.
+- MEDIA provider CORRECTION: OpenRouter is the PRIMARY media (image) provider via the existing OPENROUTER_API_KEY
+  — FAL is optional (video/audio/3d) and was wrongly called the Media Studio blocker. `defaultMediaProvider`
+  routes image→openrouter, else→fal. LIVE-PROVEN: createMediaJob(image) → real PNG stored, 4¢, no FAL_KEY.
+- n8n callback RETURN-LEG: an inbound signed callback reporting a post published now flips the scheduled post +
+  rolls the asset up to published (was log-only). Proposal auto-expiry + invoice overdue sweeps + webstats
+  snapshot + retention purges wired into daily maintenance. Media worker writes a DB heartbeat.
+
+Live acceptance (shown firing, not just typed):
+- `verify-maintenance-acceptance-db.ts` — the four observable effects (proposal expiry, invoice overdue,
+  decision-policy read-back into the scorer, n8n callback flips a post) proven end-to-end against live Postgres,
+  no paid calls (scorer stubbed to capture its prompt).
+- `verify-client-isolation-ledger-db.ts` — 3-client canary (Alpha/Beta/Gamma) shows NO cross-client leak on the
+  client-scoped read path; ledger reconciles item-by-item (recorded spend == sum of succeeded actualCost only;
+  budget guard rejects a stop-breaching worst-case; untracked provider never silently billed).
+
+Gate: build + typecheck + tests green at HEAD; the filesystem-driven DB gate auto-discovered the 2 new proofs
+(63 run, 3 explainably skipped). Commits: a73dfda (lease), 34fd5c8 (media provider), 601aead (acceptance proofs).
+STILL PARKED: HyperFrames/reels authoring-quality pass (feed real reels as exemplars + contrast/overflow +
+educative script). No product code changed for reels this batch.
