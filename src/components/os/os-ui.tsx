@@ -4689,6 +4689,18 @@ function SeoPage() {
   }
   async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Generate failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
   async function archive(id: string) { setBusy(id); try { await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive" }) }); reload(); } finally { setBusy(null); } }
+  // SEO → CONTENT bridge: turn a blog idea into a real content-generation job (packets land in Content Command
+  // for approval) — so ideas stop dead-ending. Reuses the existing content.generate pipeline.
+  async function draftFromIdea(b: { title: string; angle?: string; targetKeyword?: string; outline?: string[] }) {
+    setBusy("draft_" + b.title); setMsg(null);
+    try {
+      const objective = `Write a WOBBLE content piece from this SEO blog idea. Title: "${b.title}".${b.angle ? ` Angle: ${b.angle}.` : ""}${b.targetKeyword ? ` Target keyword: ${b.targetKeyword}.` : ""}${b.outline?.length ? ` Outline: ${b.outline.join("; ")}.` : ""} Teach-first, grounded in approved sources.`;
+      const r = await fetch("/api/content/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objective, formatFocus: ["text"] }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) setMsg(`Drafting "${b.title}" — the content worker is generating packets; review them in Content Command.`);
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
@@ -4740,6 +4752,7 @@ function SeoPage() {
                         <div style={{ fontSize: 12.5, fontWeight: 600 }}>{b.title}</div>
                         {b.angle ? <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{b.angle}{b.targetKeyword ? ` · ${b.targetKeyword}` : ""}</div> : null}
                         {b.outline?.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5, color: faint }}>{b.outline.map((o, j) => <li key={j} style={{ marginBottom: 2 }}>{o}</li>)}</ul> : null}
+                        <button onClick={() => draftFromIdea(b)} disabled={busy === "draft_" + b.title} style={busy === "draft_" + b.title ? { ...disabledBtn, padding: "5px 10px", fontSize: 11 } : { ...selectStyle, cursor: "pointer", padding: "5px 10px", fontSize: 11, marginTop: 8 }}>{busy === "draft_" + b.title ? "Drafting…" : "→ Draft this in Content"}</button>
                       </div>
                     ))}
                   </div>
