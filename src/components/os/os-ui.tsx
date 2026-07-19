@@ -6112,8 +6112,86 @@ function TopicBankPage() {
   );
 }
 
+type BriefSignalUI = { id?: string; title?: string; summary?: string; severity?: string; category?: string; actionRequired?: boolean };
+type RankedSignalUI = { signal: BriefSignalUI; score?: number; rank?: number };
+type BriefSectionUI = { category: string; label: string; count: number; highestSeverity: string | null; items: RankedSignalUI[] };
+type FounderBriefUI = { isEmpty: boolean; totalSignals: number; headline: RankedSignalUI[]; sections: BriefSectionUI[]; degradedCategories?: string[]; trustedContext?: string | null };
+
+function DailyBriefPage() {
+  const api = useApi<{ ok: boolean; brief: FounderBriefUI | null; generatedAt: string | null }>("/api/daily-brief");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const brief = api.data?.brief ?? null;
+  const sevColor = (s: string) => (s === "critical" || s === "high" ? C.orange : s === "medium" ? C.blue : C.gray);
+
+  async function regenerate() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/daily-brief", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg("Brief refreshed from the latest live signals."); api.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Panel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>What needs you today</div>
+            <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{api.data?.generatedAt ? `Assembled ${new Date(api.data.generatedAt).toLocaleString()} — ranked, evidence-linked.` : "The OS assembles this every morning from live signals; refresh to re-scan now."}</div>
+          </div>
+          <button onClick={regenerate} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Refreshing…" : "↻ Refresh now"}</button>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 9 }}>{msg}</div> : null}
+      </Panel>
+
+      {api.loading ? <StateBlock kind="loading" message="Assembling your brief…" /> :
+        api.error ? (api.status === 503 ? <StateBlock kind="offline" /> : <StateBlock kind="error" message={api.error} />) :
+        !brief || brief.isEmpty ? <StateBlock kind="empty" message="Nothing needs you right now — no open escalations, approvals due, or risks. The brief regenerates every morning; refresh to re-scan." /> :
+        <>
+          <Panel>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.lime, marginBottom: 12 }}>TOP {brief.headline.length} · {brief.totalSignals} signal{brief.totalSignals === 1 ? "" : "s"} total</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {brief.headline.map((r, i) => { const s = r.signal ?? {}; return (
+                <div key={s.id ?? i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: sevColor(s.severity ?? ""), marginTop: 7, flex: "0 0 auto" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{s.title ?? "(untitled)"}{s.actionRequired ? <span style={{ marginLeft: 8, fontSize: 10.5, color: C.orange, fontWeight: 700 }}>ACTION</span> : null}</div>
+                    <div style={{ fontSize: 12.5, color: muted, marginTop: 3, lineHeight: 1.45 }}>{s.summary}</div>
+                  </div>
+                  <Tag text={(s.category ?? "").replace(/_/g, " ")} color={C.gray} />
+                </div>
+              ); })}
+            </div>
+          </Panel>
+          {brief.sections.filter((sec) => sec.count > 0).map((sec) => (
+            <Panel key={sec.category}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{sec.label}</div>
+                <Tag text={String(sec.count)} color={sec.highestSeverity === "critical" || sec.highestSeverity === "high" ? C.orange : C.blue} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {sec.items.slice(0, 8).map((r, i) => { const s = r.signal ?? {}; return (
+                  <div key={s.id ?? i} style={{ fontSize: 12.5, color: muted, display: "flex", gap: 8, lineHeight: 1.45 }}>
+                    <span style={{ color: sevColor(s.severity ?? ""), flex: "0 0 auto" }}>•</span>
+                    <span><b style={{ color: C.white, fontWeight: 600 }}>{s.title ?? "(untitled)"}</b> — {s.summary}</span>
+                  </div>
+                ); })}
+              </div>
+            </Panel>
+          ))}
+          {brief.degradedCategories?.length ? <div style={{ fontSize: 11, color: faint }}>Coverage gaps (provider unavailable, never faked): {brief.degradedCategories.join(", ")}</div> : null}
+        </>
+      }
+    </div>
+  );
+}
+
 const WIRED: Record<string, React.ComponentType> = {
   org: OrgWorkspacePage,
+  brief: DailyBriefPage,
   topics: TopicBankPage,
   cockpit: CockpitPage,
   comms: CommsPage,

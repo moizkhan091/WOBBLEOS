@@ -29,6 +29,7 @@ export interface NavGroup {
 export const MODULES: Record<string, ModuleDef> = {
   // WORKSPACE
   command: { id: "command", label: "Command Center", title: "Command Center", icon: "LayoutDashboard", status: "wired", api: "/api/approvals,/api/costs,/api/audit", tagline: "One pane of glass over the entire WOBBLE workforce - research, content, media, decisions, and the founder approvals that gate it all." },
+  brief: { id: "brief", label: "Daily Brief", title: "Daily Founder Brief", icon: "Newspaper", status: "wired", api: "/api/daily-brief", tagline: "What needs you today — the OS assembles a ranked, evidence-linked brief every morning from live signals (escalations, approvals due, delivery risks, finance alerts, KPIs, CRM movement, intelligence). Progressive disclosure: the headline first, the full picture on expand." },
   departments: { id: "departments", label: "Departments", title: "Departments & Handoffs", icon: "Network", status: "wired", api: "/api/departments,/api/handoffs", tagline: "The org as independent operating units — each department's truthful health, agent team, live inter-agent handoffs, spend and products. Inspect, retry, redrive or cancel any handoff." },
   ask: { id: "ask", label: "Ask WOBBLE", title: "Ask WOBBLE", icon: "Sparkles", status: "wired", chunk: 11, api: "/api/ask", tagline: "A direct line into the OS. Ask across every module, kick off the golden workflow, or interrogate memory in natural language." },
   brain: { id: "brain", label: "WOBBLE Brain", title: "WOBBLE Brain", icon: "Brain", status: "wired", chunk: 10, api: "/api/memory", tagline: "The shared knowledge core - everything the workforce has learned, embedded and retrievable." },
@@ -90,7 +91,7 @@ export const MODULES: Record<string, ModuleDef> = {
 // Intelligence & Sources, Content Studio, Revenue/CRM, Delivery & Ops, WOBBLE HQ — with everything operational
 // tucked into a collapsed SYSTEM drawer. Fewer top-level areas, clearer mental model.
 export const NAV_GROUPS: NavGroup[] = [
-  { label: "WORKSPACE", items: ["ask", "command", "cockpit", "departments", "agents"] },
+  { label: "WORKSPACE", items: ["ask", "brief", "command", "cockpit", "departments", "agents"] },
   { label: "INTELLIGENCE & SOURCES", items: ["radar", "sources", "intelligence", "learning", "brain", "memory"] },
   { label: "CONTENT STUDIO", items: ["topics", "content", "library", "media", "social", "seo", "webstats"] },
   { label: "REVENUE / CRM", items: ["crm", "org", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
