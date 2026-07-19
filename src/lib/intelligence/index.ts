@@ -256,6 +256,35 @@ export async function markResearchTargetScouted(id: string, fields: { lastChecke
   await store.updateResearchTarget(id, fields);
 }
 
+/**
+ * Founder review of a PROPOSED/pending research source (the approval half of the suggest-sources loop). Approve
+ * → it enters the scheduler's scout set (approved-only) and gets scouted on its cadence; reject → it stays out,
+ * preserved as a declined suggestion (so the scout dedups against it and never re-proposes). Audited either way.
+ */
+export async function reviewResearchTarget(
+  id: string,
+  input: { decision: "approved" | "rejected"; reviewedBy: string },
+  deps: IntelligenceDeps = {},
+): Promise<{ ok: boolean; target: ResearchTargetRow | null }> {
+  const store = deps.store ?? defaultStore();
+  const recordAudit = deps.recordAudit ?? defaultRecordAudit;
+  const now = deps.now ?? new Date();
+  if (!store.updateResearchTarget) return { ok: false, target: null };
+  const existing = (await store.listResearchTargets({ limit: 1000 })).find((t) => t.id === id) ?? null;
+  if (!existing) return { ok: false, target: null };
+  // research_targets carries no reviewer columns — the reviewer identity lives in the audit event below.
+  await store.updateResearchTarget(id, { approvalStatus: input.decision, updatedAt: now });
+  await recordAudit({
+    eventType: `intelligence.source.${input.decision}`,
+    module: "intelligence",
+    entityType: "research_target",
+    entityId: id,
+    actor: input.reviewedBy,
+    metadata: { name: existing.name, handleOrUrl: existing.handleOrUrl, decision: input.decision },
+  });
+  return { ok: true, target: { ...existing, approvalStatus: input.decision } };
+}
+
 export interface RecordIntelligenceItemResult {
   item: IntelligenceItemRow;
 }

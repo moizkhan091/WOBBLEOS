@@ -9,7 +9,7 @@
  * + finally-cleanup. Run:  DATABASE_URL=... npx tsx src/scripts/verify-source-discovery-loop-db.ts
  */
 import { discoverAndProposeSources, flagStaleSources, type SourceDiscoveryProvider } from "@/lib/source-discovery";
-import { recordIntelligenceItem, createResearchTarget, listResearchTargets } from "@/lib/intelligence";
+import { recordIntelligenceItem, createResearchTarget, listResearchTargets, reviewResearchTarget } from "@/lib/intelligence";
 import { listEscalations } from "@/lib/departments/escalation";
 import { getDb } from "@/db";
 import { newId } from "@/lib/ids";
@@ -49,6 +49,12 @@ async function main() {
 
     const pending = (await listResearchTargets({ approvalStatus: "pending", limit: 200 })).filter((t) => t.clientId === clientId);
     assert(pending.some((t) => t.name === "Rival X"), "the new source is visible in the founder's PENDING approval list");
+
+    // Founder APPROVES the suggested source → it becomes approved (enters the scheduler's scout set).
+    const review = await reviewResearchTarget(r.proposed[0].id, { decision: "approved", reviewedBy: "Moiz" });
+    assert(review.ok && review.target?.approvalStatus === "approved", "founder review approves the suggested source");
+    const scoutSet = (await listResearchTargets({ approvalStatus: "approved", limit: 200 })).filter((t) => t.clientId === clientId);
+    assert(scoutSet.some((t) => t.id === r.proposed[0].id), "after approval the source enters the scout set (now scouted on its cadence)");
 
     // STALE: an approved source overdue on its daily cadence must raise exactly one deduped escalation.
     const staleId = newId("rt");

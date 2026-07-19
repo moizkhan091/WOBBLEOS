@@ -4760,14 +4760,27 @@ function SeoPage() {
 interface RadarScanUI { id: string; focus: string; status: string; signals: Array<{ title: string; category?: string; summary?: string; implication?: string; score?: number }> }
 const RADAR_STATUS_COLORS: Record<string, string> = { new: C.blue, reviewed: "#F5C542", actioned: C.lime, dismissed: C.gray };
 const RADAR_CAT_COLORS: Record<string, string> = { market: C.blue, competitor: C.orange, technology: C.lime, culture: "#B87CFF", regulation: C.gray };
+type SuggestedTargetUI = { id: string; name: string; handleOrUrl?: string | null; targetType: string; metadata?: { proposal?: { reason?: string; expectedValue?: string; confidence?: number } } };
+
 function RadarPage() {
   const state = useApi<{ scans: RadarScanUI[] }>("/api/radar?limit=100");
+  const suggested = useApi<{ targets: SuggestedTargetUI[] }>("/api/intelligence/targets?approvalStatus=pending&limit=50");
   const [focus, setFocus] = useState("");
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const scans = state.data?.scans ?? [];
+  const pendingSources = (suggested.data?.targets ?? []).filter((t) => (t.metadata?.proposal));
   function reload() { state.reload(); }
+  async function reviewSource(id: string, action: "approve" | "reject") {
+    setBusy("src_" + id); setMsg(null);
+    try {
+      const r = await fetch(`/api/intelligence/targets/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Source approved — it will be scouted on its cadence." : "Source declined."); suggested.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
   async function create() {
     if (!focus.trim()) { setMsg("Enter a focus area."); return; }
     setBusy("create"); setMsg(null);
@@ -4785,6 +4798,28 @@ function RadarPage() {
         <Kpi label="Signals" value={String(scans.reduce((s, p) => s + p.signals.length, 0))} icon="Zap" color={C.lime} />
         <Kpi label="Actioned" value={String(scans.filter((s) => s.status === "actioned").length)} icon="CheckCircle2" color={C.lime} />
       </div>
+      {pendingSources.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>🔎 Suggested sources — pending your approval ({pendingSources.length})</div>
+          <div style={{ fontSize: 11.5, color: faint, marginBottom: 12 }}>The research scout proposed these NEW sources from recent observations. Nothing is scouted until you approve it.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {pendingSources.map((t) => (
+              <div key={t.id} style={{ ...glass, padding: "12px 14px", display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t.name} <span style={{ fontSize: 11, color: faint }}>· {t.targetType.replace(/_/g, " ")}</span></div>
+                  {t.handleOrUrl ? <div style={{ fontSize: 11.5, color: C.blue, marginTop: 2 }}>{t.handleOrUrl}</div> : null}
+                  {t.metadata?.proposal?.reason ? <div style={{ fontSize: 12, color: muted, marginTop: 5, lineHeight: 1.4 }}>{t.metadata.proposal.reason}</div> : null}
+                  {t.metadata?.proposal?.expectedValue ? <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>Expected: {t.metadata.proposal.expectedValue}</div> : null}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => reviewSource(t.id, "approve")} disabled={busy === "src_" + t.id} style={busy === "src_" + t.id ? disabledBtn : { ...primaryBtn, padding: "7px 14px", fontSize: 12 }}>✓ Approve</button>
+                  <button onClick={() => reviewSource(t.id, "reject")} disabled={busy === "src_" + t.id} style={busy === "src_" + t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New radar scan</div>
         <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Name a focus — WOBBLE surfaces scored signals (market, competitor, tech, culture) with the implication for WOBBLE.</div>
