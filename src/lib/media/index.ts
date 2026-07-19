@@ -271,11 +271,21 @@ export function defaultStore(db: Db = getDb()): MediaStore {
       return await this.getById(cid);
     },
     async reclaimStale(now) {
-      const res = await db.update(mediaJobs)
-        .set({ status: "queued", leaseOwner: null, leaseExpiresAt: null, updatedAt: now })
-        .where(and(eq(mediaJobs.status, "generating"), or(isNull(mediaJobs.leaseExpiresAt), lt(mediaJobs.leaseExpiresAt, now))))
-        .returning({ id: mediaJobs.id });
-      return (res as unknown[]).length;
+      // A generating job whose lease expired was abandoned — usually a worker that CRASHED mid-generate (OOM on
+      // a large download, an unhandled rejection). Increment attempts on reclaim and DEAD-LETTER once it reaches
+      // maxAttempts, so a process-crashing "poison" job is bounded instead of looping forever (audit MED-6). A
+      // plain thrown provider error already increments attempts elsewhere; this closes the crash path.
+      const res = await db.execute(sql`
+        update media_jobs
+        set attempts = attempts + 1,
+            status = case when attempts + 1 >= max_attempts then 'failed' else 'queued' end,
+            lease_owner = null,
+            lease_expires_at = null,
+            updated_at = ${now.toISOString()}
+        where status = 'generating' and (lease_expires_at is null or lease_expires_at < ${now.toISOString()})
+        returning id`);
+      const rows = (res as unknown as { rows?: unknown[] }).rows ?? (res as unknown as unknown[]);
+      return (rows as unknown[]).length;
     },
   };
 }

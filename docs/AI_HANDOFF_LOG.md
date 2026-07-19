@@ -6696,3 +6696,17 @@ parallel subagent audits (workers, VPS deploy, data-freshness) found concrete ga
   ≥2 workers — HIGH-2), media crash-loop bound (MED-6), job-table retention prune (MED-7), claim index (MED-8),
   finance stale valueCents re-read (freshness MED), lapsed brand-memory decay (freshness MED). External: VPS
   access/secrets/domain; OpenRouter top-up.
+
+## 2026-07-19 — batch 22: worker durability round 2 (media crash-loop, job retention, claim index)
+
+Follow-on to batch 21, closing the single-instance-relevant worker MEDs:
+- media `reclaimStale` now increments `attempts` on reclaim + DEAD-LETTERS to `failed` at maxAttempts — a job
+  that CRASHES the worker mid-generate is bounded instead of reclaim-looping forever (audit MED-6). Verified via
+  the media DB proof.
+- `purgeTerminalJobs` retention sweep (jobs `completed`/`failed` + the attempt log past JOBS_RETENTION_MS, 14d
+  default) wired into daily maintenance — the hot claim table + append-only attempts no longer grow unbounded on
+  a long-lived VPS (MED-7). Live-verified: old terminal deleted, recent kept, ACTIVE never touched.
+- `jobs_claim_idx` partial index on (queue, priority DESC, created_at) WHERE status='pending' — the ~1/s claim
+  poll no longer seq-scans job history (MED-8). Migration 0062, applies clean from scratch.
+Green: typecheck + media proof + jobs/scheduler/media tests + build. STILL OPEN: general-queue lease (HIGH-2,
+≥2-worker double-run) + freshness MEDs (finance stale valueCents, lapsed brand-memory) — next batch.

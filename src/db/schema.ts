@@ -92,6 +92,10 @@ export const jobs = pgTable("jobs", {
   // Only ONE live (pending/active) job may hold a given idempotency key — closes the
   // check-then-insert race so a double-submit can't create two runs of the same work.
   uniqueIndex("jobs_idempotency_live_idx").on(table.idempotencyKey).where(sql`status in ('pending','active') and idempotency_key is not null`),
+  // Supports the hot claim query (WHERE queue=? AND status='pending' ORDER BY priority DESC, created_at ASC ...
+  // FOR UPDATE SKIP LOCKED). Partial on pending so it stays tiny + the poll never seq-scans job history as the
+  // table grows (audit MED-8).
+  index("jobs_claim_idx").on(table.queue, table.priority.desc(), table.createdAt).where(sql`status = 'pending'`),
 ]);
 
 export const jobAttempts = pgTable("job_attempts", {

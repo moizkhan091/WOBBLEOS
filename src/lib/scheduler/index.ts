@@ -17,7 +17,7 @@ import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
 import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
-import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs } from "@/lib/jobs";
+import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs, purgeTerminalJobs, JOBS_RETENTION_MS } from "@/lib/jobs";
 import { enqueueContentIntelligenceJob } from "@/lib/content-intelligence";
 import { intelligenceCadenceKey } from "@/lib/domain/content-intelligence";
 import { writeAuditEvent } from "@/lib/audit";
@@ -254,6 +254,8 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       await purgeExpiredHandoffs(new Date(now.getTime() - HANDOFF_RETENTION_MS)).catch((e) => result.errors.push(`handoff-purge: ${e?.message ?? e}`));
       // Inbound webhook delivery claims are retained for 30 days, then removed by this durable sweep.
       await purgeExpiredWebhookReplayClaims(now).catch((e) => result.errors.push(`webhook-replay-purge: ${e?.message ?? e}`));
+      // Retention sweep for TERMINAL jobs + the attempt log (unbounded growth otherwise — audit MED-7).
+      await purgeTerminalJobs(new Date(now.getTime() - JOBS_RETENTION_MS)).catch((e) => result.errors.push(`jobs-purge: ${e?.message ?? e}`));
       // Decision Learning: derive scoped policy PROPOSALS from committed Decision Room decisions. Never
       // auto-applied — every result is a `proposed` row awaiting explicit founder approval. Idempotent by
       // natural key (a direction already tracked is not re-proposed), so running daily never duplicates.

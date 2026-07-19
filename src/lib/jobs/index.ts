@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { jobAttempts, jobs } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { newId } from "@/lib/ids";
@@ -420,4 +420,27 @@ export async function reclaimStalledJobs(deps: JobDeps = {}, opts: { timeoutMs?:
   const now = deps.now ?? new Date();
   const olderThan = new Date(now.getTime() - (opts.timeoutMs ?? 5 * 60_000));
   return store.reclaimStalled(olderThan, now);
+}
+
+/** Default retention window for terminal job rows before the daily sweep removes them. Configurable. */
+export const JOBS_RETENTION_MS = (Number(process.env.JOBS_RETENTION_DAYS) > 0 ? Number(process.env.JOBS_RETENTION_DAYS) : 14) * 86_400_000;
+
+/**
+ * Retention sweep: delete TERMINAL jobs (completed/failed — never reclaimed, so never re-run) and attempt-log
+ * rows older than the cutoff. Without this the `jobs` table (which the hot claim query scans) and the append-only
+ * `job_attempts` log grow forever on a long-lived VPS, inflating storage + slowly degrading claim latency (audit
+ * MED-7). Recent history is kept for inspection. Only ever removes terminal rows — an active/pending job is never
+ * touched. Idempotent + safe to run daily.
+ */
+export async function purgeTerminalJobs(cutoff: Date, deps: { db?: Db } = {}): Promise<{ jobs: number; attempts: number }> {
+  const db = deps.db ?? getDb();
+  const removedJobs = await db
+    .delete(jobs)
+    .where(and(inArray(jobs.status, ["completed", "failed", "cancelled"]), lt(jobs.updatedAt, cutoff)))
+    .returning({ id: jobs.id });
+  const removedAttempts = await db
+    .delete(jobAttempts)
+    .where(lt(jobAttempts.createdAt, cutoff))
+    .returning({ id: jobAttempts.id });
+  return { jobs: removedJobs.length, attempts: removedAttempts.length };
 }

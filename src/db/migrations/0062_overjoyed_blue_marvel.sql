@@ -1,0 +1,1 @@
+CREATE INDEX "jobs_claim_idx" ON "jobs" USING btree ("queue","priority" DESC NULLS LAST,"created_at") WHERE status = 'pending';
