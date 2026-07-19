@@ -562,3 +562,28 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Affects: domain/reel-knowledge.ts, reel-effects.ts, reel-effects-data.ts (218 effects), reel-authoring.ts,
   reel-director.ts, reel-composition.ts (mockup primitives), reel/index.ts (author mode + director), reel-render
   (wait-for-master-timeline + pause-before-seek), prove-reel.ts, tests (authoring/director + composition/voice).
+
+## 2026-07-19 — VPS durability + freshness: fix the specific gaps, keep the sound foundation
+
+- Context: founder wants the whole OS to run + not break on the VPS, with fresh (non-stale) data between agents.
+  Objective check first: all 59 DB proofs pass on a fresh pgvector → the operational loops are real. Three
+  audits (workers / VPS / freshness) then found specific gaps against an otherwise-sound foundation (atomic
+  SKIP-LOCKED claims, idempotent enqueue, bounded retry/dead-letter, advisory-lock scheduler, durable volumes,
+  idempotent migrations, ID-not-snapshot handoffs all VERIFIED correct).
+- WHY the pg `error` handler is the highest-value fix: node-postgres emits 'error' on the Pool when the backend
+  drops an idle client (routine on managed PG). Unhandled, it crashes the WHOLE process — so one infra blip took
+  down job processing + the scheduler. A logging handler makes it a recovered no-op. Same for the leader Client.
+- WHY freshness is recomputed at READ, not fixed at ingest: a stored freshness snapshot can't decay, so an old
+  fact reads "current" forever and defeats the stale-context warning. Recompute-on-read (per-type stale windows)
+  + drop live-expired facts is the minimal correct fix; the write path is unchanged. Insights left as-is (ranked
+  by impact, not freshness-decay).
+- WHY OPENROUTER is a WARNING not a hard error: hard-failing would brick a deploy that's mid-setup; the governed
+  provider layer already blocks calls honestly ("not configured → blocked, never faked"), so a loud startup
+  warning is the right deploy signal. DATABASE_URL / SESSION_SECRET stay HARD (the app is broken/insecure without).
+- WHY deploy.sh derives WOBBLE_BUILD_ID: the readiness gate treats `unknown` as a critical version mismatch, so
+  a build without the id never becomes ready. Matches the already-correct stack-build.sh.
+- Deferred (documented, not silently dropped): the general-queue lease (HIGH-2) only bites under ≥2 workers, so
+  it's safe to ship a single-instance VPS now and add the lease before scaling out; media crash-loop bound + job
+  retention + claim index are growth/perf items for the next migration batch.
+- Affects: db/index.ts, workers/runtime.ts, scheduler/leader.ts, workers/worker.ts, workers/video-worker.ts,
+  scripts/deploy.sh, config/validate.ts, domain/intelligence.ts, tests (config-validate, intelligence).

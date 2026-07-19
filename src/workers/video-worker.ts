@@ -21,7 +21,18 @@ async function writeHeartbeat(state: string, detail: Record<string, unknown> = {
   );
 }
 
-const requestStop = () => { stopping = true; };
+// Bounded graceful shutdown (audit MED-10): if a render outlives the deadline, self-exit before the
+// container SIGKILLs mid-write. The media lease + stale-reclaim make the interrupted job re-claimable.
+const SHUTDOWN_DEADLINE_MS = Number(process.env.WORKER_SHUTDOWN_DEADLINE_MS) || 25_000;
+const requestStop = () => {
+  if (stopping) return;
+  stopping = true;
+  const t = setTimeout(() => {
+    console.error(`[worker:media] shutdown deadline (${SHUTDOWN_DEADLINE_MS}ms) exceeded — forcing exit`);
+    process.exit(0);
+  }, SHUTDOWN_DEADLINE_MS);
+  t.unref?.();
+};
 process.on("SIGINT", requestStop);
 process.on("SIGTERM", requestStop);
 

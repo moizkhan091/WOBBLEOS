@@ -165,6 +165,32 @@ describe("intelligence domain", () => {
     expect(context.gaps).toEqual(expect.arrayContaining(["social_performance", "audience_comment"]));
   });
 
+  it("recomputes freshness LIVE at read time — old facts decay (expired dropped, stale relabeled), not frozen at ingest", () => {
+    // Each reel is stamped "fresh" at its OWN ingest moment; competitor_reel decays fast (30d stale window).
+    const mkReel = (id: string, observedAt: Date) =>
+      buildIntelligenceItemRow(
+        { itemType: "competitor_reel", scope: "wobble", title: id, summary: "pattern", approvalStatus: "approved", observedAt },
+        { id, now: observedAt },
+      );
+    const expired = mkReel("reel_expired", new Date("2026-01-01T00:00:00.000Z")); // ~200d before read
+    const stale = mkReel("reel_stale", new Date("2026-06-01T00:00:00.000Z")); // ~48d before read
+    expect(expired.freshnessStatus).toBe("fresh"); // both frozen "fresh" at ingest
+    expect(stale.freshnessStatus).toBe("fresh");
+
+    const read = new Date("2026-07-19T00:00:00.000Z");
+    const ctx = selectApprovedIntelligenceForTask({
+      plan: buildIntelligenceContextPlan({ task: "social_content", scope: "wobble" }),
+      items: [expired, stale],
+      insights: [],
+      now: read,
+    });
+    // The 200-day-old fact is EXPIRED live → dropped, never injected into an agent's context as current truth.
+    expect(ctx.items.map((i) => i.id)).not.toContain("reel_expired");
+    expect(ctx.excluded).toContainEqual({ id: "reel_expired", reason: "freshness:expired" });
+    // The 48-day-old one survives but carries its LIVE status (stale), not the frozen ingest-time "fresh".
+    expect(ctx.items.find((i) => i.id === "reel_stale")?.freshnessStatus).toBe("stale");
+  });
+
   it("creates Dreamer suggestions as pending, evidence-linked, approval-gated proposals", () => {
     const suggestion = buildIntelligenceSuggestionRow(
       {

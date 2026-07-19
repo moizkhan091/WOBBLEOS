@@ -476,6 +476,25 @@ export function calculateFreshnessStatus(input: {
   return "expired";
 }
 
+/**
+ * Recompute freshness LIVE from the item's current age. `freshnessStatus` is snapshotted at INGEST and never
+ * decays in storage — so a row ingested as "current" months ago still reads "current" and would be injected
+ * into an agent's task context as a recent fact, silently defeating the stale-context warning (audit HIGH-1).
+ * Any caller presenting intelligence as CURRENT truth must use this, not the stored value. Per-type stale
+ * thresholds (brand/voice rules decay slowly; competitor/market items fast) come from staleAfterDaysForItemType.
+ */
+export function liveFreshnessStatus(
+  item: { observedAt: Date | null; collectedAt: Date; itemType: IntelligenceItemType },
+  now?: Date,
+): FreshnessStatus {
+  return calculateFreshnessStatus({
+    observedAt: item.observedAt,
+    collectedAt: item.collectedAt,
+    staleAfterDays: staleAfterDaysForItemType(item.itemType),
+    now,
+  });
+}
+
 export function buildIntelligenceItemRow(input: IntelligenceItemInput, opts: { id?: string; now?: Date } = {}): IntelligenceItemRow {
   const parsed = intelligenceItemInputSchema.parse(input);
   const now = opts.now ?? new Date();
@@ -856,19 +875,33 @@ export function selectApprovedIntelligenceForTask(input: {
   limit?: number;
 }): ApprovedIntelligenceContext {
   const limit = input.limit ?? 20;
+  const now = input.now ?? new Date();
   const excluded: Array<{ id: string; reason: string }> = [];
-  const approvedItems = input.items.filter((item) => {
-    if (item.approvalStatus !== "approved") {
-      excluded.push({ id: item.id, reason: `approvalStatus:${item.approvalStatus}` });
-      return false;
-    }
-    if (!scopeMatches(item.scope, input.plan, item.clientId)) {
-      excluded.push({ id: item.id, reason: `scope:${item.scope}` });
-      return false;
-    }
-    if (!input.plan.requiredItemTypes.includes(item.itemType)) return false;
-    return true;
-  });
+  const approvedItems = input.items
+    .filter((item) => {
+      if (item.approvalStatus !== "approved") {
+        excluded.push({ id: item.id, reason: `approvalStatus:${item.approvalStatus}` });
+        return false;
+      }
+      if (!scopeMatches(item.scope, input.plan, item.clientId)) {
+        excluded.push({ id: item.id, reason: `scope:${item.scope}` });
+        return false;
+      }
+      if (!input.plan.requiredItemTypes.includes(item.itemType)) return false;
+      return true;
+    })
+    // Recompute freshness against NOW (the stored value is frozen at ingest). Drop facts that have decayed to
+    // "expired" — never inject a months-old observation as current truth — and CARRY the live status forward so
+    // downstream context labels + the /stale warning reflect reality instead of the ingest-time snapshot.
+    .map((item) => ({ item, live: liveFreshnessStatus(item, now) }))
+    .filter(({ item, live }) => {
+      if (live === "expired") {
+        excluded.push({ id: item.id, reason: "freshness:expired" });
+        return false;
+      }
+      return true;
+    })
+    .map(({ item, live }) => (live === item.freshnessStatus ? item : { ...item, freshnessStatus: live }));
 
   const approvedInsights = input.insights.filter((insight) => {
     if (insight.approvalStatus !== "approved") return false;

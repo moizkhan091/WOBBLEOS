@@ -33,6 +33,13 @@ if [ -d .git ]; then
   git pull --ff-only
 fi
 
+# The image build stamps WOBBLE_BUILD_ID into the app + both workers; /api/health/ready's version-parity
+# check treats a missing / "unknown" build id as a CRITICAL mismatch, so WITHOUT this the OS never becomes
+# READY and this script aborts at the readiness timeout. Derive it from the checked-out commit so every
+# service builds on the same identifiable code (matches scripts/stack-build.sh).
+export WOBBLE_BUILD_ID="${WOBBLE_BUILD_ID:-$(git rev-parse HEAD 2>/dev/null || echo nogit)}"
+echo "==> build id: $WOBBLE_BUILD_ID"
+
 echo "==> validating compose config"
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null
 

@@ -24,6 +24,8 @@ export interface LockClient {
   connect(): Promise<void>;
   query(sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
   end(): Promise<void>;
+  /** pg.Client emits 'error' when its session drops; wiring it prevents an unhandled-error process crash. */
+  on?(event: string, cb: (err: unknown) => void): void;
 }
 
 export interface SchedulerLock {
@@ -54,11 +56,21 @@ export function createSchedulerLock(deps: SchedulerLockDeps = {}): SchedulerLock
     isLeader: () => leader,
 
     async tryAcquire() {
-      if (leader) return true;
       if (!connectionString) return false;
       try {
+        if (leader && client) {
+          // Already leader — RE-VALIDATE the session still holds the lock. A silently-dropped dedicated
+          // connection (idle timeout / DB restart / network blip) releases the advisory lock server-side,
+          // so a follower could acquire it while we still believe we're leader → split-brain double-firing
+          // (audit MED-5). A cheap liveness probe: if it throws, we fall through to catch + re-acquire.
+          await client.query("select 1");
+          return true;
+        }
         if (!client) {
           client = factory(connectionString);
+          // Demote on a dropped session so we stop running the tick; also prevents an unhandled 'error' on
+          // the dedicated client from crashing the process (mirrors the pool error handler).
+          client.on?.("error", () => { leader = false; });
           await client.connect();
         }
         const res = await client.query("select pg_try_advisory_lock($1) as ok", [key]);

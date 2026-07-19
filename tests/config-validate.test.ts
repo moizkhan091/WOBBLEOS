@@ -10,6 +10,7 @@ const goodWeb = {
   SHARED_LOGIN_PASSWORD_HASH: HASH,
   STORAGE_ROOT: "/app/storage",
   PUBLIC_BASE_URL: "https://os.example.com",
+  OPENROUTER_API_KEY: "sk-or-test",
 };
 
 describe("validateRuntimeConfig (WOB-AUD-017)", () => {
@@ -32,6 +33,12 @@ describe("validateRuntimeConfig (WOB-AUD-017)", () => {
     expect(r.ok).toBe(true); // soft config → warnings only
     expect(r.warnings.some((w) => w.includes("STORAGE_ROOT"))).toBe(true);
     expect(r.warnings.some((w) => w.includes("PUBLIC_BASE_URL"))).toBe(true);
+  });
+
+  it("warns (deploy signal, not a hard stop) on a missing LLM provider key in production", () => {
+    const r = validateRuntimeConfig({ ...goodWeb, OPENROUTER_API_KEY: "" }, { context: "web" });
+    expect(r.ok).toBe(true); // the app still serves; AI calls are blocked honestly at call time
+    expect(r.warnings.some((w) => w.includes("OPENROUTER_API_KEY"))).toBe(true);
   });
 
   it("does not require web auth for the worker context", () => {

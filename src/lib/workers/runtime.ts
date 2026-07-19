@@ -40,16 +40,25 @@ export async function runWorker(opts: RunWorkerOptions): Promise<RunWorkerResult
   await heartbeat("online");
 
   while (!opts.shouldStop()) {
-    const result = await run(opts.queue, opts.registry);
-    if (result.processed) {
-      processedCount += 1;
-      await heartbeat("online", result.jobId);
-    } else {
-      idleCycles += 1;
-      // Periodically rescue jobs stranded by a crashed worker (cheap no-op UPDATE when none).
-      if (idleCycles % reclaimEvery === 0) await reclaim().catch(() => 0);
-      await heartbeat("online");
-      await sleep(idleDelayMs);
+    try {
+      const result = await run(opts.queue, opts.registry);
+      if (result.processed) {
+        processedCount += 1;
+        await heartbeat("online", result.jobId);
+      } else {
+        idleCycles += 1;
+        // Periodically rescue jobs stranded by a crashed worker (cheap no-op UPDATE when none).
+        if (idleCycles % reclaimEvery === 0) await reclaim().catch(() => 0);
+        await heartbeat("online");
+        await sleep(idleDelayMs);
+      }
+    } catch (err) {
+      // A transient error in claim / kill-switch load / complete must NOT terminate the loop and exit the
+      // process (audit HIGH-3). Log, write an error heartbeat, back off, and keep polling — the in-flight
+      // job stays active/reclaimable for a retry rather than the whole worker dying on one blip.
+      console.error("[worker] poll iteration failed (continuing):", err instanceof Error ? err.message : err);
+      await heartbeat("error").catch(() => undefined);
+      await sleep(idleDelayMs).catch(() => undefined);
     }
   }
 

@@ -17,9 +17,19 @@ import { closeDb } from "@/db";
 const WORKER_NAME = "general";
 const WORKER_TYPE = "general";
 
+// Bounded graceful-shutdown window: finish the current job if it returns promptly, but if a handler hangs
+// past the deadline, force-exit ourselves BEFORE the container's SIGKILL lands mid-write (audit MED-10). The
+// stale-claim reclaim makes an interrupted job re-claimable, so a clean self-exit beats a SIGKILL.
+const SHUTDOWN_DEADLINE_MS = Number(process.env.WORKER_SHUTDOWN_DEADLINE_MS) || 25_000;
 let stopping = false;
 const requestStop = () => {
+  if (stopping) return;
   stopping = true;
+  const t = setTimeout(() => {
+    console.error(`[worker] shutdown deadline (${SHUTDOWN_DEADLINE_MS}ms) exceeded — forcing exit`);
+    process.exit(0);
+  }, SHUTDOWN_DEADLINE_MS);
+  t.unref?.();
 };
 process.on("SIGINT", requestStop);
 process.on("SIGTERM", requestStop);

@@ -6665,3 +6665,34 @@ reel, drawing on the FULL effect vocabulary — never a fixed template.
 - Green: typecheck + full suite (1332 tests, +25 reel: authoring/director/composition/voice) + build.
 - NEXT: keep growing the library (the HeyGen hyperframes-launches repos — clone timed out tonight; the 30 real
   reels already give 218); SFX layer + dual organic/paid exports; wire an animator model-picker in settings.
+
+## 2026-07-19 — batch 21: VPS durability + data-freshness hardening (audit-driven, proven)
+
+Founder goal: make the whole AI OS actually run + not break on the VPS; data fresh (not stale) between agents.
+Ran the full DB-proof gate on a fresh migrated+seeded pgvector (CI-faithful): **all 59 DB proofs PASS** — every
+operational loop (departments, handoffs, QA gate, autonomy, optimizer, intel-propagation, content-publishing,
+escalation-reroute, selective-revision, source lifecycle, backup-restore) works end-to-end on a real DB. Then 3
+parallel subagent audits (workers, VPS deploy, data-freshness) found concrete gaps; fixed the HIGHs + key MEDs:
+
+- **Worker crash-prevention (won't die on a routine infra blip):** `db/index.ts` — a `pool.on('error')` handler
+  (an idle-client drop from a managed-PG idle timeout / DB restart / network blip no longer CRASHES the process)
+  + connect/statement timeouts + pool sizing (no more silent hang). `workers/runtime.ts` — each poll iteration
+  wrapped in try/catch (one transient DB error can't exit the worker). `scheduler/leader.ts` — re-validate the
+  advisory lock each tick + `client.on('error')` demote (kills split-brain double-firing). `worker.ts` +
+  `video-worker.ts` — bounded SIGTERM shutdown deadline (self-exit before a redeploy SIGKILL lands mid-write).
+- **VPS deploy:** `scripts/deploy.sh` now derives+exports `WOBBLE_BUILD_ID` from the commit (without it images
+  stamped `unknown` → version-parity check fails → readiness 503 forever → deploy aborted — a real blocker).
+  `config/validate.ts` warns loudly on a missing `OPENROUTER_API_KEY` in prod (AI features come up inert
+  otherwise — a deploy signal, not a hard stop; the governed-provider layer already blocks calls honestly).
+- **Data freshness (the founder's key concern):** `domain/intelligence.ts` — `freshnessStatus` was snapshotted at
+  INGEST and never decayed, so a fact ingested "current" months ago was injected into agent context as a recent
+  fact. `liveFreshnessStatus` recomputes against NOW (per-type stale windows); `selectApprovedIntelligenceForTask`
+  now DROPS live-expired facts (never present stale as truth) + carries the live status downstream so the /stale
+  warning fires correctly. Test proves a 200-day competitor fact stored "fresh" is dropped; a 48-day one is
+  relabeled "stale". Verified FRESH (audit): the handoff passes IDs not snapshots (receivers re-load), scheduler/
+  registry/context/knowledge/provider re-read per call, listApprovedSourcesForJobs re-read each run.
+- Green: 59 DB proofs + 1334 tests (+2) + typecheck + build.
+- STILL OPEN (next batch, migration-heavy): general `jobs` queue lease/compare-and-set (double-run only under
+  ≥2 workers — HIGH-2), media crash-loop bound (MED-6), job-table retention prune (MED-7), claim index (MED-8),
+  finance stale valueCents re-read (freshness MED), lapsed brand-memory decay (freshness MED). External: VPS
+  access/secrets/domain; OpenRouter top-up.

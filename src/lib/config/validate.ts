@@ -49,6 +49,12 @@ export function validateRuntimeConfig(
   if (production && (!env.PUBLIC_BASE_URL || !env.PUBLIC_BASE_URL.trim())) {
     warnings.push("PUBLIC_BASE_URL is not set — external media publishing + outbound webhook callbacks are inert until it is configured.");
   }
+  // The LLM provider key powers EVERY AI feature (ask, content graph, reels, embeddings, audits). Without it
+  // the app comes up green but the core product is inert — the governed-provider layer blocks each call
+  // honestly (never fakes), so this is a loud warning (deploy signal), not a hard stop (audit VPS MED-2).
+  if (production && (!env.OPENROUTER_API_KEY || !env.OPENROUTER_API_KEY.trim())) {
+    warnings.push("OPENROUTER_API_KEY is not set — every AI feature is BLOCKED at call time until it is configured. The app serves, but the core product is inert.");
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }
