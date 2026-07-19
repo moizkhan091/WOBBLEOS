@@ -6619,3 +6619,13 @@ word per line, grain+vignette, seek-driven GSAP timeline on `window.__timelines[
 - NB: writer LLM narration needs OpenRouter credit (402 blocker) — the route accepts `narration` verbatim so
   reels render TODAY with a supplied script; auto-writes once credit is topped up. ElevenLabs voice + render are
   NOT blocked. NEXT: music bed + SFX layer, UI-mockup scene types (Kanban/chips), two exports (organic/paid CTA).
+
+## 2026-07-19 — batch 19b: reel music bed (ducked under the VO, configurable path)
+
+Reference reels layer a music bed under the VO; added it. `renderReelToFile` gains `musicPath`+`musicVolume`:
+when present, the final ffmpeg mux becomes a filter_complex — VO at full (amix normalize=0 so it isn't halved) +
+music at ~0.12 linear (-18dB) with a 1.2s tail fade, `duration=first` so trailing music never overruns the VO.
+produceReel defaults `musicPath` to `REEL_MUSIC_BED` env (documented in .env.example) so deploys enable it with
+no code change; unset = VO-only (unchanged). NOT bundling licensed audio in git — the founder's Phase-9 beds
+(sprints/*/assets/music/bed.mp3, ~32s) or any mp3 can be pointed at via the env. PROVEN: 60-frame render with a
+real bed → mean -13.7dB / max -1.0dB (broadcast loudnorm target hit), valid h264+aac. typecheck + reel tests green.

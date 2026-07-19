@@ -31,6 +31,10 @@ export interface RenderReelInput {
   maxFrames?: number;
   /** intermediate frame codec. jpeg (default) encodes ~4x faster than png and is visually identical after H.264. */
   frameFormat?: "png" | "jpeg";
+  /** optional music bed (absolute path) mixed UNDER the VO (ducked) with a tail fade-out. */
+  musicPath?: string;
+  /** music level as a linear gain under the VO (default 0.12 ≈ -18dB — present but never fights the voice). */
+  musicVolume?: number;
 }
 
 export interface RenderReelOutput {
@@ -95,12 +99,23 @@ export async function renderReelToFile(input: RenderReelInput): Promise<RenderRe
 
     const dir = path.join(storageRoot, "media");
     await fs.mkdir(dir, { recursive: true });
-    const name = `reel-${createHash("sha256").update(input.html + input.audioPath).digest("hex").slice(0, 20)}.mp4`;
+    const name = `reel-${createHash("sha256").update(input.html + input.audioPath + (input.musicPath ?? "")).digest("hex").slice(0, 20)}.mp4`;
     const outputPath = input.outputPath ?? path.join(dir, name);
     // final: mux VO, apply the voice speed-up to video (setpts) + audio (atempo), loudnorm to broadcast target.
-    const af = speedUp === 1 ? "loudnorm=I=-14:TP=-1:LRA=11" : `atempo=${speedUp},loudnorm=I=-14:TP=-1:LRA=11`;
+    const finalDur = input.durationSec / speedUp;
+    const voChain = speedUp === 1 ? "loudnorm=I=-14:TP=-1:LRA=11" : `atempo=${speedUp},loudnorm=I=-14:TP=-1:LRA=11`;
     const vf = speedUp === 1 ? "setpts=PTS" : `setpts=PTS/${speedUp}`;
-    await run(FFMPEG, ["-y", "-i", silent, "-i", input.audioPath, "-filter:v", vf, "-filter:a", af, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-shortest", outputPath]);
+    const music = input.musicPath && (await fs.stat(input.musicPath).catch(() => null)) ? input.musicPath : null;
+    if (music) {
+      // Duck a music bed UNDER the VO: VO at full (normalize=0 keeps it from being halved), music quiet + tail
+      // fade; amix duration=first ends the mix with the VO so trailing music never overruns.
+      const vol = input.musicVolume ?? 0.12;
+      const fadeSt = Math.max(0, finalDur - 1.2).toFixed(2);
+      const filter = `[0:v]${vf}[v];[1:a]${voChain}[vo];[2:a]volume=${vol},afade=t=out:st=${fadeSt}:d=1.2[mus];[vo][mus]amix=inputs=2:duration=first:normalize=0[a]`;
+      await run(FFMPEG, ["-y", "-i", silent, "-i", input.audioPath, "-i", music, "-filter_complex", filter, "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-shortest", outputPath]);
+    } else {
+      await run(FFMPEG, ["-y", "-i", silent, "-i", input.audioPath, "-filter:v", vf, "-filter:a", voChain, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-shortest", outputPath]);
+    }
 
     const mediaRef = outputPath.startsWith(dir) ? `media/${path.basename(outputPath)}` : undefined;
     return { outputPath, mediaRef, frames: totalFrames, fps, finalDurationSec: input.durationSec / speedUp, speedUp };

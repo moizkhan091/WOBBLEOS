@@ -70,6 +70,8 @@ export interface ProduceReelInput {
   maxFrames?: number;
   /** intermediate frame codec (jpeg default — faster; identical after H.264). */
   frameFormat?: "png" | "jpeg";
+  /** optional music bed (absolute path) ducked under the VO. Defaults to REEL_MUSIC_BED env if set. */
+  musicPath?: string;
   scenePlanner?: (words: WordTiming[], durationSec: number) => ReelScene[];
 }
 
@@ -128,7 +130,7 @@ export async function produceReel(input: ProduceReelInput, deps: ReelDeps = {}):
   try {
     const scenes = (input.scenePlanner ?? planScenesFromWords)(words, durationSec);
     const html = buildReelComposition({ title: input.topic ?? "WOBBLE reel", scenes, audioSrc: "voiceover.mp3", durationSec });
-    const rendered = await renderReelToFile({ html, audioPath, durationSec, speedUp: voice.speedUp, storageRoot, maxFrames: input.maxFrames, frameFormat: input.frameFormat });
+    const rendered = await renderReelToFile({ html, audioPath, durationSec, speedUp: voice.speedUp, storageRoot, maxFrames: input.maxFrames, frameFormat: input.frameFormat, musicPath: input.musicPath ?? process.env.REEL_MUSIC_BED });
     return { ...rendered, voiceKey: voice.key, words: words.length, scenes: scenes.length, narration, captionsSrt: wordsToSrt(words, voice.speedUp) };
   } finally {
     await fs.rm(audioDir, { recursive: true, force: true }).catch(() => {});
