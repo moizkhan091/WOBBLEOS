@@ -77,8 +77,15 @@ export async function renderReelToFile(input: RenderReelInput): Promise<RenderRe
   try {
     const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
     await page.goto(`file://${htmlPath.replace(/\\/g, "/")}`, { waitUntil: "networkidle" });
-    // fonts + GSAP timeline must be ready before we seek/capture, else frames render unstyled.
-    await page.waitForFunction(() => (window as unknown as { __hfReady?: boolean }).__hfReady === true, { timeout: 15000 });
+    // The seek-driven master timeline must exist before we capture (covers BOTH our generated compositions,
+    // which also set __hfReady, and freely-authored / real-reel compositions, which only publish the timeline).
+    await page.waitForFunction(
+      () => {
+        const w = window as unknown as { __hfReady?: boolean; __timelines?: Record<string, unknown> };
+        return w.__hfReady === true || Boolean(w.__timelines && w.__timelines.master);
+      },
+      { timeout: 20000 },
+    );
     await page.evaluate(() => (document as unknown as { fonts: { ready: Promise<unknown> } }).fonts.ready);
 
     const fmt = input.frameFormat ?? "jpeg";
@@ -87,7 +94,8 @@ export async function renderReelToFile(input: RenderReelInput): Promise<RenderRe
     for (let f = 0; f < totalFrames; f++) {
       const t = f / fps;
       await page.evaluate((time) => {
-        const tl = (window as unknown as { __timelines: Record<string, { seek: (n: number) => void }> }).__timelines.master;
+        const tl = (window as unknown as { __timelines: Record<string, { seek: (n: number) => void; pause?: () => void }> }).__timelines.master;
+        tl.pause?.(); // force-pause so a freely-authored timeline can't advance in wall-clock between seek + screenshot
         tl.seek(time);
       }, t);
       const buf = fmt === "png" ? await page.screenshot({ type: "png" }) : await page.screenshot({ type: "jpeg", quality: 92 });

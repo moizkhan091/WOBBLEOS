@@ -2,10 +2,14 @@ import type { WordTiming } from "@/lib/domain/reel-voice";
 
 /**
  * Reel composition (HyperFrames) — the pure HTML generator. Turns a scene plan + per-word VO timings into a
- * seek-driven HyperFrames composition matching the WOBBLE reel system (kinetic typography, the 3-colour
+ * seek-driven HyperFrames composition matching the WOBBLE reel system: kinetic typography (the 3-colour
  * narrative — near-black problem → cream explain → electric-blue fix/CTA — bold headlines with ONE accent word
- * per line, grain + vignette). Each `.w[data-t]` word reveals on its spoken beat; a paused GSAP timeline on
- * window.__timelines["master"] drives it deterministically for the renderer.
+ * per line) PLUS animated UI mockups (a CRM lead pipeline with HOT/STUCK chips, metric tiles that count up, an
+ * SMS thread, a booking toast) exactly like the reference reels. These mockups are a VOCABULARY — the reel
+ * director (LLM) decides which one fits a topic and fills it with topic-specific content, so they're never a
+ * reused template. Every `.w[data-t]` word and every mockup element reveals on its beat; a paused GSAP timeline
+ * on window.__timelines["master"] drives it deterministically for the renderer (each frame = the timeline seeked
+ * to an exact time).
  */
 
 export type ReelBg = "dark" | "light" | "blue" | "signoff";
@@ -22,11 +26,41 @@ export interface ReelLineSpec {
   serif?: boolean;
   kicker?: boolean; // mono uppercase label
 }
+
+// ── UI mockups (the animated cards from the reference reels — Group C, "our viral weapon") ──────────────
+export type ReelChip = "hot" | "stuck" | "late" | "new" | "won" | "ok";
+export interface ReelKanbanCard {
+  name: string;
+  meta?: string; // e.g. "Roofing · 2d ago"
+  chip?: ReelChip; // status pill
+}
+export interface ReelKanbanColumn {
+  title: string; // "NEW" | "HOT" | "STALLED"
+  cards: ReelKanbanCard[];
+}
+export interface ReelMetricTile {
+  value: string; // "64%" | "$0.03" | "90s"
+  label: string; // "fewer no-shows"
+  countTo?: number; // if set, the number counts up to this (value is the formatted target)
+  accent?: ReelAccent;
+}
+export interface ReelChatBubble {
+  from: "them" | "us";
+  text: string;
+}
+export type ReelMockup =
+  | { kind: "kanban"; columns: ReelKanbanColumn[] }
+  | { kind: "metrics"; tiles: ReelMetricTile[] }
+  | { kind: "chat"; header?: string; bubbles: ReelChatBubble[] }
+  | { kind: "notification"; title: string; body?: string };
+
 export interface ReelScene {
   bg: ReelBg;
   in: number;
   out: number;
   lines: ReelLineSpec[];
+  /** optional animated UI mockup rendered above the lines (staggers in at the scene's `in`). */
+  mockup?: ReelMockup;
 }
 
 export interface ReelCompositionInput {
@@ -48,9 +82,40 @@ function lineHtml(line: ReelLineSpec): string {
   return `<div class="${cls}">${inner}</div>`;
 }
 
+const CHIP_LABEL: Record<ReelChip, string> = { hot: "HOT", stuck: "STUCK", late: "LATE", new: "NEW", won: "WON", ok: "OK" };
+
+function mockupHtml(m: ReelMockup): string {
+  if (m.kind === "kanban") {
+    const cols = m.columns
+      .map(
+        (col) => `<div class="kcol"><div class="kcolh">${esc(col.title)}</div>${col.cards
+          .map((c) => `<div class="kcard mock-el"><div class="kname">${esc(c.name)}</div>${c.meta ? `<div class="kmeta">${esc(c.meta)}</div>` : ""}${c.chip ? `<span class="chip ${c.chip} mock-chip">${CHIP_LABEL[c.chip]}</span>` : ""}</div>`)
+          .join("")}</div>`,
+      )
+      .join("");
+    return `<div class="mock kanban">${cols}</div>`;
+  }
+  if (m.kind === "metrics") {
+    const tiles = m.tiles
+      .map(
+        (t) => `<div class="tile mock-el"><div class="tval ${t.accent ?? "lime"}"${t.countTo != null ? ` data-count="${t.countTo}" data-fmt="${esc(t.value)}"` : ""}>${esc(t.value)}</div><div class="tlab">${esc(t.label)}</div></div>`,
+      )
+      .join("");
+    return `<div class="mock metrics">${tiles}</div>`;
+  }
+  if (m.kind === "chat") {
+    const head = m.header ? `<div class="chath">${esc(m.header)}</div>` : "";
+    const bubbles = m.bubbles.map((b) => `<div class="bub ${b.from} mock-el">${esc(b.text)}</div>`).join("");
+    return `<div class="mock chat">${head}<div class="thread">${bubbles}</div></div>`;
+  }
+  // notification toast
+  return `<div class="mock"><div class="toast mock-el"><div class="tdot"></div><div><div class="ttitle">${esc(m.title)}</div>${m.body ? `<div class="tbody">${esc(m.body)}</div>` : ""}</div><div class="tcheck">✓</div></div></div>`;
+}
+
 function sceneHtml(s: ReelScene): string {
   const bgClass = s.bg === "light" ? "lightbg" : s.bg === "blue" ? "bluebg" : s.bg === "signoff" ? "signoff" : "dark";
-  return `<section class="scene ${bgClass}" data-in="${s.in.toFixed(2)}" data-out="${s.out.toFixed(2)}">\n    ${s.lines.map(lineHtml).join("\n    ")}\n  </section>`;
+  const mock = s.mockup ? mockupHtml(s.mockup) + "\n    " : "";
+  return `<section class="scene ${bgClass}" data-in="${s.in.toFixed(2)}" data-out="${s.out.toFixed(2)}">\n    ${mock}${s.lines.map(lineHtml).join("\n    ")}\n  </section>`;
 }
 
 /** Build the full HyperFrames reel HTML (self-contained except Google Fonts + GSAP CDN, which the renderer loads). */
@@ -59,11 +124,11 @@ export function buildReelComposition(input: ReelCompositionInput): string {
   const dur = input.durationSec.toFixed(2);
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8" />
 <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800;900&family=Instrument+Serif:ital@0;1&family=Space+Mono:wght@400;700&display=block" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&family=Instrument+Serif:ital@0;1&family=Space+Mono:wght@400;700&display=block" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <title>${esc(input.title ?? "WOBBLE reel")}</title>
 <style>
-  :root{ --ink:#0A0A0A; --blue:#2563FF; --orange:#FF6B00; --lime:#B8FF2C; --light:#EAF2FF; --paper:#FFF7ED; --off:#EAF2FF; --dim:#59636f; }
+  :root{ --ink:#0A0A0A; --blue:#2563FF; --orange:#FF6B00; --lime:#B8FF2C; --light:#EAF2FF; --paper:#FFF7ED; --off:#EAF2FF; --dim:#59636f; --red:#FF3B3B; --amber:#FFB020; --green:#22C55E; }
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{width:1080px;height:1920px;background:var(--ink);overflow:hidden;}
   #comp{position:relative;width:1080px;height:1920px;background:var(--ink);overflow:hidden;}
@@ -85,6 +150,32 @@ export function buildReelComposition(input: ReelCompositionInput): string {
   .serif{font-family:"Instrument Serif",serif;font-weight:400;font-style:italic;font-size:104px;line-height:1.06;color:var(--off);}
   .mark{position:absolute;left:60px;bottom:56px;z-index:42;font-family:"Inter",sans-serif;font-weight:900;font-size:44px;color:var(--off);opacity:.9;}
   .mark b{color:var(--blue);}
+  /* ── UI mockups ── */
+  .mock{width:100%;font-family:"Inter",sans-serif;}
+  .kanban{display:flex;gap:22px;justify-content:center;}
+  .kcol{flex:1;max-width:300px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:22px;padding:18px 16px;display:flex;flex-direction:column;gap:14px;}
+  .kcolh{font-family:"Space Mono",monospace;font-size:22px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;text-align:left;}
+  .kcard{position:relative;background:#15181d;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:18px 16px;text-align:left;box-shadow:0 10px 30px rgba(0,0,0,.35);will-change:transform,opacity;}
+  .kname{font-size:30px;font-weight:700;color:#fff;}
+  .kmeta{font-size:20px;color:var(--dim);margin-top:6px;}
+  .chip{display:inline-block;margin-top:14px;font-size:20px;font-weight:800;letter-spacing:.08em;padding:6px 14px;border-radius:999px;will-change:transform;}
+  .chip.hot{background:rgba(34,197,94,.16);color:var(--green);} .chip.won{background:rgba(34,197,94,.16);color:var(--green);} .chip.ok{background:rgba(37,99,255,.16);color:#7aa2ff;}
+  .chip.stuck{background:rgba(255,59,59,.16);color:var(--red);} .chip.late{background:rgba(255,176,32,.16);color:var(--amber);} .chip.new{background:rgba(255,255,255,.08);color:#cfd6df;}
+  .metrics{display:flex;gap:26px;justify-content:center;}
+  .tile{flex:1;max-width:320px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:26px;padding:44px 28px;will-change:transform,opacity;}
+  .tval{font-size:132px;font-weight:900;line-height:.9;letter-spacing:-.03em;}
+  .tlab{font-size:30px;color:#aeb6c2;margin-top:16px;font-weight:600;}
+  .scene.bluebg .tile{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);}
+  .chat{max-width:640px;margin:0 auto;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:34px;padding:26px;}
+  .chath{font-size:24px;color:var(--dim);text-align:left;margin-bottom:18px;font-weight:700;}
+  .thread{display:flex;flex-direction:column;gap:16px;}
+  .bub{max-width:78%;padding:22px 26px;border-radius:26px;font-size:32px;line-height:1.3;will-change:transform,opacity;}
+  .bub.them{align-self:flex-start;background:#1c2026;color:#eef2f7;border-bottom-left-radius:8px;}
+  .bub.us{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:8px;}
+  .toast{display:flex;align-items:center;gap:22px;max-width:640px;margin:0 auto;background:#15181d;border:1px solid rgba(255,255,255,0.1);border-radius:26px;padding:30px 34px;box-shadow:0 20px 60px rgba(0,0,0,.45);will-change:transform,opacity;}
+  .tdot{width:16px;height:16px;border-radius:50%;background:var(--green);box-shadow:0 0 0 6px rgba(34,197,94,.18);}
+  .ttitle{font-size:34px;font-weight:800;color:#fff;text-align:left;} .tbody{font-size:26px;color:#aeb6c2;text-align:left;margin-top:4px;}
+  .tcheck{margin-left:auto;font-size:40px;color:var(--green);font-weight:900;}
 </style></head>
 <body>
 <div id="comp" data-composition-id="master" data-width="1080" data-height="1920" data-start="0" data-duration="${dur}">
@@ -100,6 +191,13 @@ export function buildReelComposition(input: ReelCompositionInput): string {
     const inT=parseFloat(sc.dataset.in), outT=parseFloat(sc.dataset.out);
     tl.set(sc,{autoAlpha:1},inT);
     tl.fromTo(sc,{scale:1.03,filter:'blur(6px)'},{scale:1,filter:'blur(0px)',duration:0.26,ease:'power2.out'},inT);
+    // mockup elements stagger IN just after the scene appears (deterministic, seek-driven).
+    sc.querySelectorAll('.mock-el').forEach((el,i)=>{ tl.fromTo(el,{opacity:0,y:46,scale:0.96},{opacity:1,y:0,scale:1,duration:0.34,ease:'back.out(1.5)'},inT+0.14+i*0.10); });
+    sc.querySelectorAll('.mock-chip').forEach((el,i)=>{ tl.fromTo(el,{scale:0},{scale:1,duration:0.3,ease:'back.out(2.2)'},inT+0.4+i*0.10); });
+    sc.querySelectorAll('.tval[data-count]').forEach((el)=>{
+      const to=parseFloat(el.dataset.count)||0, fmt=el.dataset.fmt||''; const prefix=(fmt.match(/^[^0-9]*/)||[''])[0]; const suffix=(fmt.match(/[^0-9.,]*$/)||[''])[0];
+      const o={v:0}; tl.to(o,{v:to,duration:0.9,ease:'power2.out',onUpdate:()=>{ el.textContent=prefix+Math.round(o.v)+suffix; }},inT+0.2);
+    });
     tl.set(sc,{autoAlpha:0},outT);
   });
   document.querySelectorAll('.w[data-t]').forEach(w=>{
@@ -119,8 +217,8 @@ const PROBLEM_HINTS = /(lose|losing|lost|dead|graveyard|miss|missed|stall|forget
 const FIX_HINTS = /(fix|ai|automat|system|instant|second|book|audit|now|own|build)/i;
 
 /** Split VO word timings into a sensible scene plan: group into short lines, colour the narrative (problem =
- *  dark, mid = cream, fix/CTA = blue), and accent pain words red + fix/brand words blue. A pragmatic default
- *  the LLM scene-planner can later override. */
+ *  dark, mid = cream, fix/CTA = blue), and accent pain words orange + fix/brand words blue. The DETERMINISTIC
+ *  fallback the LLM director overrides (the director also attaches topic-specific mockups). */
 export function planScenesFromWords(words: WordTiming[], durationSec: number): ReelScene[] {
   if (!words.length) return [{ bg: "dark", in: 0, out: durationSec, lines: [] }];
   // group words into lines of ~3-5 words, breaking on sentence-ending punctuation.

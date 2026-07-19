@@ -5,6 +5,10 @@ import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { elevenLabsVoiceoverWithTimestamps, type ElevenLabsDeps } from "@/lib/elevenlabs";
 import { resolveReelVoice, reelNarrationGuidance, stripExpressionTags, alignmentToWords, type ReelVoice, type WordTiming } from "@/lib/domain/reel-voice";
 import { buildReelComposition, planScenesFromWords, type ReelScene } from "@/lib/domain/reel-composition";
+import { buildReelDirectorPrompt, parseDirectedPlan, mapDirectedScenes } from "@/lib/domain/reel-director";
+import { reelWriterKnowledge } from "@/lib/domain/reel-knowledge";
+import { buildAnimatorPrompt, extractComposition, validateComposition } from "@/lib/domain/reel-authoring";
+import { reelEffectCatalog } from "@/lib/domain/reel-effects";
 import { renderReelToFile, type RenderReelOutput } from "@/lib/reel-render";
 
 /**
@@ -18,6 +22,8 @@ import { renderReelToFile, type RenderReelOutput } from "@/lib/reel-render";
  */
 
 export const REEL_WRITER_AGENT = "reel_writer";
+export const REEL_DIRECTOR_AGENT = "reel_director";
+export const REEL_ANIMATOR_AGENT = "reel_animator";
 export const REEL_MODULE = "content";
 
 export type ReelTextProvider = (input: { role: string; module: string; model?: string; messages: ProviderChatMessage[]; maxTokens?: number; temperature?: number }) => Promise<{ text: string }>;
@@ -42,10 +48,12 @@ export async function generateReelNarration(input: GenerateReelNarrationInput, d
   const run = deps.runProvider ?? runTextProvider;
   const targetWords = Math.round((input.targetSeconds ?? 24) * 2.6); // ~2.6 spoken words/sec
   const system = [
-    "You write short-form vertical video (Reels/Shorts) narration for WOBBLE — an AI systems agency for local service businesses.",
-    "WOBBLE voice: blunt, concrete, mechanism-first, no hype, no emojis, no hashtags. Talk to a busy owner who is losing money to a broken process.",
-    "STRUCTURE (spoken, ~"+targetWords+" words total): 1) a hard hook that names the exact pain in the first 3 seconds, 2) agitate — make the leak vivid with a number or a scene, 3) the turn: 'Here's the fix.' 4) the mechanism in plain words (what the AI system actually does), 5) a calm close + a soft CTA (book a free AI audit).",
-    "Write ONLY the words to be spoken — no scene directions, no labels, no markdown. Short sentences. Each sentence is its own beat.",
+    reelWriterKnowledge(),
+    "# YOUR TASK",
+    "You are the WOBBLE REEL WRITER. Write the spoken narration for ONE short-form vertical reel, applying the craft above.",
+    "WOBBLE voice: blunt, concrete, mechanism-first, no hype, no emojis, no hashtags. Talk to a busy owner losing money to a broken process.",
+    `Target ~${targetWords} spoken words. Follow the 4-beat spine: hook (name the exact pain in the first 3 seconds) → value/proof (make the leak vivid with a number or a scene, drip real specifics) → the turn ('here's the fix', the mechanism in plain words) → a calm close + the soft CTA (book a free AI audit).`,
+    "Write ONLY the words to be spoken — no scene directions, no labels, no markdown, no headings. Short sentences; each is its own beat; keep the sentence-end edge jagged.",
     reelNarrationGuidance(voice),
   ].join("\n");
   const user = `Topic: ${input.topic}${input.angle ? `\nAngle: ${input.angle}` : ""}\nWrite the narration now.`;
@@ -64,6 +72,8 @@ export interface ProduceReelInput {
   voiceKey?: string;
   /** the named ledger/acceptance item this reel advances (required for the governed VO spend). */
   item: string;
+  /** optional model override for the writer + director LLM calls. */
+  model?: string;
   targetSeconds?: number;
   storageRoot?: string;
   /** cap frames for a fast proof render. */
@@ -73,14 +83,69 @@ export interface ProduceReelInput {
   /** optional music bed (absolute path) ducked under the VO. Defaults to REEL_MUSIC_BED env if set. */
   musicPath?: string;
   scenePlanner?: (words: WordTiming[], durationSec: number) => ReelScene[];
+  /** author mode: the animator LLM writes the whole composition from the effect library. Default true when a
+   *  topic is known + no scenePlanner override. Set false to force the template path. */
+  author?: boolean;
 }
 
 export interface ProduceReelOutput extends RenderReelOutput {
   voiceKey: string;
   words: number;
   scenes: number;
+  mockups: number;
+  directed: boolean;
+  /** true when the animator LLM authored the whole composition (full effect library); false = template path. */
+  authored: boolean;
   narration: string;
   captionsSrt: string;
+}
+
+/**
+ * REEL ANIMATOR — the animator LLM AUTHORS the entire HyperFrames composition (HTML+CSS+GSAP) for this reel from
+ * the full effect library, the way the real WOBBLE reels are hand-made. The result is validated for the contract
+ * + seek-safety + brand before we trust it; on any failure (no credit, bad HTML, unsafe motion) it returns null
+ * and the caller falls back to the template path. THIS is what lifts the reel out of "a few hardcoded effects".
+ */
+export async function authorReelComposition(
+  input: { topic: string; angle?: string; narration: string; words: WordTiming[]; durationSec: number; audioSrc: string; model?: string },
+  deps: ReelDeps = {},
+): Promise<{ html: string; issues: string[] } | null> {
+  try {
+    const run = deps.runProvider ?? runTextProvider;
+    const { system, user } = buildAnimatorPrompt({ ...input, catalog: reelEffectCatalog() });
+    const { text } = await run({ role: REEL_ANIMATOR_AGENT, module: REEL_MODULE, model: input.model, temperature: 0.7, maxTokens: 9000, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
+    const html = extractComposition(text);
+    if (!html) return null;
+    const v = validateComposition(html);
+    return { html, issues: v.issues }; // caller renders only when issues is empty; otherwise logs + falls back.
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask the REEL DIRECTOR LLM for a per-topic scene plan (backgrounds, accent words, and topic-specific mockups),
+ * then map it onto the REAL word timings so everything lands on the beat. This is what makes each reel bespoke
+ * to its topic instead of a reused template. Any failure (no LLM credit, bad JSON, empty plan) falls back to the
+ * deterministic kinetic-typography planner — the reel always renders.
+ */
+export async function directReelScenes(
+  input: { topic: string; angle?: string; narration: string; words: WordTiming[]; durationSec: number; model?: string },
+  deps: ReelDeps = {},
+): Promise<{ scenes: ReelScene[]; directed: boolean }> {
+  try {
+    const run = deps.runProvider ?? runTextProvider;
+    const { system, user } = buildReelDirectorPrompt({ topic: input.topic, angle: input.angle, narration: input.narration, words: input.words });
+    const { text } = await run({ role: REEL_DIRECTOR_AGENT, module: REEL_MODULE, model: input.model, temperature: 0.6, maxTokens: 2200, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
+    const plan = parseDirectedPlan(text);
+    if (plan) {
+      const scenes = mapDirectedScenes(plan, input.words, input.durationSec);
+      if (scenes.length) return { scenes, directed: true };
+    }
+  } catch {
+    // fall through to the deterministic planner — a reel is better than an error.
+  }
+  return { scenes: planScenesFromWords(input.words, input.durationSec), directed: false };
 }
 
 /** SRT captions from tag-stripped word timings (one cue per ~7 words), scaled to the post-render speed-up. */
@@ -128,10 +193,44 @@ export async function produceReel(input: ProduceReelInput, deps: ReelDeps = {}):
   await fs.writeFile(audioPath, vo.audio);
 
   try {
-    const scenes = (input.scenePlanner ?? planScenesFromWords)(words, durationSec);
-    const html = buildReelComposition({ title: input.topic ?? "WOBBLE reel", scenes, audioSrc: "voiceover.mp3", durationSec });
+    let html = "";
+    let authored = false;
+    let scenes: ReelScene[] = [];
+    let directed = false;
+
+    // 1) AUTHOR MODE (default when a topic is known + no scenePlanner override): the animator LLM writes the
+    //    whole composition from the full effect library. Rendered only if it passes the seek-safety validator.
+    const wantAuthor = input.author ?? (Boolean(input.topic) && !input.scenePlanner);
+    if (wantAuthor && input.topic) {
+      const authoredResult = await authorReelComposition(
+        { topic: input.topic, angle: input.angle, narration: stripExpressionTags(narration), words, durationSec, audioSrc: "voiceover.mp3", model: input.model },
+        deps,
+      );
+      if (authoredResult && authoredResult.issues.length === 0) {
+        html = authoredResult.html;
+        authored = true;
+      }
+    }
+
+    // 2) TEMPLATE FALLBACK: the director designs a per-topic scene plan (or the deterministic planner), rendered
+    //    through our built-in composition. Guarantees a reel even when authoring is unavailable/unsafe.
+    if (!authored) {
+      if (input.scenePlanner) {
+        scenes = input.scenePlanner(words, durationSec);
+      } else if (input.topic) {
+        const r = await directReelScenes({ topic: input.topic, angle: input.angle, narration: stripExpressionTags(narration), words, durationSec, model: input.model }, deps);
+        scenes = r.scenes;
+        directed = r.directed;
+      } else {
+        scenes = planScenesFromWords(words, durationSec);
+      }
+      html = buildReelComposition({ title: input.topic ?? "WOBBLE reel", scenes, audioSrc: "voiceover.mp3", durationSec });
+    }
+
+    const mockups = scenes.filter((s) => s.mockup).length;
+    const sceneCount = authored ? (html.match(/class="[^"]*\bscene\b/g)?.length ?? 0) : scenes.length;
     const rendered = await renderReelToFile({ html, audioPath, durationSec, speedUp: voice.speedUp, storageRoot, maxFrames: input.maxFrames, frameFormat: input.frameFormat, musicPath: input.musicPath ?? process.env.REEL_MUSIC_BED });
-    return { ...rendered, voiceKey: voice.key, words: words.length, scenes: scenes.length, narration, captionsSrt: wordsToSrt(words, voice.speedUp) };
+    return { ...rendered, voiceKey: voice.key, words: words.length, scenes: sceneCount, mockups, directed, authored, narration, captionsSrt: wordsToSrt(words, voice.speedUp) };
   } finally {
     await fs.rm(audioDir, { recursive: true, force: true }).catch(() => {});
   }

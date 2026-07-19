@@ -6629,3 +6629,39 @@ produceReel defaults `musicPath` to `REEL_MUSIC_BED` env (documented in .env.exa
 no code change; unset = VO-only (unchanged). NOT bundling licensed audio in git — the founder's Phase-9 beds
 (sprints/*/assets/music/bed.mp3, ~32s) or any mp3 can be pointed at via the env. PROVEN: 60-frame render with a
 real bed → mean -13.7dB / max -1.0dB (broadcast loudnorm target hit), valid h264+aac. typecheck + reel tests green.
+
+## 2026-07-19 — batch 20: REEL STUDIO — the AI team AUTHORS compositions from a 250-effect library (not a template)
+
+FOUNDER CORRECTION (twice): the reel pipeline was hardcoded to a few effects (4 mockups + basic kinetic type) —
+every reel would rhyme. The real WOBBLE reels (30 of them in PHASE-9-VIDEO-REELS/sprints) are BESPOKE
+hand-authored HyperFrames compositions (each a unique index.html: CRM lists that wake alive, step-circles, SMS
+threads, money count-ups, flash/pulse, 15 SFX). Rebuilt so an AI ANIMATOR authors the whole composition per
+reel, drawing on the FULL effect vocabulary — never a fixed template.
+
+- Effect library: 3 subagents cataloged EVERY distinct effect from all 30 real reels → 218 seek-safe techniques
+  (deduped) compiled to `domain/reel-effects-data.ts`; `domain/reel-effects.ts` merges them with a hand-curated
+  CORE set (full CSS+GSAP recipes) → 250 total. `reelEffectCatalog()` renders core-recipes + the full grouped
+  vocabulary (~9.5k tokens) so the animator KNOWS all of it.
+- `domain/reel-knowledge.ts`: the compiled Phase-9 craft doctrine (4-beat spine, 3-sec-hook law, rehook cadence,
+  format library F1–F6/16 archetypes, style lanes, conversion triggers, VO delivery) — the writer + director +
+  animator prompts pull the slice they need.
+- `domain/reel-authoring.ts`: the HyperFrames CONTRACT + hard SEEK-SAFETY rules + a compact correct exemplar +
+  `buildAnimatorPrompt` + `extractComposition` + `validateComposition` (the safety gate: rejects setTimeout/rAF/
+  CSS-keyframes/Math.random/Date.now, missing/unpaused master timeline, missing GSAP CDN, purple — so LLM HTML is
+  only rendered if deterministic + on-brand + on-contract).
+- `domain/reel-director.ts` (kept as the fallback path): LLM designs a per-topic scene plan (bg/accents/topic-
+  specific mockups) mapped onto real word beats; `domain/reel-composition.ts` gained the mockup primitives
+  (kanban/metrics/chat/notification) the director fills.
+- `reel/index.ts`: `authorReelComposition` (LLM authors → validate) + produceReel AUTHOR MODE (default when a topic
+  is known) → renders the authored HTML; falls back to director→template on any failure. `reel-render` now waits
+  for `window.__timelines.master` (renders ANY contract-following composition, incl. real reels) + force-pauses
+  before each seek.
+- PROVEN LIVE on a CHEAP model (gpt-4o-mini, ~$0.002–0.005/reel via OpenRouter — key has ~30¢, works): the WRITER
+  drafts on-craft narration (Leak-Math format, the $500×20%=$5k math, audit CTA); the ANIMATOR authors a VALID,
+  seek-safe, on-brand composition (CRM mockup + money count-up + 11 scenes, per-word beats, wobble. mark) that
+  renders to a real 1080x1920 reel. Quality scales with the model — good on the cheap model now, excellent when
+  the founder tops up to a strong one (Sonnet/Opus). reel_writer/director/animator roles fall back to the cheap
+  `default` model; point them at a stronger model in settings after top-up.
+- Green: typecheck + full suite (1332 tests, +25 reel: authoring/director/composition/voice) + build.
+- NEXT: keep growing the library (the HeyGen hyperframes-launches repos — clone timed out tonight; the 30 real
+  reels already give 218); SFX layer + dual organic/paid exports; wire an animator model-picker in settings.

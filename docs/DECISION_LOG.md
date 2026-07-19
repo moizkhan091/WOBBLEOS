@@ -534,3 +534,31 @@ Log founder conversations too (not just code). If a founder states intent in cha
   [expression tags] (stripped even if the model slips one in); commit rendered MP4s (storage/ is gitignored).
 - Affects: domain/reel-composition.ts, reel-render/index.ts, reel/index.ts, api/content/topics/[id]/reel/route.ts,
   components/os/os-ui.tsx (TopicBankPage voice selector + Reel button), tests/reel-composition.test.ts, prove-reel.ts.
+
+## 2026-07-19 — Reels: the AI AUTHORS compositions from a big effect library (not a fixed template)
+
+- Context: a template with a few hardcoded effects makes every reel rhyme, no matter how smart the director LLM
+  is — the founder flagged this twice. The real WOBBLE reels are bespoke hand-authored HyperFrames HTML (30 of
+  them). Decision: an AI ANIMATOR authors the whole composition per reel from the FULL effect vocabulary, the way
+  a motion designer would — the template becomes only the safe fallback.
+- WHY this is safe to render LLM HTML: our renderer already seeks a paused GSAP master timeline + screenshots, so
+  it renders ANY contract-following composition. The risk is non-determinism (a frame that depends on wall-clock)
+  — mitigated by `validateComposition`, a hard gate that rejects setTimeout/setInterval/rAF/CSS-@keyframes/
+  Math.random/Date.now, a missing/unpaused master timeline, a missing GSAP CDN, and purple; the renderer also
+  force-pauses before each seek. Anything unsafe → fall back to the director→template path (a reel always ships).
+- WHY a 250-effect library (not hand-coding effects): breadth comes from (a) the LLM authoring freely + (b) a
+  catalog it KNOWS. 3 subagents extracted 218 seek-safe techniques from all 30 real reels (deduped) → compiled
+  data module; merged with curated CORE recipes (full CSS+GSAP) = 250. The animator sees core-recipes (author
+  verbatim) + the full grouped vocabulary (compose/riff). Grow it by cataloging more reels / the HeyGen repos.
+- WHY the writer/director/animator are three roles: separation of concerns — writer = script craft, director =
+  scene plan for the template fallback, animator = full composition. All fall back to the cheap `default` model
+  (founder directive: cheap until top-up); authoring quality scales with the model, so point the animator role
+  at a strong model post-top-up. Costs ~$0.002–0.005/reel on gpt-4o-mini.
+- WHY narration/VO stay decoupled + the safety net: the animator needs the real word timings (beats) to author to,
+  so VO runs first; if authoring is unavailable the director→template still renders a good reel.
+- Do NOT: render LLM HTML without validateComposition; let the animator use CSS @keyframes/timers (breaks seek);
+  bake a fixed set of effects as the only vocabulary; commit rendered MP4s (storage/ gitignored) or the raw
+  per-reel catalog JSON (scratchpad only — the compiled data module is the committed artifact).
+- Affects: domain/reel-knowledge.ts, reel-effects.ts, reel-effects-data.ts (218 effects), reel-authoring.ts,
+  reel-director.ts, reel-composition.ts (mockup primitives), reel/index.ts (author mode + director), reel-render
+  (wait-for-master-timeline + pause-before-seek), prove-reel.ts, tests (authoring/director + composition/voice).
