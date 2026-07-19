@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildProposalRow, canTransitionProposal, proposalInputFromAudit, type ProposalRow } from "@/lib/domain/proposal";
-import { createProposalFromAudit, proposalAction, type ProposalStore } from "@/lib/proposals";
+import { createProposalFromAudit, proposalAction, sweepExpiredProposals, PROPOSAL_EXPIRY_MS, type ProposalStore } from "@/lib/proposals";
 import type { HandoffEnvelope } from "@/lib/domain/handoff";
 
 const now = new Date("2026-07-09T12:00:00Z");
@@ -66,6 +66,27 @@ describe("proposal service", () => {
     expect(prop?.title).toContain("Acme");
     expect(prop?.pricingCents).toBe(600000);
     expect(prop?.auditId).toBe("audit_1");
+  });
+
+  it("sweepExpiredProposals expires a sent proposal past its window, leaves a fresh one alone", async () => {
+    const { store, rows } = makeStore();
+    const mk = async (id: string) => {
+      const p = await createProposalFromAudit("audit_1", { createdBy: "Moiz" }, {
+        store, now, recordAudit: async () => {},
+        getAuditRow: async () => ({ id: "audit_1", businessName: id, companyId: "co_1", opportunityId: "opp_1", report: { opportunities: [{ title: "X" }], roi: { estimatedImplementationCents: 100000 } } }),
+      });
+      return p!.id;
+    };
+    const stale = await mk("Stale"); const fresh = await mk("Fresh");
+    // Both sent; `stale` was sent long ago, `fresh` just now.
+    rows.set(stale, { ...rows.get(stale)!, status: "sent", sentAt: new Date(now.getTime() - PROPOSAL_EXPIRY_MS - 86_400_000) });
+    rows.set(fresh, { ...rows.get(fresh)!, status: "sent", sentAt: now });
+
+    const res = await sweepExpiredProposals({ store, now, recordAudit: async () => {} });
+    expect(res.expired).toBe(1);
+    expect(rows.get(stale)?.status).toBe("expired");
+    expect(rows.get(fresh)?.status).toBe("sent"); // still within the window
+    expect((await sweepExpiredProposals({ store, now, recordAudit: async () => {} })).expired).toBe(0); // idempotent
   });
 
   it("accepting an opportunity-linked proposal atomically emits a Sales/CRM outbox handoff (exactly-once)", async () => {

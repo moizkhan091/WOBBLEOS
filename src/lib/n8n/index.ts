@@ -446,6 +446,24 @@ export async function receiveN8nCallback(
     entityId: event.id,
     metadata: { idempotencyKey: input.idempotencyKey, eventType: event.eventType },
   });
+
+  // EXECUTION RETURN-LEG: apply the reported effect so the callback actually ADVANCES business state instead of
+  // only logging. Contract: the payload carries { entityType, entityId, status(, publisherRef) }. Handled today:
+  // a scheduled post reported published/posted → mark it published (idempotent; markPostPublished no-ops if it
+  // isn't in a publishable state). Unknown shapes are a safe no-op. Best-effort — never fails the accepted callback.
+  const payload = event.payload as { entityType?: unknown; entityId?: unknown; status?: unknown; publisherRef?: unknown };
+  if (payload.entityType === "scheduled_post" && typeof payload.entityId === "string" && (payload.status === "published" || payload.status === "posted")) {
+    try {
+      const { markPostPublished } = await import("@/lib/library");
+      const applied = await markPostPublished(payload.entityId, { publisherRef: typeof payload.publisherRef === "string" ? payload.publisherRef : undefined, actor: "n8n" });
+      if (applied) {
+        await recordAudit({ eventType: "n8n_callback.effect_applied", module: N8N_HANDOFF_MODULE, entityType: "scheduled_post", entityId: payload.entityId, metadata: { effect: "post_published", via: "n8n_callback" } });
+      }
+    } catch (error) {
+      await recordAudit({ eventType: "n8n_callback.effect_failed", module: N8N_HANDOFF_MODULE, entityType: "scheduled_post", entityId: payload.entityId, metadata: { error: error instanceof Error ? error.message : String(error) } }).catch(() => {});
+    }
+  }
+
   return { status: "accepted", event };
 }
 

@@ -183,6 +183,34 @@ export async function getProposal(id: string, deps: ProposalDeps = {}): Promise<
   return (deps.store ?? defaultStore()).getProposal(id);
 }
 
+/** Default proposal validity window before the cadence sweep expires an un-actioned sent proposal. Configurable. */
+export const PROPOSAL_EXPIRY_MS = (Number(process.env.PROPOSAL_EXPIRY_DAYS) > 0 ? Number(process.env.PROPOSAL_EXPIRY_DAYS) : 30) * 86_400_000;
+
+/**
+ * Cadence sweep: expire sent/viewed proposals the client never actioned within the validity window (default 30d
+ * from sentAt). Transitions to `expired` (validated by canTransitionProposal) + audits — so a stale proposal
+ * reflects reality (and stops counting as open pipeline) instead of sitting `sent` forever. Idempotent.
+ */
+export async function sweepExpiredProposals(deps: ProposalDeps = {}): Promise<{ expired: number }> {
+  const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
+  const cutoff = now.getTime() - PROPOSAL_EXPIRY_MS;
+  const candidates = (await store.listProposals({ limit: 500 })).filter(
+    (p) => ["sent", "viewed"].includes(p.status) && p.sentAt != null && p.sentAt.getTime() < cutoff && canTransitionProposal(p.status, "expired"),
+  );
+  let expired = 0;
+  for (const p of candidates) {
+    try {
+      await store.updateProposal(p.id, { status: "expired", updatedAt: now });
+      await audit(deps, { eventType: "proposal.expired", module: PROPOSAL_MODULE, entityType: "proposal", entityId: p.id, actor: "scheduler", metadata: { title: p.title, sentAt: p.sentAt } });
+      expired += 1;
+    } catch {
+      /* one bad row never blocks the sweep */
+    }
+  }
+  return { expired };
+}
+
 /**
  * PROPOSAL-SEND PREPARATION (Earned-Autonomy action point). Preparing a proposal to send is REVERSIBLE — it
  * assembles a durable `proposal_send` communication (the send package) from an APPROVED proposal, WITHOUT sending

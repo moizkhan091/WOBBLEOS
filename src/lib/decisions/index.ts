@@ -18,7 +18,28 @@ export interface DecisionDeps {
   store?: DecisionStore;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number }) => Promise<{ text: string; run: { id: string } }>;
+  /** Learned decision-policy guidance for the category (read-back of approved policies into scoring). */
+  loadPolicyGuidance?: (category?: string) => Promise<string>;
   now?: Date;
+}
+
+// The READ-BACK of decision learning: fold FOUNDER-APPROVED (active) decision policies into the scorer's prompt
+// so past-committed directions actually influence new decisions of the same category — otherwise activating a
+// policy does nothing. Safe fallback: "" with no DB / no active policies.
+async function defaultLoadPolicyGuidance(category?: string): Promise<string> {
+  if (!process.env.DATABASE_URL) return "";
+  try {
+    const { listDecisionPolicies } = await import("@/lib/decision-learning");
+    const policies = await listDecisionPolicies(category ? { category } : {});
+    const relevant = policies.filter((p) => p.status === "active");
+    if (!relevant.length) return "";
+    return (
+      "LEARNED DECISION POLICIES (founder-approved standing preferences from past committed decisions — weight them, but the specifics of THIS decision still win where they genuinely conflict):\n" +
+      relevant.slice(0, 12).map((p) => `- ${p.statement}`).join("\n")
+    );
+  } catch {
+    return "";
+  }
 }
 async function audit(deps: DecisionDeps, input: AuditEventInput): Promise<void> {
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
@@ -83,8 +104,10 @@ export async function scoreDecisionOptions(id: string, input: { actor?: string }
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const now = deps.now ?? new Date();
 
+  const policyGuidance = await (deps.loadPolicyGuidance ?? defaultLoadPolicyGuidance)(d.category);
   const messages: ProviderChatMessage[] = [
     { role: "system", content: "You are WOBBLE's decision analyst. Score each option 0-100 for how well it serves the stated goal, weighing pros/cons, risk, and speed-to-value. Reply ONLY with a JSON array like [{\"id\":\"opt_x\",\"score\":78,\"rationale\":\"one crisp line\"}]. No prose." },
+    ...(policyGuidance ? [{ role: "system" as const, content: policyGuidance }] : []),
     { role: "user", content: `Decision: ${d.title}\nContext: ${d.context ?? "(none)"}\n\nOptions:\n${d.options.map((o) => `- id=${o.id} | ${o.label}${o.rationale ? ` — ${o.rationale}` : ""}${o.pros?.length ? ` | pros: ${o.pros.join(", ")}` : ""}${o.cons?.length ? ` | cons: ${o.cons.join(", ")}` : ""}`).join("\n")}` },
   ];
   const { text, run } = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages, maxTokens: 900 });

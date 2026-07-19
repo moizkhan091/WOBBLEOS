@@ -19,6 +19,16 @@ async function writeHeartbeat(state: string, detail: Record<string, unknown> = {
     heartbeatPath,
     JSON.stringify({ state, at: new Date().toISOString(), workerId, buildId: getBuildId(), ...detail }, null, 2),
   );
+  // Also write the worker_heartbeats DB row so the media worker appears on /api/workers alongside the general
+  // worker (the file heartbeat only feeds /api/health/video-worker). Best-effort — never breaks the cycle.
+  if (process.env.DATABASE_URL) {
+    try {
+      const { writeHeartbeat: writeDbHeartbeat } = await import("@/lib/workers/heartbeat");
+      await writeDbHeartbeat({ workerName: "media", workerType: "video", status: state.startsWith("error") ? "error" : state });
+    } catch (error) {
+      console.error("[worker:media] DB heartbeat failed:", error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 // Bounded graceful shutdown (audit MED-10): if a render outlives the deadline, self-exit before the

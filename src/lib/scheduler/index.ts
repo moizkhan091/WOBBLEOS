@@ -20,6 +20,7 @@ import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs, purgeTerminalJobs, JOBS_RETENTION_MS } from "@/lib/jobs";
 import { discoverAndProposeSources, flagStaleSources } from "@/lib/source-discovery";
 import { sweepOverdueInvoices } from "@/lib/finance";
+import { sweepExpiredProposals } from "@/lib/proposals";
 import { enqueueContentIntelligenceJob } from "@/lib/content-intelligence";
 import { intelligenceCadenceKey } from "@/lib/domain/content-intelligence";
 import { writeAuditEvent } from "@/lib/audit";
@@ -88,6 +89,8 @@ export interface SchedulerResult {
   staleSourcesFlagged?: number;
   optimizerRolledBack?: number;
   invoicesMarkedOverdue?: number;
+  proposalsExpired?: number;
+  webstatsSnapshotted?: boolean;
   errors: string[];
 }
 
@@ -265,6 +268,8 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // Finance lifecycle: flip past-due open invoices to `overdue` so the status matches reality (not just the
       // dashboard's derived figure) + it surfaces in the daily brief's finance signals.
       await sweepOverdueInvoices({ now }).then((r) => { result.invoicesMarkedOverdue = r.marked; }).catch((e) => result.errors.push(`invoice-overdue: ${e?.message ?? e}`));
+      // Proposal lifecycle: expire sent proposals the client never actioned within the validity window.
+      await sweepExpiredProposals({ now }).then((r) => { result.proposalsExpired = r.expired; }).catch((e) => result.errors.push(`proposal-expiry: ${e?.message ?? e}`));
       // Decision Learning: derive scoped policy PROPOSALS from committed Decision Room decisions. Never
       // auto-applied — every result is a `proposed` row awaiting explicit founder approval. Idempotent by
       // natural key (a direction already tracked is not re-proposed), so running daily never duplicates.
@@ -287,6 +292,9 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       if (process.env.DATABASE_URL) {
         await discoverAndProposeSources({ scope: "wobble" }).then((r) => { result.sourcesProposed = r.proposed.length; }).catch((e) => result.errors.push(`source-discovery: ${e?.message ?? e}`));
         await flagStaleSources({ now }).then((r) => { result.staleSourcesFlagged = r.flagged; }).catch((e) => result.errors.push(`stale-sources: ${e?.message ?? e}`));
+        // Website-analytics SNAPSHOT → intelligence (website_traffic) so first-party traffic feeds the brain +
+        // trend history + the daily brief (no-op when Plausible unconfigured/empty — never fabricated).
+        await (await import("@/lib/analytics/plausible")).snapshotWebstats("30d").then((r) => { result.webstatsSnapshotted = r.recorded; }).catch((e) => result.errors.push(`webstats-snapshot: ${e?.message ?? e}`));
       }
       // Controlled Dream / Optimizer (Phase 8): ONCE/day, run a cycle that OBSERVES real signals (QA, revisions,
       // dead letters, provider cost) and PROPOSES evidence-backed opportunities. It never approves/activates/

@@ -4348,14 +4348,27 @@ function ProjectsPage() {
 interface DecisionRowUI { id: string; title: string; status: string; category: string; confidence: number; options: Array<{ id: string; label: string; score?: number; rationale?: string }>; decidedOptionId: string | null; decisionRationale: string | null; reasoningTrail: Array<{ at: string; note: string; by?: string }> }
 const DECISION_STATUS_COLORS: Record<string, string> = { open: C.blue, scoring: "#F5C542", decided: C.lime, revisit: C.orange, archived: C.gray };
 
+type DecisionPolicyUI = { id: string; statement: string; direction?: string; scope?: string; category?: string; confidence?: number };
+
 function DecisionRoomPage() {
   const state = useApi<{ decisions: DecisionRowUI[] }>("/api/decisions?limit=200");
+  const policies = useApi<{ policies: DecisionPolicyUI[] }>("/api/decision-policies?status=proposed&limit=50");
   const [f, setF] = useState({ title: "", context: "", options: "" });
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const decisions = state.data?.decisions ?? [];
+  const proposedPolicies = policies.data?.policies ?? [];
   function reload() { state.reload(); }
+  async function reviewPolicy(id: string, action: "approve" | "reject") {
+    setBusy("pol_" + id); setMsg(null);
+    try {
+      const r = await fetch(`/api/decision-policies/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Policy activated — it now guides future decisions of this type." : "Policy declined."); policies.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } finally { setBusy(null); }
+  }
   async function create() {
     if (!f.title.trim()) { setMsg("A decision needs a title."); return; }
     setBusy("create"); setMsg(null);
@@ -4390,8 +4403,32 @@ function DecisionRoomPage() {
         <textarea value={f.context} onChange={(e) => setF((s) => ({ ...s, context: e.target.value }))} placeholder="Context / the goal this serves…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
         <textarea value={f.options} onChange={(e) => setF((s) => ({ ...s, options: e.target.value }))} placeholder="Options — one per line" rows={3} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
         <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Open decision"}</button>
-        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{msg}</div> : null}
       </Panel>
+      {proposedPolicies.length ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>🧠 Learned decision policies — pending your approval ({proposedPolicies.length})</div>
+          <div style={{ fontSize: 11.5, color: faint, marginBottom: 12 }}>Derived from your past committed decisions. Approve one and it becomes a standing preference the decision scorer applies to future decisions of the same type.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {proposedPolicies.map((p) => (
+              <div key={p.id} style={{ ...glass, padding: "12px 14px", display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.statement}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                    {p.category ? <Tag text={p.category} color={C.blue} /> : null}
+                    {p.scope ? <Tag text={p.scope} color={C.gray} /> : null}
+                    {typeof p.confidence === "number" ? <Tag text={`${Math.round(p.confidence * 100)}% conf`} color={C.lime} /> : null}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => reviewPolicy(p.id, "approve")} disabled={busy === "pol_" + p.id} style={busy === "pol_" + p.id ? disabledBtn : { ...primaryBtn, padding: "7px 14px", fontSize: 12 }}>✓ Approve</button>
+                  <button onClick={() => reviewPolicy(p.id, "reject")} disabled={busy === "pol_" + p.id} style={busy === "pol_" + p.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
       {decisions.length === 0 ? <StateBlock kind="empty" message="No decisions yet. Open one above, add options, then let WOBBLE score them." /> : decisions.map((d) => {
         const decided = d.options.find((o) => o.id === d.decidedOptionId);
         return (

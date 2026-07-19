@@ -117,3 +117,33 @@ export async function getWebstats(period = "30d", deps: Deps = {}): Promise<Webs
     return { configured: true, error: error instanceof Error ? error.message : "unknown error" };
   }
 }
+
+/**
+ * Persist a website-analytics SNAPSHOT into intelligence (website_traffic) so first-party traffic reality feeds
+ * the brain + a trend history + the daily brief — not just the live display. Cadence-driven (daily maintenance).
+ * No-op when Plausible is unconfigured / errored / empty (never fabricates a number). approvalStatus 'approved' —
+ * it is factual first-party analytics, not a claim needing human review.
+ */
+export async function snapshotWebstats(period = "30d"): Promise<{ recorded: boolean }> {
+  const stats = await getWebstats(period);
+  if (!stats.configured || stats.error || !stats.aggregate) return { recorded: false };
+  const a = stats.aggregate;
+  if (a.visitors == null && a.pageviews == null) return { recorded: false }; // no data — don't record an empty snapshot
+  const top = (stats.topPages ?? []).slice(0, 3).map((p) => p.page).filter(Boolean).join(", ");
+  try {
+    const { recordIntelligenceItem } = await import("@/lib/intelligence");
+    await recordIntelligenceItem({
+      itemType: "website_traffic",
+      scope: "wobble",
+      title: `Website traffic — ${a.visitors ?? 0} visitors, ${a.pageviews ?? 0} pageviews (${stats.period})`,
+      summary: `Plausible ${stats.period}: ${a.visitors ?? 0} visitors, ${a.pageviews ?? 0} pageviews, bounce ${a.bounceRate ?? "?"}%, avg visit ${a.visitDuration ?? "?"}s.${top ? ` Top pages: ${top}.` : ""}`,
+      approvalStatus: "approved",
+      observedAt: new Date(),
+      metrics: { visitors: a.visitors, pageviews: a.pageviews, bounceRate: a.bounceRate, visitDuration: a.visitDuration },
+      createdByAgent: "webstats_snapshot",
+    });
+    return { recorded: true };
+  } catch {
+    return { recorded: false };
+  }
+}
