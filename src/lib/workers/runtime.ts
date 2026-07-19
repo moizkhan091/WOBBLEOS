@@ -15,6 +15,8 @@ export interface RunWorkerOptions {
   registry: JobHandlerRegistry;
   shouldStop: () => boolean;
   idleDelayMs?: number;
+  /** Unique lease-owner token for this worker process — enables the multi-worker execution lease on each claim. */
+  leaseOwner?: string;
   process?: (queue: string, registry: JobHandlerRegistry) => Promise<ProcessResult>;
   heartbeat?: (status: string, currentJobId?: string) => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
@@ -28,7 +30,7 @@ export interface RunWorkerResult {
 }
 
 export async function runWorker(opts: RunWorkerOptions): Promise<RunWorkerResult> {
-  const run = opts.process ?? ((queue, registry) => processNextJob(queue, registry));
+  const run = opts.process ?? ((queue, registry) => processNextJob(queue, registry, opts.leaseOwner ? { leaseOwner: opts.leaseOwner } : {}));
   const heartbeat = opts.heartbeat ?? (async () => undefined);
   const sleep = opts.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const idleDelayMs = opts.idleDelayMs ?? 1000;

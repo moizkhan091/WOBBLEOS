@@ -97,6 +97,8 @@ async function main(): Promise<void> {
     registry: generalRegistry,
     shouldStop: () => stopping,
     heartbeat,
+    // Unique per-process lease owner → the general queue's execution lease (no double-run under ≥2 workers).
+    leaseOwner: `general-${process.pid}-${Math.floor(process.uptime() * 1000)}`,
   });
 
   clearInterval(scheduleTimer);

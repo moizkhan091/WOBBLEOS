@@ -56,6 +56,7 @@
     "verify:media": "tsx src/scripts/verify-media-db.ts",
     "verify:backup-restore": "tsx src/scripts/verify-backup-restore-db.ts",
     "verify:workflow-retry": "tsx src/scripts/verify-workflow-retry-autonomy-db.ts",
+    "verify:worker-lease": "tsx src/scripts/verify-worker-lease-db.ts",
     "verify:selective-revision": "tsx src/scripts/verify-selective-revision-db.ts",
     "verify:decision-learning": "tsx src/scripts/verify-decision-learning-db.ts",
     "verify:aios-value": "tsx src/scripts/verify-aios-value-db.ts",

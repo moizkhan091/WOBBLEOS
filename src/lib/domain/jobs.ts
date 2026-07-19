@@ -46,6 +46,8 @@ export interface JobRow {
   maxAttempts: number;
   runAfter: Date | null;
   lockedAt: Date | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: Date | null;
   completedAt: Date | null;
   failedAt: Date | null;
   failureReason: string | null;
@@ -72,6 +74,8 @@ export function buildJobRow(input: EnqueueJobInput, opts: { id?: string; now?: D
     maxAttempts: parsed.maxAttempts,
     runAfter: parsed.runAfter ?? null,
     lockedAt: null,
+    leaseOwner: null,
+    leaseExpiresAt: null,
     completedAt: null,
     failedAt: null,
     failureReason: null,

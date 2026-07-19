@@ -58,13 +58,15 @@ export interface JobStore {
    * exhaust maxAttempts and permanently FAIL queued work. Filtering here leaves the job untouched and
    * `pending`, so it runs normally the moment the switch is released (WOB-UAT-024 enforcement).
    */
-  claimNext(queue: string, now: Date, blockedTypes?: string[]): Promise<JobRow | null>;
-  complete(id: string, result: Record<string, unknown>, now: Date): Promise<void>;
-  requeue(id: string, runAfter: Date | null, now: Date, reason: string): Promise<void>;
-  markFailed(id: string, now: Date, reason: string): Promise<void>;
+  claimNext(queue: string, now: Date, blockedTypes?: string[], lease?: { owner: string; expiresAt: Date }): Promise<JobRow | null>;
+  complete(id: string, result: Record<string, unknown>, now: Date, leaseOwner?: string): Promise<void>;
+  requeue(id: string, runAfter: Date | null, now: Date, reason: string, leaseOwner?: string): Promise<void>;
+  markFailed(id: string, now: Date, reason: string, leaseOwner?: string): Promise<void>;
   recordAttempt(attempt: JobAttemptRow): Promise<void>;
-  /** Reset jobs stuck in 'active' (worker crashed mid-run) back to 'pending', or 'failed' if out of attempts. Returns count. */
+  /** Reset jobs whose LEASE expired (worker crashed) back to 'pending' (or 'failed' if out of attempts). Returns count. */
   reclaimStalled(olderThan: Date, now: Date): Promise<number>;
+  /** Extend an owned active job's lease; returns whether this owner still holds it (optional — for long jobs). */
+  renewLease?(id: string, owner: string, expiresAt: Date): Promise<boolean>;
 }
 
 export type JobHandler = (job: JobRow) => Promise<Record<string, unknown> | void>;
@@ -76,7 +78,15 @@ export interface JobDeps {
   now?: Date;
   /** Kill-switch enforcement (WOB-UAT-024). Injectable so tests can engage a switch without a database. */
   enforcement?: EnforcementDeps;
+  /** Unique owner token for the multi-worker execution lease. When set, this job claim is leased + renewed +
+   *  compare-and-set on completion. Absent (tests / single-run) → the prior no-lease behaviour. */
+  leaseOwner?: string;
+  /** Lease duration (ms). The job is renewed at half this cadence while its handler runs. Default 120s. */
+  leaseMs?: number;
 }
+
+/** Default execution-lease window for a general job (renewed at half-cadence while the handler runs). */
+export const JOB_LEASE_MS = Number(process.env.JOB_LEASE_MS) > 0 ? Number(process.env.JOB_LEASE_MS) : 120_000;
 
 
 /**
@@ -216,15 +226,30 @@ export async function processNextJob(
   // Kill-switch enforcement (WOB-UAT-024): killed types are excluded from the claim, so a contained job
   // is never picked up, never burns an attempt, and resumes untouched when the switch is released.
   const switches = await loadEngagedSwitches(deps.enforcement);
-  const job = await store.claimNext(queue, now, blockedJobTypes(switches));
+  const leaseOwner = deps.leaseOwner;
+  const leaseMs = deps.leaseMs ?? JOB_LEASE_MS;
+  const lease = leaseOwner ? { owner: leaseOwner, expiresAt: new Date(now.getTime() + leaseMs) } : undefined;
+  const job = await store.claimNext(queue, now, blockedJobTypes(switches), lease);
   if (!job) return { processed: false };
+
+  // Keep this worker's lease fresh while its handler runs, so reclaimStalled never re-hands a live long job to
+  // another worker (the double-execution guard). Stops as soon as the handler returns. Best-effort renewal.
+  let renewTimer: ReturnType<typeof setInterval> | undefined;
+  if (leaseOwner && store.renewLease) {
+    renewTimer = setInterval(() => {
+      store.renewLease!(job.id, leaseOwner, new Date(Date.now() + leaseMs)).catch(() => {});
+    }, Math.max(5_000, Math.floor(leaseMs / 2)));
+    renewTimer.unref?.();
+  }
+  const stopRenew = () => { if (renewTimer) clearInterval(renewTimer); };
 
   // Defence in depth: a switch engaged in the instant between the claim query and here. Requeue with a
   // real backoff rather than run it. This DOES cost the job one attempt, which is the honest tradeoff for
   // a race this narrow — the alternative is executing work a founder has explicitly contained.
   const raced = blockedJobType(switches, job.type);
   if (raced) {
-    await store.requeue(job.id, new Date(now.getTime() + 60_000), now, `deferred: ${raced.targetType}:${raced.targetRef} kill switch — ${raced.reason}`);
+    stopRenew();
+    await store.requeue(job.id, new Date(now.getTime() + 60_000), now, `deferred: ${raced.targetType}:${raced.targetRef} kill switch — ${raced.reason}`, leaseOwner);
     await recordAudit({
       eventType: "job.deferred_by_kill_switch",
       module: "jobs",
@@ -237,12 +262,14 @@ export async function processNextJob(
 
   const handler = registry[job.type];
   if (!handler) {
-    return failJob(job, `no handler registered for job type '${job.type}'`, { store, recordAudit, now });
+    stopRenew();
+    return failJob(job, `no handler registered for job type '${job.type}'`, { store, recordAudit, now, leaseOwner });
   }
 
   try {
     const result = (await handler(job)) ?? {};
-    await store.complete(job.id, result, now);
+    stopRenew();
+    await store.complete(job.id, result, now, leaseOwner);
     await store.recordAttempt(buildAttempt(job, "completed", now));
     await recordAudit({
       eventType: "job.completed",
@@ -253,20 +280,21 @@ export async function processNextJob(
     });
     return { processed: true, jobId: job.id, outcome: "completed" };
   } catch (err) {
-    return failJob(job, err instanceof Error ? err.message : String(err), { store, recordAudit, now });
+    stopRenew();
+    return failJob(job, err instanceof Error ? err.message : String(err), { store, recordAudit, now, leaseOwner });
   }
 }
 
 async function failJob(
   job: JobRow,
   reason: string,
-  ctx: { store: JobStore; recordAudit: (input: AuditEventInput) => Promise<void>; now: Date },
+  ctx: { store: JobStore; recordAudit: (input: AuditEventInput) => Promise<void>; now: Date; leaseOwner?: string },
 ): Promise<ProcessResult> {
   const decision = evaluateJobFailure({ attempts: job.attempts, maxAttempts: job.maxAttempts, now: ctx.now });
   await ctx.store.recordAttempt(buildAttempt(job, "failed", ctx.now, reason));
 
   if (decision.willRetry) {
-    await ctx.store.requeue(job.id, decision.runAfter, ctx.now, reason);
+    await ctx.store.requeue(job.id, decision.runAfter, ctx.now, reason, ctx.leaseOwner);
     await ctx.recordAudit({
       eventType: "job.retry",
       module: "jobs",
@@ -277,7 +305,7 @@ async function failJob(
     return { processed: true, jobId: job.id, outcome: "retry" };
   }
 
-  await ctx.store.markFailed(job.id, ctx.now, reason);
+  await ctx.store.markFailed(job.id, ctx.now, reason, ctx.leaseOwner);
   await ctx.recordAudit({
     eventType: "job.failed",
     module: "jobs",
@@ -330,6 +358,8 @@ function mapJobRow(r: Record<string, unknown>): JobRow {
     maxAttempts: Number(r.max_attempts),
     runAfter: (r.run_after as Date | null) ?? null,
     lockedAt: (r.locked_at as Date | null) ?? null,
+    leaseOwner: (r.lease_owner as string | null) ?? null,
+    leaseExpiresAt: (r.lease_expires_at as Date | null) ?? null,
     completedAt: (r.completed_at as Date | null) ?? null,
     failedAt: (r.failed_at as Date | null) ?? null,
     failureReason: (r.failure_reason as string | null) ?? null,
@@ -355,12 +385,14 @@ export function defaultStore(db: Db = getDb()): JobStore {
     async insert(row) {
       await db.insert(jobs).values(row);
     },
-    async claimNext(queue, now, blockedTypes) {
+    async claimNext(queue, now, blockedTypes, lease) {
       // An empty array must NOT become `type <> ALL('{}')` semantics we have to reason about — skip the
       // clause entirely when nothing is blocked, which is the overwhelmingly common case.
       const blockFilter = blockedTypes?.length ? sql` AND type <> ALL(${sql.raw(`ARRAY[${blockedTypes.map((t) => `'${t.replace(/'/g, "''")}'`).join(",")}]::text[]`)})` : sql``;
+      // Stamp the lease on claim so this worker owns the job until the lease expires (it renews while alive).
+      const leaseSet = lease ? sql`, lease_owner = ${lease.owner}, lease_expires_at = ${lease.expiresAt}` : sql``;
       const result = await db.execute(sql`
-        UPDATE jobs SET status = 'active', attempts = attempts + 1, locked_at = ${now}, updated_at = ${now}
+        UPDATE jobs SET status = 'active', attempts = attempts + 1, locked_at = ${now}, updated_at = ${now}${leaseSet}
         WHERE id = (
           SELECT id FROM jobs
           WHERE queue = ${queue} AND status = 'pending' AND (run_after IS NULL OR run_after <= ${now})${blockFilter}
@@ -372,41 +404,61 @@ export function defaultStore(db: Db = getDb()): JobStore {
       const row = (result.rows as Record<string, unknown>[])[0];
       return row ? mapJobRow(row) : null;
     },
-    async complete(id, result, now) {
+    // The terminal writes COMPARE-AND-SET on the lease owner (when one was taken): a worker that lost the lease
+    // (its job was reclaimed after the lease expired) cannot double-complete/requeue/fail it. `and(..., undefined)`
+    // drops the owner clause for legacy/no-lease callers, preserving prior behaviour + all existing tests.
+    async complete(id, result, now, leaseOwner) {
       await db
         .update(jobs)
-        .set({ status: "completed", result, completedAt: now, lockedAt: null, updatedAt: now })
-        .where(eq(jobs.id, id));
+        .set({ status: "completed", result, completedAt: now, lockedAt: null, leaseOwner: null, leaseExpiresAt: null, updatedAt: now })
+        .where(and(eq(jobs.id, id), leaseOwner ? eq(jobs.leaseOwner, leaseOwner) : undefined));
     },
-    async requeue(id, runAfter, now, reason) {
+    async requeue(id, runAfter, now, reason, leaseOwner) {
       await db
         .update(jobs)
-        .set({ status: "pending", runAfter, lockedAt: null, failureReason: reason, updatedAt: now })
-        .where(eq(jobs.id, id));
+        .set({ status: "pending", runAfter, lockedAt: null, leaseOwner: null, leaseExpiresAt: null, failureReason: reason, updatedAt: now })
+        .where(and(eq(jobs.id, id), leaseOwner ? eq(jobs.leaseOwner, leaseOwner) : undefined));
     },
-    async markFailed(id, now, reason) {
+    async markFailed(id, now, reason, leaseOwner) {
       await db
         .update(jobs)
-        .set({ status: "failed", failedAt: now, lockedAt: null, failureReason: reason, updatedAt: now })
-        .where(eq(jobs.id, id));
+        .set({ status: "failed", failedAt: now, lockedAt: null, leaseOwner: null, leaseExpiresAt: null, failureReason: reason, updatedAt: now })
+        .where(and(eq(jobs.id, id), leaseOwner ? eq(jobs.leaseOwner, leaseOwner) : undefined));
     },
     async recordAttempt(attempt) {
       await db.insert(jobAttempts).values(attempt);
     },
     async reclaimStalled(olderThan, now) {
-      // A worker that crashed mid-run leaves its job 'active' forever. Reset stale ones to
-      // 'pending' (or 'failed' if out of attempts) so another worker can pick them up.
+      // A worker that crashed mid-run leaves its job 'active'. Reclaim ONLY jobs whose LEASE has expired (the
+      // owning worker died and stopped renewing) — a live worker renews its lease, so its long job is never
+      // reclaimed mid-run (no double execution under horizontal scaling). Legacy jobs with no lease fall back to
+      // the locked_at window. Clears the lease so a fresh claim gets clean ownership.
       const result = await db.execute(sql`
         UPDATE jobs
         SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
             locked_at = NULL,
+            lease_owner = NULL,
+            lease_expires_at = NULL,
             failed_at = CASE WHEN attempts >= max_attempts THEN ${now} ELSE failed_at END,
-            failure_reason = 'reclaimed: worker stalled or crashed mid-run',
+            failure_reason = 'reclaimed: worker lease expired (stalled or crashed mid-run)',
             updated_at = ${now}
-        WHERE status = 'active' AND locked_at IS NOT NULL AND locked_at < ${olderThan}
+        WHERE status = 'active' AND (
+          (lease_expires_at IS NOT NULL AND lease_expires_at < ${now})
+          OR (lease_expires_at IS NULL AND locked_at IS NOT NULL AND locked_at < ${olderThan})
+        )
         RETURNING id
       `);
       return (result.rows as unknown[]).length;
+    },
+    async renewLease(id, owner, expiresAt) {
+      // Extend a still-owned active job's lease. Returns whether THIS worker still owns it (compare-and-set) —
+      // false means it was reclaimed, so the worker should stop (its terminal write will also no-op).
+      const res = await db
+        .update(jobs)
+        .set({ leaseExpiresAt: expiresAt })
+        .where(and(eq(jobs.id, id), eq(jobs.status, "active"), eq(jobs.leaseOwner, owner)))
+        .returning({ id: jobs.id });
+      return (res as unknown[]).length > 0;
     },
   };
 }

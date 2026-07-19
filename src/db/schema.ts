@@ -83,6 +83,11 @@ export const jobs = pgTable("jobs", {
   maxAttempts: integer("max_attempts").notNull().default(3),
   runAfter: timestamp("run_after", { withTimezone: true }),
   lockedAt: timestamp("locked_at", { withTimezone: true }),
+  // Execution lease (multi-worker safety): the worker that claimed the job owns it until the lease expires. A
+  // live worker RENEWS the lease so its job is never reclaimed mid-run; terminal writes compare-and-set on the
+  // owner so a worker that lost the lease can't double-complete. Nullable so legacy/no-lease callers are unaffected.
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   failedAt: timestamp("failed_at", { withTimezone: true }),
   failureReason: text("failure_reason"),
