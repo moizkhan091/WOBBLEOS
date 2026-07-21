@@ -82,8 +82,14 @@ function relKey(file: string): string {
   return path.relative(API_ROOT, file).split(path.sep).join("/");
 }
 
+// One disk pass shared by every test below (re-reading ~200 route files per test blew vitest's 5s
+// default on a loaded machine). SCAN_TIMEOUT_MS keeps the full-tree scans honest under CPU contention.
+const SCAN_TIMEOUT_MS = 30_000;
+
 describe("route authorization coverage (WOB-AUD-004)", () => {
   const files = walk(API_ROOT);
+  const sources = new Map(files.map((file) => [file, readFileSync(file, "utf8")]));
+  const sourceOf = (file: string): string => sources.get(file)!;
 
   it("finds API routes to scan", () => {
     expect(files.length).toBeGreaterThan(50);
@@ -92,7 +98,7 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
   it("every mutation route enforces a DB-backed session gate or is an explicitly-allowlisted public route", () => {
     const unguarded: string[] = [];
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = sourceOf(file);
       const methods = [...src.matchAll(MUTATION_EXPORT)].map((m) => m[1]);
       if (methods.length === 0) continue; // read-only route (GET/HEAD only)
       const key = relKey(file);
@@ -104,12 +110,12 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
       unguarded,
       `these mutation routes neither call a session gate (${SESSION_GATES.join("/")}) nor are allow-listed public:\n${unguarded.join("\n")}`,
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("every read route enforces a DB-backed session gate or is an explicitly-allowlisted public read", () => {
     const unguarded: string[] = [];
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = sourceOf(file);
       const methods = [...src.matchAll(READ_EXPORT)].map((m) => m[1]);
       if (methods.length === 0) continue; // mutation-only route — covered by the test above
       const key = relKey(file);
@@ -122,7 +128,7 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
       `these read routes neither call a session gate (${SESSION_GATES.join("/")}) nor are allow-listed public.\n` +
         `A revoked session still reads them (the edge proxy is JWT-signature-only) — see WOB-UAT-029:\n${unguarded.join("\n")}`,
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("the public READ allowlist has no stale entries", () => {
     for (const key of PUBLIC_READ_ROUTES) {
@@ -153,7 +159,7 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
     ];
     const offenders: string[] = [];
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = sourceOf(file);
       if (!SESSION_GATES.some((gate) => src.includes(gate))) continue; // ungated routes are the other tests' problem
       for (const field of IDENTITY_FIELDS) {
         if (!new RegExp(`\\b${field}\\s*:\\s*z\\.`).test(src)) continue;
@@ -165,7 +171,7 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
       offenders,
       `these routes trust a caller-supplied identity instead of the verified session (WOB-UAT-030):\n${offenders.join("\n")}`,
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("account administration is super-admin gated, not merely founder gated", () => {
     // Disabling a founder / revoking their sessions is not something any founder may do to another.
