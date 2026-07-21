@@ -139,9 +139,10 @@ WOBBLE_ENV_FILE=/etc/wobble/wobble.env docker compose -f docker-compose.prod.yml
 1. Copy `.env.production.example` to the protected external path and fill the REAL values:
    - `POSTGRES_PASSWORD`, `DATABASE_URL` (points at the `db` service), `SESSION_SECRET` (`openssl rand -hex 32`),
      `SHARED_LOGIN_PASSWORD_HASH_B64` (base64 of a bcrypt hash of the shared login password).
-   - Optional providers: `OPENROUTER_API_KEY` (text — present in dev), `FAL_KEY` (media; absent → Media Studio stays
-     honestly `blocked`), `APIFY_API_KEY` (rich scraping; absent → ingestion falls back to the unblocked http/inline
-     adapters).
+   - Optional providers: `OPENROUTER_API_KEY` (text **and images** — Media Studio image generation runs on it, so
+     with it set Media Studio works out of the box), `FAL_KEY` (video/audio/3d only — absent → those media kinds stay
+     honestly `blocked`; images are unaffected), `APIFY_API_KEY` (rich scraping; absent → ingestion falls back to the
+     unblocked http/inline adapters).
 2. `bash scripts/deploy.sh /etc/wobble/wobble.env`
    → `db` starts, `migrate` applies all migrations and exits, then `app` starts and its healthcheck goes green.
 3. Put a TLS-terminating reverse proxy (Caddy/nginx) in front of `127.0.0.1:3000` for your domain (BLOCKED-EXTERNAL:
