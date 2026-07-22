@@ -622,3 +622,85 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - Affects: proposals, finance, decisions, decision-learning consumer, n8n callback, library, analytics,
   optimizer, source-discovery, taste, content-worker, media default provider, os-ui (brief), jobs lease
   (migrations 0062/0063), + new proofs verify-maintenance-acceptance-db.ts, verify-client-isolation-ledger-db.ts.
+
+## 2026-07-22 — Design system decisions (Claude)
+
+- WHY a design system instead of a 4th renderer: `render.ts` proved the pattern doesn't scale. Three
+  renderers each re-declared the brand, and they had ALREADY drifted (`#B6FF3B` vs the real `#B8FF2C`).
+  One token file + 15 archetypes means a brand fix lands everywhere at once, and a new document kind is
+  a model, not a renderer.
+- WHY the fonts are self-hosted in `public/fonts` and not hotlinked from api.fontshare.com: a generated
+  document gets printed to PDF by headless Chromium, emailed as a file and opened offline. Those are
+  exactly the moments a CDN webfont fails, and it fails SILENTLY — the client gets an Arial proposal.
+  `fontFaceCss(baseHref)` takes a base so `renderPdf` can point Chromium at a `file://` directory.
+- WHY TWO scale ratios per format (`displayRatio` + `bodyRatio`) rather than the single ~55% the brief
+  suggested: display type has no legibility floor, prose does. A single 0.42 document ratio renders body
+  copy at 9.7px and card body at 7.6px — unreadable in print. Display keeps the aggressive ratio (A4
+  0.55 as specified); body sits on a gentler curve (A4 0.62, document 0.68) so the smallest printed text
+  never drops below ~11px. Documented in `FormatSpec`.
+- WHY the renderer APPENDS the trailing lime period rather than requiring it: the period is grammar, not
+  content. An agent writing "Executive Overview" should still produce an on-brand page. `brand-qa` checks
+  the MODEL for the missing period, so the authoring signal survives while the artefact is never wrong.
+- WHY commercials are hoisted by the composer and not merely validated: the founder's stated rule is
+  "the decision is evaluated first on business value". LLM-authored documents lead with the number by
+  default. Enforcing it in `orderSections` makes it structurally impossible to ship a price-first deck;
+  `brand-qa` still warns so the authored order gets fixed at the source.
+- WHY invoices bypass the slide archetypes entirely: an invoice is read in ten seconds by someone
+  deciding whether to pay. Amount due, due date, line items, how to pay. A cover slide and a contents
+  index actively harm that. `kind: "invoice"` ignores `sections` (brand-qa reports it) and renders its
+  own scannable document.
+- WHY `renderPdf` throws typed errors instead of returning a placeholder: a zero-byte or fallback-font
+  PDF that reaches a client is worse than a visible failure. `PdfRendererUnavailableError` (no Playwright
+  / no Chromium) is deliberately distinct from `PdfRenderFailedError` (Chromium ran, print failed) so a
+  caller can tell "install the browser" from "the document is broken".
+- WHY Playwright is loaded via `createRequire` and not `import()`: webpack statically resolves dynamic
+  imports and would either inline the driver or fail the Next build on a `--omit=dev` install.
+- WHY the document format uses a `position:fixed` running header + per-block `PAGE nn` footers: Chromium
+  does not support `@page` margin boxes, so a fixed element is the only way self-contained HTML gets a
+  repeating header. Blocks take `break-before:page` so the printed page number is exact.
+- WHY `brand-qa` is exported but NOT wired as a gate: measure the real violation rate on real documents
+  before failing anyone's build on it. `ok` means "no errors" — warnings (grammar) are reported, not fatal.
+- WHY `render.ts` survives as a 12-line shim: another agent is editing `src/components/os/os-ui.tsx`
+  concurrently; deleting a module path mid-flight is an avoidable break. New code imports `@/lib/documents`.
+- Affects: documents (composer + invoice + pdf + brand-qa), new design-system module, public/fonts,
+  the 3 audit/proposal document routes, tests/design-system.test.ts, tests/documents.test.ts.
+
+---
+
+## UX backlog pass — os-ui.tsx (Claude)
+
+- WHY one `postJson` instead of fixing each call site: ~18 mutations each decided independently what
+  "failed" meant, and most decided nothing. A single helper is the only way the answer stays the same
+  everywhere — and it is the reason `memApi` was collapsed into a one-line adapter rather than left as a
+  near-identical second copy.
+- WHY `postJson` never throws: callers want `finally { setBusy(null) }` to be unnecessary. Returning
+  `{ok:false, error}` for a network drop, an HTML error page and a 500 alike means a caller cannot
+  accidentally leave a button spinning by forgetting a catch.
+- WHY the server's `j.error` is preferred over a generic string: the API already writes human-readable
+  refusals ("invoice already sent"); "HTTP 409" is strictly worse information for a founder.
+- WHY per-row busy ids rather than one page-level boolean: a page-level flag disables every row's buttons
+  while one row acts, and it is what let Free Audit's "Quick diagnosis" make the pitch button claim it was
+  writing a pitch. The busy id is also what actually prevents the double-submit.
+- WHY confirmations are worded with the consequence, not "Are you sure?": the founder needs to know that
+  Mark paid records money as received, that Disable BLOCKS every dependent job, and that Roll back reverts
+  a LIVE production change. A yes/no prompt with no content is a click-through.
+- WHY Communications shows the recipient and expands the body BEFORE the confirm: a confirm dialog on an
+  irreversible external send is worthless if the thing being sent is truncated at 160 characters and the
+  recipient was never on screen.
+- WHY `useApi` gained a `null` url instead of Departments keeping a placeholder: hooks cannot be called
+  conditionally, so the placeholder `__none__` was the workaround — and it cost two guaranteed 404s per
+  page load. `null` is the honest expression of "nothing to fetch yet".
+- WHY per-panel guards in Departments rather than one page guard: the single guard covered `depts` only,
+  so any other endpoint's 500 fell through to that panel's EMPTY state. "No handoffs match" and "we could
+  not ask" must never render identically — that is the OS reporting an outage as all-clear.
+- WHY the Security risk register mirrors the findings panel instead of a new pattern: the data was already
+  fetched and already counted in a KPI; the only defect was that nothing rendered it.
+- WHY `/api/proposals/from-audit` and not `POST /api/proposals` for the audit-to-proposal button: the
+  from-audit route is the existing `createProposalFromAudit` path the Proposals page already uses;
+  `POST /api/proposals` takes a full proposal body and would have meant assembling it in the browser.
+- WHY rows with action buttons became "button around the readable region" rather than one big `<button>`:
+  nesting buttons is invalid HTML. Skills/Agents rows have no inner buttons, so they can be a single
+  button; Approvals and the Library tiles cannot.
+- WHY the loading spin honours `prefers-reduced-motion`: a spinner is the signal that the page is alive,
+  so it degrades to a still icon for founders who ask for reduced motion rather than being dropped for all.
+- Affects: `src/components/os/os-ui.tsx` (all modules), `src/app/globals.css` (spin keyframe only).

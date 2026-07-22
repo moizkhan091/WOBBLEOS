@@ -1,21 +1,31 @@
 import { NextResponse } from "next/server";
 import { getAudit } from "@/lib/free-audit";
-import { renderAuditReportHtml } from "@/lib/documents/render";
+import { buildAuditDocument, renderDocument } from "@/lib/documents";
+import { renderPdf, isPdfRendererAvailable, PdfRendererUnavailableError } from "@/lib/documents/pdf";
+import { resolveRequestedFormat, pdfFilename } from "@/lib/documents/request-format";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/audit/[id]/document — premium HTML audit report (open in a tab, print to PDF). */
+/**
+ * GET /api/audit/[id]/document — the audit as a WOBBLE-branded artifact.
+ *
+ * `?format=` → `document` (default prose report) | `deck16x9` | `deckA4`. `?download=pdf` returns a
+ * PDF. Content is modelled once; only the dressing changes, so switching format costs no model call.
+ */
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
   const auth = await requireFounder(request);
   if (isAuthError(auth)) return auth;
   const { id } = await ctx.params;
+
+  const { format, download, invalid } = resolveRequestedFormat(request.url, "document");
+  if (invalid) return NextResponse.json({ ok: false, error: `unknown format '${invalid}' — use deck16x9, deckA4 or document` }, { status: 400 });
   const audit = await getAudit(id);
   if (!audit) return NextResponse.json({ ok: false, error: "audit not found" }, { status: 404 });
   const report = (audit.report ?? {}) as unknown as Record<string, unknown>;
-  const html = renderAuditReportHtml({
+  const doc = buildAuditDocument({
     businessName: audit.businessName,
     industry: (report.industry as string) ?? null,
     executiveSummary: (report.executiveSummary as string) ?? (report.summary as string) ?? "",
@@ -29,5 +39,26 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     recommendedTechStack: report.recommendedTechStack as never,
     nextSteps: report.nextSteps as never,
   });
-  return new NextResponse(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" } });
+  const html = renderDocument(doc, format);
+
+  if (!download) {
+    return new NextResponse(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" } });
+  }
+  if (!isPdfRendererAvailable()) {
+    return NextResponse.json({ ok: false, error: "PDF rendering is unavailable on this host (Chromium not installed) — open the HTML view instead" }, { status: 503 });
+  }
+  try {
+    const pdf = await renderPdf(html, format);
+    return new NextResponse(Buffer.from(pdf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${pdfFilename(audit.businessName || "audit", format)}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (error) {
+    const status = error instanceof PdfRendererUnavailableError ? 503 : 500;
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "PDF render failed" }, { status });
+  }
 }

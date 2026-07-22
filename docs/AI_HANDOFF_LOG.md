@@ -6777,3 +6777,109 @@ Gate: build + typecheck + tests green at HEAD; the filesystem-driven DB gate aut
 (63 run, 3 explainably skipped). Commits: a73dfda (lease), 34fd5c8 (media provider), 601aead (acceptance proofs).
 STILL PARKED: HyperFrames/reels authoring-quality pass (feed real reels as exemplars + contrast/overflow +
 educative script). No product code changed for reels this batch.
+
+## 2026-07-22 — WOBBLE brand design system + multi-format document generator (Claude)
+
+Replaced the ad-hoc `src/lib/documents/render.ts` (223 lines, 3 hand-rolled renderers that had drifted
+off-brand — they shipped `#B6FF3B`; the real lime is `#B8FF2C`) with a real design system.
+
+New:
+- `public/fonts/*.woff2` (8 files) — Satoshi 400/500/700/900 + General Sans 400/500/600/700, downloaded
+  from Fontshare and SELF-HOSTED. Generated documents must render offline and survive print-to-PDF; a
+  hotlinked CDN face silently falls back to Arial in exactly those moments.
+- `src/lib/design-system/tokens.ts` — single source of truth. Colours, text ladder, hairlines, ghost
+  numeral, lime tint, font stacks, the full deck type ladder (cover 290/900/.8/-.04em … card body 18/1.5),
+  stage/card/contents layout metrics, `fontFaceCss()`, `typeCss()`, `space()`, `cardCss()`,
+  `contentsRowCss()`, and the 3 `FORMATS` (deck16x9 1920x1080px, deckA4 595x842pt, document 612x792pt).
+- `src/lib/design-system/archetypes.ts` — the 15 archetypes from the founder's 30-slide deck, one pure
+  format-aware function each: Cover, Statement(full-lime), Contents, SectionDivider(ghost numeral),
+  CardGrid(last card inverted + MANAGEMENT DECISION callout), ConstraintsToOutcomes, CoverageMatrix,
+  SystemDiagram, Timeline, PhaseDetail, ScopeList, Capabilities, WhatsIncluded, Investment, Approval.
+  Brand grammar is enforced, not hoped for: trailing lime period, ` · ` eyebrows, two-digit numerals,
+  inverted last card, watermark numeral. Over-long display headlines auto-shrink instead of bleeding.
+- `src/lib/documents/index.ts` — the composer. `WobbleDocument` model (discriminated union, one variant
+  per archetype) → `renderDocument(doc, format)` → one self-contained HTML string (inline CSS, inline
+  @font-face, zero external requests). Deck16x9 keeps present mode (arrow keys + counter) AND prints
+  true 1920x1080 pages. Commercials ALWAYS last (investment/approval sections are hoisted).
+- Invoices get a DOCUMENT treatment, never slides: amount due at headline size, due date, line-item table
+  with totals, prominent payment-terms panel.
+- `src/lib/documents/pdf.ts` — `renderPdf(html, format)` via Playwright Chromium, `printBackground:true`,
+  `preferCSSPageSize` so the HTML's own `@page` rules win. Degrades LOUDLY:
+  `PdfRendererUnavailableError` / `PdfRenderFailedError` — never a fake or empty PDF. Playwright is
+  resolved through `createRequire` so the bundler never tries to inline the browser driver.
+- `src/lib/documents/brand-qa.ts` — `runBrandQa(doc, html?)` → `{ok, violations[]}`: off-palette hex,
+  missing eyebrow, commercials not last, title missing trailing period, empty required fields, slides on
+  an invoice. Exported, NOT wired as a hard gate yet.
+- `src/lib/documents/render.ts` is now a 12-line deprecated re-export shim.
+
+Backward compatible: `renderAuditReportHtml`, `renderAuditDeckHtml`, `renderProposalHtml` keep their exact
+signatures, reimplemented on the new system. The 3 API route callers (`/api/audit/[id]/document`,
+`/api/audit/[id]/deck`, `/api/proposals/[id]/document`) now import from `@/lib/documents`.
+
+Tests: `tests/design-system.test.ts` + `tests/documents.test.ts` — 57 tests, no DB, no network, no PDF
+binary. Gate: typecheck clean, full suite 1412/1412 green, `npm run build` clean. Visually accepted by
+rendering a founder-style proposal in all 3 formats + an invoice and screenshotting them through real
+Chromium (Satoshi/General Sans confirmed LOADED from the local woff2, A4 PDF produced 55,277 bytes).
+
+---
+
+## UX backlog pass — silent mutations, confirmations, progress, honest errors, dead ends, a11y (Claude)
+
+Scope: `src/components/os/os-ui.tsx` (exclusive ownership during the pass) + a spin keyframe in
+`src/app/globals.css`. Driven by `docs/UX_AUDIT_FINDINGS.md` sections 3 and 5.
+
+**1. Silent mutations.** Added one shared `postJson(url, body?, method?)` near the top of the file:
+never throws (non-JSON body, HTML error page, dropped connection all become `{ok:false}`), prefers the
+server's `j.error` over a generic string, treats `j.ok === false` on a 200 as a failure. `memApi` is now
+a one-line adapter over it rather than a second implementation. Converted every fire-and-forget
+`await fetch(...)` to `postJson` + a per-row/per-id busy id (buttons `disabled` in flight, so a
+double-click can no longer fire twice) + an inline `ActionMsg` rendered next to the action that failed:
+Invoices `act`, Tasks `setStatus`, Meetings `complete`/`setStatus`, Projects `setStatus`, Proposals
+`act`/`build`, Decision Room `act`, Offer Lab `setStatus`/`addExp`, Automations `toggle`/`run`, Library
+`postAction`/`runPlan`/`doSchedule`, `PlatformRow.markPosted`/`doSchedule`, Radar `setStatus`, Memory
+review/pin/archive/restore/conflict-resolve, CRM `moveStage` (a refused stage move now says so instead
+of snapping the card back silently) and `convert`.
+
+**2. Confirmations on irreversible actions.** `window.confirm` naming exactly what happens on:
+Communications **Send** (external_email / external_dm / proposal_send — the card now also shows the
+RECIPIENT above the subject and the body expands past the old 160-char truncation, so you can read what
+you are sending before you send it), Proposals **Send**, Invoices **Mark paid** / **Cancel**, Optimizer
+**Roll back**, Departments **terminate escalation**, handoff **cancel**, Memory **Delete**, Connections
+**Disable**, Meetings **No-show**, Library scheduled-post **Cancel**.
+
+**3. Long operations with no progress.** `RadarPage.create`, `SeoPage.create` and `SocialPage.create`
+called `generate(...)` WITHOUT `await`, and their own `finally` cleared the busy flag immediately — a
+20-40s generation ran with no indicator at all. All three now await it.
+
+**4. Errors reported as "all clear".** Departments: per-panel `offlineIf` guards for `handoffs`,
+`escalations`, `budget` and `kpis` (an /api/handoffs 500 used to render "No handoffs match"); the
+in-flight/escalation KPIs show a dash with "API unreachable" instead of a false 0. `useApi` now accepts a
+`null` url, which kills the two guaranteed 404s (`/api/departments/__none__/budget|kpis`) fired before a
+department was selected. Proposals: the audit dropdown reports a load failure instead of rendering empty.
+Security: added the **Risk register** panel — `d.risks` was fetched and counted into a KPI but the list
+was never rendered anywhere.
+
+**5. Dead ends.** Free Audit + Paid Audit both get **"Build proposal from this"** on a completed
+audit/live report (POST `/api/proposals/from-audit` — the same `createProposalFromAudit` path Proposals
+uses); Paid Audit also exposes Report/Deck exports on the live report. Social post ideas get
+**"Draft this in Content"**, copied from `SeoPage.draftFromIdea`. `Kpi` takes an optional `href` and
+every Command Center + Cockpit tile now links into the module its number came from. Free Audit's `run()`
+and `runPitch()` no longer share one busy flag (clicking one made the other read "Writing pitch...").
+
+**6. Visual / a11y.** `wobbleSpin` keyframe + `.wobble-spin` in `globals.css` (respects
+`prefers-reduced-motion`) so `StateBlock kind="loading"` actually animates; `#4a4a52` (~1.6:1 on the
+near-black bg, fails WCAG AA) replaced by a `dim` token at `rgba(255,255,255,0.55)`; Costs table wrapped
+in `overflow-x` with an ellipsised model/provider cell; Connections KPI grid moved to
+`auto-fit,minmax(150px,1fr)`; Handoff's `textOverflow: ellipsis` given the `whiteSpace: nowrap` it needed
+to do anything; `aria-label` added to ~26 selects and the icon-only buttons; the clickable `<div onClick>`
+rows that were the ONLY way to open a drawer became real `<button>`s (Approvals, Library tiles, Free
+Audit, Paid Audit, Audit Workspace, SEO, Social, Departments, Security) following the SkillsPage/AgentsPage
+pattern — where a row also holds action buttons, the readable region is the button and the actions stay
+siblings so no interactive element nests inside another.
+
+Not changed: the topbar search (still inert — out of scope for this pass), `PostRow`/`Section` still
+declared inside `LibraryPage`'s body (no inputs inside them, so no focus-loss bug), and modal
+Escape/focus-trap.
+
+Gate: `npx tsc --noEmit` clean, `tests/route-auth-coverage.test.ts` 7/7, full suite 164 files / 1412
+tests green, `npm run build` clean.
