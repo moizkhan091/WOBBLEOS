@@ -14,6 +14,9 @@ export { signMediaToken, verifyMediaToken } from "@/lib/library/media-token";
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
   ".gif": "image/gif", ".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/x-m4v",
+  // .webm is on the founder-upload allowlist (lib/library/upload.ts); without it here an uploaded
+  // webm would serve as application/octet-stream and download instead of playing.
+  ".webm": "video/webm",
 };
 
 function storageRoot(): string {

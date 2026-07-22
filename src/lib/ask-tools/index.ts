@@ -594,6 +594,152 @@ const createTaskTool = defineTool<{ title: string; details?: string; dueInDays?:
   },
 });
 
+// ------------------------------------------------------- library / publishing tools
+//
+// The publishing spine already existed (schedule, per-platform mark-posted, Zernio adapter, due-post
+// dispatch with a confirm hold) but Ask had no way to reach it, so "schedule that for Tuesday" or
+// "I posted the reel manually" still meant opening a module. These expose it.
+//
+// SAFETY: scheduling and marking-as-posted are reversible bookkeeping (a scheduled post can be
+// cancelled; a mark can be corrected), so they run directly. Actually PUSHING content out to a network
+// stays with dispatchDuePosts + its heldForConfirm gate — no tool here publishes on the spot.
+
+const importFolderTool = defineTool<{ rootDir: string; dryRun?: boolean; campaign?: string; limit?: number }>({
+  name: "import_content_folder",
+  description: "Bulk-import a folder of prepared content (media + caption per post) into the Library as schedulable assets. DEFAULTS TO A PREVIEW: it reports exactly what would be created and writes nothing until the founder explicitly says to import for real. Use for 'import my content folder', 'load my reels'.",
+  jsonSchema: objectSchema(
+    {
+      rootDir: { type: "string", description: "Absolute path to the content root (it contains campaign folders, each holding one folder per post)." },
+      dryRun: { type: "boolean", description: "Preview only. TRUE unless the founder has explicitly asked you to write." },
+      campaign: { type: "string", description: "Optional: import only this campaign folder." },
+      limit: { type: "number", description: "Optional cap on posts imported." },
+    },
+    ["rootDir"],
+  ),
+  argsSchema: z.object({
+    rootDir: z.string().trim().min(1),
+    dryRun: z.boolean().optional(),
+    campaign: z.string().trim().optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+  }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { importContentFolder } = await import("@/lib/library/folder-import");
+    // Preview by DEFAULT. A real run can create hundreds of rows, so the founder must ask for it twice:
+    // once to see the plan, once to commit. Never flip this to default-write.
+    const dryRun = args.dryRun !== false;
+    const res = await importContentFolder(args.rootDir, { dryRun, campaign: args.campaign, limit: args.limit, actor: ctx.actor ?? "ask_wobble" } as never);
+    return {
+      ...res,
+      dryRun,
+      note: dryRun
+        ? "PREVIEW ONLY — nothing was written. Tell me to import for real and I'll run it."
+        : "imported into the Library — the assets are now schedulable",
+    };
+  },
+});
+
+const listLibraryTool = defineTool<{ status?: string; limit?: number }>({
+  name: "list_library",
+  description: "List content assets in the Library (uploaded reels/images and approved generated content) with their status and platforms. Use for 'what content do we have', 'what's ready to post', 'what's scheduled'.",
+  jsonSchema: objectSchema({
+    status: { type: "string", description: "Optional: ready | scheduled | published | archived." },
+    limit: { type: "number", description: "Max assets (default 50)." },
+  }),
+  argsSchema: z.object({ status: z.string().trim().optional(), limit: z.number().int().min(1).max(200).optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { listContentAssets, listScheduledPosts } = await import("@/lib/library");
+    const [assets, scheduled] = await Promise.all([
+      listContentAssets({ status: args.status, limit: args.limit ?? 50 }),
+      listScheduledPosts({ limit: 100 }),
+    ]);
+    const postsByAsset = new Map<string, Array<{ platform: string; status: string; scheduledAt: Date }>>();
+    for (const p of scheduled) {
+      const list = postsByAsset.get(p.assetId) ?? [];
+      list.push({ platform: p.platform, status: p.status, scheduledAt: p.scheduledAt });
+      postsByAsset.set(p.assetId, list);
+    }
+    return {
+      total: assets.length,
+      assets: assets.map((a) => ({ id: a.id, title: a.title, kind: a.kind, status: a.status, platforms: a.platforms, posts: postsByAsset.get(a.id) ?? [] })),
+    };
+  },
+});
+
+const schedulePostTool = defineTool<{ assetId: string; platform: string; scheduledAt: string; publisher?: string }>({
+  name: "schedule_post",
+  description: "Schedule a Library asset to publish on a platform at a time. Reversible — it queues the post; it does NOT publish on the spot (the due-post dispatcher handles that and still honours the founder-confirm hold). Use for 'schedule the reel for Tuesday 9am on Instagram'.",
+  jsonSchema: objectSchema(
+    {
+      assetId: { type: "string", description: "The Library asset id (get it from list_library)." },
+      platform: { type: "string", description: "instagram | facebook | linkedin | x | youtube | tiktok" },
+      scheduledAt: { type: "string", description: "ISO-8601 datetime for publication." },
+      publisher: { type: "string", description: "manual (founder posts it) or zernio (auto-publish). Defaults to zernio when configured, else manual." },
+    },
+    ["assetId", "platform", "scheduledAt"],
+  ),
+  argsSchema: z.object({
+    assetId: z.string().trim().min(1),
+    platform: z.string().trim().min(1),
+    scheduledAt: z.string().trim().min(1),
+    publisher: z.string().trim().optional(),
+  }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { schedulePost } = await import("@/lib/library");
+    const { zernioConfigured } = await import("@/lib/library/zernio");
+    // Default honestly: only pick the auto-publisher when it is actually configured, otherwise the post
+    // would sit queued against a publisher that can never fire.
+    const publisher = args.publisher ?? (zernioConfigured() ? "zernio" : "manual");
+    const when = new Date(args.scheduledAt);
+    if (Number.isNaN(when.getTime())) return { scheduled: false, error: `could not parse scheduledAt '${args.scheduledAt}'` };
+    const post = await schedulePost({ assetId: args.assetId, platform: args.platform as never, scheduledAt: when, publisher: publisher as never, createdBy: ctx.actor ?? "ask_wobble" });
+    return { scheduled: true, postId: post.id, platform: post.platform, scheduledAt: post.scheduledAt, publisher: post.publisher, status: post.status, note: publisher === "manual" ? "queued for YOU to post manually — mark it posted afterwards" : "queued for automatic publishing" };
+  },
+});
+
+const markPostedTool = defineTool<{ assetId: string; platform: string; publisherRef?: string }>({
+  name: "mark_posted",
+  description: "Record that a Library asset was posted MANUALLY on a platform, so the team and the OS stop treating it as pending. Per-platform: marking Instagram does not touch LinkedIn. Use for 'I posted the reel on Instagram'.",
+  jsonSchema: objectSchema(
+    {
+      assetId: { type: "string" },
+      platform: { type: "string", description: "instagram | facebook | linkedin | x | youtube | tiktok" },
+      publisherRef: { type: "string", description: "Optional link or post id for the published item." },
+    },
+    ["assetId", "platform"],
+  ),
+  argsSchema: z.object({ assetId: z.string().trim().min(1), platform: z.string().trim().min(1), publisherRef: z.string().trim().optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { markAssetPostedOnPlatform } = await import("@/lib/library");
+    const res = await markAssetPostedOnPlatform(args.assetId, args.platform as never, { publisherRef: args.publisherRef, actor: ctx.actor ?? "ask_wobble" } as never);
+    return { marked: true, result: res, note: `${args.platform} recorded as posted — other platforms are unchanged` };
+  },
+});
+
+const publishingStatusTool = defineTool<Record<string, never>>({
+  name: "get_publishing_status",
+  description: "Publishing health: which publishers are configured (e.g. Zernio), how many posts are scheduled/published/failed, and what is due. Use before scheduling, and for 'is auto-posting working'.",
+  jsonSchema: objectSchema({}),
+  argsSchema: z.object({}),
+  mutates: false,
+  handler: async () => {
+    const { listScheduledPosts, publisherAvailability } = await import("@/lib/library");
+    const posts = await listScheduledPosts({ limit: 200 });
+    const byStatus: Record<string, number> = {};
+    for (const p of posts) byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+    const now = Date.now();
+    return {
+      publishers: publisherAvailability(),
+      byStatus,
+      dueNow: posts.filter((p) => p.status === "scheduled" && p.scheduledAt.getTime() <= now).length,
+      upcoming: posts.filter((p) => p.status === "scheduled" && p.scheduledAt.getTime() > now).slice(0, 8).map((p) => ({ platform: p.platform, scheduledAt: p.scheduledAt, publisher: p.publisher })),
+    };
+  },
+});
+
 export const ASK_TOOLS: ToolDefinition[] = [
   listAgentsTool,
   listPendingApprovalsTool,
@@ -613,6 +759,8 @@ export const ASK_TOOLS: ToolDefinition[] = [
   listProposalsTool,
   listSourcesTool,
   websiteStatsTool,
+  listLibraryTool,
+  publishingStatusTool,
   // actions — all create DRAFTS or PENDING records inside existing guardrails; none send or publish
   createLeadTool,
   runFreeAuditTool,
@@ -621,6 +769,9 @@ export const ASK_TOOLS: ToolDefinition[] = [
   generateContentTool,
   proposeSourceTool,
   createTaskTool,
+  schedulePostTool,
+  markPostedTool,
+  importFolderTool,
 ];
 
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));

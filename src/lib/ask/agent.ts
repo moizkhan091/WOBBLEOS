@@ -43,7 +43,10 @@ export interface AskAgentToolTrace {
 export interface AskAgentResult {
   answer: string;
   toolTrace: AskAgentToolTrace[];
+  /** The FIRST item awaiting approval — kept for existing callers/UI. */
   pendingConfirmation?: { tool: string; args: unknown; message: string };
+  /** EVERY item awaiting approval this turn. A chain can reach several; the founder approves once. */
+  pendingConfirmations?: Array<{ tool: string; args: unknown; message: string }>;
   modelRunIds: string[];
   iterations: number;
   stoppedReason: "final" | "needs_confirmation" | "max_iterations";
@@ -57,8 +60,17 @@ export interface AskAgentDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
 }
 
-const DEFAULT_MAX_ITERATIONS = 6;
-const HARD_MAX_ITERATIONS = 10;
+/**
+ * Step budget for the tool loop.
+ *
+ * 6/10 was sized for single questions ("how many agents do we have?"). Real founder requests chain:
+ * "show closed deals and unsent proposals, generate the missing proposals, invoice two of them, then
+ * schedule a post" is easily 8-12 tool calls. At the old ceiling that ran out mid-chain and left a
+ * half-finished state with no clear account of what had happened. Raised to give chains room while
+ * still bounding a runaway loop — and when the ceiling IS hit we now report exactly what was done.
+ */
+const DEFAULT_MAX_ITERATIONS = 12;
+const HARD_MAX_ITERATIONS = 24;
 
 function buildSystemPrompt(snapshot: string | undefined, confirmActions: boolean): string {
   return [
@@ -145,6 +157,8 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
   ];
 
   const toolTrace: AskAgentToolTrace[] = [];
+  // Every confirm-gated call the model reached this turn, collected rather than aborting on the first.
+  const pendingConfirmations: Array<{ tool: string; args: unknown; message: string }> = [];
   const modelRunIds: string[] = [];
   const conversationId = await ensureConversation(input);
   await logMessage(conversationId, "user", input.question);
@@ -164,7 +178,19 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
         metadata: { iterations: iteration, toolsUsed: toolTrace.map((t) => t.tool) },
       });
       await logMessage(conversationId, "assistant", text);
-      return { answer: text, toolTrace, modelRunIds, iterations: iteration, stoppedReason: "final", conversationId };
+      return {
+        answer: text,
+        toolTrace,
+        modelRunIds,
+        iterations: iteration,
+        // Anything the model wanted to do that needs a human yes is surfaced WITH the finished answer,
+        // so the founder sees "here is what I did, and here is the one thing awaiting you" in one place.
+        ...(pendingConfirmations.length
+          ? { pendingConfirmation: pendingConfirmations[0], pendingConfirmations }
+          : {}),
+        stoppedReason: pendingConfirmations.length ? "needs_confirmation" : "final",
+        conversationId,
+      };
     }
 
     // Assistant turn that issued the tool calls must be recorded before the tool results.
@@ -174,13 +200,29 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
       tool_calls: toolCalls.map((tc) => ({ id: tc.id, type: "function", function: { name: tc.name, arguments: JSON.stringify(tc.arguments ?? {}) } })),
     });
 
+    // Did anything actually RUN this iteration? If a turn produces only blocked calls there is no new
+    // information for the model to work with, and letting it loop just burns the step budget
+    // re-requesting the same forbidden action — so we stop and hand the founder the approval list.
+    let executedThisIteration = 0;
+
     for (const call of toolCalls) {
       const tool = ASK_TOOLS_BY_NAME[call.name];
 
       // Confirmation gate: never apply a destructive tool without explicit founder authorisation.
+      //
+      // It used to RETURN on the first such tool, which broke multi-step work: "draft these three
+      // proposals then schedule the post" abandoned the drafts the moment it reached the post. Now the
+      // risky call is recorded and SKIPPED while the loop carries on, so every safe step still lands and
+      // the founder gets ONE consolidated list of what needs their go-ahead instead of a popup per item.
       if (tool?.requiresConfirmation && !input.confirmActions) {
-        const message = `Confirm to proceed: ${call.name}(${JSON.stringify(call.arguments)}). I have NOT applied it. Reply to confirm and I'll run it.`;
-        messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, blocked: true, reason: "awaiting_founder_confirmation" }) });
+        const message = `Needs your go-ahead: ${call.name}(${JSON.stringify(call.arguments)}) — NOT applied.`;
+        pendingConfirmations.push({ tool: call.name, args: call.arguments, message });
+        toolTrace.push({ tool: call.name, args: call.arguments, ok: false, mutated: false, error: "awaiting_founder_confirmation" });
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify({ ok: false, blocked: true, reason: "awaiting_founder_confirmation", note: "Do NOT retry this call. Continue with the remaining work and summarise this as pending the founder's approval." }),
+        });
         await recordAudit({
           eventType: "ask.agent.confirmation_required",
           module: "ask_wobble",
@@ -188,19 +230,11 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
           actor: input.founder,
           metadata: { tool: call.name, args: call.arguments },
         });
-        await logMessage(conversationId, "assistant", text || message);
-        return {
-          answer: text || message,
-          toolTrace,
-          pendingConfirmation: { tool: call.name, args: call.arguments, message },
-          modelRunIds,
-          iterations: iteration,
-          stoppedReason: "needs_confirmation",
-          conversationId,
-        };
+        continue;
       }
 
       const res = await runTool(call.name, call.arguments, toolCtx);
+      executedThisIteration += 1;
       toolTrace.push({ tool: call.name, args: call.arguments, ok: res.ok, mutated: res.mutated, result: res.result, error: res.error });
 
       if (res.mutated && res.ok) {
@@ -219,14 +253,43 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
         content: JSON.stringify(res.ok ? { ok: true, result: res.result } : { ok: false, error: res.error }),
       });
     }
+
+    // Nothing ran and something is waiting on the founder → the turn cannot progress. Return now with
+    // everything that WAS applied plus the consolidated approval list, instead of spinning to the cap.
+    if (executedThisIteration === 0 && pendingConfirmations.length > 0) {
+      const applied = toolTrace.filter((t) => t.mutated && t.ok).map((t) => t.tool);
+      const answer = text
+        || `${applied.length ? `Done: ${applied.join(", ")}. ` : ""}Waiting on your go-ahead for: ${pendingConfirmations.map((p) => p.tool).join(", ")}.`;
+      await logMessage(conversationId, "assistant", answer);
+      return {
+        answer,
+        toolTrace,
+        pendingConfirmation: pendingConfirmations[0],
+        pendingConfirmations,
+        modelRunIds,
+        iterations: iteration,
+        stoppedReason: "needs_confirmation",
+        conversationId,
+      };
+    }
   }
 
   await recordAudit({ eventType: "ask.agent.max_iterations", module: "ask_wobble", actor: input.founder, metadata: { iterations: maxIterations } });
+  // Running out of steps mid-chain used to say only "ask me to continue", leaving the founder unsure
+  // what had actually been created. Account for it explicitly — a half-applied chain must be legible.
+  const applied = toolTrace.filter((t) => t.mutated && t.ok).map((t) => t.tool);
+  const appliedLine = applied.length
+    ? `Already done (these are real and saved): ${applied.join(", ")}.`
+    : "Nothing was created or changed.";
+  const pendingLine = pendingConfirmations.length
+    ? ` Still waiting on your go-ahead: ${pendingConfirmations.map((p) => p.tool).join(", ")}.`
+    : "";
   return {
-    answer: "I gathered information but reached the tool-step limit before finishing. Ask me to continue and I'll pick up where I left off.",
+    answer: `I hit the ${maxIterations}-step limit before finishing. ${appliedLine}${pendingLine} Tell me to continue and I'll pick up from here.`,
     toolTrace,
     modelRunIds,
     iterations: maxIterations,
+    ...(pendingConfirmations.length ? { pendingConfirmation: pendingConfirmations[0], pendingConfirmations } : {}),
     stoppedReason: "max_iterations",
     conversationId,
   };

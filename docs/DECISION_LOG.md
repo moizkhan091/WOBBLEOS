@@ -704,3 +704,122 @@ Log founder conversations too (not just code). If a founder states intent in cha
 - WHY the loading spin honours `prefers-reduced-motion`: a spinner is the signal that the page is alive,
   so it degrades to a still icon for founders who ask for reduced motion rather than being dropped for all.
 - Affects: `src/components/os/os-ui.tsx` (all modules), `src/app/globals.css` (spin keyframe only).
+
+## 2026-07-22 — Founder media upload: allowlist, content-addressing, one storage layout (Claude)
+
+- WHY one storage layout and not a new `uploads/` tree: `serveLibraryMedia`, the signed public media
+  route, the standalone build's `outputFileTracingExcludes`, and the VPS volume mapping all assume
+  `STORAGE_ROOT/media/<name>`. A second layout would have to be taught to every one of them, and the
+  first thing to break would be serving — silently, for uploads only. Uploads therefore use the exact
+  convention the media providers already write.
+- WHY content-addressing (sha256 of the bytes, 32 hex chars) rather than a uuid or the uploaded name:
+  two properties, both load-bearing. (1) The client filename NEVER reaches the filesystem — there is no
+  traversal, no null byte, no 4 GB name to sanitise, because the name is not derived from input at all.
+  Sanitising a filename is a game you can lose; replacing it is not. (2) Re-uploading the same reel is a
+  `stat` instead of a second 180 MB write, so a founder who drags the same folder in twice does not
+  double the disk.
+- WHY an allowlist and not a denylist: this endpoint takes founder-supplied bytes and writes them where
+  the app serves them back. A denylist loses to the next content type someone invents; an allowlist can
+  only be too strict, which is a bug report rather than stored XSS. `image/svg+xml` is deliberately
+  EXCLUDED — an SVG is an active document and executes script when served same-origin — as is
+  `text/html`. The extension is derived from the validated mime type, never the filename, so
+  `payload.exe` uploaded as `image/png` is stored and served as a `.png`.
+- WHY 200 MB video / 25 MB image: a phone-shot vertical reel is typically 10–80 MB, so 200 MB leaves real
+  headroom while still bounding one request; no legitimate social image is 25 MB, so a bigger one is a
+  mistake or an attempt to fill the volume. Enforced on the ENCODED length first (4 base64 chars → 3
+  bytes) so an oversize payload is rejected before a multi-gigabyte Buffer is ever allocated.
+- WHY base64 is validated before decoding: `Buffer.from(x, "base64")` silently DISCARDS invalid
+  characters and returns a shorter buffer, so a corrupted upload would become a plausible-looking file
+  and only reveal itself as a failed publish days later. A charset check up front makes it fail at the
+  door, as `InvalidMediaPayloadError` → 422, not a 500.
+- WHY the route authenticates BEFORE reading the body, unlike its siblings: those parse-then-auth bodies
+  are small JSON. This one can be hundreds of megabytes, and buffering + decoding that for an
+  unauthenticated caller is a free denial of service. Same gate (`requireFounder`), just earlier.
+- WHY the upload creates a REAL asset in the same request instead of returning a bare mediaRef: an
+  upload that leaves you a half-created thing you must "finish" elsewhere is a worse outcome than not
+  shipping the feature. `status:"ready"` + `sourceType:"manual"` means it is schedulable immediately.
+- WHY a video defaults to asset kind `reel` (not `video`): it matches `assetInputFromLocalReel`, which
+  the local-folder importer already produces for reel folders, and it is the founder's stated case.
+  Overridable per file via `kind`. `mediaRefs[].kind` stays the honest media kind — that is what the
+  Zernio adapter reads to choose image vs video upload.
+- WHY a batch reports per-file status (207) instead of all-or-nothing: rejecting nine good clips because
+  the tenth was a `.mov` over the cap is data loss, and reporting ten successes when two failed is a
+  lie. The response carries `assets` AND `results`, so the UI can say "8 uploaded, 2 rejected".
+- Affects: `src/lib/library/upload.ts` (new), `src/app/api/library/upload/route.ts` (new),
+  `src/lib/library/media-serve.ts` (one CONTENT_TYPES entry), `tests/library-upload.test.ts` (new).
+
+## Command palette: local module matching vs server record search
+
+Context: the topbar search affordance was inert on every screen. Building it raised two decisions.
+
+1. **Modules are matched in the browser, records on the server.** The module registry is ~45 static
+   objects already in the bundle; routing a jump through an HTTP round trip would add latency to the
+   single most common action and would make navigation stop working whenever the DB or network is
+   unhappy. Records genuinely live in Postgres, so they get one debounced (180ms) + aborted request.
+   Aborting is not an optimisation — without it the reply to a shorter, earlier query can land after
+   the reply to the current one and render the wrong results with no way to tell.
+
+2. **No regex in the matcher.** Any implementation that compiles the query into a `RegExp` throws
+   "Invalid regular expression" the moment the founder types `(`, `[`, `*` or a trailing `\` — i.e. the
+   palette blanks mid-typing. Every comparison is `===`/`startsWith`/`includes`/subsequence on
+   lower-cased strings. Same reasoning server-side: LIKE metacharacters in the query are escaped, so a
+   typed `%` matches a literal percent instead of returning every row in six tables.
+
+3. **`/ask?q=` prefills, never auto-sends.** The Ask row is also the "nothing matched" fallback, so a
+   meaningful share of those queries are abandoned jump attempts. Auto-firing an agent turn (tools,
+   budget) on text the founder never confirmed would be the OS acting on a typo. They see it and press
+   send. The param is stripped from the URL afterwards so a refresh cannot silently re-seed it.
+
+4. **Audit rows route by `kind`.** Sending a founder to /free_audit for a paid audit is a dead end —
+   the record they clicked is not on that page. Paid audits go to /paid_audit.
+
+## 2026-07-22 — Bulk folder import: tree-scoped keys, one media path, dotfiles (Claude)
+
+- WHY the tree is part of the import key: `AD-HANDOFF` and `SOCIAL-MEDIA` hold the same campaign and
+  angle folder names, the same `reel.mp4`, and different copy — a paid Meta ad and an organic caption.
+  Keyed on `<campaign>/<postSlug>` alone, importing the second tree reports 30 tidy "skipped" and the
+  founder quietly loses 30 variants. The tree is the only thing that distinguishes them, so it is in the
+  key and on the asset (`metadata.tree`, `metadata.captionSource`).
+- WHY the legacy key is matched on CAPTION as well as key: `import-local.ts` already wrote pre-tree keys
+  for these roots. Honouring that key alone would make the first reel tree imported permanently shadow
+  the second. Same key AND same copy is the only combination that actually means "the same post".
+- WHY nothing about the leaf is hardcoded: three trees, three caption filenames (`caption.txt`,
+  `CAPTION.txt`, `META-AD-COPY.txt`) and two media names (`<num>.png`, `reel.mp4`). Any rule written per
+  tree is a rule that breaks on the fourth tree. The media is "the one allowed media file here" and the
+  caption is the first case-insensitive candidate hit.
+- WHY the media KIND follows the file rather than the tree: a reel tree that one day holds a still, or an
+  image campaign that gains a video, both import correctly. `png/jpg/webp/gif → image`,
+  `mp4/mov/webm → video`.
+- WHY a video becomes asset kind `reel` and not `video`: it matches the existing reel imports AND the
+  Library UI's kind filter, which offers "Images" and "Reels". An asset filed as `video` would be
+  invisible in the only view the founder browses.
+- WHY dotfiles are excluded at `readdir` rather than filtered later: the reels root contains
+  `.elevenlabs-credentials.local.txt` and `.image-api-credentials.local.txt`. An importer pointed at a
+  founder's content folder must not read a credential file even to decide it is uninteresting, so they
+  are dropped before any name is inspected — and a test asserts it.
+- WHY a docs-only folder is silently not-a-post while a caption-without-media IS a warning: warnings only
+  work if they are all worth reading. A folder of .md notes was never a post; a folder with copy and no
+  media is a post that failed. Warning about both buries the second under the first.
+- WHY a second media file warns and names the ignored ones instead of failing the folder: failing loses
+  a good post over an ambiguity, and silently picking one leaves the founder unable to tell which. The
+  first (sorted, deterministic) is imported and the rest are named so the folder can be split.
+- WHY `dryRun` runs the FULL dedupe rather than just listing files: a preview that says "196 to import"
+  when 196 are already in the library is not a preview. It costs one indexed lookup per post and it is
+  the only way the founder can trust the number before committing.
+- WHY one `persistBytes` shared by the base64 upload and the on-disk import: two ingest doors with two
+  copies of the allowlist/size/hash logic is exactly how one door quietly stops enforcing something. The
+  file variant also checks size from `stat` before reading, which the base64 path cannot do.
+- WHY `storeUploadedFile` instead of base64-ing the file into `storeUploadedMedia`: it would inflate a
+  180 MB reel to a 240 MB string for nothing. Everything that matters is shared; only the byte source
+  differs.
+- WHY `..` is rejected BEFORE `path.resolve`: after resolution the segments are gone, so a check on the
+  resolved string alone accepts `/srv/app/../../etc`. `LIBRARY_IMPORT_ROOTS` is optional because a
+  single-founder machine importing its own OneDrive needs no allowlist, while a hosted deployment must
+  be able to pin the importer to the content volume.
+- WHY `import-local.ts` was left in place rather than deleted: `npm run library:import` is a proven,
+  live-verified path and removing it mid-flight would be a scope-creep regression risk. It is flagged in
+  the handoff log for retirement onto this module.
+- Affects: `src/lib/library/folder-import.ts` (new), `src/lib/library/upload.ts` (+storeUploadedFile,
+  +mimeTypeForExtension, shared persistBytes), `src/app/api/library/import-folder/route.ts` (new),
+  `.env.production.example` (LIBRARY_IMPORT_ROOTS), `tests/folder-import.test.ts` (new),
+  `tests/library-upload.test.ts`.

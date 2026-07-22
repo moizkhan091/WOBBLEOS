@@ -6883,3 +6883,158 @@ Escape/focus-trap.
 
 Gate: `npx tsc --noEmit` clean, `tests/route-auth-coverage.test.ts` 7/7, full suite 164 files / 1412
 tests green, `npm run build` clean.
+
+## 2026-07-22 — Founder media UPLOAD into the Content Library (Claude)
+
+The Library could only ever be filled by the machine. Assets arrived from an approved content packet
+(`importFromContentPacket`) or from a Media Studio generation — so a reel the founder actually shot, or
+an image a designer sent over, had NO way into the system and therefore could not be scheduled. Every
+downstream step already existed (`addContentAsset`, `schedulePost`, `markPostPublished`,
+`markAssetPostedOnPlatform`, `cancelScheduledPost`, `dispatchDuePosts`, the Zernio adapter,
+`serveLibraryMedia`). Only the ingest step was missing. This adds exactly that and nothing else.
+
+- `src/lib/library/upload.ts` (new) — `storeUploadedMedia({filename, mimeType, dataBase64}, {storageRoot?,
+  maxBytes?})`. Decodes, validates, hashes and writes ONE file, returning `{ mediaRef, bytes, kind,
+  contentType }`. Storage convention is the existing one, unchanged: `STORAGE_ROOT/media/<sha256(bytes)
+  .slice(0,32)><ext>`, referenced as `media/<hash><ext>` — byte-identical to
+  `src/lib/media/openrouter-provider.ts`, so `serveLibraryMedia` and the public signed-media route serve
+  uploads with no changes. Allowlist: image/png, image/jpeg, image/webp, image/gif, video/mp4,
+  video/quicktime, video/webm. Caps: 200 MB video / 25 MB image. Typed errors exported:
+  `UnsupportedMediaTypeError`, `MediaTooLargeError`, `InvalidMediaPayloadError`. Also exports
+  `normalizeMimeType`, `resolveAllowedMediaType`, `titleFromFilename`.
+- `src/app/api/library/upload/route.ts` (new) — POST, `requireFounder` + `isAuthError`, 503 without
+  DATABASE_URL (same shape as every sibling library route, so route-auth-coverage passes). Accepts one
+  file or `files: [...]` (max 25). Stores the bytes then calls `addContentAsset` with
+  `mediaRefs:[{path, kind, order:0}]`, `sourceType:"manual"`, `status:"ready"`, `createdBy: auth` — the
+  upload IS a library asset the moment the request returns, immediately selectable in the scheduler.
+  415 / 413 / 422 are mapped from the typed errors (never a generic 500). Batch: 201 all-ok,
+  207 Multi-Status mixed (with per-file `results`), first failure's status when nothing was created.
+- `src/lib/library/media-serve.ts` — added `.webm → video/webm` to CONTENT_TYPES (one line). Without it an
+  uploaded webm served as `application/octet-stream` and downloaded instead of playing.
+- `tests/library-upload.test.ts` (new, 17 tests) — no DB, no network, temp storageRoot via
+  `os.tmpdir()` + `fs.mkdtemp`, cleaned up after. Proves: allowed image/video store and return a
+  `media/<32-hex>.<ext>` ref with the canonical extension per type; the same bytes twice produce the SAME
+  ref and only ONE file on disk (content-addressed dedupe); different bytes under the same filename do
+  not collide; `application/x-msdownload` and `image/svg+xml`/`text/html` throw
+  `UnsupportedMediaTypeError`; oversize throws `MediaTooLargeError` and writes NOTHING; a spoofed
+  `payload.exe` filename with `image/png` lands as `.png`; a `../../../../etc/passwd.png` filename
+  cannot escape (storageRoot contains only `media/`, every name matches `^[0-9a-f]{32}\.[a-z0-9]+$`);
+  parameterised/odd-cased mime and `data:` URL payloads are accepted; malformed/empty base64 throws
+  instead of silently storing truncated garbage.
+
+NOT built (backend-only pass, os-ui.tsx owned by another agent): the Library UI upload control. The
+route is the whole contract — see the handoff note in the final report for the exact component + where.
+
+Gate: `npx tsc --noEmit` clean; `tests/library-upload.test.ts` 17/17;
+`tests/route-auth-coverage.test.ts` + `tests/library.test.ts` + `tests/media-token.test.ts` 49/49;
+`tests/greeting-hour-param.test.ts` + `tests/prod-env-template.test.ts` 13/13.
+
+## Command palette (Cmd+K) — the topbar search box is real now
+
+Owner: Claude (os-ui.tsx). The topbar rendered a search-shaped `<div>` with placeholder "Ask WOBBLE
+or jump to anything…" that had no click handler and no input — the most prominent control in the OS
+did nothing, on every screen. It is now a working command palette.
+
+- `src/lib/os/modules.ts` — added the PURE matching layer next to the registry it searches:
+  `scoreModuleMatch`, `matchModules(query, modules, limit)`, `MODULE_MATCH_SCORES`, `listNavModules()`.
+  Ranking: exact id > exact label > id prefix > label prefix > id substring > label substring >
+  subsequence (fuzzy, 2+ chars only). Deliberately string-ops only — NEVER `new RegExp(query)`, which
+  throws on a founder typing `(` or `*` and would blank the palette mid-keystroke. Lives here (not in
+  the 7k-line client file) so it is unit-testable in a plain node vitest run.
+- `src/app/api/search/route.ts` (new) — `GET /api/search?q=`, `requireFounder` + `isAuthError`, 503
+  without DATABASE_URL. One `Promise.all` round of six ILIKE scans (companies, opportunities, leads,
+  proposals, audits, content packets), 6 per kind / 30 total, newest first, archived rows excluded.
+  `q` under 2 chars returns `{ok:true,results:[]}` without touching the DB. LIKE metacharacters are
+  escaped, so a typed `%` or `_` is a literal, not a wildcard that returns every row in six tables.
+  Audits route by their own `kind` (`paid` → /paid_audit) — /free_audit would be a dead end for a paid
+  audit.
+- `src/components/os/os-ui.tsx` — module-scope `CommandPalette`, mounted once in `Shell` (which owns
+  the open flag, because both the global Cmd+K listener and the topbar button open it). MODULES match
+  locally on every keystroke (instant, works with the DB down); RECORDS are debounced 180ms and
+  aborted via AbortController so a slow reply to "cu" can never overwrite the fast reply to "custom".
+  Arrow Up/Down + Enter over one flat row list, highlight resets to 0 on every result-set change, last
+  row is always "Ask WOBBLE: <query>" → `/ask?q=…`. Honest loading/empty/error/503 lines — never a
+  bare blank panel. The topbar `<div>` became a `<button aria-label="Open command palette">` with a
+  platform-aware ⌘K / Ctrl K hint (resolved in an effect — `navigator` during SSR is a hydration bug).
+- `AskPage` — reads `?q=` via `useSearchParams` and PREFILLS the composer; it does NOT auto-send (the
+  Ask row is also the "nothing matched" fallback, so a share of those are typos, and auto-sending would
+  spend agent budget on a query the founder never confirmed). The param is stripped with
+  `history.replaceState` so a refresh cannot re-seed a composer they deliberately cleared.
+- `tests/command-palette.test.ts` (new, 15 tests) — exact-id-ranks-first, label substrings,
+  case-insensitivity both ways, empty/whitespace returns nothing, regex metacharacters `( ) * + ? [ ] { }
+  ^ $ | . \` do not throw and are treated literally, subsequence tier ranks below every literal match,
+  result cap, stable sort preserves sidebar order, `listNavModules` groups + no duplicate ids.
+
+Gate: `npx tsc --noEmit` clean; `npm run build` exit 0 (`/api/search` registers as a dynamic route,
+no Suspense error from `useSearchParams`); `tests/command-palette.test.ts` 15/15 and
+`tests/route-auth-coverage.test.ts` 7/7 green.
+
+## 2026-07-22 — BULK folder import: all three content trees into the Library (Claude)
+
+Follow-on to the upload path above. The founder's real workflow is not "upload one reel" — it is
+"point WOBBLE at my content folder". There are THREE trees, all `<root>/<campaign>/<post>/` at depth
+2, none agreeing on a filename:
+
+  A  `Wobble-Social-Library-UPLOAD`                `<campaign>/ad_<n>__<topic>__<angle>/{<n>.png, caption.txt}`
+  B  `PHASE-9-VIDEO-REELS/DELIVERY/AD-HANDOFF`     `<campaign>/<angle>/{reel.mp4, META-AD-COPY.txt}`
+  C  `PHASE-9-VIDEO-REELS/DELIVERY/SOCIAL-MEDIA`   `<campaign>/<angle>/{reel.mp4, CAPTION.txt}`
+
+- `src/lib/library/folder-import.ts` (new).
+  `scanContentFolder(root, {campaign?, limit?, tree?})` → `{ tree, posts, warnings, campaigns, root }`.
+  Filesystem only, no DB, no writes. The media file is "the one allowed media file in the leaf" and the
+  caption is the first case-insensitive hit from `CAPTION_FILENAMES = ["caption.txt","meta-ad-copy.txt"]`
+  — NEITHER is hardcoded per tree. `ad_<n>__<topic>__<angle>` is parsed via the EXISTING
+  `parseAdFolderName`; a folder that does not match still imports, titled from its own name.
+  `importContentFolder(root, opts, deps)` → `{ imported, skipped, failed, assets, planned, warnings,
+  failures, campaigns, tree, dryRun, scanned }`. Media goes through `storeUploadedFile` (below), then
+  `addContentAsset` with the caption in the asset's `caption` field (the real post copy — NOT metadata),
+  `metadata.campaign/tree/captionSource/postSlug/adId/seq/product/angle` and
+  `tags: ["wobble-library", "campaign:<c>", "tree:<t>", <topic>, "angle:<a>"]`.
+  `opts: { dryRun, limit, campaign, ownerScope, ownerId, createdBy, storageRoot, platforms, tree,
+  matchLegacyKeys }`.
+- `src/lib/library/upload.ts` — added `storeUploadedFile(absPath, {mimeType?, storageRoot?, maxBytes?})`
+  and `mimeTypeForExtension()`. Both upload doors (browser base64, on-disk import) now funnel through
+  ONE private `persistBytes()`, so there is a single allowlist, a single size cap, a single sha256
+  content-addressing rule and a single write path. The file variant enforces the cap from `stat` BEFORE
+  reading, so an oversize video is refused without being pulled into memory.
+- `src/app/api/library/import-folder/route.ts` (new) — POST, `requireFounder` + `isAuthError`, 503
+  without DATABASE_URL. Body `{ rootDir, dryRun?, limit?, campaign?, ownerScope?, ownerId? }`.
+  `createdBy` comes from the session, never the body. Path vetted by `resolveImportRoot`: `..` segments
+  refused BEFORE resolution (after `path.resolve` they are gone), must resolve to an existing absolute
+  directory, and must sit inside `LIBRARY_IMPORT_ROOTS` when that env var is set. `InvalidImportRootError`
+  → 400, never a 500. Returns 200 for a dry run, 201 for a real import.
+- `.env.production.example` — documented `LIBRARY_IMPORT_ROOTS` (the env-template guard test caught it).
+- `tests/folder-import.test.ts` (new, 17 tests) + `tests/library-upload.test.ts` (17 → 21). Fixture tree
+  mirrors all three real trees plus every shape that bites: off-convention folder name, media with no
+  caption, empty caption, two media files, caption with no media, a docs-only folder, and
+  `.credentials.local.txt` dotfiles.
+
+DOTFILE SAFETY: the reels root holds `.elevenlabs-credentials.local.txt` and
+`.image-api-credentials.local.txt`. Dotfiles are filtered out of `readdir` BEFORE any name is inspected
+or any handle opened, at both directory levels, and a test asserts none is ever picked up.
+
+TREE-SCOPED DEDUPE (this is the subtle one): B and C contain the SAME campaign/angle names
+(`ai-appointment-booking/six-texts` is in both) with the same reel bytes and DIFFERENT copy — paid ad vs
+organic caption. `importKey = localImportKey(kind, "<tree>/<campaign>/<postSlug>")` keeps them two
+assets. Without the tree the second collapses into the first and a variant is lost. Content-addressing
+means the identical reel.mp4 is stored ONCE and referenced by both assets.
+
+LEGACY COMPATIBILITY: `import-local.ts` (`npm run library:import`) already imported these roots using the
+PRE-tree key `local:<kind>:<campaign>/<postSlug>`. Each scanned post therefore also carries
+`legacyImportKey`, and the importer treats a legacy row as "already imported" ONLY when its caption also
+matches — key alone cannot tell B from C, and matching on it would silently discard the paid variant.
+
+VERIFIED LIVE (read-only scan of the founder's actual OneDrive folders, no DB, nothing written):
+  Wobble-Social-Library-UPLOAD → 35 campaigns, 196 posts, 196 image, 196 × caption.txt, 0 warnings
+  AD-HANDOFF                   → 20 campaigns,  30 posts,  30 video,  30 × META-AD-COPY.txt, 0 warnings
+  SOCIAL-MEDIA                 → 20 campaigns,  30 posts,  30 video,  30 × CAPTION.txt, 0 warnings
+  256 unique import keys across all three (196+30+30) — no collisions; no dotfile picked up.
+
+DUPLICATION FLAG for the next builder: `src/lib/library/import-local.ts` is now a second importer over
+the same trees, with a different (non-content-addressed) storage layout
+(`media/library/<assetId>/<name>`) and no warnings/dryRun/filters. It was left untouched because
+`npm run library:import` is a proven path; it should be retired onto `folder-import.ts` (the CLI script
+becomes a thin wrapper) in a dedicated change.
+
+Gate: `npm run typecheck` clean; `tests/folder-import.test.ts` 17/17;
+`tests/library-upload.test.ts` 21/21; route-auth-coverage + prod-env-template + library 5 files/89 green.

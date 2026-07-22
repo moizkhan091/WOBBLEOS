@@ -107,3 +107,106 @@ export const DEFAULT_MODULE = "ask";
 export function getModule(id: string): ModuleDef | undefined {
   return MODULES[id];
 }
+
+// ---------------------------------------------------------------- Command-palette matching
+//
+// WHY THIS LIVES HERE (and not in the palette component): the registry is the thing being searched,
+// this is pure data->data logic with no React in it, and keeping it out of the 7k-line client file
+// means the behaviour is unit-testable in a plain node vitest run (tests/command-palette.test.ts)
+// without importing lucide-react, next/navigation and the whole dashboard.
+//
+// WHY STRING OPS AND NEVER A RegExp: the founder types into this. `new RegExp(query)` throws
+// "Invalid regular expression" the moment anyone types `(`, `[`, `*` or `\` — which turns a
+// half-typed query into a crashed palette. Every comparison below is `===`/`startsWith`/`includes`
+// on lower-cased strings, so every character is just a character.
+
+/** Score tiers, highest first. Exported so the test can assert ORDERING rather than magic numbers. */
+export const MODULE_MATCH_SCORES = {
+  idExact: 100,
+  labelExact: 90,
+  idPrefix: 80,
+  labelPrefix: 70,
+  idSubstring: 55,
+  labelSubstring: 50,
+  subsequence: 20,
+} as const;
+
+/**
+ * True when every character of `needle` appears in `haystack` in order (not necessarily adjacent).
+ * This is the "fuzzy" part: it lets `cmd` reach "command" and `pdaud` reach "paid_audit" — the way a
+ * founder actually types when they already know where they are going and just want to get there.
+ */
+function isSubsequence(needle: string, haystack: string): boolean {
+  let i = 0;
+  for (let j = 0; j < haystack.length && i < needle.length; j += 1) {
+    if (haystack[j] === needle[i]) i += 1;
+  }
+  return i === needle.length;
+}
+
+/**
+ * How well one module answers `query`. 0 means "no match at all" — never show it.
+ *
+ * Ranking intent: an id the founder typed EXACTLY is never beaten by something that merely contains
+ * those letters, so typing `crm` always puts Pipeline/CRM first even though "crm" also appears inside
+ * other labels. Subsequence matches sit far below every literal match so they only ever fill the tail.
+ */
+export function scoreModuleMatch(query: string, mod: ModuleDef): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const id = mod.id.toLowerCase();
+  const label = mod.label.toLowerCase();
+  const S = MODULE_MATCH_SCORES;
+
+  if (id === q) return S.idExact;
+  if (label === q) return S.labelExact;
+  if (id.startsWith(q)) return S.idPrefix;
+  if (label.startsWith(q)) return S.labelPrefix;
+  if (id.includes(q)) return S.idSubstring;
+  if (label.includes(q)) return S.labelSubstring;
+
+  // Subsequence is noisy for a single character (`a` is a subsequence of almost every label), so it
+  // only kicks in once the founder has committed to at least two characters.
+  if (q.length >= 2 && (isSubsequence(q, id) || isSubsequence(q, label.replace(/\s+/g, "")))) return S.subsequence;
+  return 0;
+}
+
+/**
+ * The modules that match `query`, best first. PURE: no fetch, no state, no side effects — the palette
+ * calls this on every keystroke precisely because it costs nothing and cannot fail.
+ *
+ * An empty/whitespace query returns [] rather than "everything": the palette's first frame should be
+ * an invitation to type, not a 45-row dump of the sidebar the founder can already see.
+ *
+ * Ties are broken by the caller's array order (a stable sort), so passing modules in NAV_GROUPS order
+ * makes equally-good matches come back in sidebar order instead of an arbitrary one.
+ */
+export function matchModules(query: string, modules: ModuleDef[], limit = 8): ModuleDef[] {
+  if (!query.trim()) return [];
+  const scored: Array<{ mod: ModuleDef; score: number }> = [];
+  for (const mod of modules) {
+    const score = scoreModuleMatch(query, mod);
+    if (score > 0) scored.push({ mod, score });
+  }
+  // Array.prototype.sort is stable in every engine we target (ES2019+), which is what preserves the
+  // caller's ordering within a score tier.
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.mod);
+}
+
+/**
+ * Every module in sidebar (NAV_GROUPS) order, paired with the group it belongs to. The palette uses
+ * the group as the row's sublabel so "Quick Pitch" reads as "REVENUE / CRM · Quick Pitch" instead of
+ * an unplaceable name. Modules absent from NAV_GROUPS are intentionally excluded — if it is not
+ * reachable from the sidebar it is not a jump target.
+ */
+export function listNavModules(): Array<{ mod: ModuleDef; group: string }> {
+  const out: Array<{ mod: ModuleDef; group: string }> = [];
+  for (const group of NAV_GROUPS) {
+    for (const id of group.items) {
+      const mod = MODULES[id];
+      if (mod) out.push({ mod, group: group.label });
+    }
+  }
+  return out;
+}

@@ -7,9 +7,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as Lucide from "lucide-react";
-import { MODULES, NAV_GROUPS, getModule, type ModuleDef } from "@/lib/os/modules";
+import { MODULES, NAV_GROUPS, getModule, listNavModules, matchModules, type ModuleDef } from "@/lib/os/modules";
 
 const C = { lime: "#B8FF2C", blue: "#2563FF", orange: "#FF6B00", white: "#F2F4F1", gray: "#7a7f74", bg: "#06070A" };
 
@@ -242,7 +242,264 @@ function ProfileMenu() {
   );
 }
 
-function Topbar({ onMenu }: { onMenu?: () => void } = {}) {
+// =====================================================================================
+// COMMAND PALETTE (Cmd+K)
+//
+// The topbar search box used to be an inert <div> — the most prominent control in the OS did
+// nothing, on every screen. This is what it does now: one box that jumps to any module, finds any
+// record, and falls through to Ask WOBBLE when the founder is asking rather than navigating.
+// =====================================================================================
+
+/** A record hit from `/api/search`. Mirrors `SearchResult` in `src/app/api/search/route.ts`. */
+interface SearchHit { kind: string; id: string; label: string; sublabel?: string; href: string }
+
+/** One row in the palette — a module jump, a record jump, or the always-present Ask fallback. */
+interface PaletteRow { key: string; badge: string; icon: string; label: string; sublabel?: string; href: string }
+
+/** Every sidebar module + its group, computed ONCE at module load. It never changes at runtime. */
+const NAV_MODULES = listNavModules();
+const NAV_MODULE_DEFS = NAV_MODULES.map((m) => m.mod);
+const NAV_GROUP_OF: Record<string, string> = Object.fromEntries(NAV_MODULES.map((m) => [m.mod.id, m.group]));
+
+/** Lucide glyph per record kind, so a company and a deal are distinguishable at a glance. */
+const HIT_ICONS: Record<string, string> = {
+  company: "Building2", deal: "Kanban", lead: "UserPlus", proposal: "FileText", audit: "ClipboardCheck", content: "PenTool",
+};
+
+/** How long the palette waits after the last keystroke before asking the server for records. */
+const SEARCH_DEBOUNCE_MS = 180;
+/** Matches the API: below two characters there is nothing worth searching for. */
+const SEARCH_MIN_CHARS = 2;
+
+/**
+ * "⌘K" on a Mac, "Ctrl K" everywhere else.
+ *
+ * WHY resolved in an effect rather than at render: `navigator` does not exist during SSR, and
+ * rendering a different hint on the server than on the client is a hydration error. Defaulting to
+ * "Ctrl K" means the first paint is correct for the majority and self-corrects on a Mac.
+ */
+function useShortcutHint(): string {
+  const [hint, setHint] = useState("Ctrl K");
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    if (/Mac|iPhone|iPad|iPod/i.test(ua)) setHint("⌘K");
+  }, []);
+  return hint;
+}
+
+/**
+ * The palette itself. Mounted ONCE by `Shell`, so Cmd+K works on every screen; `Shell` owns the open
+ * flag because the topbar button has to be able to open it too.
+ *
+ * TWO SEARCHES, DELIBERATELY DIFFERENT:
+ *
+ *  1. MODULES are matched LOCALLY, synchronously, on every keystroke (`matchModules`). The registry is
+ *     ~45 static objects that are already in the JS bundle — asking a server for them would add
+ *     network latency to the single most common action (jump to a page) for zero benefit, and would
+ *     make navigation stop working the moment the DB or the network hiccups. Typing must feel instant.
+ *
+ *  2. RECORDS come from `/api/search`, DEBOUNCED and ABORTED. Debounced because "cust" is four
+ *     keystrokes and would otherwise be four multi-table scans of which three are already stale.
+ *     Aborted because responses can land out of order: without an AbortController the slow reply to
+ *     "cu" can arrive AFTER the fast reply to "custom" and overwrite correct results with wrong ones.
+ *     Cancelling the previous request makes the last query the only one that can ever render.
+ */
+function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // GLOBAL shortcut. Lives here (not in Shell) so the listener's lifetime is exactly the palette's,
+  // and is removed on unmount — a leaked keydown listener would keep firing against a dead component.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // `e.key` is "k"; lower-cased so Caps Lock / Shift still triggers it. `altKey` excluded so we do
+      // not steal Ctrl+Alt+K from anything else.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        onOpenChange(!open);
+        return;
+      }
+      // Escape closes from anywhere, not just from the input — focus can legitimately be on a row.
+      if (open && e.key === "Escape") { e.preventDefault(); onOpenChange(false); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
+  // Opening resets to a clean slate and focuses the input, so Cmd+K -> type always works without a
+  // click. Stale results from the previous session would otherwise flash before the new fetch lands.
+  useEffect(() => {
+    if (!open) return;
+    setQ(""); setHits([]); setSearching(false); setSearchError(null); setCursor(0);
+    // rAF: the input is only in the DOM after this render commits.
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
+
+  // Debounced + aborted record fetch (see the header comment for WHY both).
+  useEffect(() => {
+    const query = q.trim();
+    if (!open || query.length < SEARCH_MIN_CHARS) { setHits([]); setSearching(false); setSearchError(null); return; }
+    setSearching(true);
+    setSearchError(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then(async (r) => {
+          const j = (await r.json().catch(() => ({}))) as { ok?: boolean; results?: SearchHit[]; error?: string };
+          if (controller.signal.aborted) return; // a newer query already superseded this one
+          if (!r.ok || j.ok === false) {
+            // 503 (no DATABASE_URL) is a normal local state, not a scary failure — say so plainly.
+            setHits([]);
+            setSearchError(r.status === 503 ? "Records unavailable — no database connected." : String(j.error ?? "HTTP " + r.status));
+          } else {
+            setHits(Array.isArray(j.results) ? j.results : []);
+          }
+          setSearching(false);
+        })
+        .catch(() => {
+          // An abort is the expected path on every keystroke — it is not an error worth showing.
+          if (controller.signal.aborted) return;
+          setHits([]); setSearchError("Record search failed."); setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [q, open]);
+
+  const moduleHits = useMemo(() => matchModules(q, NAV_MODULE_DEFS), [q]);
+
+  const rows: PaletteRow[] = useMemo(() => {
+    const trimmed = q.trim();
+    const mods: PaletteRow[] = moduleHits.map((m) => ({
+      key: "module:" + m.id, badge: "Module", icon: m.icon, label: m.label, sublabel: NAV_GROUP_OF[m.id] ?? m.title, href: "/" + m.id,
+    }));
+    const recs: PaletteRow[] = hits.map((h) => ({
+      key: h.kind + ":" + h.id, badge: h.kind, icon: HIT_ICONS[h.kind] ?? "Circle", label: h.label, sublabel: h.sublabel, href: h.href,
+    }));
+    // The LAST row is ALWAYS Ask WOBBLE. Anything that is not a jump is a question, and the founder
+    // should never reach a dead end in this box — pressing Enter on an unmatched query must do
+    // something useful rather than nothing.
+    const ask: PaletteRow = {
+      key: "ask",
+      badge: "Ask",
+      icon: "Sparkles",
+      label: trimmed ? `Ask WOBBLE: ${trimmed}` : "Ask WOBBLE",
+      sublabel: trimmed ? "Send this to the OS as a question" : "Open Ask WOBBLE",
+      href: trimmed ? `/ask?q=${encodeURIComponent(trimmed)}` : "/ask",
+    };
+    return [...mods, ...recs, ask];
+  }, [moduleHits, hits, q]);
+
+  // Reset the highlight whenever the result SET changes, so Enter can never fire the row that used to
+  // be under the cursor before the list re-sorted beneath it.
+  useEffect(() => { setCursor(0); }, [q, hits]);
+
+  // Keep the highlighted row visible when arrowing past the fold.
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [cursor]);
+
+  function activate(row: PaletteRow) {
+    onOpenChange(false);
+    router.push(row.href);
+  }
+
+  function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => (rows.length ? (c + 1) % rows.length : 0)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => (rows.length ? (c - 1 + rows.length) % rows.length : 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); const row = rows[cursor] ?? rows[rows.length - 1]; if (row) activate(row); }
+  }
+
+  if (!open) return null;
+
+  const query = q.trim();
+  const nothingMatched = moduleHits.length === 0 && hits.length === 0 && !searching;
+
+  return (
+    <div
+      // Backdrop. Clicking it closes — the standard escape hatch people reach for before Escape.
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}
+      style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(3,4,7,0.66)", backdropFilter: "blur(3px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "12vh 16px 16px" }}
+    >
+      <div role="dialog" aria-modal="true" aria-label="Command palette" style={{ ...glass, width: "100%", maxWidth: 640, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "70vh" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 15px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <span style={{ color: C.lime, display: "inline-flex", flex: "none" }}><Icon name="Search" size={16} /></span>
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onInputKey}
+            placeholder="Jump to a module, find a record, or ask WOBBLE…"
+            aria-label="Search modules and records"
+            style={{ ...inputStyle, flex: 1, minWidth: 0, border: "none", background: "transparent", padding: 0, fontSize: 15 }}
+          />
+          <span style={{ flex: "none", fontSize: 10, color: faint, border: "1px solid rgba(255,255,255,0.14)", borderRadius: 6, padding: "3px 6px" }}>esc</span>
+        </div>
+
+        <div ref={listRef} style={{ overflowY: "auto", padding: "6px 6px 8px" }}>
+          {moduleHits.length ? <PaletteSectionLabel text="MODULES" /> : null}
+          {rows.map((row, i) => {
+            // The section headers are injected between groups by index rather than by rendering three
+            // separate lists, so the arrow-key cursor stays a single flat index over `rows`.
+            const showRecordsLabel = i === moduleHits.length && hits.length > 0;
+            const showAskLabel = i === moduleHits.length + hits.length;
+            return (
+              <React.Fragment key={row.key}>
+                {showRecordsLabel ? <PaletteSectionLabel text="RECORDS" /> : null}
+                {showAskLabel ? <PaletteSectionLabel text="ASK" /> : null}
+                <button
+                  type="button"
+                  data-active={i === cursor}
+                  onMouseEnter={() => setCursor(i)}
+                  onClick={() => activate(row)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "9px 11px", borderRadius: 11, textAlign: "left", cursor: "pointer",
+                    border: "1px solid " + (i === cursor ? "rgba(184,255,44,0.42)" : "transparent"),
+                    background: i === cursor ? "rgba(184,255,44,0.12)" : "transparent",
+                    color: C.white, font: "inherit",
+                  }}
+                >
+                  <span style={{ flex: "none", width: 28, height: 28, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", color: i === cursor ? C.lime : muted, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
+                    <Icon name={row.icon} size={14} />
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</span>
+                    {row.sublabel ? <span style={{ display: "block", fontSize: 11, color: faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.sublabel}</span> : null}
+                  </span>
+                  <span style={{ flex: "none", fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: faint, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 6, padding: "2px 6px" }}>{row.badge}</span>
+                </button>
+              </React.Fragment>
+            );
+          })}
+
+          {/* Honest states. The panel is never a bare blank rectangle: it is either searching, or it
+              says what it found nothing in, or it explains why records are unavailable. */}
+          {searching ? <PaletteNote text="Searching records…" /> : null}
+          {searchError ? <PaletteNote text={searchError} tone={C.orange} /> : null}
+          {!query ? <PaletteNote text="Type to jump to a module or find a company, deal, lead, proposal, audit or content packet." /> : null}
+          {query && query.length < SEARCH_MIN_CHARS ? <PaletteNote text="Keep typing — records need at least two characters." /> : null}
+          {query.length >= SEARCH_MIN_CHARS && nothingMatched && !searchError ? <PaletteNote text={`No module or record matches “${query}”. Press Enter to ask WOBBLE instead.`} /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaletteSectionLabel({ text }: { text: string }) {
+  return <div style={{ fontSize: 9.5, letterSpacing: "0.09em", color: faint, fontWeight: 700, padding: "9px 11px 5px" }}>{text}</div>;
+}
+function PaletteNote({ text, tone }: { text: string; tone?: string }) {
+  return <div style={{ fontSize: 11.5, color: tone ?? muted, padding: "8px 11px", lineHeight: 1.5 }}>{text}</div>;
+}
+
+function Topbar({ onMenu, onSearch }: { onMenu?: () => void; onSearch: () => void }) {
+  const hint = useShortcutHint();
   return (
     <header style={{ flex: "none", height: 62, padding: onMenu ? "0 14px" : "0 22px", display: "flex", alignItems: "center", gap: onMenu ? 10 : 16, borderBottom: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.008))", backdropFilter: "blur(22px) saturate(130%)" }}>
       {onMenu ? (
@@ -255,11 +512,24 @@ function Topbar({ onMenu }: { onMenu?: () => void } = {}) {
         </button>
       ) : null}
       {/* The search affordance is the widest thing in the bar; on a phone it collapses to an icon-sized
-          tap target so the founder identity + live-data pill still fit without clipping. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, width: onMenu ? "auto" : 330, maxWidth: onMenu ? "none" : "38%", flex: onMenu ? 1 : "none", minWidth: 0, padding: "9px 13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: muted }}>
+          tap target so the founder identity + live-data pill still fit without clipping.
+          It is a <button>, not a <div>: this opens the command palette, so it must be tab-reachable
+          and Enter/Space-activatable like any other control. It was previously an inert div that
+          looked like the app's primary search and did nothing on every screen. */}
+      <button
+        type="button"
+        onClick={onSearch}
+        aria-label="Open command palette"
+        aria-keyshortcuts="Meta+K Control+K"
+        style={{ display: "flex", alignItems: "center", gap: 10, width: onMenu ? "auto" : 330, maxWidth: onMenu ? "none" : "38%", flex: onMenu ? 1 : "none", minWidth: 0, padding: "9px 13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: muted, cursor: "pointer", textAlign: "left", font: "inherit" }}
+      >
         <Icon name="Search" size={15} />
         <span style={{ flex: 1, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{onMenu ? "Ask WOBBLE…" : "Ask WOBBLE or jump to anything…"}</span>
-      </div>
+        {/* No keyboard on a phone, so the shortcut hint is desktop-only. */}
+        {onMenu ? null : (
+          <span aria-hidden style={{ flex: "none", fontSize: 10, fontWeight: 600, color: faint, border: "1px solid rgba(255,255,255,0.14)", borderRadius: 6, padding: "3px 6px" }}>{hint}</span>
+        )}
+      </button>
       <div style={{ flex: 1 }} />
       <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}>
         <span style={{ color: C.lime, display: "inline-flex" }}><Icon name="Activity" size={13} /></span>
@@ -297,6 +567,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => { setNavOpen(false); }, [pathname]); // navigating closes the drawer
   useEffect(() => { if (!narrow) setNavOpen(false); }, [narrow]); // rotating back to wide resets it
+  // The palette's open flag lives HERE, not inside CommandPalette, because two things open it: the
+  // global Cmd+K listener (owned by the palette) and the topbar search button (owned by Topbar).
+  // Shell is their nearest common parent, and it mounts the palette exactly once for the whole app.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   return (
     <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden", background: "radial-gradient(120% 120% at 78% -10%, #0d1206 0%, #08090C 38%, #06070A 100%)", color: C.white, fontFamily: "'General Sans', system-ui, sans-serif" }}>
@@ -319,9 +593,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Sidebar activeId={activeId} />
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <Topbar onMenu={narrow ? () => setNavOpen((v) => !v) : undefined} />
+        <Topbar onMenu={narrow ? () => setNavOpen((v) => !v) : undefined} onSearch={() => setPaletteOpen(true)} />
         <main style={{ flex: 1, overflowY: "auto", padding: narrow ? "18px 16px 40px" : "26px 30px 50px" }}>{children}</main>
       </div>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
 }
@@ -1208,6 +1483,32 @@ function AskPage() {
   const [model, setModel] = useState("");
   const [pendingConfirm, setPendingConfirm] = useState<{ question: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Command-palette hand-off: `/ask?q=…` PREFILLS the composer, it does not send.
+   *
+   * WHY NOT AUTO-SEND: the palette's Ask row is also the fallback for "nothing matched", so a fair
+   * share of these queries are half-formed jump attempts, not questions. Firing an agent turn (which
+   * can call tools and spend budget) off a query the founder never confirmed would be the OS acting
+   * on a typo. They see the text in the box and press send.
+   *
+   * WHY THE URL IS STRIPPED: leaving `?q=` in the address bar means a refresh — or the browser
+   * restoring the tab tomorrow — silently re-fills a composer the founder may have deliberately
+   * cleared. `history.replaceState` removes it without a re-navigation.
+   *
+   * `seededFrom` guards against re-applying the SAME seed on an unrelated re-render, and is cleared
+   * when the param disappears so asking the identical question twice in a row still works.
+   */
+  const searchParams = useSearchParams();
+  const seededFrom = useRef<string | null>(null);
+  useEffect(() => {
+    const seed = searchParams.get("q");
+    if (seed === null) { seededFrom.current = null; return; }
+    if (seededFrom.current === seed) return;
+    seededFrom.current = seed;
+    setQ(seed);
+    window.history.replaceState(null, "", "/ask");
+  }, [searchParams]);
   // Keep the newest turn (and the thinking bubble) in view as the conversation grows.
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [turns.length, busy]);
