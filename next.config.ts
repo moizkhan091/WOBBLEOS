@@ -38,7 +38,10 @@ const nextConfig: NextConfig = {
   // Playwright (used ONLY server-side to rasterise HTML carousel slides) is a heavy native package that must
   // not be bundled into the standalone trace — it's require()'d at runtime, and the render path falls back to
   // the image model if it (or chromium) is absent.
-  serverExternalPackages: ["playwright", "playwright-core"],
+  // `@playwright/test` and `chromium-bidi` must be listed too: documents/pdf.ts probes all three
+  // specifiers at runtime, and without them the bundler follows @playwright/test -> playwright-core ->
+  // chromium-bidi and fails the production build on a devDependency that is never bundled anyway.
+  serverExternalPackages: ["playwright", "playwright-core", "@playwright/test", "chromium-bidi"],
   // Standalone output → a self-contained server bundle for the isolated Docker/VPS deploy (small runtime image).
   output: "standalone",
   // Pin the file-tracing root to this project and EXCLUDE non-runtime trees from the standalone trace.

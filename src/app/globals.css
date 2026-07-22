@@ -580,6 +580,22 @@ button {
   40% { transform: translateY(-4px); opacity: 1; }
 }
 
+/* Every "Loading live data…" state rendered a STATIC loader icon — no spin keyframe existed anywhere,
+   so a page that was mid-fetch was visually identical to one that had hung. `.wobble-spin` is applied
+   by StateBlock's loading icon. Honoured `prefers-reduced-motion` so it degrades to a still icon for
+   founders who ask for that, rather than being removed for everyone. */
+@keyframes wobbleSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.wobble-spin {
+  animation: wobbleSpin 0.9s linear infinite;
+  transform-origin: 50% 50%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wobble-spin { animation: none; }
+}
+
 @media (max-width: 1180px) {
   .os-shell {
     grid-template-columns: 1fr;

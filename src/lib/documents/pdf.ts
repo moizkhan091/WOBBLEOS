@@ -75,15 +75,21 @@ interface PlaywrightModule {
 }
 
 /**
- * Resolves Playwright at runtime through `createRequire` rather than a static/dynamic `import`.
+ * Resolves Playwright at runtime, keeping it OUT of the production bundle.
  *
- * WHY: a bundler (Next/webpack) tries to resolve `import("playwright")` at build time and would
- * either inline the whole browser driver or fail the build on a pruned install. `createRequire`
- * is opaque to the bundler and only touched when someone actually asks for a PDF.
+ * WHY the specifiers are assembled from fragments instead of written as literals: Turbopack statically
+ * analyses `createRequire(...)("playwright")` just like a real import, follows it into
+ * playwright-core's `coreBundle.js`, and fails the production build on `chromium-bidi` — a transitive
+ * dep of a devDependency that is never bundled. `serverExternalPackages` does not stop that trace.
+ * Computing the specifier at runtime makes it invisible to static analysis, which is exactly the
+ * intent: Playwright is an OPTIONAL native tool, touched only when someone actually asks for a PDF,
+ * and its absence must degrade to a clear error rather than break the build.
  */
 function loadChromium(): PwChromium {
   const requireFrom = createRequire(import.meta.url);
-  for (const specifier of ["playwright", "@playwright/test", "playwright-core"]) {
+  // Assembled at runtime on purpose — see the note above. Do NOT inline these back into literals.
+  const specifiers = [["play", "wright"], ["@play", "wright/test"], ["play", "wright-core"]].map((p) => p.join(""));
+  for (const specifier of specifiers) {
     try {
       const mod = requireFrom(specifier) as PlaywrightModule;
       if (mod?.chromium) return mod.chromium;

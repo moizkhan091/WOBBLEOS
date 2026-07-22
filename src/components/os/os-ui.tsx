@@ -29,6 +29,12 @@ const card: React.CSSProperties = {
 };
 const muted = "rgba(242,244,241,0.5)";
 const faint = "rgba(242,244,241,0.4)";
+/**
+ * The dimmest text tone allowed. Replaces a hardcoded `#4a4a52`, which on the near-black background
+ * measured ~1.6:1 — WCAG AA needs 4.5:1 — and was used for empty pipeline columns, empty-state copy and
+ * timeline timestamps. At 55% white over #06070A this clears 4.5:1 while still reading as recessive.
+ */
+const dim = "rgba(255,255,255,0.55)";
 
 type IconCmp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 const ICONS = Lucide as unknown as Record<string, IconCmp>;
@@ -53,11 +59,18 @@ function Tag({ text, color }: { text: string; color: string }) {
 
 interface ApiState<T> { loading: boolean; error: string | null; status: number | null; data: T | null; }
 
-function useApi<T = unknown>(url: string): ApiState<T> & { reload: () => void } {
-  const [s, setS] = useState<ApiState<T>>({ loading: true, error: null, status: null, data: null });
+/**
+ * `url` accepts `null` to mean "there is nothing to fetch yet". Hooks cannot be called conditionally,
+ * so without this a page had to invent a placeholder URL — Departments literally requested
+ * `/api/departments/__none__/budget` on every load and took two guaranteed 404s before a department was
+ * even selected. A null URL now resolves to a quiet, non-loading, non-error idle state.
+ */
+function useApi<T = unknown>(url: string | null): ApiState<T> & { reload: () => void } {
+  const [s, setS] = useState<ApiState<T>>({ loading: url !== null, error: null, status: null, data: null });
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let on = true;
+    if (url === null) { setS({ loading: false, error: null, status: null, data: null }); return; }
     setS({ loading: true, error: null, status: null, data: null });
     fetch(url)
       .then(async (r) => {
@@ -86,8 +99,10 @@ function StateBlock({ kind, message }: { kind: "loading" | "empty" | "error" | "
   } as const;
   const v = map[kind];
   return (
-    <div style={{ ...glass, padding: 56, textAlign: "center" }}>
-      <span style={{ display: "inline-flex", justifyContent: "center", color: v.color, marginBottom: 12 }}><Icon name={v.icon} size={30} /></span>
+    <div style={{ ...glass, padding: 56, textAlign: "center" }} role={kind === "error" ? "alert" : undefined} aria-busy={kind === "loading" || undefined}>
+      {/* The loading icon actually spins now (`.wobble-spin` in globals.css). Before, "Loading live
+          data…" sat under a frozen loader glyph and read as a hung page. */}
+      <span className={kind === "loading" ? "wobble-spin" : undefined} style={{ display: "inline-flex", justifyContent: "center", color: v.color, marginBottom: 12 }}><Icon name={v.icon} size={30} /></span>
       <div style={{ fontSize: 16, fontWeight: 600 }}>{v.title}</div>
       <div style={{ fontSize: 13, color: muted, marginTop: 6, maxWidth: 460, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>{v.body}</div>
     </div>
@@ -329,6 +344,56 @@ function offlineIf(s: ApiState<unknown>): React.ReactNode | null {
 }
 
 /**
+ * The single mutation path for every write in this file.
+ *
+ * WHY: ~18 call sites used bare `await fetch(...)` with no `r.ok` check, no busy state and no error
+ * surfaced. A server rejection was therefore INVISIBLE — the list reloaded unchanged and the founder
+ * concluded the action had worked. On Invoices that governed real money (Approve / Send / Mark paid /
+ * Cancel). This helper makes failure impossible to swallow:
+ *   - it never throws (a non-JSON body, an HTML error page, a dropped connection all become `{ok:false}`),
+ *     so callers can always `finally { setBusy(null) }` and render the message;
+ *   - it prefers the server's own `j.error` over a generic string, because the API already writes
+ *     human-readable refusals ("invoice already sent") that are far more useful than "HTTP 409";
+ *   - it treats `j.ok === false` on a 200 as a failure, which several routes in this app return.
+ * Callers pair it with a per-row busy id so the button is `disabled` in flight — that is what stops a
+ * double-click firing the mutation twice.
+ */
+async function postJson(
+  url: string,
+  body?: unknown,
+  method = "POST",
+): Promise<{ ok: boolean; error?: string; data?: Record<string, unknown> }> {
+  try {
+    const init: RequestInit = { method };
+    if (body !== undefined) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, init);
+    let j: Record<string, unknown> = {};
+    try { j = (await r.json()) as Record<string, unknown>; } catch { j = {}; }
+    if (!r.ok || j.ok === false) {
+      const fromServer = typeof j.error === "string" && j.error.trim() ? j.error : null;
+      return { ok: false, error: fromServer ?? "HTTP " + r.status, data: j };
+    }
+    return { ok: true, data: j };
+  } catch (e) {
+    // Network-level failure (offline, CORS, aborted). Still a failure the founder must see.
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Inline error/notice line used next to an action. Kept tiny and colour-coded so a failed mutation
+ * reads as a failure at a glance instead of blending into the surrounding copy.
+ */
+function ActionMsg({ msg }: { msg: string | null }) {
+  if (!msg) return null;
+  const bad = msg.startsWith("Error") || msg.startsWith("Could not") || msg.startsWith("Failed") || msg.includes("failed");
+  return <span role={bad ? "alert" : undefined} style={{ fontSize: 12, color: bad ? C.orange : C.lime, lineHeight: 1.45 }}>{msg}</span>;
+}
+
+/**
  * The founder roster, used ONLY to choose whose profile you are LOOKING AT (a subject selector).
  * It is no longer used to choose who you ARE — that always comes from `useSessionFounder`.
  *
@@ -470,31 +535,38 @@ function CostsPage() {
         ))}
       </div>
       <Panel style={{ padding: "8px 10px" }}>
-        <div style={{ display: "flex", padding: "11px 14px 12px", fontSize: 10.5, letterSpacing: "0.08em", color: faint, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-          <span style={{ flex: 1 }}>MODEL RUN</span>
-          <span style={{ width: 110 }}>STATUS</span>
-          <span style={{ width: 90 }}>LATENCY</span>
-          <span style={{ width: 90, textAlign: "right" }}>COST</span>
+        {/* The three right-hand columns are fixed-width, so on a narrow screen the model/provider name
+            ran straight into STATUS. The table now scrolls inside its own box (the page body never
+            scrolls sideways) and the name cell truncates instead of colliding. */}
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ minWidth: 520 }}>
+            <div style={{ display: "flex", padding: "11px 14px 12px", fontSize: 10.5, letterSpacing: "0.08em", color: faint, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <span style={{ flex: 1, minWidth: 0 }}>MODEL RUN</span>
+              <span style={{ width: 110, flex: "none" }}>STATUS</span>
+              <span style={{ width: 90, flex: "none" }}>LATENCY</span>
+              <span style={{ width: 90, flex: "none", textAlign: "right" }}>COST</span>
+            </div>
+            {runs.length === 0 ? (
+              <div style={{ padding: 22, textAlign: "center", color: muted, fontSize: 13 }}>No model runs logged yet.</div>
+            ) : (
+              runs.map((r, i) => {
+                const status = String(r.status ?? "—");
+                const col = status === "succeeded" ? C.lime : status === "error" ? C.orange : C.blue;
+                return (
+                  <div key={String(r.id ?? i)} style={{ display: "flex", alignItems: "center", padding: "13px 14px", borderBottom: i < runs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(r.provider ?? "provider")} · {String(r.model ?? "model")}</div>
+                      <div style={{ fontSize: 10.5, color: faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(r.module ?? r.role ?? "")} · {fmtTime(r.createdAt)}</div>
+                    </div>
+                    <div style={{ width: 110, flex: "none" }}><StatusPill label={status} color={col} /></div>
+                    <div style={{ width: 90, flex: "none", fontSize: 12, color: muted }}>{r.latencyMs != null ? String(r.latencyMs) + "ms" : "—"}</div>
+                    <div style={{ width: 90, flex: "none", textAlign: "right", fontSize: 12, color: muted }}>{fmtMoney(r.costEstimate)}</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-        {runs.length === 0 ? (
-          <div style={{ padding: 22, textAlign: "center", color: muted, fontSize: 13 }}>No model runs logged yet.</div>
-        ) : (
-          runs.map((r, i) => {
-            const status = String(r.status ?? "—");
-            const col = status === "succeeded" ? C.lime : status === "error" ? C.orange : C.blue;
-            return (
-              <div key={String(r.id ?? i)} style={{ display: "flex", alignItems: "center", padding: "13px 14px", borderBottom: i < runs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{String(r.provider ?? "provider")} · {String(r.model ?? "model")}</div>
-                  <div style={{ fontSize: 10.5, color: faint }}>{String(r.module ?? r.role ?? "")} · {fmtTime(r.createdAt)}</div>
-                </div>
-                <div style={{ width: 110 }}><StatusPill label={status} color={col} /></div>
-                <div style={{ width: 90, fontSize: 12, color: muted }}>{r.latencyMs != null ? String(r.latencyMs) + "ms" : "—"}</div>
-                <div style={{ width: 90, textAlign: "right", fontSize: 12, color: muted }}>{fmtMoney(r.costEstimate)}</div>
-              </div>
-            );
-          })
-        )}
       </Panel>
     </div>
   );
@@ -535,8 +607,8 @@ function MemoryApproveModal({ approvalId, entityId, who, onClose, onDone }: { ap
           <div><div style={labelStyle}>SLUG</div><input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="brand_voice_rule" style={inputStyle} /></div>
           <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short human title" style={inputStyle} /></div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <div><div style={labelStyle}>TIER</div><select value={tier} onChange={(e) => setTier(e.target.value)} style={selectStyle}>{MEM_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
-            <div><div style={labelStyle}>TRUST</div><select value={trust} onChange={(e) => setTrust(e.target.value)} style={selectStyle}>{MEM_TRUST.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><div style={labelStyle}>TIER</div><select value={tier} onChange={(e) => setTier(e.target.value)} aria-label="Memory tier" style={selectStyle}>{MEM_TIERS.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><div style={labelStyle}>TRUST</div><select value={trust} onChange={(e) => setTrust(e.target.value)} aria-label="Trust level" style={selectStyle}>{MEM_TRUST.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
           </div>
           <div><div style={labelStyle}>REJECT REASON <span style={{ color: faint, fontWeight: 400 }}>(if rejecting)</span></div><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="why not" style={inputStyle} /></div>
           {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
@@ -592,9 +664,16 @@ function ApprovalsPage() {
         const isMem = a.approvalType === "memory_update";
         const eid = String(a.entityId ?? "");
         return (
-          <div key={id} onClick={() => setSelected(a)} style={{ ...glass, padding: "20px 22px", display: "flex", gap: 18, alignItems: "flex-start", cursor: "pointer" }}>
+          // The row was a clickable <div> wrapping three real buttons — it could not become one <button>
+          // (nested interactive elements are invalid), so the READABLE part is the button and the action
+          // column stays a sibling. Keyboard users reach details without tabbing past Approve/Reject.
+          <div key={id} style={{ ...glass, padding: "20px 22px", display: "flex", gap: 18, alignItems: "flex-start" }}>
             <span style={{ width: 44, height: 44, flex: "none", borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}><Icon name="BadgeCheck" size={19} /></span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={() => setSelected(a)}
+              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left", cursor: "pointer" }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{String(a.title ?? a.approvalType ?? "Approval item")}</span>
                 <Tag text={String(a.approvalType ?? "item")} color={C.blue} />
@@ -602,8 +681,8 @@ function ApprovalsPage() {
               </div>
               <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55, maxWidth: 680 }}>{String(a.summary ?? "")}</div>
               <div style={{ fontSize: 11, color: faint, marginTop: 12 }}>{String(a.entityType ?? "")}{a.entityId ? " · " + String(a.entityId) : ""} · {fmtTime(a.createdAt)}</div>
-            </div>
-            <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 8, flex: "none", width: 160 }}>
+            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "none", width: 160 }}>
               <button onClick={() => setSelected(a)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer" }}>Open details</button>
               <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "approve"))} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>{busy ? "Working…" : isMem ? "Review & approve" : "Approve as " + who.split(" ")[0]}</button>
               <button onClick={() => (isMem ? setMemItem({ approvalId: id, entityId: eid }) : act(id, "reject"))} disabled={busy} style={{ ...rejectBtn, opacity: busy ? 0.55 : 1, cursor: busy ? "wait" : "pointer" }}>Reject</button>
@@ -638,17 +717,31 @@ function ApprovalsPage() {
   );
 }
 
-function Kpi({ label, value, icon, color, sub }: { label: string; value: string; icon: string; color: string; sub?: string }) {
-  return (
-    <div style={{ ...card, padding: "18px 20px" }}>
+/**
+ * A KPI tile. With `href` it becomes a link into the module the number came from — the dashboards were
+ * grids of dead numbers ("Approvals pending: 3") with no way to reach the three approvals. Without
+ * `href` it renders exactly as before, so every existing caller is unaffected.
+ */
+function Kpi({ label, value, icon, color, sub, href }: { label: string; value: string; icon: string; color: string; sub?: string; href?: string }) {
+  const body = (
+    <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{label}</span>
         <span style={{ color, display: "inline-flex" }}><Icon name={icon} size={16} /></span>
       </div>
       <div style={{ fontSize: 30, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</div>
       {sub ? <div style={{ fontSize: 10.5, color: faint, marginTop: 7 }}>{sub}</div> : null}
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} style={{ ...card, padding: "18px 20px", display: "block", textDecoration: "none", color: C.white }}>
+        {body}
+        <div style={{ fontSize: 10.5, color: C.lime, marginTop: 7, fontWeight: 600 }}>Open →</div>
+      </Link>
+    );
+  }
+  return <div style={{ ...card, padding: "18px 20px" }}>{body}</div>;
 }
 
 interface Readiness {
@@ -710,15 +803,17 @@ function CommandPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 14 }}>
-        <Kpi label="Approvals pending" value={String(pending)} icon="BadgeCheck" color={pending > 0 ? C.orange : C.lime} sub="awaiting a founder" />
-        <Kpi label="Spend · today" value={today} icon="Receipt" color={C.lime} sub="real model_runs" />
-        <Kpi label="Live pages wired" value={String(wired)} icon="PlugZap" color={C.blue} sub={`of ${total} modules`} />
+        {/* Each tile now goes to the module the number came from — they were nine dead numbers. */}
+        <Kpi label="Approvals pending" value={String(pending)} icon="BadgeCheck" color={pending > 0 ? C.orange : C.lime} sub="awaiting a founder" href="/approvals" />
+        <Kpi label="Spend · today" value={today} icon="Receipt" color={C.lime} sub="real model_runs" href="/costs" />
+        <Kpi label="Live pages wired" value={String(wired)} icon="PlugZap" color={C.blue} sub={`of ${total} modules`} href="/settings" />
         <Kpi
           label="System"
           value={systemValue}
           icon={ready ? "CircleCheck" : "TriangleAlert"}
           color={rd.loading ? C.blue : ready ? C.lime : C.orange}
           sub={systemSub}
+          href="/workers"
         />
       </div>
       <Panel style={{ padding: "8px 10px" }}>
@@ -834,7 +929,7 @@ function GenerateModal({ tracks, defaultTrack, onClose, onDone }: { tracks: Reco
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
             <div style={labelStyle}>TRACK</div>
-            <select value={trackId} onChange={(e) => setTrackId(e.target.value)} style={{ ...selectStyle, width: "100%" }}>
+            <select value={trackId} onChange={(e) => setTrackId(e.target.value)} aria-label="Content track" style={{ ...selectStyle, width: "100%" }}>
               {tracks.length === 0 ? <option value="track_wobble_company">track_wobble_company</option> : tracks.map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name ?? t.slug ?? t.id)}</option>)}
             </select>
           </div>
@@ -907,7 +1002,7 @@ function ContentPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: muted }}>Track</span>
-        <select value={track} onChange={(e) => setTrack(e.target.value)} style={selectStyle}>
+        <select value={track} onChange={(e) => setTrack(e.target.value)} aria-label="Filter by content track" style={selectStyle}>
           <option value="">All tracks</option>
           {tracks.map((t) => <option key={String(t.id)} value={String(t.id)}>{String(t.name ?? t.slug ?? t.id)}</option>)}
         </select>
@@ -1001,6 +1096,104 @@ function readFileB64(f: File): Promise<string> {
   });
 }
 
+/**
+ * Format picker + actions for a generated artifact (audit report, deck, proposal).
+ *
+ * The same content is modelled once and can be dressed three ways — 16:9 slides to present, A4 to print
+ * as a leave-behind, or a prose document to read. Switching format costs no model call, so the founder
+ * picks the shape at the moment of use rather than at generation time. "PDF" downloads through headless
+ * Chromium; if the host has no Chromium the route answers 503 with the reason rather than a broken file.
+ */
+const ARTIFACT_FORMATS: Array<{ id: string; label: string; hint: string }> = [
+  { id: "deck16x9", label: "Slides", hint: "16:9 — present on screen" },
+  { id: "deckA4", label: "A4", hint: "A4 portrait — print / leave-behind" },
+  { id: "document", label: "Document", hint: "Prose report — read & annotate" },
+];
+
+function ArtifactLinks({ base, label = "Open", compact }: { base: string; label?: string; compact?: boolean }) {
+  const [format, setFormat] = useState("deck16x9");
+  const pad = compact ? "5px 10px" : "6px 11px";
+  const size = compact ? 11 : 12;
+  const hint = ARTIFACT_FORMATS.find((f) => f.id === format)?.hint ?? "";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <select
+        value={format}
+        onChange={(e) => setFormat(e.target.value)}
+        aria-label="Artifact format"
+        title={hint}
+        style={{ ...selectStyle, padding: "4px 7px", fontSize: size }}
+      >
+        {ARTIFACT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+      </select>
+      <a href={`${base}?format=${format}`} target="_blank" rel="noreferrer" style={{ ...primaryBtn, textDecoration: "none", padding: pad, fontSize: size }}>{label} ↗</a>
+      <a href={`${base}?format=${format}&download=pdf`} target="_blank" rel="noreferrer" title="Download as PDF (requires Chromium on the host)" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: pad, fontSize: size }}>PDF ↓</a>
+    </span>
+  );
+}
+
+/**
+ * Minimal, SAFE rich-text renderer for assistant answers.
+ *
+ * The model replies in light markdown, but the chat bubble rendered `{m.text}` as plain text — so
+ * every answer showed literal `**bold**`, `###` and `-` characters. This parses the small subset the
+ * house format actually uses (bold, bullets, numbered items, a "Next:" line) and renders real React
+ * elements. Deliberately NOT dangerouslySetInnerHTML and NOT a markdown dependency: model output is
+ * untrusted text, so it is never interpreted as HTML.
+ */
+function RichText({ text }: { text: string }) {
+  const lines = (text ?? "").split(/\r?\n/);
+  const bold = (s: string, keyBase: string): React.ReactNode[] =>
+    s.split(/(\*\*[^*]+\*\*|__[^_]+__)/g).filter(Boolean).map((part, i) => {
+      const m = /^(\*\*|__)([\s\S]+)(\*\*|__)$/.exec(part);
+      return m
+        ? <strong key={`${keyBase}-b${i}`} style={{ fontWeight: 700, color: C.white }}>{m[2]}</strong>
+        : <React.Fragment key={`${keyBase}-t${i}`}>{part}</React.Fragment>;
+    });
+
+  const out: React.ReactNode[] = [];
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/^#{1,6}\s*/, ""); // strip heading markers; we style by position, not level
+    const isHeading = /^#{1,6}\s/.test(raw);
+    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
+    const numbered = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
+    if (!line.trim()) { out.push(<div key={`sp${i}`} style={{ height: 6 }} />); return; }
+    if (bullet) {
+      out.push(
+        <div key={`li${i}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "3px 0" }}>
+          <span style={{ color: C.lime, lineHeight: 1.55, flex: "none" }}>•</span>
+          <span style={{ flex: 1 }}>{bold(bullet[1], `li${i}`)}</span>
+        </div>,
+      );
+      return;
+    }
+    if (numbered) {
+      out.push(
+        <div key={`no${i}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "3px 0" }}>
+          <span style={{ color: C.lime, fontWeight: 700, lineHeight: 1.55, flex: "none", minWidth: 16 }}>{numbered[1]}.</span>
+          <span style={{ flex: 1 }}>{bold(numbered[2], `no${i}`)}</span>
+        </div>,
+      );
+      return;
+    }
+    const isNext = /^\s*next\s*:/i.test(line);
+    out.push(
+      <div
+        key={`p${i}`}
+        style={{
+          margin: "3px 0",
+          fontWeight: isHeading ? 700 : undefined,
+          fontSize: isHeading ? 14.5 : undefined,
+          color: isNext ? C.lime : undefined,
+        }}
+      >
+        {bold(line, `p${i}`)}
+      </div>,
+    );
+  });
+  return <div>{out}</div>;
+}
+
 function AskPage() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1013,7 +1206,6 @@ function AskPage() {
   const greet = useApi<{ greeting: string; subline: string; dayPart: string }>(`/api/ai/greeting?hour=${localHour}`);
   const modelState = useApi<{ models: { id: string; label: string; description: string }[] }>("/api/ai/models");
   const [model, setModel] = useState("");
-  const [agentMode, setAgentMode] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ question: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Keep the newest turn (and the thinking bubble) in view as the conversation grows.
@@ -1041,7 +1233,13 @@ function AskPage() {
     const sendFiles = files;
     setQ(""); setFiles([]); setBusy(true);
     try {
-      if (agentMode && sendFiles.length === 0) {
+      // ONE mode. There used to be an "Agent" toggle asking the founder to classify their own request
+      // as a question vs a task — which is the OS's job, not theirs. It also hid a total breakage: the
+      // agent path had been failing validation on every call and nobody noticed, because almost nobody
+      // flipped the switch. Now every text turn goes through the agent, which simply doesn't call tools
+      // when a question needs none (same speed as before for simple asks). Attachments still route to
+      // the multimodal chat path, which the agent loop doesn't handle.
+      if (sendFiles.length === 0) {
         // Agent mode: the orchestrator can inspect + operate the OS (destructive actions need confirm).
         // NOTE: the field is `question` — askAgentSchema requires it. This used to send `message`, so
         // EVERY agent-mode request failed validation (422) and Agent mode never worked at all.
@@ -1116,7 +1314,7 @@ function AskPage() {
             <div key={i} style={{ display: "flex", justifyContent: m.role === "you" ? "flex-end" : "flex-start" }}>
               <div style={{ maxWidth: "80%", padding: "12px 15px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap", border: "1px solid " + (m.role === "you" ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.09)"), background: m.role === "you" ? "linear-gradient(135deg,rgba(184,255,44,0.16),rgba(184,255,44,0.06))" : "rgba(255,255,255,0.05)" }}>
                 {m.files?.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>{m.files.map((f, k) => <Tag key={k} text={(f.kind === "image" ? "🖼 " : f.kind === "pdf" ? "📄 " : "📎 ") + f.name.slice(0, 26)} color={C.blue} />)}</div> : null}
-                {m.text}
+                <RichText text={m.text} />
                 {m.meta ? <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{m.meta}</div> : null}
                 {m.needsFounderJudgment?.length ? <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>{m.needsFounderJudgment.map((item) => <div key={item} style={{ fontSize: 11.5, color: C.orange }}>{item}</div>)}</div> : null}
                 {m.citations?.length ? <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 5 }}>{m.citations.slice(0, 8).map((c, idx) => <Tag key={String(c.id ?? idx)} text={String(c.kind ?? "source") + " - " + String(c.label ?? c.id ?? idx).slice(0, 48)} color={String(c.kind) === "source" ? C.blue : C.lime} />)}{m.citations.length > 8 ? <Tag text={"+" + String(m.citations.length - 8) + " more"} color={C.gray} /> : null}</div> : null}
@@ -1134,7 +1332,7 @@ function AskPage() {
                     <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.lime, opacity: 0.85, animation: `wobbleThinking 1.05s ${i * 0.16}s infinite ease-in-out` }} />
                   ))}
                 </span>
-                <span style={{ fontSize: 12.5, color: faint }}>{agentMode ? "WOBBLE is working — inspecting the OS…" : "WOBBLE is thinking…"}</span>
+                <span style={{ fontSize: 12.5, color: faint }}>WOBBLE is working…</span>
               </div>
             </div>
           ) : null}
@@ -1165,24 +1363,23 @@ function AskPage() {
                     <div><div style={{ fontSize: 10.5, color: C.white, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div><div style={{ fontSize: 9.5, color: faint }}>{(f.size / 1024).toFixed(0)} KB</div></div>
                   </div>
                 )}
-                <button onClick={() => removeFile(f.id)} style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11, cursor: "pointer", lineHeight: 1 }}>×</button>
+                <button onClick={() => removeFile(f.id)} aria-label="Remove attached file" title="Remove attached file" style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11, cursor: "pointer", lineHeight: 1 }}>×</button>
               </div>
             ))}
           </div>
         ) : null}
         <textarea value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Ask WOBBLE anything — or drop an image / PDF / doc to analyze…" rows={2} style={{ width: "100%", padding: "6px 6px 10px", border: "none", background: "transparent", color: C.white, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => fileRef.current?.click()} title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
+          <button onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
           {models.length ? (
-            <select value={model} onChange={(e) => setModel(e.target.value)} title="Model" style={{ ...selectStyle, padding: "6px 9px", fontSize: 11.5 }}>
+            <select value={model} onChange={(e) => setModel(e.target.value)} title="Model" aria-label="Model" style={{ ...selectStyle, padding: "6px 9px", fontSize: 11.5 }}>
               <option value="">Auto</option>
               {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           ) : null}
-          <button onClick={() => setAgentMode((a) => !a)} title="Agent mode — let WOBBLE inspect + operate the OS (actions need your confirmation)" style={{ padding: "6px 11px", borderRadius: 9, fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (agentMode ? "rgba(184,255,44,0.5)" : "rgba(255,255,255,0.12)"), background: agentMode ? "rgba(184,255,44,0.14)" : "rgba(255,255,255,0.03)", color: agentMode ? C.lime : muted }}>⚡ Agent{agentMode ? " · ON" : ""}</button>
-          <span style={{ fontSize: 10.5, color: faint }}>{agentMode ? "Agent can inspect + operate the OS · changes ask first" : "Images → vision · PDFs & docs → parsed · Shift+Enter for newline"}</span>
+          <span style={{ fontSize: 10.5, color: faint }}>Reads + drafts run straight away · anything that sends or deletes asks you first · Shift+Enter for newline</span>
           <div style={{ flex: 1 }} />
-          <button onClick={send} disabled={!hasContent || busy} style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: hasContent && !busy ? C.lime : "rgba(184,255,44,0.3)", color: "#0A0A0A", cursor: hasContent && !busy ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>{busy ? <Icon name="Loader2" size={17} /> : <Icon name="ArrowUp" size={18} />}</button>
+          <button onClick={send} disabled={!hasContent || busy} aria-label="Send message" title="Send message" style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: hasContent && !busy ? C.lime : "rgba(184,255,44,0.3)", color: "#0A0A0A", cursor: hasContent && !busy ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>{busy ? <Icon name="Loader2" size={17} /> : <Icon name="ArrowUp" size={18} />}</button>
         </div>
         <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {drag ? <div style={{ position: "absolute", inset: 0, borderRadius: 14, background: "rgba(6,7,10,0.85)", display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, fontSize: 13, fontWeight: 600, pointerEvents: "none" }}>Drop files to attach</div> : null}
@@ -1259,13 +1456,13 @@ function BrainPage() {
 const actBtn: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.05)", color: C.white, fontSize: 11, fontWeight: 600, cursor: "pointer" };
 const chipBtn = (on: boolean): React.CSSProperties => ({ padding: "8px 13px", borderRadius: 10, border: "1px solid " + (on ? "rgba(184,255,44,0.34)" : "rgba(255,255,255,0.10)"), background: on ? "linear-gradient(135deg,rgba(184,255,44,0.14),rgba(184,255,44,0.03))" : "rgba(255,255,255,0.03)", color: on ? C.white : muted, fontSize: 12.5, fontWeight: 600, cursor: "pointer" });
 
+/**
+ * Memory's mutation path. It was a second, near-identical copy of `postJson` (argument order differs
+ * only). Kept as a one-line adapter rather than a duplicate implementation so there is exactly ONE
+ * place that decides what counts as a failed mutation in this file.
+ */
 async function memApi(path: string, method: string, body?: unknown): Promise<{ ok: boolean; error?: string; data?: Record<string, unknown> }> {
-  try {
-    const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
-    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!r.ok || j.ok === false) return { ok: false, error: String(j.error ?? "HTTP " + r.status) };
-    return { ok: true, data: j };
-  } catch (e) { return { ok: false, error: String(e) }; }
+  return postJson(path, body, method);
 }
 
 function EditMemoryModal({ record, actor, onClose, onDone }: { record: Record<string, unknown>; actor: string; onClose: () => void; onDone: () => void }) {
@@ -1329,16 +1526,24 @@ function ManagedMemoryList({ actor, status }: { actor: string; status: "active" 
   const s = useApi<{ records: Record<string, unknown>[] }>("/api/memory/records?status=" + status + "&limit=100&r=" + bump);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const guard = offlineIf(s); if (guard) return guard;
   const recs = s.data?.records ?? [];
   async function run(r: Record<string, unknown>, act: "pin" | "archive" | "restore") {
-    const id = encodeURIComponent(String(r.id));
+    const rawId = String(r.id);
+    const id = encodeURIComponent(rawId);
+    const title = String(r.title ?? r.content ?? "this memory");
+    // Delete archives a memory WOBBLE reasons with. Name what is being removed before removing it.
+    if (act === "archive" && !window.confirm(`Delete "${title.slice(0, 90)}"?\n\nIt is archived immediately (WOBBLE stops using it) and purged after 48 hours. You can restore it from the Archived tab until then.`)) return;
+    setBusyId(rawId);
+    setNote(null);
     const res =
       act === "pin" ? await memApi("/api/memory/records/" + id + "/pin", "POST", { pinned: !r.pinned, actor })
       : act === "archive" ? await memApi("/api/memory/records/" + id, "DELETE", { archivedBy: actor, reason: "removed from dashboard" })
       : await memApi("/api/memory/records/" + id + "/restore", "POST", { restoredBy: actor });
-    setNote(res.ok ? null : "Error: " + res.error);
-    setBump((x) => x + 1);
+    setBusyId(null);
+    setNote(res.ok ? null : "Error: could not " + act + " — " + String(res.error));
+    if (res.ok) setBump((x) => x + 1);
   }
   if (!recs.length) return <StateBlock kind="empty" message={status === "archived" ? "Nothing archived. Deleted memories live here for 48h before purge." : "No memories yet."} />;
   return (
@@ -1360,12 +1565,12 @@ function ManagedMemoryList({ actor, status }: { actor: string; status: "active" 
             <div style={{ display: "flex", gap: 6, flex: "none" }}>
               {status === "active" ? (
                 <>
-                  <button onClick={() => run(r, "pin")} style={actBtn}>{r.pinned ? "Unpin" : "Pin"}</button>
+                  <button onClick={() => run(r, "pin")} disabled={busyId === String(r.id)} style={{ ...actBtn, opacity: busyId === String(r.id) ? 0.55 : 1, cursor: busyId === String(r.id) ? "wait" : "pointer" }}>{r.pinned ? "Unpin" : "Pin"}</button>
                   <button onClick={() => setEditing(r)} style={actBtn}>Edit</button>
-                  <button onClick={() => run(r, "archive")} style={{ ...actBtn, color: C.orange, borderColor: "rgba(255,107,0,0.34)" }}>Delete</button>
+                  <button onClick={() => run(r, "archive")} disabled={busyId === String(r.id)} style={{ ...actBtn, color: C.orange, borderColor: "rgba(255,107,0,0.34)", opacity: busyId === String(r.id) ? 0.55 : 1, cursor: busyId === String(r.id) ? "wait" : "pointer" }}>Delete</button>
                 </>
               ) : (
-                <button onClick={() => run(r, "restore")} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Restore</button>
+                <button onClick={() => run(r, "restore")} disabled={busyId === String(r.id)} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)", opacity: busyId === String(r.id) ? 0.55 : 1, cursor: busyId === String(r.id) ? "wait" : "pointer" }}>Restore</button>
               )}
             </div>
           </div>
@@ -1380,12 +1585,17 @@ function MemoryConflictsPanel({ actor }: { actor: string }) {
   const [bump, setBump] = useState(0);
   const s = useApi<{ conflicts: Record<string, unknown>[] }>("/api/memory/conflicts?limit=50&r=" + bump);
   const [note, setNote] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const guard = offlineIf(s); if (guard) return guard;
   const conflicts = s.data?.conflicts ?? [];
   async function resolve(id: string, resolution: string) {
+    setBusyId(id); setNote(null);
     const res = await memApi("/api/memory/conflicts/" + encodeURIComponent(id) + "/resolve", "POST", { resolution, resolvedBy: actor });
-    setNote(res.ok ? null : "Error: " + res.error);
-    setBump((x) => x + 1);
+    setBusyId(null);
+    // Resolving archives one side of the conflict — a failure that reloaded the list unchanged looked
+    // exactly like "the conflict came back", so it has to be named.
+    setNote(res.ok ? null : "Error: could not resolve — " + String(res.error));
+    if (res.ok) setBump((x) => x + 1);
   }
   if (!conflicts.length) return <StateBlock kind="empty" message="No open conflicts. When a new memory contradicts an existing one, it shows up here to resolve." />;
   return (
@@ -1401,9 +1611,17 @@ function MemoryConflictsPanel({ actor }: { actor: string }) {
           </div>
           <div style={{ fontSize: 11.5, color: muted, marginBottom: 12 }}>New record <code>{String(c.newRecordId).slice(0, 14)}</code> is similar-but-different to existing <code>{String(c.existingRecordId).slice(0, 14)}</code>.</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => resolve(String(c.id), "keep_new")} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Keep new (archive old)</button>
-            <button onClick={() => resolve(String(c.id), "keep_existing")} style={actBtn}>Keep existing (archive new)</button>
-            <button onClick={() => resolve(String(c.id), "keep_both")} style={actBtn}>Keep both</button>
+            {(() => {
+              const b = busyId === String(c.id);
+              const busyStyle = { opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer" } as const;
+              return (
+                <>
+                  <button onClick={() => resolve(String(c.id), "keep_new")} disabled={b} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)", ...busyStyle }}>Keep new (archive old)</button>
+                  <button onClick={() => resolve(String(c.id), "keep_existing")} disabled={b} style={{ ...actBtn, ...busyStyle }}>Keep existing (archive new)</button>
+                  <button onClick={() => resolve(String(c.id), "keep_both")} disabled={b} style={{ ...actBtn, ...busyStyle }}>Keep both</button>
+                </>
+              );
+            })()}
           </div>
         </div>
       ))}
@@ -1414,15 +1632,21 @@ function MemoryConflictsPanel({ actor }: { actor: string }) {
 function MemoryReviewPanel({ actor }: { actor: string }) {
   const [bump, setBump] = useState(0);
   const s = useApi<{ records: Record<string, unknown>[] }>("/api/memory/review?limit=50&r=" + bump);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const guard = offlineIf(s); if (guard) return guard;
   const recs = s.data?.records ?? [];
   async function reviewed(id: string) {
-    await memApi("/api/memory/records/" + encodeURIComponent(id) + "/review", "POST", { reviewedBy: actor });
+    setBusyId(id); setNote(null);
+    const res = await memApi("/api/memory/records/" + encodeURIComponent(id) + "/review", "POST", { reviewedBy: actor });
+    setBusyId(null);
+    if (!res.ok) { setNote("Error: could not confirm — " + String(res.error)); return; }
     setBump((x) => x + 1);
   }
   if (!recs.length) return <StateBlock kind="empty" message="Nothing stale. Memories resurface here for re-confirmation as they age." />;
   return (
     <div style={{ ...glass, padding: "8px 10px" }}>
+      {note ? <div style={{ padding: "8px 12px" }}><ActionMsg msg={note} /></div> : null}
       {recs.map((r, i) => (
         <div key={String(r.id ?? i)} style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < recs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
           <Icon name="Clock" size={15} color={C.blue} />
@@ -1430,7 +1654,7 @@ function MemoryReviewPanel({ actor }: { actor: string }) {
             <div style={{ fontSize: 13, fontWeight: 600 }}>{String(r.title ?? "memory")}</div>
             <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>due since {fmtTime(r.reviewAfter)}</div>
           </div>
-          <button onClick={() => reviewed(String(r.id))} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)" }}>Still true</button>
+          <button onClick={() => reviewed(String(r.id))} disabled={busyId === String(r.id)} style={{ ...actBtn, color: C.lime, borderColor: "rgba(184,255,44,0.34)", opacity: busyId === String(r.id) ? 0.55 : 1, cursor: busyId === String(r.id) ? "wait" : "pointer" }}>{busyId === String(r.id) ? "…" : "Still true"}</button>
         </div>
       ))}
     </div>
@@ -1464,7 +1688,7 @@ function FounderMemoryPanel({ viewer }: { viewer: string }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11.5, color: faint }}>Viewing profile of</span>
-        <select data-testid="founder-profile-subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={selectStyle}>
+        <select data-testid="founder-profile-subject" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Founder profile to view" style={selectStyle}>
           {FOUNDERS.map((f) => <option key={f} value={f}>{f}{f === viewer ? " (you)" : ""}</option>)}
         </select>
         <Tag text={editable ? "editable · your profile" : "read-only · colleague's profile"} color={editable ? C.lime : C.blue} />
@@ -1758,14 +1982,14 @@ function AddSourceModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           <div style={{ fontSize: 12, color: muted }}>New sources start pending and enter the approval queue before the workforce can use them.</div>
           <div><div style={labelStyle}>TITLE</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Competitor pricing teardown" style={inputStyle} /></div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} style={selectStyle}>{sourceTypes.map((t) => <option key={t.slug} value={t.slug}>{t.label}</option>)}</select></div>
+            <div><div style={labelStyle}>TYPE</div><select value={sourceType} onChange={(e) => setSourceType(e.target.value)} aria-label="Source type" style={selectStyle}>{sourceTypes.map((t) => <option key={t.slug} value={t.slug}>{t.label}</option>)}</select></div>
             <div><div style={labelStyle}>ADDED BY</div><div style={{ ...selectStyle, opacity: 0.75 }}>{who || "…"}</div></div>
           </div>
           <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>{selectedType?.category ?? "source"} - {selectedType?.description ?? "Per-type intake runs after approval."}</div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div><div style={labelStyle}>OWNER</div><select value={ownerScope} onChange={(e) => setOwnerScope(e.target.value)} style={selectStyle}>{["global", "company", "client", "project"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}</select></div>
+            <div><div style={labelStyle}>OWNER</div><select value={ownerScope} onChange={(e) => setOwnerScope(e.target.value)} aria-label="Owner scope" style={selectStyle}>{["global", "company", "client", "project"].map((scope) => <option key={scope} value={scope}>{scope}</option>)}</select></div>
             <div style={{ flex: 1, minWidth: 160 }}><div style={labelStyle}>OWNER ID <span style={{ color: faint, fontWeight: 400 }}>(optional)</span></div><input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} placeholder="client/project id later" style={inputStyle} /></div>
-            <div><div style={labelStyle}>REFRESH</div><select value={refreshFrequency} onChange={(e) => setRefreshFrequency(e.target.value)} style={selectStyle}>{["manual", "hourly", "daily", "weekly", "monthly", "never"].map((freq) => <option key={freq} value={freq}>{freq}</option>)}</select></div>
+            <div><div style={labelStyle}>REFRESH</div><select value={refreshFrequency} onChange={(e) => setRefreshFrequency(e.target.value)} aria-label="Refresh frequency" style={selectStyle}>{["manual", "hourly", "daily", "weekly", "monthly", "never"].map((freq) => <option key={freq} value={freq}>{freq}</option>)}</select></div>
           </div>
           <div><div style={labelStyle}>INTENDED USE <span style={{ color: faint, fontWeight: 400 }}>(comma separated)</span></div><input value={intendedUse} onChange={(e) => setIntendedUse(e.target.value)} placeholder="content_strategy, design_reference, seo" style={inputStyle} /></div>
           <div><div style={labelStyle}>URL <span style={{ color: faint, fontWeight: 400 }}>(optional)</span></div><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={inputStyle} /></div>
@@ -2051,24 +2275,19 @@ function ConnectionDetailDrawer({ connection, onClose, onChanged }: { connection
   useEffect(() => setCurrent(connection), [connection]);
 
   async function toggleEnabled() {
+    // Disabling BLOCKS every job that depends on this connection — an outage the founder is choosing to
+    // cause. Name the blast radius before it happens.
+    if (current.enabled && !window.confirm(`Disable "${current.label}"?\n\nEvery job that needs this connection will be BLOCKED until it is re-enabled${current.allowedModules.length ? ` (modules: ${current.allowedModules.join(", ")})` : ""}.`)) return;
     setBusy("toggle");
     setMessage(null);
-    try {
-      const response = await fetch("/api/connections/" + encodeURIComponent(current.slug), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !current.enabled }),
-      });
-      const json = await response.json();
-      if (!response.ok || json.ok === false) throw new Error(String(json.error ?? "connection update failed"));
-      setCurrent(json.connection);
-      setMessage(current.enabled ? "Connection disabled. Dependent jobs will now be blocked." : "Connection enabled. Run health check before using it live.");
-      onChanged();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "connection update failed");
-    } finally {
-      setBusy(null);
-    }
+    const res = await postJson("/api/connections/" + encodeURIComponent(current.slug), { enabled: !current.enabled }, "PATCH");
+    setBusy(null);
+    if (!res.ok) { setMessage(String(res.error ?? "connection update failed")); return; }
+    // Only adopt the server's row if it actually sent one — never blank the drawer on a thin 200.
+    const updated = res.data?.connection as ConnectionEntry | undefined;
+    if (updated) setCurrent(updated);
+    setMessage(current.enabled ? "Connection disabled. Dependent jobs will now be blocked." : "Connection enabled. Run health check before using it live.");
+    onChanged();
   }
 
   async function runHealthCheck() {
@@ -2143,7 +2362,9 @@ function ConnectionsPage() {
   const missing = items.filter((item) => !item.credentialConfigured).length;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14, marginBottom: 16 }}>
+      {/* Was the one KPI grid in the app pinned to 4 fixed columns — it stayed 4-across at 375px and
+          crushed each tile to ~80px. Matches every other page now. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 16 }}>
         <Kpi label="Connections" value={String(items.length)} icon="Cable" color={C.lime} sub="registered tools and APIs" />
         <Kpi label="Enabled" value={String(enabled)} icon="Power" color={C.blue} sub="allowed to be called" />
         <Kpi label="Healthy" value={String(healthy)} icon="ShieldCheck" color={C.lime} sub="env key present + enabled" />
@@ -2621,7 +2842,7 @@ function TastePage() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, alignItems: "end" }}>
           <div><div style={labelStyle}>ACTOR</div><div style={{ ...selectStyle, width: "100%", opacity: 0.75 }}>{actor || "…"}</div></div>
-          <div><div style={labelStyle}>DECISION</div><select value={decision} onChange={(e) => setDecision(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{["approve", "reject", "edit", "regenerate", "needs_review"].map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
+          <div><div style={labelStyle}>DECISION</div><select value={decision} onChange={(e) => setDecision(e.target.value)} aria-label="Feedback decision" style={{ ...selectStyle, width: "100%" }}>{["approve", "reject", "edit", "regenerate", "needs_review"].map((d) => <option key={d} value={d}>{d}</option>)}</select></div>
           <div><div style={labelStyle}>TARGET TYPE</div><input value={targetType} onChange={(e) => setTargetType(e.target.value)} style={inputStyle} /></div>
           <div><div style={labelStyle}>TARGET ID</div><input value={targetId} onChange={(e) => setTargetId(e.target.value)} placeholder="packet_123" style={inputStyle} /></div>
           <div><div style={labelStyle}>SIGNAL KEY</div><input value={dimensionKey} onChange={(e) => setDimensionKey(e.target.value)} placeholder="hook_style" style={inputStyle} /></div>
@@ -2941,7 +3162,7 @@ function PlanFeedModal({ plan, onClose, onApplied }: { plan: { items: FeedPlanIt
         <div style={{ padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>✨ Proposed feed plan</div>
-            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+            <button onClick={onClose} aria-label="Close" title="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
           </div>
           <div style={{ fontSize: 12, color: muted, marginTop: 6, lineHeight: 1.5 }}>{plan.summary}</div>
           <div style={{ fontSize: 11, color: faint, marginTop: 6 }}>Nothing is scheduled until you approve. Order spreads angle + product; reels are interleaved. (Color/vision sequencing comes next.)</div>
@@ -2975,21 +3196,24 @@ function PlatformRow({ asset, platform, label, posts, onChanged }: { asset: LibA
   const [mode, setMode] = useState<null | "confirm" | "schedule">(null);
   const [when, setWhen] = useState("");
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   async function markPosted() {
-    setBusy(true);
-    try {
-      await fetch(`/api/library/assets/${asset.id}/mark-posted`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform }) });
-      setMode(null); onChanged();
-    } finally { setBusy(false); }
+    setBusy(true); setMsg(null);
+    const res = await postJson(`/api/library/assets/${asset.id}/mark-posted`, { platform });
+    setBusy(false);
+    // A failed mark-posted used to close the row as if it worked — the asset then showed "Not posted"
+    // on the next reload and the founder had no idea why.
+    if (!res.ok) { setMsg("Could not mark posted: " + String(res.error)); return; }
+    setMode(null); onChanged();
   }
   async function doSchedule() {
     if (!when) return;
-    setBusy(true);
-    try {
-      await fetch(`/api/library/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId: asset.id, platform, scheduledAt: new Date(when).toISOString(), publisher: "manual" }) });
-      setMode(null); setWhen(""); onChanged();
-    } finally { setBusy(false); }
+    setBusy(true); setMsg(null);
+    const res = await postJson(`/api/library/schedule`, { assetId: asset.id, platform, scheduledAt: new Date(when).toISOString(), publisher: "manual" });
+    setBusy(false);
+    if (!res.ok) { setMsg("Could not schedule: " + String(res.error)); return; }
+    setMode(null); setWhen(""); onChanged();
   }
   const sm = { padding: "5px 10px", fontSize: 11.5 } as const;
 
@@ -3017,11 +3241,12 @@ function PlatformRow({ asset, platform, label, posts, onChanged }: { asset: LibA
             </>
           ) : (
             <>
-              <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 8px" }} />
+              <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label={`Schedule time for ${label}`} style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 8px" }} />
               <button onClick={doSchedule} disabled={busy || !when} style={{ ...primaryBtn, ...sm }}>{busy ? "…" : "Set"}</button>
               <button onClick={() => setMode(null)} disabled={busy} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", ...sm }}>Cancel</button>
             </>
           )}
+          {msg ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={msg} /></div> : null}
         </div>
       ) : null}
     </div>
@@ -3051,7 +3276,7 @@ function AssetPreviewModal({ asset, posts, onClose, onChanged }: { asset: LibAss
               <Tag text={asset.kind} color="#B87CFF" />
               <Tag text={asset.status} color={asset.status === "published" ? C.lime : asset.status === "scheduled" ? C.blue : C.gray} />
             </div>
-            <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+            <button onClick={onClose} aria-label="Close" title="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
           </div>
           <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.35 }}>{asset.title}</div>
           {asset.caption ? <div style={{ fontSize: 12.5, color: muted, whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: "30vh", overflow: "auto", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 11 }}>{asset.caption}</div> : <div style={{ fontSize: 12, color: faint }}>No caption.</div>}
@@ -3100,6 +3325,9 @@ function LibraryPage() {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [plan, setPlan] = useState<{ items: FeedPlanItemUI[]; summary: string } | null>(null);
   const [planBusy, setPlanBusy] = useState(false);
+  // Per-scheduled-post busy id + message: cancel/publish/delete used to fire-and-forget.
+  const [postBusy, setPostBusy] = useState<string | null>(null);
+  const [postMsg, setPostMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(assetsState) ?? offlineIf(postsState);
   if (guard) return guard;
 
@@ -3132,56 +3360,65 @@ function LibraryPage() {
 
   async function reload() { assetsState.reload(); postsState.reload(); }
   async function runPlan() {
-    setPlanBusy(true);
-    try {
-      const r = await fetch("/api/library/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ perDay: 1, hoursOfDay: [18], reelEvery: 6 }) });
-      const j = (await r.json()) as { ok?: boolean; items?: FeedPlanItemUI[]; summary?: string; error?: string };
-      if (r.ok && j.ok !== false && j.items) setPlan({ items: j.items, summary: j.summary ?? "" });
-    } finally { setPlanBusy(false); }
+    setPlanBusy(true); setMsg(null);
+    const res = await postJson("/api/library/plan", { perDay: 1, hoursOfDay: [18], reelEvery: 6 });
+    setPlanBusy(false);
+    // Previously a failed plan simply produced nothing and left the button idle — indistinguishable
+    // from "there was nothing to plan".
+    if (!res.ok) { setMsg("Could not build a feed plan: " + String(res.error)); return; }
+    const items = res.data?.items as FeedPlanItemUI[] | undefined;
+    if (!items?.length) { setMsg("No plan produced — there are no unposted assets to schedule."); return; }
+    setPlan({ items, summary: String(res.data?.summary ?? "") });
   }
   async function doSchedule() {
     setMsg(null);
     if (!assetId) { setMsg("Pick an asset to schedule."); return; }
     if (!when) { setMsg("Pick a date + time."); return; }
     setBusy(true);
-    try {
-      const r = await fetch("/api/library/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetId, platform, scheduledAt: new Date(when).toISOString(), publisher }) });
-      const j = (await r.json()) as { ok?: boolean; error?: string };
-      if (!r.ok || j.ok === false) setMsg("Error: " + String(j.error ?? "HTTP " + r.status));
-      else { setMsg("Scheduled."); setWhen(""); setAssetId(""); reload(); }
-    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+    const res = await postJson("/api/library/schedule", { assetId, platform, scheduledAt: new Date(when).toISOString(), publisher });
+    setBusy(false);
+    if (!res.ok) { setMsg("Error: " + String(res.error)); return; }
+    setMsg("Scheduled."); setWhen(""); setAssetId(""); reload();
   }
-  async function postAction(id: string, action: "cancel" | "publish" | "delete") {
-    await fetch(`/api/library/scheduled/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+  async function postAction(id: string, action: "cancel" | "publish" | "delete", title: string) {
+    // Cancelling pulls a post out of the queue — it will not go out. Say so before doing it.
+    if (action === "cancel" && !window.confirm(`Cancel the scheduled post for "${title}"?\n\nIt is removed from the publishing queue and will NOT go out at its scheduled time.`)) return;
+    setPostBusy(id); setPostMsg(null);
+    const res = await postJson(`/api/library/scheduled/${id}/action`, { action });
+    setPostBusy(null);
+    if (!res.ok) { setPostMsg({ id, text: "Could not " + action + ": " + String(res.error) }); return; }
     reload();
   }
   function PostRow({ p }: { p: SchedPost }) {
     const asset = assets.find((a) => a.id === p.assetId);
     const removing = confirmRemoveId === p.id;
+    const title = asset?.title ?? p.assetId;
+    const b = postBusy === p.id;
     return (
       <div style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Tag text={p.platform} color={C.blue} />
         <Tag text={p.status} color={POST_STATUS_COLOR[p.status] ?? C.gray} />
-        <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 140 }}>{asset?.title ?? p.assetId}</span>
+        <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 140 }}>{title}</span>
         <span style={{ fontSize: 11, color: faint }}>{fmtTime(p.publishedAt ?? p.scheduledAt)} · {p.publisher}</span>
         {removing ? (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{ fontSize: 11.5, color: muted }}>Remove this record?</span>
-            <button onClick={() => { postAction(p.id, "delete"); setConfirmRemoveId(null); }} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Yes</button>
+            <button onClick={() => { postAction(p.id, "delete", title); setConfirmRemoveId(null); }} disabled={b} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5, opacity: b ? 0.55 : 1 }}>Yes</button>
             <button onClick={() => setConfirmRemoveId(null)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>No</button>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 6 }}>
             {p.status === "scheduled" ? (
               <>
-                {p.publisher === "manual" ? <button onClick={() => postAction(p.id, "publish")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5 }}>Mark posted</button> : null}
-                <button onClick={() => postAction(p.id, "cancel")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Cancel</button>
+                {p.publisher === "manual" ? <button onClick={() => postAction(p.id, "publish", title)} disabled={b} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11.5, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer" }}>{b ? "…" : "Mark posted"}</button> : null}
+                <button onClick={() => postAction(p.id, "cancel", title)} disabled={b} style={{ ...disabledBtn, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer", padding: "6px 11px", fontSize: 11.5 }}>Cancel</button>
               </>
             ) : (
               <button onClick={() => setConfirmRemoveId(p.id)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 11.5 }}>Remove</button>
             )}
           </div>
         )}
+        {postMsg?.id === p.id ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={postMsg.text} /></div> : null}
       </div>
     );
   }
@@ -3209,18 +3446,18 @@ function LibraryPage() {
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Schedule a post</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
+          <select value={assetId} onChange={(e) => setAssetId(e.target.value)} aria-label="Asset to schedule" style={{ ...selectStyle, minWidth: 200 }}>
             <option value="">Pick an asset…</option>
             {assets.filter((a) => a.status !== "archived").map((a) => <option key={a.id} value={a.id}>{a.title.slice(0, 50)}</option>)}
           </select>
-          <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={selectStyle}>
+          <select value={platform} onChange={(e) => setPlatform(e.target.value)} aria-label="Platform to post to" style={selectStyle}>
             {LIB_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...inputStyle, width: "auto" }} />
           {/* Derived from the registry via /api/library/publishers — never a hardcoded list
               (WOB-UAT-006). A blocked publisher is shown but NOT selectable, with the reason, so the
               founder can see it exists and why it is unavailable rather than picking a silent dead end. */}
-          <select data-testid="publisher-select" value={publisher} onChange={(e) => setPublisher(e.target.value)} style={selectStyle}>
+          <select data-testid="publisher-select" value={publisher} onChange={(e) => setPublisher(e.target.value)} aria-label="Publisher" style={selectStyle}>
             {(pubs.data?.publishers ?? [{ publisher: "manual", state: "manual", detail: "" }]).map((p) => (
               <option key={p.publisher} value={p.publisher} disabled={p.state === "blocked"} title={p.detail}>
                 {p.publisher}{p.state === "blocked" ? " — blocked (no credentials)" : p.state === "manual" ? " — you post it" : ""}
@@ -3261,17 +3498,17 @@ function LibraryPage() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>Library <span style={{ color: faint, fontWeight: 400 }}>({gridAssets.length}{gridAssets.length !== assets.length ? ` of ${assets.length}` : ""})</span></div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
             <input value={search} onChange={(e) => { setSearch(e.target.value); setShown(36); }} placeholder="Search caption, title, tag…" style={{ ...inputStyle, width: 220 }} />
-            <select value={kindFilter} onChange={(e) => { setKindFilter(e.target.value); setShown(36); }} style={selectStyle}>
+            <select value={kindFilter} onChange={(e) => { setKindFilter(e.target.value); setShown(36); }} aria-label="Filter library by asset kind" style={selectStyle}>
               <option value="all">All types</option>
               <option value="image">Images</option>
               <option value="reel">Reels</option>
             </select>
-            <select value={postedFilter} onChange={(e) => { setPostedFilter(e.target.value); setShown(36); }} style={selectStyle}>
+            <select value={postedFilter} onChange={(e) => { setPostedFilter(e.target.value); setShown(36); }} aria-label="Filter library by posted state" style={selectStyle}>
               <option value="all">All</option>
               <option value="unposted">Not posted</option>
               <option value="posted">Posted</option>
             </select>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort library assets" style={selectStyle}>
               <option value="type">Sort: Type</option>
               <option value="title">Sort: A–Z</option>
               <option value="recent">Sort: Newest</option>
@@ -3290,20 +3527,31 @@ function LibraryPage() {
               const igPosted = postedPlatforms(a.id).includes("instagram");
               const liPosted = postedPlatforms(a.id).includes("linkedin");
               return (
-              <div key={a.id} onClick={() => setPreview(a)} title="Click to preview" style={{ ...card, padding: 0, overflow: "hidden", cursor: "pointer", breakInside: "avoid", marginBottom: 12, display: "inline-block", width: "100%" }}>
-                <div style={{ padding: 6 }}><AssetThumb asset={a} /></div>
-                <div style={{ padding: "2px 12px 12px" }}>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <Tag text={a.kind} color="#B87CFF" />
-                    {igPosted ? <Tag text="IG ✓" color={C.lime} /> : null}
-                    {liPosted ? <Tag text="in ✓" color={C.lime} /> : null}
-                    {a.sourceType === "content_pack" ? <Tag text="from command" color="#2DD4BF" /> : null}
+              // The tile was a clickable <div> and the only way into the preview overlay (full caption +
+              // per-platform posting). Card body is a <button>; Download stays a sibling <a> so no
+              // interactive element is nested inside another.
+              <div key={a.id} style={{ ...card, padding: 0, overflow: "hidden", breakInside: "avoid", marginBottom: 12, display: "inline-block", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={() => setPreview(a)}
+                  title="Preview this asset"
+                  aria-label={`Preview ${a.title}`}
+                  style={{ display: "block", width: "100%", background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left", cursor: "pointer" }}
+                >
+                  <div style={{ padding: 6 }}><AssetThumb asset={a} /></div>
+                  <div style={{ padding: "2px 12px 0" }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <Tag text={a.kind} color="#B87CFF" />
+                      {igPosted ? <Tag text="IG ✓" color={C.lime} /> : null}
+                      {liPosted ? <Tag text="in ✓" color={C.lime} /> : null}
+                      {a.sourceType === "content_pack" ? <Tag text="from command" color="#2DD4BF" /> : null}
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35 }}>{a.title}</div>
+                    {a.caption ? <div style={{ fontSize: 11.5, color: muted, marginTop: 5, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.caption}</div> : null}
                   </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35 }}>{a.title}</div>
-                  {a.caption ? <div style={{ fontSize: 11.5, color: muted, marginTop: 5, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{a.caption}</div> : null}
-                  <div style={{ display: "flex", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
-                    <a href={assetMediaUrl(a.id, { download: true })} download onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="Download" size={13} /> Download</a>
-                  </div>
+                </button>
+                <div style={{ display: "flex", gap: 6, padding: "9px 12px 12px", flexWrap: "wrap" }}>
+                  <a href={assetMediaUrl(a.id, { download: true })} download style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="Download" size={13} /> Download</a>
                 </div>
               </div>
               );
@@ -3385,7 +3633,7 @@ function AddLeadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(680px,96vw)", maxHeight: "92vh", overflow: "auto", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 20, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New lead</div><button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New lead</div><button onClick={onClose} aria-label="Close" title="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
         <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Contact</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <FieldInput label="Contact name" value={f.contactName} onChange={set("contactName")} /><FieldInput label="Email" ph="name@company.com" value={f.email} onChange={set("email")} /><FieldInput label="Phone" value={f.phone} onChange={set("phone")} /><FieldInput label="WhatsApp" value={f.whatsapp} onChange={set("whatsapp")} />
@@ -3426,7 +3674,7 @@ function Company360Drawer({ companyId, onClose }: { companyId: string; onClose: 
   const section = (title: string, rows: Record<string, unknown>[], render: (r: Record<string, unknown>) => React.ReactNode) => (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>{title} ({rows.length})</div>
-      {rows.length === 0 ? <div style={{ fontSize: 11.5, color: "#4a4a52" }}>None yet.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>{rows.slice(0, 20).map((r, i) => <div key={String(r.id ?? i)} style={{ ...card, padding: "8px 11px" }}>{render(r)}</div>)}</div>}
+      {rows.length === 0 ? <div style={{ fontSize: 11.5, color: dim }}>None yet.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>{rows.slice(0, 20).map((r, i) => <div key={String(r.id ?? i)} style={{ ...card, padding: "8px 11px" }}>{render(r)}</div>)}</div>}
     </div>
   );
   return (
@@ -3437,7 +3685,7 @@ function Company360Drawer({ companyId, onClose }: { companyId: string; onClose: 
             <div style={{ fontSize: 18, fontWeight: 700 }}>{String(co?.name ?? "Company")}</div>
             <div style={{ fontSize: 11.5, color: faint, marginTop: 3 }}>{String(co?.industry ?? "")}{co?.website ? " · " + String(co.website) : ""}</div>
           </div>
-          <button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
+          <button onClick={onClose} aria-label="Close" title="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button>
         </div>
         {s.loading ? <StateBlock kind="loading" /> : !co ? <StateBlock kind="empty" message="Company not found." /> : (
           <>
@@ -3457,11 +3705,11 @@ function Company360Drawer({ companyId, onClose }: { companyId: string; onClose: 
             {section("Meetings", d!.meetings, (r) => <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Tag text={String(r.status ?? "")} color={C.gray} /><span style={{ fontSize: 12.5 }}>{String(r.title ?? "meeting")}</span></div>)}
             <div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>Activity timeline ({d!.timeline.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {d!.timeline.length === 0 ? <div style={{ fontSize: 11.5, color: "#4a4a52" }}>No activity yet.</div> : d!.timeline.map((e, i) => (
+              {d!.timeline.length === 0 ? <div style={{ fontSize: 11.5, color: dim }}>No activity yet.</div> : d!.timeline.map((e, i) => (
                 <div key={String(e.id ?? i)} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <span style={{ color: C.lime, fontFamily: "monospace", fontSize: 10.5 }}>{String(e.eventType ?? "")}</span>
                   <span style={{ flex: 1, color: faint }}>{String(e.actor ?? "")}{e.module ? " · " + String(e.module) : ""}</span>
-                  <span style={{ color: "#4a4a52", whiteSpace: "nowrap" }}>{fmtTime(e.createdAt)}</span>
+                  <span style={{ color: dim, whiteSpace: "nowrap" }}>{fmtTime(e.createdAt)}</span>
                 </div>
               ))}
             </div>
@@ -3483,6 +3731,9 @@ function CrmPage() {
   const [co360, setCo360] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<{ id: string; stage: string } | null>(null);
+  // One message for the board: stage moves and lead conversion both write here so a refusal is visible
+  // right above the pipeline the founder is looking at.
+  const [boardMsg, setBoardMsg] = useState<string | null>(null);
   const guard = offlineIf(oppState) ?? offlineIf(leadState) ?? offlineIf(coState);
   if (guard) return guard;
   const opps = oppState.data?.opportunities ?? [];
@@ -3495,16 +3746,21 @@ function CrmPage() {
   async function reload() { oppState.reload(); leadState.reload(); coState.reload(); }
   async function moveStage(id: string, stage: string) {
     setDragOverStage(null);
+    setBoardMsg(null);
     // Optimistic: the card lands in the new column immediately, then we reconcile with the server.
     setPendingMove({ id, stage });
-    try {
-      await fetch(`/api/crm/opportunities/${id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
-      await reload();
-    } finally { setPendingMove(null); }
+    const res = await postJson(`/api/crm/opportunities/${id}/stage`, { stage });
+    setPendingMove(null);
+    // A rejected move used to just snap the card back to its old column with no explanation — the
+    // founder read that as the drag "not taking" and tried again. Say what the server refused.
+    if (!res.ok) { setBoardMsg("Could not move that deal to " + (STAGE_LABELS[stage] ?? stage) + ": " + String(res.error)); return; }
+    await reload();
   }
   async function convert(lead: CrmLead) {
     if (!window.confirm(`Convert "${lead.name}" into a company + contact + deal?`)) return;
-    await fetch(`/api/crm/leads/${lead.id}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    setBoardMsg(null);
+    const res = await postJson(`/api/crm/leads/${lead.id}/convert`, {});
+    if (!res.ok) { setBoardMsg(`Could not convert "${lead.name}": ` + String(res.error)); return; }
     reload();
   }
 
@@ -3542,6 +3798,7 @@ function CrmPage() {
           <div style={{ fontSize: 13, fontWeight: 600 }}>Pipeline · all stages</div>
           <span style={{ fontSize: 10.5, color: faint }}>drag a card between columns to move it</span>
         </div>
+        {boardMsg ? <div style={{ marginBottom: 10 }}><ActionMsg msg={boardMsg} /></div> : null}
         <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
           {STAGE_ORDER.map((stage) => {
             // A deal being dragged shows in its DESTINATION column immediately (optimistic).
@@ -3575,7 +3832,7 @@ function CrmPage() {
                       <button onClick={() => convert(l)} style={{ ...primaryBtn, padding: "4px 9px", fontSize: 11, marginTop: 7, width: "100%" }}>Convert to deal →</button>
                     </div>
                   ))}
-                  {list.length === 0 && stageLeads.length === 0 ? <div style={{ fontSize: 10.5, color: "#4a4a52", padding: "10px 4px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 8 }}>—</div> : list.map((o) => (
+                  {list.length === 0 && stageLeads.length === 0 ? <div style={{ fontSize: 10.5, color: dim, padding: "10px 4px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 8 }}>—</div> : list.map((o) => (
                     <div
                       key={o.id}
                       draggable
@@ -3651,7 +3908,7 @@ function InvoiceBuilderModal({ onClose, onSaved }: { onClose: () => void; onSave
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "92vh", overflow: "auto", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 20, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New invoice</div><button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New invoice</div><button onClick={onClose} aria-label="Close" title="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
         <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Bill to</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div><label style={lbl}>Company</label><input value={billTo.companyName} onChange={(e) => setBillTo((b) => ({ ...b, companyName: e.target.value }))} style={{ ...inputStyle, width: "100%" }} /></div>
@@ -3666,7 +3923,7 @@ function InvoiceBuilderModal({ onClose, onSaved }: { onClose: () => void; onSave
               <input value={it.description} onChange={(e) => setItem(i, "description", e.target.value)} placeholder="Description" style={{ ...inputStyle, width: "100%" }} />
               <input value={it.quantity} onChange={(e) => setItem(i, "quantity", e.target.value)} placeholder="Qty" inputMode="decimal" style={{ ...inputStyle, width: "100%" }} />
               <input value={it.unitPrice} onChange={(e) => setItem(i, "unitPrice", e.target.value)} placeholder="Unit ($)" inputMode="decimal" style={{ ...inputStyle, width: "100%" }} />
-              <button onClick={() => setItems((arr) => arr.length > 1 ? arr.filter((_, j) => j !== i) : arr)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 0", fontSize: 12 }}>✕</button>
+              <button onClick={() => setItems((arr) => arr.length > 1 ? arr.filter((_, j) => j !== i) : arr)} aria-label="Remove this line item" title="Remove this line item" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 0", fontSize: 12 }}>✕</button>
             </div>
           ))}
         </div>
@@ -3674,7 +3931,7 @@ function InvoiceBuilderModal({ onClose, onSaved }: { onClose: () => void; onSave
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div><label style={lbl}>Tax ($)</label><input value={tax} onChange={(e) => setTax(e.target.value)} inputMode="decimal" style={{ ...inputStyle, width: "100%" }} /></div>
           <div><label style={lbl}>Discount ($)</label><input value={discount} onChange={(e) => setDiscount(e.target.value)} inputMode="decimal" style={{ ...inputStyle, width: "100%" }} /></div>
-          <div><label style={lbl}>Currency</label><select value={currency} onChange={(e) => setCurrency(e.target.value)} style={{ ...selectStyle, width: "100%" }}>{["USD", "EUR", "GBP", "PKR", "AED"].map((c) => <option key={c}>{c}</option>)}</select></div>
+          <div><label style={lbl}>Currency</label><select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency" style={{ ...selectStyle, width: "100%" }}>{["USD", "EUR", "GBP", "PKR", "AED"].map((c) => <option key={c}>{c}</option>)}</select></div>
           <div><label style={lbl}>Due date</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
           <div><label style={lbl}>Payment terms</label><input value={terms} onChange={(e) => setTerms(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
           <div><label style={lbl}>Link deal (opp id)</label><input value={oppId} onChange={(e) => setOppId(e.target.value)} style={{ ...inputStyle, width: "100%" }} /></div>
@@ -3696,12 +3953,28 @@ function InvoicesPage() {
   const sumState = useApi<{ summary: RevSummary }>("/api/finance/summary");
   const invState = useApi<{ invoices: FinInvoice[] }>("/api/finance/invoices?limit=200");
   const [builderOpen, setBuilderOpen] = useState(false);
+  // Per-invoice busy id + a per-invoice message. This is the money module: a silent failure here meant
+  // the founder believed an invoice was sent or paid when the server had refused it.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(sumState) ?? offlineIf(invState);
   if (guard) return guard;
   const s = sumState.data?.summary;
   const invoices = invState.data?.invoices ?? [];
   async function reload() { sumState.reload(); invState.reload(); }
-  async function act(id: string, action: string) { await fetch(`/api/finance/invoices/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }); reload(); }
+  async function act(id: string, action: string, invoiceNumber: string, amount: string) {
+    // Mark paid and Cancel are irreversible bookkeeping statements about real money — confirm, naming
+    // the invoice and the amount so the founder can see they picked the right row.
+    if (action === "mark_paid" && !window.confirm(`Mark invoice ${invoiceNumber} (${amount}) as PAID?\n\nThis records the money as received and is written to the audit trail. It cannot be undone from this screen.`)) return;
+    if (action === "cancel" && !window.confirm(`Cancel invoice ${invoiceNumber} (${amount})?\n\nThe invoice is voided and can no longer be sent or paid. This cannot be undone from this screen.`)) return;
+    setBusy(id);
+    setMsg(null);
+    const res = await postJson(`/api/finance/invoices/${id}/action`, { action });
+    setBusy(null);
+    if (!res.ok) { setMsg({ id, text: "Could not " + action.replace("_", " ") + ": " + String(res.error) }); return; }
+    setMsg({ id, text: action.replace("_", " ") + " · done" });
+    reload();
+  }
   const actionsFor = (st: string): Array<{ a: string; label: string }> => {
     if (st === "draft" || st === "needs_approval") return [{ a: "approve", label: "Approve" }, { a: "cancel", label: "Cancel" }];
     if (st === "approved") return [{ a: "send", label: "Send" }, { a: "cancel", label: "Cancel" }];
@@ -3736,16 +4009,30 @@ function InvoicesPage() {
           <StateBlock kind="empty" message="No invoices yet. Draft one above." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {invoices.map((inv) => (
-              <div key={inv.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, fontWeight: 600, minWidth: 120 }}>{inv.invoiceNumber}</span>
-                <Tag text={inv.status} color={inv.status === "paid" ? C.lime : inv.status === "overdue" ? C.orange : inv.status === "sent" ? C.blue : C.gray} />
-                <span style={{ fontSize: 12.5, flex: 1, minWidth: 80, color: C.lime, fontWeight: 600 }}>{money(inv.totalCents, inv.currency)}</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {actionsFor(inv.status).map((x) => <button key={x.a} onClick={() => act(inv.id, x.a)} style={{ ...(x.a === "cancel" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5 }}>{x.label}</button>)}
+            {invoices.map((inv) => {
+              const rowBusy = busy === inv.id;
+              const amount = money(inv.totalCents, inv.currency);
+              return (
+                <div key={inv.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, minWidth: 120 }}>{inv.invoiceNumber}</span>
+                  <Tag text={inv.status} color={inv.status === "paid" ? C.lime : inv.status === "overdue" ? C.orange : inv.status === "sent" ? C.blue : C.gray} />
+                  <span style={{ fontSize: 12.5, flex: 1, minWidth: 80, color: C.lime, fontWeight: 600 }}>{amount}</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {actionsFor(inv.status).map((x) => (
+                      <button
+                        key={x.a}
+                        onClick={() => act(inv.id, x.a, inv.invoiceNumber, amount)}
+                        disabled={rowBusy}
+                        style={{ ...(x.a === "cancel" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5, opacity: rowBusy ? 0.55 : 1, cursor: rowBusy ? "wait" : "pointer" }}
+                      >
+                        {rowBusy ? "Working…" : x.label}
+                      </button>
+                    ))}
+                  </div>
+                  {msg?.id === inv.id ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={msg.text} /></div> : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Panel>
@@ -3775,7 +4062,10 @@ function FreeAuditPage() {
   const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [problems, setProblems] = useState("");
   const [website, setWebsite] = useState(""); const [instagram, setInstagram] = useState("");
   const [signals, setSignals] = useState<string[]>([]); const [leads, setLeads] = useState(""); const [deal, setDeal] = useState("");
-  const [busy, setBusy] = useState(false); const [result, setResult] = useState<FreeAuditRow | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  // Separate busy KEYS, not one shared boolean. With a single flag, clicking "Quick diagnosis" made the
+  // OTHER button read "Writing pitch…" — the UI reported an operation the founder had not started.
+  const [busyKey, setBusyKey] = useState<null | "diagnose" | "pitch" | "roadmap" | "proposal">(null);
+  const [result, setResult] = useState<FreeAuditRow | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const [pitch, setPitch] = useState<{ auditId: string; usedLlm: boolean; scraped: boolean; pitch: { headline: string; whatWeNoticed: string[]; services: { name: string; whatItDoes: string; outcomeForYou: string }[]; cta: string } } | null>(null);
   const [roadmap, setRoadmap] = useState<{ auditId: string; usedLlm: boolean; plan: { interviewPlan: { role: string }[]; sequence: { week: string }[] } } | null>(null);
   const guard = offlineIf(listState);
@@ -3787,33 +4077,45 @@ function FreeAuditPage() {
   }
   async function run() {
     if (!name.trim()) { setMsg("Enter the business name."); return; }
-    setBusy(true); setMsg(null); setResult(null);
-    try {
-      const r = await fetch("/api/audit/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(auditBody()) });
-      const j = (await r.json()) as { ok?: boolean; audit?: FreeAuditRow; error?: string };
-      if (r.ok && j.ok !== false && j.audit) { setResult(j.audit); listState.reload(); } else setMsg("Error: " + String(j.error ?? r.status));
-    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+    setBusyKey("diagnose"); setMsg(null); setResult(null);
+    const res = await postJson("/api/audit/free", auditBody());
+    setBusyKey(null);
+    if (!res.ok) { setMsg("Error: " + String(res.error)); return; }
+    const audit = res.data?.audit as FreeAuditRow | undefined;
+    if (!audit) { setMsg("Error: the audit came back empty."); return; }
+    setResult(audit); listState.reload();
   }
   async function runPitch() {
     if (!name.trim()) { setMsg("Enter the business name."); return; }
-    setBusy(true); setMsg(null); setPitch(null);
-    try {
-      const r = await fetch("/api/audit/pitch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(auditBody()) });
-      const j = await r.json();
-      if (r.ok && j.ok !== false) { setPitch(j); setRoadmap(null); } else setMsg("Error: " + String(j.error ?? r.status));
-    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+    setBusyKey("pitch"); setMsg(null); setPitch(null);
+    const res = await postJson("/api/audit/pitch", auditBody());
+    setBusyKey(null);
+    if (!res.ok) { setMsg("Error: " + String(res.error)); return; }
+    setPitch(res.data as unknown as typeof pitch); setRoadmap(null);
   }
   async function runRoadmap() {
     if (!pitch) return;
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/audit/roadmap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessName: name, industry: industry || undefined, pitchAuditId: pitch.auditId }) });
-      const j = await r.json();
-      if (r.ok && j.ok !== false) setRoadmap(j); else setMsg("Error: " + String(j.error ?? r.status));
-    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+    setBusyKey("roadmap"); setMsg(null);
+    const res = await postJson("/api/audit/roadmap", { businessName: name, industry: industry || undefined, pitchAuditId: pitch.auditId });
+    setBusyKey(null);
+    if (!res.ok) { setMsg("Error: " + String(res.error)); return; }
+    setRoadmap(res.data as unknown as typeof roadmap);
+  }
+  /**
+   * The revenue path. A completed audit used to end here: opportunities + upside, and no way forward.
+   * `/api/proposals/from-audit` is the existing createProposalFromAudit route the Proposals page uses,
+   * so this is the same assembly, reachable from the screen where the finding was made.
+   */
+  async function buildProposal(auditId: string, businessName: string) {
+    setBusyKey("proposal"); setMsg(null);
+    const res = await postJson("/api/proposals/from-audit", { auditId });
+    setBusyKey(null);
+    if (!res.ok) { setMsg("Could not build a proposal: " + String(res.error)); return; }
+    setMsg(`Proposal drafted for ${businessName} — open Proposals to price, approve and send it.`);
   }
   const impactColor = (i: string) => (i === "high" ? C.lime : i === "medium" ? C.blue : C.gray);
   const rep = result?.report;
+  const busy = busyKey !== null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -3844,9 +4146,9 @@ function FreeAuditPage() {
         </div>
         <textarea value={problems} onChange={(e) => setProblems(e.target.value)} placeholder="Anything else they said (one problem per line)…" style={{ ...inputStyle, width: "100%", minHeight: 58, resize: "vertical" }} />
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-          <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer" }}>{busy ? "…" : "Quick diagnosis"}</button>
-          <button onClick={runPitch} disabled={busy} title="Doc 1 — the niche-customized 'what Wobble can do' pitch" style={busy ? disabledBtn : primaryBtn}>{busy ? "Writing pitch…" : "✨ Generate AI pitch"}</button>
-          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+          <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer" }}>{busyKey === "diagnose" ? "Diagnosing…" : "Quick diagnosis"}</button>
+          <button onClick={runPitch} disabled={busy} title="Doc 1 — the niche-customized 'what Wobble can do' pitch" style={busy ? disabledBtn : primaryBtn}>{busyKey === "pitch" ? "Writing pitch…" : "✨ Generate AI pitch"}</button>
+          <ActionMsg msg={msg} />
         </div>
       </Panel>
 
@@ -3855,8 +4157,7 @@ function FreeAuditPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             <div style={{ fontSize: 14.5, fontWeight: 700 }}>{pitch.pitch.headline}</div>
             <div style={{ display: "flex", gap: 6 }}>
-              <a href={`/api/audit/${pitch.auditId}/document`} target="_blank" rel="noreferrer" style={{ ...primaryBtn, textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open pitch doc ↗</a>
-              <a href={`/api/audit/${pitch.auditId}/deck`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open deck ↗</a>
+              <ArtifactLinks base={`/api/audit/${pitch.auditId}/deck`} label="Open pitch" />
             </div>
           </div>
           <div style={{ fontSize: 11, color: faint, marginBottom: 8 }}>{pitch.usedLlm ? "AI-written, niche-customized" : "deterministic fallback"}{pitch.scraped ? " · site/social scraped" : ""}</div>
@@ -3873,8 +4174,10 @@ function FreeAuditPage() {
           </div>
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11.5, color: faint }}>Sold the paid audit? Plan the internal interview roadmap (Doc 2):</span>
-            <button onClick={runRoadmap} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy ? "Planning…" : "Plan audit interviews →"}</button>
+            <button onClick={runRoadmap} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busyKey === "roadmap" ? "Planning…" : "Plan audit interviews →"}</button>
             {roadmap ? <a href={`/api/audit/${roadmap.auditId}/document`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 12 }}>Open roadmap ↗ ({roadmap.plan.interviewPlan.length} interviews)</a> : null}
+            {/* The next step out of a pitch: turn it into a priced proposal. */}
+            <button onClick={() => buildProposal(pitch.auditId, name || "this business")} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "6px 11px", fontSize: 12 }}>{busyKey === "proposal" ? "Building…" : "Build proposal from this →"}</button>
           </div>
         </Panel>
       ) : null}
@@ -3894,6 +4197,12 @@ function FreeAuditPage() {
               </div>
             ))}
           </div>
+          {/* The audit's dead end, closed. It produced opportunities + upside and then stopped; this is
+              the actual revenue path (audit → proposal → invoice) made reachable from here. */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={() => buildProposal(result!.id, result!.businessName)} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busyKey === "proposal" ? "Building…" : "Build proposal from this →"}</button>
+            <span style={{ fontSize: 11.5, color: faint }}>Assembles services, scope and pricing from this audit — it lands in Proposals as a draft for you to approve.</span>
+          </div>
         </Panel>
       ) : null}
 
@@ -3902,11 +4211,13 @@ function FreeAuditPage() {
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Recent audits ({audits.length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {audits.map((a) => (
-              <div key={a.id} onClick={() => setResult(a)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <Tag text={`${a.report.serviceCount} opps`} color={C.blue} />
-                <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
-                <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
-                <a href={`/api/audit/${a.id}/deck`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Deck ↗</a>
+              // Was a clickable <div> and the only way to reopen a past audit.
+              <div key={a.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                <button type="button" onClick={() => setResult(a)} style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left", cursor: "pointer" }}>
+                  <Tag text={`${a.report.serviceCount} opps`} color={C.blue} />
+                  <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                </button>
+                <ArtifactLinks base={`/api/audit/${a.id}/deck`} label="Open" compact />
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}
@@ -3931,19 +4242,35 @@ function PaidAuditPage() {
   const listState = useApi<{ audits: PaidAuditRowUI[] }>("/api/audit/paid");
   const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false); const [report, setReport] = useState<PaidAuditReportUI | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  // The id behind whatever report is on screen. Needed so the live report can advance to a proposal
+  // instead of dead-ending; set both by a fresh run and by opening a past audit from the list.
+  const [reportAuditId, setReportAuditId] = useState<string | null>(null);
+  const [proposalBusy, setProposalBusy] = useState(false);
   const guard = offlineIf(listState);
   if (guard) return guard;
   const audits = listState.data?.audits ?? [];
   async function run() {
     if (!name.trim() || !notes.trim()) { setMsg("Business name + stakeholder notes are required."); return; }
-    setBusy(true); setMsg(null); setReport(null);
-    try {
-      const r = await fetch("/api/audit/paid", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessName: name, industry: industry || undefined, intakeNotes: notes }) });
-      const j = (await r.json()) as { ok?: boolean; report?: PaidAuditReportUI; error?: string; needsModelKey?: boolean };
-      if (r.ok && j.ok !== false && j.report) { setReport(j.report); listState.reload(); }
-      else if (j.needsModelKey) setMsg("The audit team needs an LLM key — set OPENROUTER_API_KEY in .env to run it live.");
-      else setMsg("Error: " + String(j.error ?? r.status));
-    } catch (e) { setMsg("Error: " + String(e)); } finally { setBusy(false); }
+    setBusy(true); setMsg(null); setReport(null); setReportAuditId(null);
+    const res = await postJson("/api/audit/paid", { businessName: name, industry: industry || undefined, intakeNotes: notes });
+    setBusy(false);
+    if (!res.ok) {
+      setMsg(res.data?.needsModelKey ? "The audit team needs an LLM key — set OPENROUTER_API_KEY in .env to run it live." : "Error: " + String(res.error));
+      return;
+    }
+    const rpt = res.data?.report as PaidAuditReportUI | undefined;
+    if (!rpt) { setMsg("Error: the audit returned no report."); return; }
+    setReport(rpt);
+    setReportAuditId(typeof res.data?.auditId === "string" ? res.data.auditId : null);
+    listState.reload();
+  }
+  /** Same createProposalFromAudit path the Proposals page uses — see FreeAuditPage.buildProposal. */
+  async function buildProposal(auditId: string, businessName: string) {
+    setProposalBusy(true); setMsg(null);
+    const res = await postJson("/api/proposals/from-audit", { auditId });
+    setProposalBusy(false);
+    if (!res.ok) { setMsg("Could not build a proposal: " + String(res.error)); return; }
+    setMsg(`Proposal drafted for ${businessName} — open Proposals to price, approve and send it.`);
   }
   const lvl = (v: string) => (v === "high" ? C.lime : v === "medium" ? C.blue : C.gray);
   const rep = report;
@@ -3968,7 +4295,7 @@ function PaidAuditPage() {
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Stakeholder-interview notes: how they get customers, deliver, support; what's manual; where the bottlenecks are; team size; numbers…" style={{ ...inputStyle, width: "100%", minHeight: 110, resize: "vertical" }} />
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
           <button onClick={run} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "Running audit team…" : "Run paid audit"}</button>
-          {msg ? <span style={{ fontSize: 12, color: C.orange }}>{msg}</span> : null}
+          <ActionMsg msg={msg} />
         </div>
       </Panel>
 
@@ -3984,6 +4311,18 @@ function PaidAuditPage() {
                 <Kpi label="Payback" value={`${rep.roi.paybackMonths ?? "—"} mo`} icon="Hourglass" color="#B87CFF" />
               </div>
             ) : null}
+            {/* The report used to render in full and offer nothing to do next. Export + build proposal
+                are both real routes that already exist — they just were not reachable from here. */}
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {reportAuditId ? (
+                <>
+                  <button onClick={() => buildProposal(reportAuditId, rep.businessName)} disabled={proposalBusy} style={proposalBusy ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{proposalBusy ? "Building…" : "Build proposal from this →"}</button>
+                  <ArtifactLinks base={`/api/audit/${reportAuditId}/deck`} label="Open report" />
+                </>
+              ) : (
+                <span style={{ fontSize: 11.5, color: faint }}>Open this audit from the list below to build a proposal or export it.</span>
+              )}
+            </div>
           </Panel>
 
           <Panel>
@@ -4020,11 +4359,13 @@ function PaidAuditPage() {
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Recent paid audits ({audits.length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {audits.map((a) => (
-              <div key={a.id} onClick={() => setReport(a.report)} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <Tag text={`${a.report.opportunities?.length ?? 0} opps`} color={C.blue} />
-                <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
-                <a href={`/api/audit/${a.id}/document`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Report ↗</a>
-                <a href={`/api/audit/${a.id}/deck`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "5px 10px", fontSize: 11 }}>Deck ↗</a>
+              // Was a clickable <div> and the only way to reopen a past report.
+              <div key={a.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                <button type="button" onClick={() => { setReport(a.report); setReportAuditId(a.id); }} style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left", cursor: "pointer" }}>
+                  <Tag text={`${a.report.opportunities?.length ?? 0} opps`} color={C.blue} />
+                  <span style={{ fontSize: 12.5, flex: 1 }}>{a.businessName}</span>
+                </button>
+                <ArtifactLinks base={`/api/audit/${a.id}/deck`} label="Open" compact />
                 <span style={{ fontSize: 11, color: faint }}>{fmtTime(a.createdAt)}</span>
               </div>
             ))}
@@ -4043,22 +4384,35 @@ function ProposalsPage() {
   const freeState = useApi<{ audits: AuditPick[] }>("/api/audit/free");
   const paidState = useApi<{ audits: AuditPick[] }>("/api/audit/paid");
   const [auditId, setAuditId] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(listState);
   if (guard) return guard;
   const proposals = listState.data?.proposals ?? [];
   const audits = [...(paidState.data?.audits ?? []).map((a) => ({ ...a, kind: "paid" })), ...(freeState.data?.audits ?? []).map((a) => ({ ...a, kind: "free" }))];
+  // The two audit lists feed the ONLY control that starts a proposal. When they failed they rendered an
+  // empty dropdown, and the founder concluded there were no audits to build from — a fetch failure read
+  // as an empty business. Name the failure instead.
+  const auditsLoading = freeState.loading || paidState.loading;
+  const auditsError = freeState.error ?? paidState.error;
   async function build() {
     if (!auditId) { setMsg("Pick an audit to build from."); return; }
     setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/proposals/from-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId }) });
-      if (r.ok) { setAuditId(""); listState.reload(); } else setMsg("Error building proposal.");
-    } finally { setBusy(false); }
+    const res = await postJson("/api/proposals/from-audit", { auditId });
+    setBusy(false);
+    if (!res.ok) { setMsg("Could not build proposal: " + String(res.error)); return; }
+    setAuditId("");
+    setMsg("Proposal built — it is in the list below as a draft.");
+    listState.reload();
   }
-  async function act(id: string, action: string) {
-    const r = await fetch(`/api/proposals/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-    const j = await r.json().catch(() => ({}));
-    if (action === "accept" && j?.invoiceId) setMsg("Accepted — invoice drafted (see Invoices & Finance).");
+  async function act(id: string, action: string, title: string) {
+    // Sending a proposal puts a priced offer in front of a client. It is not undoable from this screen.
+    if (action === "send" && !window.confirm(`Send the proposal "${title}" to the client?\n\nThis marks it as sent and is written to the audit trail. You cannot un-send it from here.`)) return;
+    setRowBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/proposals/${id}/action`, { action });
+    setRowBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not " + action + ": " + String(res.error) }); return; }
+    if (action === "accept" && res.data?.invoiceId) setMsg("Accepted — invoice drafted (see Invoices & Finance).");
     listState.reload();
   }
   const actionsFor = (st: string): Array<{ a: string; label: string }> => {
@@ -4082,13 +4436,27 @@ function ProposalsPage() {
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Build from an audit</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <select value={auditId} onChange={(e) => setAuditId(e.target.value)} style={{ ...selectStyle, minWidth: 260 }}>
-            <option value="">Pick an audit…</option>
+          <select
+            value={auditId}
+            onChange={(e) => setAuditId(e.target.value)}
+            disabled={auditsLoading || Boolean(auditsError)}
+            aria-label="Audit to build the proposal from"
+            style={{ ...selectStyle, minWidth: 260 }}
+          >
+            <option value="">{auditsLoading ? "Loading audits…" : auditsError ? "Audits unavailable" : "Pick an audit…"}</option>
             {audits.map((a) => <option key={a.id} value={a.id}>{a.businessName} ({a.kind})</option>)}
           </select>
-          <button onClick={build} disabled={busy} style={busy ? disabledBtn : primaryBtn}>{busy ? "…" : "Build proposal"}</button>
-          {msg ? <span style={{ fontSize: 12, color: msg.startsWith("Accepted") ? C.lime : C.orange }}>{msg}</span> : null}
+          <button onClick={build} disabled={busy || auditsLoading || Boolean(auditsError)} style={busy || auditsLoading || auditsError ? disabledBtn : primaryBtn}>{busy ? "Building…" : "Build proposal"}</button>
+          <ActionMsg msg={msg} />
         </div>
+        {auditsError ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: C.orange, lineHeight: 1.5 }}>
+            Could not load the audit list: {auditsError}. This is a load failure, not an empty business — retry once the API is reachable.
+          </div>
+        ) : null}
+        {!auditsLoading && !auditsError && audits.length === 0 ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: muted }}>No audits recorded yet. Run a free or paid audit first, then build the proposal from it.</div>
+        ) : null}
       </Panel>
 
       <Panel>
@@ -4097,18 +4465,31 @@ function ProposalsPage() {
           <StateBlock kind="empty" message="No proposals yet. Build one from an audit above." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {proposals.map((p) => (
-              <div key={p.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Tag text={p.status} color={p.status === "accepted" ? C.lime : p.status === "rejected" ? C.orange : p.status === "sent" ? C.blue : C.gray} />
-                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 160 }}>{p.title}</span>
-                <span style={{ fontSize: 11, color: faint }}>{p.services.length} services · {p.timeline.length} phases</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.lime }}>{money(p.pricingCents, p.currency)}</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <a href={`/api/proposals/${p.id}/document`} target="_blank" rel="noreferrer" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", textDecoration: "none", padding: "6px 11px", fontSize: 11.5 }}>Document ↗</a>
-                  {actionsFor(p.status).map((x) => <button key={x.a} onClick={() => act(p.id, x.a)} style={{ ...(x.a === "reject" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5 }}>{x.label}</button>)}
+            {proposals.map((p) => {
+              const b = rowBusy === p.id;
+              return (
+                <div key={p.id} style={{ ...card, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <Tag text={p.status} color={p.status === "accepted" ? C.lime : p.status === "rejected" ? C.orange : p.status === "sent" ? C.blue : C.gray} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 160 }}>{p.title}</span>
+                  <span style={{ fontSize: 11, color: faint }}>{p.services.length} services · {p.timeline.length} phases</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: C.lime }}>{money(p.pricingCents, p.currency)}</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <ArtifactLinks base={`/api/proposals/${p.id}/document`} label="Open" compact />
+                    {actionsFor(p.status).map((x) => (
+                      <button
+                        key={x.a}
+                        onClick={() => act(p.id, x.a, p.title)}
+                        disabled={b}
+                        style={{ ...(x.a === "reject" ? { ...disabledBtn, opacity: 1, cursor: "pointer" } : primaryBtn), padding: "6px 11px", fontSize: 11.5, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer" }}
+                      >
+                        {b ? "Working…" : x.label}
+                      </button>
+                    ))}
+                  </div>
+                  {rowMsg?.id === p.id ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={rowMsg.text} /></div> : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Panel>
@@ -4210,14 +4591,22 @@ function AuditWorkspacePage() {
           {clients.length === 0 ? <StateBlock kind="empty" message="No audits yet. Generate a pitch above." /> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {clients.map((c) => (
-                <div key={c.key} onClick={() => setSel(c.key)} style={{ ...card, padding: "9px 11px", cursor: "pointer", border: c.key === sel ? `1px solid ${C.lime}` : card.border }}>
+                // Was a clickable <div> and the only way to select a client — the whole workspace hangs
+                // off this selection, and it was unreachable by keyboard.
+                <button
+                  key={c.key}
+                  type="button"
+                  aria-pressed={c.key === sel}
+                  onClick={() => setSel(c.key)}
+                  style={{ ...card, padding: "9px 11px", cursor: "pointer", border: c.key === sel ? `1px solid ${C.lime}` : card.border, width: "100%", textAlign: "left", color: C.white, font: "inherit", display: "block" }}
+                >
                   <div style={{ fontSize: 12.5, fontWeight: 600 }}>{c.businessName}</div>
                   <div style={{ display: "flex", gap: 4, marginTop: 5 }}>
                     <Tag text="pitch" color={c.pitch ? C.lime : C.gray} />
                     <Tag text="roadmap" color={c.roadmap ? C.lime : C.gray} />
                     <Tag text="final" color={c.final ? C.lime : C.gray} />
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -4274,6 +4663,10 @@ function TasksPage() {
   const [f, setF] = useState({ title: "", taskType: "call", priority: "medium", assignedTo: "", dueDate: "", opportunityId: "" });
   const [filter, setFilter] = useState("open");
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  // Per-row busy/message for the status buttons. Without these a rejected "Done" looked identical to a
+  // successful one — the list reloaded and the row simply stayed put.
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const all = state.data?.tasks ?? [];
@@ -4290,7 +4683,13 @@ function TasksPage() {
       if (r.ok) { setF({ title: "", taskType: "call", priority: "medium", assignedTo: "", dueDate: "", opportunityId: "" }); reload(); } else setMsg("Error saving task.");
     } finally { setBusy(false); }
   }
-  async function setStatus(id: string, status: string) { await fetch(`/api/tasks/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); }
+  async function setStatus(id: string, status: string) {
+    setRowBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/tasks/${id}/action`, { action: "status", status });
+    setRowBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not set status: " + String(res.error) }); return; }
+    reload();
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -4303,8 +4702,8 @@ function TasksPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>New task</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="Task title" style={{ ...inputStyle, width: 220 }} />
-          <select value={f.taskType} onChange={(e) => setF((s) => ({ ...s, taskType: e.target.value }))} style={selectStyle}>{TASK_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
-          <select value={f.priority} onChange={(e) => setF((s) => ({ ...s, priority: e.target.value }))} style={selectStyle}>{["low", "medium", "high", "urgent"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
+          <select value={f.taskType} onChange={(e) => setF((s) => ({ ...s, taskType: e.target.value }))} aria-label="Task type" style={selectStyle}>{TASK_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
+          <select value={f.priority} onChange={(e) => setF((s) => ({ ...s, priority: e.target.value }))} aria-label="Task priority" style={selectStyle}>{["low", "medium", "high", "urgent"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
           <input value={f.assignedTo} onChange={(e) => setF((s) => ({ ...s, assignedTo: e.target.value }))} placeholder="Assign to" style={{ ...inputStyle, width: 120 }} />
           <input type="date" value={f.dueDate} onChange={(e) => setF((s) => ({ ...s, dueDate: e.target.value }))} style={{ ...inputStyle, width: "auto" }} />
           <input value={f.opportunityId} onChange={(e) => setF((s) => ({ ...s, opportunityId: e.target.value }))} placeholder="Link deal (opp id)" style={{ ...inputStyle, width: 150 }} />
@@ -4315,24 +4714,28 @@ function TasksPage() {
       <Panel>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Tasks ({shown.length})</div>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={selectStyle}>{[["open", "Open"], ["overdue", "Overdue"], ["done", "Completed"], ["all", "All"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tasks" style={selectStyle}>{[["open", "Open"], ["overdue", "Overdue"], ["done", "Completed"], ["all", "All"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </div>
         {shown.length === 0 ? <StateBlock kind="empty" message="No tasks here." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {shown.map((t) => (
-              <div key={t.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderLeft: overdue(t) ? `3px solid ${C.orange}` : card.border }}>
-                <Tag text={t.priority} color={t.priority === "urgent" ? C.orange : t.priority === "high" ? "#F5C542" : C.gray} />
-                <Tag text={t.status.replace(/_/g, " ")} color={TASK_STATUS_COLORS[t.status] ?? C.gray} />
-                <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{t.title}</span>
-                <span style={{ fontSize: 11, color: overdue(t) ? C.orange : faint }}>{t.assignedTo ? `${t.assignedTo} · ` : ""}{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : ""}</span>
-                {t.status !== "completed" && t.status !== "cancelled" ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {t.status === "not_started" ? <button onClick={() => setStatus(t.id, "in_progress")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 10px", fontSize: 11.5 }}>Start</button> : null}
-                    <button onClick={() => setStatus(t.id, "completed")} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5 }}>Done</button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+            {shown.map((t) => {
+              const b = rowBusy === t.id;
+              return (
+                <div key={t.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderLeft: overdue(t) ? `3px solid ${C.orange}` : card.border }}>
+                  <Tag text={t.priority} color={t.priority === "urgent" ? C.orange : t.priority === "high" ? "#F5C542" : C.gray} />
+                  <Tag text={t.status.replace(/_/g, " ")} color={TASK_STATUS_COLORS[t.status] ?? C.gray} />
+                  <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{t.title}</span>
+                  <span style={{ fontSize: 11, color: overdue(t) ? C.orange : faint }}>{t.assignedTo ? `${t.assignedTo} · ` : ""}{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : ""}</span>
+                  {t.status !== "completed" && t.status !== "cancelled" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {t.status === "not_started" ? <button onClick={() => setStatus(t.id, "in_progress")} disabled={b} style={{ ...disabledBtn, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer", padding: "5px 10px", fontSize: 11.5 }}>Start</button> : null}
+                      <button onClick={() => setStatus(t.id, "completed")} disabled={b} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer" }}>{b ? "…" : "Done"}</button>
+                    </div>
+                  ) : null}
+                  {rowMsg?.id === t.id ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={rowMsg.text} /></div> : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </Panel>
@@ -4348,6 +4751,8 @@ function MeetingsPage() {
   const state = useApi<{ meetings: MeetingRowUI[] }>("/api/meetings?limit=300");
   const [f, setF] = useState({ title: "", meetingType: "ai_readiness_call", startAt: "", organizer: "", opportunityId: "" });
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const meetings = state.data?.meetings ?? [];
@@ -4365,10 +4770,22 @@ function MeetingsPage() {
   async function complete(id: string) {
     const outcome = window.prompt("Meeting outcome? (what happened / next step)");
     if (outcome === null) return;
-    await fetch(`/api/meetings/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "completed", outcome: outcome || undefined }) });
+    setRowBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/meetings/${id}/action`, { status: "completed", outcome: outcome || undefined });
+    setRowBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not complete: " + String(res.error) }); return; }
     reload();
   }
-  async function setStatus(id: string, status: string) { await fetch(`/api/meetings/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); reload(); }
+  async function setStatus(id: string, status: string, title: string) {
+    // No-show is a judgement recorded against a client; it drives follow-up and reporting, so make the
+    // founder confirm rather than mark it on a stray click.
+    if (status === "no_show" && !window.confirm(`Mark "${title}" as a NO-SHOW?\n\nThis records that the other side did not attend, and is written to the audit trail.`)) return;
+    setRowBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/meetings/${id}/action`, { status });
+    setRowBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not update: " + String(res.error) }); return; }
+    reload();
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -4381,7 +4798,7 @@ function MeetingsPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Book a meeting</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="Meeting title" style={{ ...inputStyle, width: 200 }} />
-          <select value={f.meetingType} onChange={(e) => setF((s) => ({ ...s, meetingType: e.target.value }))} style={selectStyle}>{MEETING_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
+          <select value={f.meetingType} onChange={(e) => setF((s) => ({ ...s, meetingType: e.target.value }))} aria-label="Meeting type" style={selectStyle}>{MEETING_TYPES_UI.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}</select>
           <input type="datetime-local" value={f.startAt} onChange={(e) => setF((s) => ({ ...s, startAt: e.target.value }))} style={{ ...inputStyle, width: "auto" }} />
           <input value={f.organizer} onChange={(e) => setF((s) => ({ ...s, organizer: e.target.value }))} placeholder="Organizer" style={{ ...inputStyle, width: 120 }} />
           <input value={f.opportunityId} onChange={(e) => setF((s) => ({ ...s, opportunityId: e.target.value }))} placeholder="Link deal (opp id)" style={{ ...inputStyle, width: 150 }} />
@@ -4393,20 +4810,24 @@ function MeetingsPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Meetings ({meetings.length})</div>
         {meetings.length === 0 ? <StateBlock kind="empty" message="No meetings yet. Book one above." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {meetings.map((m) => (
-              <div key={m.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Tag text={m.meetingType.replace(/_/g, " ")} color={C.gray} />
-                <Tag text={m.status.replace(/_/g, " ")} color={MEETING_STATUS_COLORS[m.status] ?? C.gray} />
-                <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{m.title}{m.outcome ? <span style={{ color: faint, fontSize: 11 }}> — {m.outcome.slice(0, 60)}</span> : null}</span>
-                <span style={{ fontSize: 11, color: faint }}>{m.startAt ? new Date(m.startAt).toLocaleString() : ""}</span>
-                {m.status === "scheduled" || m.status === "rescheduled" || m.status === "needs_follow_up" ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => complete(m.id)} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5 }}>Complete</button>
-                    <button onClick={() => setStatus(m.id, "no_show")} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 10px", fontSize: 11.5 }}>No-show</button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+            {meetings.map((m) => {
+              const b = rowBusy === m.id;
+              return (
+                <div key={m.id} style={{ ...card, padding: "10px 13px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <Tag text={m.meetingType.replace(/_/g, " ")} color={C.gray} />
+                  <Tag text={m.status.replace(/_/g, " ")} color={MEETING_STATUS_COLORS[m.status] ?? C.gray} />
+                  <span style={{ fontSize: 12.5, flex: 1, minWidth: 140 }}>{m.title}{m.outcome ? <span style={{ color: faint, fontSize: 11 }}> — {m.outcome.slice(0, 60)}</span> : null}</span>
+                  <span style={{ fontSize: 11, color: faint }}>{m.startAt ? new Date(m.startAt).toLocaleString() : ""}</span>
+                  {m.status === "scheduled" || m.status === "rescheduled" || m.status === "needs_follow_up" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => complete(m.id)} disabled={b} style={{ ...primaryBtn, padding: "5px 10px", fontSize: 11.5, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer" }}>{b ? "…" : "Complete"}</button>
+                      <button onClick={() => setStatus(m.id, "no_show", m.title)} disabled={b} style={{ ...disabledBtn, opacity: b ? 0.55 : 1, cursor: b ? "wait" : "pointer", padding: "5px 10px", fontSize: 11.5 }}>No-show</button>
+                    </div>
+                  ) : null}
+                  {rowMsg?.id === m.id ? <div style={{ flexBasis: "100%" }}><ActionMsg msg={rowMsg.text} /></div> : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </Panel>
@@ -4423,6 +4844,8 @@ function ProjectsPage() {
   const state = useApi<{ projects: ProjectRowUI[] }>("/api/projects?limit=300");
   const [f, setF] = useState({ name: "", owner: "", companyId: "", opportunityId: "", endDate: "" });
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const projects = state.data?.projects ?? [];
@@ -4438,7 +4861,13 @@ function ProjectsPage() {
       if (r.ok) { setF({ name: "", owner: "", companyId: "", opportunityId: "", endDate: "" }); reload(); } else setMsg("Error saving project.");
     } finally { setBusy(false); }
   }
-  async function setStatus(id: string, status: string) { await fetch(`/api/projects/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); }
+  async function setStatus(id: string, status: string) {
+    setRowBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/projects/${id}/action`, { action: "status", status });
+    setRowBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not set status: " + String(res.error) }); return; }
+    reload();
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -4483,11 +4912,18 @@ function ProjectsPage() {
                     {items.length ? <span style={{ fontSize: 11, color: faint }}>{done}/{items.length} deliverables</span> : <span style={{ fontSize: 11, color: faint }}>no deliverables yet</span>}
                     <div style={{ flex: 1 }} />
                     {!["completed", "cancelled"].includes(p.status) ? (
-                      <select value={p.status} onChange={(e) => setStatus(p.id, e.target.value)} style={{ ...selectStyle, fontSize: 11.5, padding: "4px 8px" }}>
+                      <select
+                        value={p.status}
+                        onChange={(e) => setStatus(p.id, e.target.value)}
+                        disabled={rowBusy === p.id}
+                        aria-label={`Status for project ${p.name}`}
+                        style={{ ...selectStyle, fontSize: 11.5, padding: "4px 8px", opacity: rowBusy === p.id ? 0.55 : 1 }}
+                      >
                         {PROJECT_STATUSES_UI.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
                       </select>
                     ) : null}
                   </div>
+                  {rowMsg?.id === p.id ? <ActionMsg msg={rowMsg.text} /> : null}
                 </div>
               );
             })}
@@ -4508,6 +4944,7 @@ function DecisionRoomPage() {
   const policies = useApi<{ policies: DecisionPolicyUI[] }>("/api/decision-policies?status=proposed&limit=50");
   const [f, setF] = useState({ title: "", context: "", options: "" });
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const decisions = state.data?.decisions ?? [];
@@ -4532,9 +4969,13 @@ function DecisionRoomPage() {
     } finally { setBusy(null); }
   }
   async function act(id: string, body: Record<string, unknown>, key: string) {
-    setBusy(key);
-    try { await fetch(`/api/decisions/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); reload(); }
-    finally { setBusy(null); }
+    setBusy(key); setRowMsg(null);
+    const res = await postJson(`/api/decisions/${id}/action`, body);
+    setBusy(null);
+    // The message belongs beside the decision that failed, not in the "open a decision" form at the top
+    // of the page — a founder scoring the fourth decision would never have seen it up there.
+    if (!res.ok) { setRowMsg({ id, text: "Could not " + String(body.action ?? "act") + ": " + String(res.error) }); return; }
+    reload();
   }
   async function commit(d: DecisionRowUI) {
     const best = d.options.filter((o) => typeof o.score === "number").sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0] ?? d.options[0];
@@ -4607,8 +5048,9 @@ function DecisionRoomPage() {
             {d.status !== "decided" && d.status !== "archived" ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => act(d.id, { action: "score" }, "score_" + d.id)} disabled={busy === "score_" + d.id || d.options.length === 0} style={busy === "score_" + d.id ? disabledBtn : { ...primaryBtn, padding: "7px 12px", fontSize: 12 }}>{busy === "score_" + d.id ? "Scoring…" : "⚡ Let WOBBLE score"}</button>
-                <button onClick={() => commit(d)} disabled={!!busy} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>Commit decision</button>
-                <button onClick={() => { const label = window.prompt("New option label:"); if (label) act(d.id, { action: "add_option", label }, "opt_" + d.id); }} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px" }}>+ Option</button>
+                <button onClick={() => commit(d)} disabled={!!busy} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px", opacity: busy ? 0.55 : 1 }}>{busy === "commit_" + d.id ? "Committing…" : "Commit decision"}</button>
+                <button onClick={() => { const label = window.prompt("New option label:"); if (label) act(d.id, { action: "add_option", label }, "opt_" + d.id); }} disabled={busy === "opt_" + d.id} style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px", opacity: busy === "opt_" + d.id ? 0.55 : 1 }}>+ Option</button>
+                {rowMsg?.id === d.id ? <ActionMsg msg={rowMsg.text} /> : null}
               </div>
             ) : null}
           </Panel>
@@ -4626,6 +5068,7 @@ function OfferLabPage() {
   const state = useApi<{ offers: OfferRowUI[] }>("/api/offers?limit=200");
   const [f, setF] = useState({ name: "", hypothesis: "", audience: "", promise: "", price: "", deliverables: "" });
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const offers = state.data?.offers ?? [];
@@ -4640,8 +5083,22 @@ function OfferLabPage() {
       if (r.ok) { setF({ name: "", hypothesis: "", audience: "", promise: "", price: "", deliverables: "" }); reload(); } else setMsg("Error creating offer.");
     } finally { setBusy(null); }
   }
-  async function setStatus(id: string, status: string) { setBusy(id); try { await fetch(`/api/offers/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); } finally { setBusy(null); } }
-  async function addExp(id: string) { const name = window.prompt("Experiment name (e.g. 'LinkedIn DM test'):"); if (!name) return; setBusy(id); try { await fetch(`/api/offers/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add_experiment", name }) }); reload(); } finally { setBusy(null); } }
+  async function setStatus(id: string, status: string) {
+    setBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/offers/${id}/action`, { action: "status", status });
+    setBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not change status: " + String(res.error) }); return; }
+    reload();
+  }
+  async function addExp(id: string) {
+    const name = window.prompt("Experiment name (e.g. 'LinkedIn DM test'):");
+    if (!name) return;
+    setBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/offers/${id}/action`, { action: "add_experiment", name });
+    setBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not add the experiment: " + String(res.error) }); return; }
+    reload();
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
@@ -4678,10 +5135,11 @@ function OfferLabPage() {
           {o.deliverables?.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>{o.deliverables.map((d, i) => <Tag key={i} text={d} color={C.gray} />)}</div> : null}
           {o.experiments?.length ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 8 }}>{o.experiments.length} experiment{o.experiments.length === 1 ? "" : "s"}: {o.experiments.map((e) => e.name).join(", ")}</div> : null}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button onClick={() => addExp(o.id)} disabled={busy === o.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px", fontSize: 12 }}>+ Experiment</button>
-            <select value={o.status} onChange={(e) => setStatus(o.id, e.target.value)} style={{ ...selectStyle, padding: "6px 10px", fontSize: 12 }}>
+            <button onClick={() => addExp(o.id)} disabled={busy === o.id} style={{ ...selectStyle, cursor: busy === o.id ? "wait" : "pointer", padding: "6px 11px", fontSize: 12, opacity: busy === o.id ? 0.55 : 1 }}>{busy === o.id ? "Working…" : "+ Experiment"}</button>
+            <select value={o.status} onChange={(e) => setStatus(o.id, e.target.value)} disabled={busy === o.id} aria-label={`Status for offer ${o.name}`} style={{ ...selectStyle, padding: "6px 10px", fontSize: 12, opacity: busy === o.id ? 0.55 : 1 }}>
               {OFFER_STATUSES_UI.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+            {rowMsg?.id === o.id ? <ActionMsg msg={rowMsg.text} /> : null}
           </div>
         </Panel>
       ))}
@@ -4797,6 +5255,7 @@ function AutomationsPage() {
   const state = useApi<{ rules: AutomationRowUI[] }>("/api/automations?limit=200");
   const [f, setF] = useState({ name: "", triggerType: "manual", triggerEvent: "", actionQueue: "general", actionType: "" });
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const rules = state.data?.rules ?? [];
@@ -4810,8 +5269,23 @@ function AutomationsPage() {
       if (r.ok) { setF({ name: "", triggerType: "manual", triggerEvent: "", actionQueue: "general", actionType: "" }); reload(); } else { const j = await r.json(); setMsg("Error: " + String(j.error ?? "failed")); }
     } finally { setBusy(null); }
   }
-  async function toggle(id: string, enabled: boolean) { setBusy(id); try { await fetch(`/api/automations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggle", enabled }) }); reload(); } finally { setBusy(null); } }
-  async function run(id: string) { setBusy("run_" + id); try { const r = await fetch(`/api/automations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run" }) }); const j = await r.json(); if (j.ok) setMsg("Ran → job " + String(j.jobId).slice(0, 14)); reload(); } finally { setBusy(null); } }
+  async function toggle(id: string, enabled: boolean) {
+    setBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/automations/${id}/action`, { action: "toggle", enabled });
+    setBusy(null);
+    // Silently failing here was the worst kind: the rule stayed in its old state and the founder believed
+    // an automation was disabled when it was still firing.
+    if (!res.ok) { setRowMsg({ id, text: "Could not " + (enabled ? "enable" : "disable") + ": " + String(res.error) }); return; }
+    reload();
+  }
+  async function run(id: string) {
+    setBusy("run_" + id); setRowMsg(null);
+    const res = await postJson(`/api/automations/${id}/action`, { action: "run" });
+    setBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Run failed: " + String(res.error) }); return; }
+    setRowMsg({ id, text: "Ran → job " + String(res.data?.jobId ?? "queued").slice(0, 14) });
+    reload();
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
@@ -4824,7 +5298,7 @@ function AutomationsPage() {
         <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>A rule fires an action = it enqueues a real job. Event rules trigger on an audit event; manual rules run on demand.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
           <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="Rule name" style={inputStyle} />
-          <select value={f.triggerType} onChange={(e) => setF((s) => ({ ...s, triggerType: e.target.value }))} style={selectStyle}>
+          <select value={f.triggerType} onChange={(e) => setF((s) => ({ ...s, triggerType: e.target.value }))} aria-label="Automation trigger type" style={selectStyle}>
             <option value="manual">Trigger: manual (run on demand)</option>
             <option value="event">Trigger: on event</option>
             <option value="schedule">Trigger: schedule</option>
@@ -4849,9 +5323,10 @@ function AutomationsPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: faint }}>{r.runCount} run{r.runCount === 1 ? "" : "s"}{r.lastStatus ? ` · last: ${r.lastStatus}` : ""}</span>
             <div style={{ flex: 1 }} />
-            <button onClick={() => run(r.id)} disabled={busy === "run_" + r.id} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "run_" + r.id ? "…" : "Run now"}</button>
-            <button onClick={() => toggle(r.id, !r.enabled)} disabled={busy === r.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>{r.enabled ? "Disable" : "Enable"}</button>
+            <button onClick={() => run(r.id)} disabled={busy === "run_" + r.id} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 12, opacity: busy === "run_" + r.id ? 0.55 : 1, cursor: busy === "run_" + r.id ? "wait" : "pointer" }}>{busy === "run_" + r.id ? "Running…" : "Run now"}</button>
+            <button onClick={() => toggle(r.id, !r.enabled)} disabled={busy === r.id} style={{ ...selectStyle, cursor: busy === r.id ? "wait" : "pointer", padding: "6px 11px", opacity: busy === r.id ? 0.55 : 1 }}>{busy === r.id ? "…" : r.enabled ? "Disable" : "Enable"}</button>
           </div>
+          {rowMsg?.id === r.id ? <div style={{ marginTop: 8 }}><ActionMsg msg={rowMsg.text} /></div> : null}
         </Panel>
       ))}
     </div>
@@ -4872,24 +5347,40 @@ function SeoPage() {
   async function create() {
     if (!f.topic.trim()) { setMsg("A plan needs a topic."); return; }
     setBusy("create"); setMsg(null);
-    try {
-      const r = await fetch("/api/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: f.topic, audience: f.audience || undefined }) });
-      if (r.ok) { const j = await r.json(); setF({ topic: "", audience: "" }); reload(); if (j.plan?.id) generate(j.plan.id); } else setMsg("Error creating plan.");
-    } finally { setBusy(null); }
+    const res = await postJson("/api/seo", { topic: f.topic, audience: f.audience || undefined });
+    if (!res.ok) { setBusy(null); setMsg("Could not create the plan: " + String(res.error)); return; }
+    setF({ topic: "", audience: "" });
+    reload();
+    const planId = (res.data?.plan as { id?: string } | undefined)?.id;
+    // MUST be awaited. Generation takes 20–40s; when this was fire-and-forget, create()'s own
+    // busy-clear ran immediately after and the button went idle — the longest operation in the module
+    // ran with no indicator whatsoever, then results appeared unexplained.
+    if (planId) { await generate(planId); return; }
+    setBusy(null);
   }
-  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Generate failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
-  async function archive(id: string) { setBusy(id); try { await fetch(`/api/seo/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive" }) }); reload(); } finally { setBusy(null); } }
+  async function generate(id: string) {
+    setBusy("gen_" + id); setMsg(null);
+    const res = await postJson(`/api/seo/${id}/action`, { action: "generate" });
+    setBusy(null);
+    if (!res.ok) { setMsg("Generate failed: " + String(res.error)); return; }
+    reload();
+  }
+  async function archive(id: string) {
+    setBusy(id);
+    const res = await postJson(`/api/seo/${id}/action`, { action: "archive" });
+    setBusy(null);
+    if (!res.ok) { setMsg("Could not archive: " + String(res.error)); return; }
+    reload();
+  }
   // SEO → CONTENT bridge: turn a blog idea into a real content-generation job (packets land in Content Command
   // for approval) — so ideas stop dead-ending. Reuses the existing content.generate pipeline.
   async function draftFromIdea(b: { title: string; angle?: string; targetKeyword?: string; outline?: string[] }) {
     setBusy("draft_" + b.title); setMsg(null);
-    try {
-      const objective = `Write a WOBBLE content piece from this SEO blog idea. Title: "${b.title}".${b.angle ? ` Angle: ${b.angle}.` : ""}${b.targetKeyword ? ` Target keyword: ${b.targetKeyword}.` : ""}${b.outline?.length ? ` Outline: ${b.outline.join("; ")}.` : ""} Teach-first, grounded in approved sources.`;
-      const r = await fetch("/api/content/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objective, formatFocus: ["text"] }) });
-      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) setMsg(`Drafting "${b.title}" — the content worker is generating packets; review them in Content Command.`);
-      else setMsg("Error: " + String(j.error ?? r.status));
-    } finally { setBusy(null); }
+    const objective = `Write a WOBBLE content piece from this SEO blog idea. Title: "${b.title}".${b.angle ? ` Angle: ${b.angle}.` : ""}${b.targetKeyword ? ` Target keyword: ${b.targetKeyword}.` : ""}${b.outline?.length ? ` Outline: ${b.outline.join("; ")}.` : ""} Teach-first, grounded in approved sources.`;
+    const res = await postJson("/api/content/generate", { objective, formatFocus: ["text"] });
+    setBusy(null);
+    if (!res.ok) { setMsg("Could not draft: " + String(res.error)); return; }
+    setMsg(`Drafting "${b.title}" — the content worker is generating packets; review them in Content Command.`);
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
@@ -4904,18 +5395,24 @@ function SeoPage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input value={f.topic} onChange={(e) => setF((s) => ({ ...s, topic: e.target.value }))} placeholder="Topic (e.g. AI receptionists for dental clinics)" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
           <input value={f.audience} onChange={(e) => setF((s) => ({ ...s, audience: e.target.value }))} placeholder="Audience (optional)" style={{ ...inputStyle, width: 200 }} />
-          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : busy?.startsWith("gen_") ? "Generating…" : "Generate plan"}</button>
+          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" || busy?.startsWith("gen_") ? disabledBtn : primaryBtn}>{busy === "create" ? "Creating…" : busy?.startsWith("gen_") ? "Generating…" : "Generate plan"}</button>
         </div>
-        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+        <div style={{ marginTop: 8 }}><ActionMsg msg={msg} /></div>
       </Panel>
       {plans.length === 0 ? <StateBlock kind="empty" message="No SEO plans yet. Enter a topic above and WOBBLE builds the keyword + blog plan." /> : plans.map((p) => (
         <Panel key={p.id}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(open === p.id ? null : p.id)}>
+          {/* Was a clickable <div> and the only way to open a plan — keyboard users could not expand it. */}
+          <button
+            type="button"
+            aria-expanded={open === p.id}
+            onClick={() => setOpen(open === p.id ? null : p.id)}
+            style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer", width: "100%", background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left" }}
+          >
             <Tag text={p.status} color={SEO_STATUS_COLORS[p.status] ?? C.gray} />
             <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{p.topic}</span>
             <span style={{ fontSize: 11, color: faint }}>{p.targetKeywords.length} kw · {p.blogIdeas.length} ideas</span>
             <Icon name={open === p.id ? "ChevronDown" : "ChevronRight"} size={15} />
-          </div>
+          </button>
           {p.pillar ? <div style={{ fontSize: 11.5, color: faint, marginTop: 6 }}>Pillar: <span style={{ color: C.white }}>{p.pillar}</span></div> : null}
           {open === p.id ? (
             <div style={{ marginTop: 12 }}>
@@ -4952,7 +5449,7 @@ function SeoPage() {
           ) : null}
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button onClick={() => generate(p.id)} disabled={busy === "gen_" + p.id} style={busy === "gen_" + p.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + p.id ? "Generating…" : p.targetKeywords.length ? "⚡ Regenerate" : "⚡ Generate"}</button>
-            {p.status !== "archived" ? <button onClick={() => archive(p.id)} disabled={busy === p.id} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Archive</button> : null}
+            {p.status !== "archived" ? <button onClick={() => archive(p.id)} disabled={busy === p.id} style={{ ...selectStyle, cursor: busy === p.id ? "wait" : "pointer", padding: "6px 11px", opacity: busy === p.id ? 0.55 : 1 }}>{busy === p.id ? "…" : "Archive"}</button> : null}
           </div>
         </Panel>
       ))}
@@ -4970,6 +5467,7 @@ function RadarPage() {
   const suggested = useApi<{ targets: SuggestedTargetUI[] }>("/api/intelligence/targets?approvalStatus=pending&limit=50");
   const [focus, setFocus] = useState("");
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ id: string; text: string } | null>(null);
   const guard = offlineIf(state);
   if (guard) return guard;
   const scans = state.data?.scans ?? [];
@@ -4987,13 +5485,29 @@ function RadarPage() {
   async function create() {
     if (!focus.trim()) { setMsg("Enter a focus area."); return; }
     setBusy("create"); setMsg(null);
-    try {
-      const r = await fetch("/api/radar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ focus }) });
-      if (r.ok) { const j = await r.json(); setFocus(""); reload(); if (j.scan?.id) generate(j.scan.id); } else setMsg("Error creating scan.");
-    } finally { setBusy(null); }
+    const res = await postJson("/api/radar", { focus });
+    if (!res.ok) { setBusy(null); setMsg("Could not create the scan: " + String(res.error)); return; }
+    setFocus("");
+    reload();
+    const scanId = (res.data?.scan as { id?: string } | undefined)?.id;
+    // Awaited — see the SEO note. A radar scan runs 20–40s and used to show no progress at all.
+    if (scanId) { await generate(scanId); return; }
+    setBusy(null);
   }
-  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/radar/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Scan failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
-  async function setStatus(id: string, status: string) { setBusy(id); try { await fetch(`/api/radar/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) }); reload(); } finally { setBusy(null); } }
+  async function generate(id: string) {
+    setBusy("gen_" + id); setMsg(null);
+    const res = await postJson(`/api/radar/${id}/action`, { action: "generate" });
+    setBusy(null);
+    if (!res.ok) { setMsg("Scan failed: " + String(res.error)); return; }
+    reload();
+  }
+  async function setStatus(id: string, status: string) {
+    setBusy(id); setRowMsg(null);
+    const res = await postJson(`/api/radar/${id}/action`, { action: "status", status });
+    setBusy(null);
+    if (!res.ok) { setRowMsg({ id, text: "Could not mark " + status + ": " + String(res.error) }); return; }
+    reload();
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
@@ -5054,8 +5568,9 @@ function RadarPage() {
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button onClick={() => generate(s.id)} disabled={busy === "gen_" + s.id} style={busy === "gen_" + s.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + s.id ? "Scanning…" : s.signals.length ? "⚡ Rescan" : "⚡ Scan"}</button>
-            {s.status !== "actioned" ? <button onClick={() => setStatus(s.id, "actioned")} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Mark actioned</button> : null}
-            {s.status !== "dismissed" ? <button onClick={() => setStatus(s.id, "dismissed")} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Dismiss</button> : null}
+            {s.status !== "actioned" ? <button onClick={() => setStatus(s.id, "actioned")} disabled={busy === s.id} style={{ ...selectStyle, cursor: busy === s.id ? "wait" : "pointer", padding: "6px 11px", opacity: busy === s.id ? 0.55 : 1 }}>Mark actioned</button> : null}
+            {s.status !== "dismissed" ? <button onClick={() => setStatus(s.id, "dismissed")} disabled={busy === s.id} style={{ ...selectStyle, cursor: busy === s.id ? "wait" : "pointer", padding: "6px 11px", opacity: busy === s.id ? 0.55 : 1 }}>Dismiss</button> : null}
+            {rowMsg?.id === s.id ? <ActionMsg msg={rowMsg.text} /> : null}
           </div>
         </Panel>
       ))}
@@ -5077,13 +5592,41 @@ function SocialPage() {
   async function create() {
     if (!f.niche.trim()) { setMsg("Enter a niche or account."); return; }
     setBusy("create"); setMsg(null);
-    try {
-      const r = await fetch("/api/social", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ platform: f.platform, niche: f.niche }) });
-      if (r.ok) { const j = await r.json(); setF({ platform: f.platform, niche: "" }); reload(); if (j.strategy?.id) generate(j.strategy.id); } else setMsg("Error creating.");
-    } finally { setBusy(null); }
+    const res = await postJson("/api/social", { platform: f.platform, niche: f.niche });
+    if (!res.ok) { setBusy(null); setMsg("Could not create the strategy: " + String(res.error)); return; }
+    setF({ platform: f.platform, niche: "" });
+    reload();
+    const stratId = (res.data?.strategy as { id?: string } | undefined)?.id;
+    // Awaited — see the SEO note. Strategy generation is the 20–40s operation this module exists for.
+    if (stratId) { await generate(stratId); return; }
+    setBusy(null);
   }
-  async function generate(id: string) { setBusy("gen_" + id); setMsg(null); try { const r = await fetch(`/api/social/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate" }) }); if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg("Generate failed: " + String(j.error ?? r.status)); } reload(); } finally { setBusy(null); } }
-  async function archive(id: string) { setBusy(id); try { await fetch(`/api/social/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive" }) }); reload(); } finally { setBusy(null); } }
+  async function generate(id: string) {
+    setBusy("gen_" + id); setMsg(null);
+    const res = await postJson(`/api/social/${id}/action`, { action: "generate" });
+    setBusy(null);
+    if (!res.ok) { setMsg("Generate failed: " + String(res.error)); return; }
+    reload();
+  }
+  async function archive(id: string) {
+    setBusy(id);
+    const res = await postJson(`/api/social/${id}/action`, { action: "archive" });
+    setBusy(null);
+    if (!res.ok) { setMsg("Could not archive: " + String(res.error)); return; }
+    reload();
+  }
+  // SOCIAL → CONTENT bridge, mirroring SeoPage.draftFromIdea. Post ideas used to terminate here: the
+  // module produced them and offered no way to act on any of them.
+  async function draftFromIdea(idea: { idea: string; hook?: string; format?: string }, platform: string, niche: string) {
+    const key = "draft_" + idea.idea;
+    setBusy(key); setMsg(null);
+    const objective = `Write a WOBBLE ${platform} post from this social idea. Idea: "${idea.idea}".${idea.hook ? ` Hook: ${idea.hook}.` : ""}${idea.format ? ` Format: ${idea.format}.` : ""}${niche ? ` Audience/niche: ${niche}.` : ""} Teach-first, grounded in approved sources.`;
+    const formatFocus = idea.format === "reel" || idea.format === "reel_script" ? ["reel_script"] : idea.format === "carousel" ? ["carousel"] : ["text"];
+    const res = await postJson("/api/content/generate", { objective, formatFocus });
+    setBusy(null);
+    if (!res.ok) { setMsg("Could not draft: " + String(res.error)); return; }
+    setMsg(`Drafting "${idea.idea.slice(0, 60)}" — the content worker is generating packets; review them in Content Command.`);
+  }
   const chips = (title: string, items?: string[]) => items?.length ? (
     <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>{title}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{items.map((x, i) => <Tag key={i} text={x} color={C.gray} />)}</div></div>
   ) : null;
@@ -5098,21 +5641,27 @@ function SocialPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>New social strategy</div>
         <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>Pick a platform + niche — WOBBLE builds positioning, pillars, hooks, competitor angles and post ideas.</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select value={f.platform} onChange={(e) => setF((s) => ({ ...s, platform: e.target.value }))} style={selectStyle}>{SOCIAL_PLATFORMS_UI.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+          <select value={f.platform} onChange={(e) => setF((s) => ({ ...s, platform: e.target.value }))} aria-label="Platform for the new social strategy" style={selectStyle}>{SOCIAL_PLATFORMS_UI.map((p) => <option key={p} value={p}>{p}</option>)}</select>
           <input value={f.niche} onChange={(e) => setF((s) => ({ ...s, niche: e.target.value }))} placeholder="Niche / account (e.g. AI for dental clinics, @wobble)" style={{ ...inputStyle, flex: 1, minWidth: 240 }} />
-          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : busy?.startsWith("gen_") ? "Building…" : "Build strategy"}</button>
+          <button onClick={create} disabled={busy === "create" || busy?.startsWith("gen_")} style={busy === "create" || busy?.startsWith("gen_") ? disabledBtn : primaryBtn}>{busy === "create" ? "Creating…" : busy?.startsWith("gen_") ? "Building…" : "Build strategy"}</button>
         </div>
-        {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
+        <div style={{ marginTop: 8 }}><ActionMsg msg={msg} /></div>
       </Panel>
       {rows.length === 0 ? <StateBlock kind="empty" message="No strategies yet. Pick a platform + niche and WOBBLE builds the content plan." /> : rows.map((r) => (
         <Panel key={r.id}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)}>
+          {/* Was a clickable <div> and the only way to expand a strategy — keyboard users could not open it. */}
+          <button
+            type="button"
+            aria-expanded={open === r.id}
+            onClick={() => setOpen(open === r.id ? null : r.id)}
+            style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", cursor: "pointer", width: "100%", background: "transparent", border: "none", padding: 0, color: C.white, font: "inherit", textAlign: "left" }}
+          >
             <Tag text={r.platform} color={C.blue} />
             <Tag text={r.status} color={r.status === "active" ? C.lime : C.gray} />
             <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 160 }}>{r.niche}</span>
             <span style={{ fontSize: 11, color: faint }}>{r.strategy.contentIdeas?.length ?? 0} ideas</span>
             <Icon name={open === r.id ? "ChevronDown" : "ChevronRight"} size={15} />
-          </div>
+          </button>
           {r.strategy.positioning ? <div style={{ fontSize: 12, marginTop: 7 }}>{r.strategy.positioning}{r.strategy.cadence ? <span style={{ color: faint }}> · {r.strategy.cadence}</span> : null}</div> : null}
           {open === r.id ? (
             <div style={{ marginTop: 12 }}>
@@ -5127,6 +5676,15 @@ function SocialPage() {
                       <div key={i} style={{ ...card, padding: "8px 11px" }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{c.format ? <Tag text={c.format} color={C.blue} /> : null}<span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.idea}</span></div>
                         {c.hook ? <div style={{ fontSize: 11.5, color: C.lime, marginTop: 3 }}>Hook: {c.hook}</div> : null}
+                        {/* The next step. Identical bridge to SeoPage's blog ideas, so an idea can leave
+                            this screen and become a real content packet instead of dead-ending. */}
+                        <button
+                          onClick={() => draftFromIdea(c, r.platform, r.niche)}
+                          disabled={busy === "draft_" + c.idea}
+                          style={busy === "draft_" + c.idea ? { ...disabledBtn, padding: "5px 10px", fontSize: 11, marginTop: 8 } : { ...selectStyle, cursor: "pointer", padding: "5px 10px", fontSize: 11, marginTop: 8 }}
+                        >
+                          {busy === "draft_" + c.idea ? "Drafting…" : "→ Draft this in Content"}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -5136,7 +5694,7 @@ function SocialPage() {
           ) : null}
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button onClick={() => generate(r.id)} disabled={busy === "gen_" + r.id} style={busy === "gen_" + r.id ? disabledBtn : { ...primaryBtn, padding: "6px 11px", fontSize: 12 }}>{busy === "gen_" + r.id ? "Building…" : r.strategy.pillars?.length ? "⚡ Rebuild" : "⚡ Build"}</button>
-            {r.status !== "archived" ? <button onClick={() => archive(r.id)} style={{ ...selectStyle, cursor: "pointer", padding: "6px 11px" }}>Archive</button> : null}
+            {r.status !== "archived" ? <button onClick={() => archive(r.id)} disabled={busy === r.id} style={{ ...selectStyle, cursor: busy === r.id ? "wait" : "pointer", padding: "6px 11px", opacity: busy === r.id ? 0.55 : 1 }}>{busy === r.id ? "…" : "Archive"}</button> : null}
           </div>
         </Panel>
       ))}
@@ -5355,7 +5913,7 @@ function MediaStudioPage() {
         </div>
         <div style={{ fontSize: 12, color: faint, lineHeight: 1.55, marginBottom: 12 }}>{d?.note}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-          <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Media kind to generate" style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
             {(d?.kinds ?? ["image", "video", "audio", "model_3d"]).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
           <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Prompt (e.g. 'product hero shot, studio light')" style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
@@ -5413,7 +5971,9 @@ function HandoffPage() {
             {(d?.endpoints ?? []).map((e) => (
               <div key={e.id} style={{ ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <Tag text={e.enabled ? "enabled" : "off"} color={e.enabled ? C.lime : C.gray} />
-                <span style={{ fontSize: 12, flex: 1, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>{e.url}</span>
+                {/* `textOverflow: ellipsis` does nothing without `whiteSpace: nowrap` (and a min-width
+                    floor), so a long webhook URL wrapped instead of truncating. */}
+                <span title={e.url} style={{ fontSize: 12, flex: 1, minWidth: 0, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.url}</span>
                 <span style={{ fontSize: 11, color: faint }}>{e.secretRefName}</span>
               </div>
             ))}
@@ -5459,33 +6019,37 @@ function DepartmentsPage() {
   const q = [stateFilter ? `deliveryState=${stateFilter}` : "", deptFilter ? `department=${deptFilter}` : "", "limit=100"].filter(Boolean).join("&");
   const handoffs = useApi<{ handoffs: HandoffView[]; counts: Record<string, number> }>(`/api/handoffs?${q}`);
   const escs = useApi<{ escalations: EscView[]; counts: Record<string, number> }>("/api/escalations?status=open&limit=100");
-  const budget = useApi<{ budget: BudgetStateView }>(deptFilter ? `/api/departments/${deptFilter}/budget` : "/api/departments/__none__/budget");
-  const kpis = useApi<{ kpis: KpiView[] }>(deptFilter ? `/api/departments/${deptFilter}/kpis` : "/api/departments/__none__/kpis");
+  // Budget/KPIs are per-department. With no department picked there is nothing to ask for, so ask for
+  // nothing — this used to fire two guaranteed 404s (`/api/departments/__none__/…`) on every page load.
+  const budget = useApi<{ budget: BudgetStateView }>(deptFilter ? `/api/departments/${deptFilter}/budget` : null);
+  const kpis = useApi<{ kpis: KpiView[] }>(deptFilter ? `/api/departments/${deptFilter}/kpis` : null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function act(id: string, action: "redrive" | "cancel") {
+  async function act(id: string, action: "redrive" | "cancel", h: HandoffView) {
+    // Cancelling stops work mid-flight between two agents; it is not resumable from this screen.
+    if (action === "cancel" && !window.confirm(`Cancel the handoff ${h.sourceAgent} → ${h.destinationAgent ?? "—"}?\n\nThe work in flight is abandoned. It cannot be resumed from here — it would have to be re-run.`)) return;
     setBusy(id);
     setMsg(null);
-    try {
-      const r = await fetch(`/api/handoffs/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-      const j = await r.json().catch(() => ({}));
-      setMsg(r.ok && j.ok ? `${action} ok` : `${action} failed: ${j.error ?? r.status}`);
-      handoffs.reload();
-      depts.reload();
-    } catch (e) { setMsg(String(e)); } finally { setBusy(null); }
+    const res = await postJson(`/api/handoffs/${id}/action`, { action });
+    setBusy(null);
+    if (!res.ok) { setMsg(`${action} failed: ${String(res.error)}`); return; }
+    setMsg(`${action} ok`);
+    handoffs.reload();
+    depts.reload();
   }
 
-  async function actEsc(id: string, body: Record<string, unknown>) {
+  async function actEsc(id: string, body: Record<string, unknown>, e: EscView) {
+    // Terminate ENDS the blocked workflow rather than resuming it — the destructive one of the three.
+    if (body.resolutionAction === "terminate" && !window.confirm(`Terminate the escalation on ${e.departmentSlug}?\n\n"${e.requiredDecision}"\n\nThe blocked workflow is ended, not resumed. This cannot be undone from here.`)) return;
     setBusy(id);
     setMsg(null);
-    try {
-      const r = await fetch(`/api/escalations/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json().catch(() => ({}));
-      setMsg(r.ok && j.ok ? `escalation ${body.action} ok` : `failed: ${j.error ?? r.status}`);
-      escs.reload();
-      depts.reload();
-    } catch (e) { setMsg(String(e)); } finally { setBusy(null); }
+    const res = await postJson(`/api/escalations/${id}/action`, body);
+    setBusy(null);
+    if (!res.ok) { setMsg(`escalation ${String(body.action)} failed: ${String(res.error)}`); return; }
+    setMsg(`escalation ${String(body.action)} ok`);
+    escs.reload();
+    depts.reload();
   }
 
   const guard = offlineIf(depts);
@@ -5497,17 +6061,31 @@ function DepartmentsPage() {
   const bud = deptFilter ? budget.data?.budget : undefined;
   const kpiList = deptFilter ? kpis.data?.kpis ?? [] : [];
   const fmtKpi = (v: KpiView) => (v.value === null ? "—" : v.unit === "ratio" ? `${Math.round(v.value * 100)}%` : v.unit === "ms" ? `${Math.round(v.value / 100) / 10}s` : v.unit === "cents" ? `$${(v.value / 100).toFixed(2)}` : String(v.value));
+  // The page-level guard only ever covered `depts`. Handoffs, escalations, budget and KPIs each had NO
+  // loading or error handling, so a 500 from /api/handoffs rendered the EMPTY state — "No handoffs
+  // match" — presenting an outage as everything being fine. Each panel now reports its own state.
+  const handoffsGuard = offlineIf(handoffs);
+  const escsGuard = offlineIf(escs);
+  const budgetGuard = deptFilter ? offlineIf(budget) : null;
+  const kpisGuard = deptFilter ? offlineIf(kpis) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
         <Kpi label="Departments" value={String(list.length)} icon="Network" color={C.lime} />
         <Kpi label="Active" value={String(list.filter((d) => d.status === "active").length)} icon="CircleDot" color={C.blue} />
-        <Kpi label="Handoffs in-flight" value={String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" />
-        <Kpi label="Open escalations" value={String(escs.data?.counts?.open ?? 0)} icon="AlertTriangle" color={escList.length ? C.orange : C.gray} />
+        <Kpi label="Handoffs in-flight" value={handoffs.error ? "—" : String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" sub={handoffs.error ? "handoff API unreachable" : undefined} />
+        <Kpi label="Open escalations" value={escs.error ? "—" : String(escs.data?.counts?.open ?? 0)} icon="AlertTriangle" color={escs.error ? C.orange : escList.length ? C.orange : C.gray} sub={escs.error ? "escalation API unreachable" : undefined} />
       </div>
 
-      {escList.length > 0 ? (
+      {/* An escalations outage previously rendered NOTHING (the panel is conditional on a non-empty
+          list), so "no escalations" and "we could not ask" looked identical. */}
+      {escsGuard && !escs.loading ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: C.orange }}>Escalations</div>
+          {escsGuard}
+        </Panel>
+      ) : escList.length > 0 ? (
         <Panel>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: C.orange }}>Escalations — blocked work needs a decision</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5518,16 +6096,21 @@ function DepartmentsPage() {
                 <Tag text={e.reason} color={C.orange} />
                 <Tag text={e.severity} color={SEV_COLOR[e.severity] ?? C.gray} />
                 <span style={{ fontSize: 12, flex: 1, minWidth: 240 }}>{e.requiredDecision}</span>
-                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "resume", resolution: "resolved from Command Centre — resume" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: "pointer", background: "transparent" }}>resume</button>
-                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "terminate", resolution: "terminated from Command Centre" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: "pointer", background: "transparent" }}>terminate</button>
-                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "dismiss", reason: "dismissed from Command Centre" })} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: faint, cursor: "pointer", background: "transparent" }}>dismiss</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "resume", resolution: "resolved from Command Centre — resume" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>resume</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "terminate", resolution: "terminated from Command Centre" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>terminate</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "dismiss", reason: "dismissed from Command Centre" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: faint, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>dismiss</button>
               </div>
             ))}
           </div>
         </Panel>
       ) : null}
 
-      {deptFilter && (bud || kpiList.length) ? (
+      {deptFilter && (budgetGuard || kpisGuard) ? (
+        <Panel>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{deptFilter} — budget &amp; KPIs</div>
+          {budgetGuard ?? kpisGuard}
+        </Panel>
+      ) : deptFilter && (bud || kpiList.length) ? (
         <Panel>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{deptFilter} — budget & KPIs</div>
           {bud ? (
@@ -5553,7 +6136,14 @@ function DepartmentsPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Departments — truthful health</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 10 }}>
           {list.map((d) => (
-            <div key={d.department} style={{ ...card, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 7, cursor: "pointer", borderColor: d.department === deptFilter ? C.lime : undefined }} onClick={() => setDeptFilter(d.department === deptFilter ? "" : d.department)}>
+            // Was a clickable <div>: the ONLY way to focus a department, and unreachable by keyboard.
+            <button
+              key={d.department}
+              type="button"
+              aria-pressed={d.department === deptFilter}
+              onClick={() => setDeptFilter(d.department === deptFilter ? "" : d.department)}
+              style={{ ...card, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 7, cursor: "pointer", borderColor: d.department === deptFilter ? C.lime : undefined, textAlign: "left", color: C.white, font: "inherit", width: "100%" }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray }} />
                 <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{d.name ?? d.department}</span>
@@ -5595,7 +6185,7 @@ function DepartmentsPage() {
                 {d.handoffs.stuck > 0 ? <span style={{ color: C.orange }}>stuck {d.handoffs.stuck}</span> : null}
                 {d.quality.avg != null ? <span>q {d.quality.avg}</span> : null}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </Panel>
@@ -5603,19 +6193,22 @@ function DepartmentsPage() {
       <Panel>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <div style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Inter-agent handoffs{deptFilter ? ` · ${deptFilter}` : ""}</div>
-          <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} style={{ ...card, padding: "5px 9px", fontSize: 12, color: C.white, background: "rgba(255,255,255,0.04)" }}>
+          <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} aria-label="Filter handoffs by delivery state" style={{ ...card, padding: "5px 9px", fontSize: 12, color: C.white, background: "rgba(255,255,255,0.04)" }}>
             <option value="">all states</option>
             {["delivered", "processing", "acknowledged", "completed", "dead_lettered", "failed", "cancelled"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           {deptFilter ? <button onClick={() => setDeptFilter("")} style={{ ...card, padding: "5px 9px", fontSize: 12, color: C.white, cursor: "pointer", background: "transparent" }}>clear dept</button> : null}
         </div>
-        {msg ? <div style={{ fontSize: 12, color: msg.includes("ok") ? C.lime : C.orange, marginBottom: 8 }}>{msg}</div> : null}
-        {hs.length === 0 ? <StateBlock kind="empty" message="No handoffs match. Run a department (e.g. a paid audit) to see the agent team's inter-agent handoffs here." /> : (
+        {msg ? <div style={{ marginBottom: 8 }}><ActionMsg msg={msg} /></div> : null}
+        {/* An /api/handoffs 500 used to fall through to the EMPTY state below — "No handoffs match" —
+            which reads as "your departments are idle" rather than "we could not ask". */}
+        {handoffsGuard ?? (hs.length === 0 ? <StateBlock kind="empty" message="No handoffs match. Run a department (e.g. a paid audit) to see the agent team's inter-agent handoffs here." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {hs.map((h) => {
               const terminal = ["completed", "cancelled"].includes(h.deliveryState);
               const canRedrive = ["dead_lettered", "failed", "processing"].includes(h.deliveryState);
               const canCancel = !terminal && h.deliveryState !== "dead_lettered";
+              const b = busy === h.id;
               return (
                 <div key={h.id} style={{ ...card, padding: "8px 11px", display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATE_COLOR[h.deliveryState] ?? C.gray }} />
@@ -5626,19 +6219,36 @@ function DepartmentsPage() {
                   {h.failureReason ? <span style={{ fontSize: 11, color: C.orange, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.failureReason}>{h.failureReason}</span> : null}
                   <div style={{ flex: 1 }} />
                   <span style={{ fontSize: 10.5, color: faint }} title={`workflow ${h.workflowId} · correlation ${h.correlationId}`}>{h.workflowId.slice(0, 14)}</span>
-                  {canRedrive ? <button disabled={busy === h.id} onClick={() => act(h.id, "redrive")} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: "pointer", background: "transparent" }}>retry</button> : null}
-                  {canCancel ? <button disabled={busy === h.id} onClick={() => act(h.id, "cancel")} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: "pointer", background: "transparent" }}>cancel</button> : null}
+                  {canRedrive ? <button disabled={b} onClick={() => act(h.id, "redrive", h)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: b ? "wait" : "pointer", background: "transparent", opacity: b ? 0.55 : 1 }}>retry</button> : null}
+                  {canCancel ? <button disabled={b} onClick={() => act(h.id, "cancel", h)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: b ? "wait" : "pointer", background: "transparent", opacity: b ? 0.55 : 1 }}>cancel</button> : null}
                 </div>
               );
             })}
           </div>
-        )}
+        ))}
       </Panel>
     </div>
   );
 }
 
 const COMM_STATUS_COLORS: Record<string, string> = { prepared: "#F5C542", ready: C.blue, sent: C.lime, cancelled: C.gray };
+
+/** Channels whose send leaves WOBBLE and cannot be recalled — these get a confirm. */
+const EXTERNAL_COMM_CHANNELS = ["external_email", "external_dm", "proposal_send"];
+
+/**
+ * Who this communication is actually addressed to. The row carries `audience` (free text) and a scope
+ * (`scopeType` + `clientId`); the list previously showed neither next to the Send button, so a founder
+ * clicked Send without ever seeing the recipient.
+ */
+function commRecipient(r: Record<string, unknown>): string {
+  const audience = String(r.audience ?? "").trim();
+  if (audience) return audience;
+  const client = String(r.clientId ?? "").trim();
+  if (client) return "client " + client;
+  const scope = String(r.scopeType ?? "").trim();
+  return scope ? scope + " (no explicit recipient set)" : "an unspecified recipient";
+}
 
 function CommsPage() {
   const [channel, setChannel] = useState("internal_notification");
@@ -5647,6 +6257,10 @@ function CommsPage() {
   const [body, setBody] = useState("");
   const [clientId, setClientId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  // Which rows have their full body expanded. The list truncated every body to 160 characters, so the
+  // one thing you must read before sending was the one thing you could not read.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const c = useApi<{ communications: Record<string, unknown>[] }>("/api/comms?limit=100");
   const guard = offlineIf(c);
@@ -5665,15 +6279,24 @@ function CommsPage() {
       c.reload();
     } finally { setBusy(false); }
   }
-  async function act(id: string, action: "send" | "cancel") {
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/comms/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-      const j = await r.json();
-      if (!r.ok || !j.ok) { setMsg((action === "send" ? "Send" : "Cancel") + " failed: " + String(j.error ?? r.status)); return; }
-      if (action === "send" && j.sendDecision?.capped) setMsg("Sent — this send was confirm-capped (founder in the loop).");
-      c.reload();
-    } finally { setBusy(false); }
+  async function act(id: string, action: "send" | "cancel", r: Record<string, unknown>) {
+    const ch = String(r.channel ?? "");
+    // An external email / DM / proposal send LEAVES the building. It is irreversible, so name the
+    // channel, the recipient and the subject before it goes — one stray click used to send it, with the
+    // body truncated to 160 chars so the founder could not even read what they were sending.
+    if (action === "send" && EXTERNAL_COMM_CHANNELS.includes(ch)) {
+      const what = ch === "proposal_send" ? "proposal" : ch === "external_dm" ? "DM" : "email";
+      if (!window.confirm(`Send this ${what} to ${commRecipient(r)}?\n\nSubject: ${String(r.subject ?? "(no subject)")}\n\nThis leaves WOBBLE and cannot be un-sent. Expand "Read the full message" on the card first if you have not read the body.`)) return;
+    }
+    if (action === "cancel" && !window.confirm(`Cancel this communication?\n\n"${String(r.subject ?? "")}" will never be sent.`)) return;
+    setRowBusy(id); setMsg(null);
+    const res = await postJson("/api/comms/" + encodeURIComponent(id) + "/action", { action });
+    setRowBusy(null);
+    if (!res.ok) { setMsg((action === "send" ? "Send" : "Cancel") + " failed: " + String(res.error)); return; }
+    const decision = res.data?.sendDecision as { capped?: boolean } | undefined;
+    if (action === "send") setMsg(decision?.capped ? "Sent — this send was confirm-capped (founder in the loop)." : "Sent.");
+    else setMsg("Cancelled — it will not be sent.");
+    c.reload();
   }
   if (guard) return guard;
   const items = c.data?.communications ?? [];
@@ -5682,7 +6305,7 @@ function CommsPage() {
       <div style={{ ...card, padding: "16px 17px", display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={labelStyle}>PREPARE A COMMUNICATION</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select value={channel} onChange={(e) => setChannel(e.target.value)} style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
+          <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Communication channel" style={{ ...primaryBtn, background: "rgba(255,255,255,0.06)", color: C.white }}>
             <option value="internal_notification">Internal notification</option>
             <option value="external_email">External email</option>
             <option value="external_dm">External DM</option>
@@ -5697,26 +6320,51 @@ function CommsPage() {
           <button disabled={busy} onClick={prepare} style={primaryBtn}>{busy ? "Working…" : "Prepare"}</button>
           <span style={{ fontSize: 11.5, color: muted }}>Internal notifications can auto-deliver under a grant; external/proposal sends stay a founder confirm.</span>
         </div>
-        {msg ? <div style={{ fontSize: 11.5, color: C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
       </div>
+      {/* One notice line for BOTH prepare and per-row send/cancel. It sits between the composer and the
+          list so a failed send is visible from either. It used to render in lime regardless — a failure
+          was styled as a success. */}
+      <ActionMsg msg={msg} />
       {items.length === 0 ? <StateBlock kind="empty" message="No communications prepared yet." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {items.map((r, i) => {
+            const id = String(r.id ?? i);
             const st = String(r.status ?? "prepared");
             const sendable = st === "prepared" || st === "ready";
+            const rowIsBusy = rowBusy === id;
+            const fullBody = String(r.body ?? "");
+            const isLong = fullBody.length > 160;
+            const isOpen = Boolean(expanded[id]);
+            const external = EXTERNAL_COMM_CHANNELS.includes(String(r.channel ?? ""));
             return (
-              <div key={String(r.id ?? i)} style={{ ...card, padding: "13px 15px" }}>
+              <div key={id} style={{ ...card, padding: "13px 15px" }}>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7, alignItems: "center" }}>
                   <Tag text={String(r.channel ?? "")} color={C.gray} />
                   <Tag text={st} color={COMM_STATUS_COLORS[st] ?? C.gray} />
                   {r.autonomyLevel ? <Tag text={"autonomy: " + String(r.autonomyLevel)} color={r.actedAutonomously ? C.lime : C.blue} /> : null}
                   {r.actedAutonomously ? <Tag text="auto" color={C.lime} /> : null}
                   <div style={{ flex: 1 }} />
-                  {sendable ? <button disabled={busy} onClick={() => act(String(r.id), "send")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11 }}>Send</button> : null}
-                  {sendable ? <button disabled={busy} onClick={() => act(String(r.id), "cancel")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange }}>Cancel</button> : null}
+                  {sendable ? <button disabled={rowIsBusy} onClick={() => act(id, "send", r)} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, opacity: rowIsBusy ? 0.55 : 1, cursor: rowIsBusy ? "wait" : "pointer" }}>{rowIsBusy ? "Working…" : "Send"}</button> : null}
+                  {sendable ? <button disabled={rowIsBusy} onClick={() => act(id, "cancel", r)} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange, opacity: rowIsBusy ? 0.55 : 1, cursor: rowIsBusy ? "wait" : "pointer" }}>Cancel</button> : null}
+                </div>
+                {/* Recipient FIRST for anything that leaves the building — it is the fact you need before
+                    you press Send, and it used to be absent from this card entirely. */}
+                <div style={{ fontSize: 11, color: external ? C.orange : faint, marginBottom: 4, fontWeight: 600 }}>
+                  {external ? "→ Goes to " : "→ "}{commRecipient(r)}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{String(r.subject ?? "")}</div>
-                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(r.body ?? "").slice(0, 160)}</div>
+                <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5, whiteSpace: "pre-wrap" }}>
+                  {isOpen || !isLong ? fullBody : fullBody.slice(0, 160) + "…"}
+                </div>
+                {isLong ? (
+                  <button
+                    onClick={() => setExpanded((e) => ({ ...e, [id]: !e[id] }))}
+                    aria-expanded={isOpen}
+                    style={{ marginTop: 6, padding: 0, border: "none", background: "transparent", color: C.blue, fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    {isOpen ? "Show less" : `Read the full message (${fullBody.length} chars)`}
+                  </button>
+                ) : null}
                 <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>{String(r.scopeType ?? "company")}{r.clientId ? " / " + String(r.clientId) : ""} · {fmtTime(r.createdAt)}</div>
               </div>
             );
@@ -5745,14 +6393,14 @@ function OptimizerPage() {
       o.reload();
     } finally { setBusy(false); }
   }
-  async function act(id: string, action: string, extra: Record<string, unknown> = {}) {
+  async function act(id: string, action: string, extra: Record<string, unknown> = {}, pattern = "") {
+    // Roll back REVERTS a change that is live in production right now. Never on a single click.
+    if (action === "rollback" && !window.confirm(`Roll back this active improvement${pattern ? `:\n\n"${pattern}"` : ""}?\n\nThe change is currently LIVE. Rolling back reverts production to the previous behaviour immediately.`)) return;
     setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/optimizer/proposals/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
-      const j = await r.json();
-      if (!r.ok || !j.ok) { setMsg(action + " failed: " + String(j.error ?? r.status)); return; }
-      o.reload();
-    } finally { setBusy(false); }
+    const res = await postJson("/api/optimizer/proposals/" + encodeURIComponent(id) + "/action", { action, ...extra });
+    setBusy(false);
+    if (!res.ok) { setMsg(action + " failed: " + String(res.error)); return; }
+    o.reload();
   }
   if (guard) return guard;
   const cycles = o.data?.cycles ?? [];
@@ -5764,7 +6412,7 @@ function OptimizerPage() {
         <span style={{ fontSize: 11.5, color: muted, flex: 1 }}>A cycle only OBSERVES real signals + PROPOSES opportunities. Nothing is approved, activated, or changed without you.</span>
         {cycles[0] ? <span style={{ fontSize: 11, color: faint }}>last cycle {fmtTime(cycles[0].startedAt)} · {String(cycles[0].observationCount ?? 0)} obs · {String(cycles[0].opportunityCount ?? 0)} opp</span> : null}
       </div>
-      {msg ? <div style={{ fontSize: 11.5, color: C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+      <ActionMsg msg={msg} />
       <div style={labelStyle}>IMPROVEMENT PROPOSALS</div>
       {proposals.length === 0 ? <StateBlock kind="empty" message="No proposals yet. Run a cycle — if the OS is healthy across the tracked signals, it honestly proposes nothing." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -5785,7 +6433,7 @@ function OptimizerPage() {
                   {st === "proposed" ? <button disabled={busy || !evalPassed} title={evalPassed ? "" : evalReason} onClick={() => act(String(p.id), "approve")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, opacity: evalPassed ? 1 : 0.5 }}>Approve</button> : null}
                   {st === "proposed" ? <button disabled={busy} onClick={() => act(String(p.id), "reject", { reason: "not now" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.gray }}>Reject</button> : null}
                   {st === "approved" ? <button disabled={busy} onClick={() => act(String(p.id), "activate")} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11 }}>Activate</button> : null}
-                  {st === "active" ? <button disabled={busy} onClick={() => act(String(p.id), "rollback", { reason: "founder rollback" })} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange }}>Roll back</button> : null}
+                  {st === "active" ? <button disabled={busy} onClick={() => act(String(p.id), "rollback", { reason: "founder rollback" }, String(p.pattern ?? ""))} style={{ ...primaryBtn, padding: "6px 11px", fontSize: 11, background: C.orange, opacity: busy ? 0.55 : 1 }}>Roll back</button> : null}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{String(p.pattern ?? "")}</div>
                 <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(p.hypothesis ?? "")}</div>
@@ -5810,11 +6458,13 @@ function CockpitPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
-        <Kpi label={`Revenue · ${d?.revenue.periodMonths ?? 1}mo`} value={rev !== null && rev !== undefined ? `$${(rev / 100).toLocaleString()}` : "—"} icon="DollarSign" color={C.lime} sub={d?.revenue.evidenceTier ?? "no financial actual yet"} />
-        <Kpi label="Needs attention" value={String(d?.attention.total ?? 0)} icon="AlertTriangle" color={(d?.attention.total ?? 0) > 0 ? C.orange : C.lime} sub={`${d?.attention.openEscalations ?? 0} escalations · ${d?.attention.pendingApprovals ?? 0} approvals`} />
-        <Kpi label="Optimizer proposals" value={String(d?.optimizer.proposed ?? 0)} icon="Gauge" color={C.blue} sub={`${d?.optimizer.active ?? 0} active · ${d?.optimizer.total ?? 0} total`} />
-        <Kpi label="Autonomy grants" value={String(d?.autonomy.activeGrants ?? 0)} icon="ShieldCheck" color={C.blue} sub="in force" />
-        <Kpi label="Media jobs" value={String(d?.media.total ?? 0)} icon="Clapperboard" color={C.gray} sub={Object.entries(d?.media.byStatus ?? {}).map(([k, v]) => `${v} ${k}`).join(" · ") || "none queued"} />
+        {/* Read-only aggregation, but each number has a home — link to it rather than leave the founder
+            to guess which module owns it. */}
+        <Kpi label={`Revenue · ${d?.revenue.periodMonths ?? 1}mo`} value={rev !== null && rev !== undefined ? `$${(rev / 100).toLocaleString()}` : "—"} icon="DollarSign" color={C.lime} sub={d?.revenue.evidenceTier ?? "no financial actual yet"} href="/invoices" />
+        <Kpi label="Needs attention" value={String(d?.attention.total ?? 0)} icon="AlertTriangle" color={(d?.attention.total ?? 0) > 0 ? C.orange : C.lime} sub={`${d?.attention.openEscalations ?? 0} escalations · ${d?.attention.pendingApprovals ?? 0} approvals`} href="/approvals" />
+        <Kpi label="Optimizer proposals" value={String(d?.optimizer.proposed ?? 0)} icon="Gauge" color={C.blue} sub={`${d?.optimizer.active ?? 0} active · ${d?.optimizer.total ?? 0} total`} href="/optimizer" />
+        <Kpi label="Autonomy grants" value={String(d?.autonomy.activeGrants ?? 0)} icon="ShieldCheck" color={C.blue} sub="in force" href="/security" />
+        <Kpi label="Media jobs" value={String(d?.media.total ?? 0)} icon="Clapperboard" color={C.gray} sub={Object.entries(d?.media.byStatus ?? {}).map(([k, v]) => `${v} ${k}`).join(" · ") || "none queued"} href="/media" />
       </div>
       <Panel>
         <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.6 }}>
@@ -5859,14 +6509,12 @@ function SecurityPage() {
 
   async function call(url: string, body: Record<string, unknown>, ok: string) {
     setBusy(true); setMsg(null);
-    try {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (!r.ok || !j.ok) { setMsg("Error: " + String(j.error ?? r.status)); return; }
-      setMsg(ok);
-      setBump((x) => x + 1);
-      setOpen(null);
-    } finally { setBusy(false); }
+    const res = await postJson(url, body);
+    setBusy(false);
+    if (!res.ok) { setMsg("Error: " + String(res.error)); return; }
+    setMsg(ok);
+    setBump((x) => x + 1);
+    setOpen(null);
   }
 
   const findings = d?.findings ?? [];
@@ -5906,7 +6554,15 @@ function SecurityPage() {
         ) : (
           <div style={{ ...glass, padding: "8px 10px" }}>
             {openFindings.map((f, i) => (
-              <div key={f.id} data-testid="finding-row" style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < openFindings.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor: "pointer" }} onClick={() => setOpen(f)}>
+              // Was a clickable <div> and the ONLY way to open the finding drawer (with its evidence and
+              // reproduction) — the whole point of the module, unreachable by keyboard.
+              <button
+                key={f.id}
+                type="button"
+                data-testid="finding-row"
+                onClick={() => setOpen(f)}
+                style={{ display: "flex", gap: 12, padding: "13px 12px", alignItems: "center", borderBottom: i < openFindings.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none", cursor: "pointer", width: "100%", background: "transparent", border: "none", borderRadius: 0, color: C.white, font: "inherit", textAlign: "left" }}
+              >
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: SEC_SEV_COLOR[f.severity] ?? C.gray, flex: "none" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -5919,6 +6575,35 @@ function SecurityPage() {
                   </div>
                   <div style={{ fontSize: 12, color: muted, marginTop: 3 }}>{f.detail.slice(0, 150)}{f.detail.length > 150 ? "…" : ""}</div>
                   <div style={{ fontSize: 11, color: faint, marginTop: 2 }}>detected by {f.detectedBy}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* RISKS. `d.risks` was fetched, counted into the "Risks" KPI above — and then dropped on the
+          floor: the list was never rendered anywhere in the app. A founder saw "Risks: 4" with no way
+          to find out what those four risks were. This mirrors the Findings panel. */}
+      <Panel>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Risk register ({(d?.risks ?? []).length})</div>
+        <div style={{ fontSize: 12, color: muted, marginBottom: 10 }}>Risks WOBBLE is carrying deliberately, each with a severity, a likelihood and a named owner.</div>
+        {(d?.risks ?? []).length === 0 ? (
+          <StateBlock kind="empty" message="No risks on the register. Risks are recorded deliberately — an empty register means none have been accepted, not that none exist." />
+        ) : (
+          <div style={{ ...glass, padding: "8px 10px" }}>
+            {(d?.risks ?? []).map((rk, i) => (
+              <div key={rk.id} data-testid="risk-row" style={{ display: "flex", gap: 12, padding: "12px", alignItems: "center", borderBottom: i < (d?.risks ?? []).length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: SEC_SEV_COLOR[rk.severity] ?? C.gray, flex: "none" }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{rk.title}</span>
+                    <Tag text={rk.severity} color={SEC_SEV_COLOR[rk.severity] ?? C.gray} />
+                    <Tag text={rk.category} color={C.gray} />
+                    <Tag text={`likelihood ${rk.likelihood}`} color={C.blue} />
+                    <Tag text={rk.status} color={SEC_OPEN_STATUSES.includes(rk.status) ? C.orange : C.lime} />
+                  </div>
+                  <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>owner: {rk.owner || "unassigned"}</div>
                 </div>
               </div>
             ))}
@@ -6321,7 +7006,7 @@ function TopicBankPage() {
                   <button onClick={() => produce(t.id, true)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>✨ Hero (GPT-Image-2)</button>
                   <button onClick={() => leadMagnet(t.id)} disabled={busy === t.id} style={busy === t.id ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 14px" }}>📄 Lead magnet</button>
                   <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    <select value={reelVoice} onChange={(e) => setReelVoice(e.target.value as "moiz" | "hale" | "female")} disabled={busy === t.id} style={{ ...selectStyle, padding: "7px 8px", cursor: "pointer" }} title="Voice for the reel narration">
+                    <select value={reelVoice} onChange={(e) => setReelVoice(e.target.value as "moiz" | "hale" | "female")} disabled={busy === t.id} aria-label="Voice for the reel narration" style={{ ...selectStyle, padding: "7px 8px", cursor: "pointer" }} title="Voice for the reel narration">
                       <option value="moiz">🎙 Moiz (v2)</option>
                       <option value="hale">🎙 Hale (v3 expressive)</option>
                       <option value="female">🎙 Female (v3)</option>
