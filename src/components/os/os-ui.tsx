@@ -5,7 +5,7 @@
 // (black / electric-lime Liquid Glass). Live pages read real APIs and show
 // honest loading / empty / error / 503 states. No fake data, no fake buttons.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Lucide from "lucide-react";
@@ -131,6 +131,11 @@ function Sidebar({ activeId }: { activeId: string }) {
   const activeGroup = NAV_GROUPS.find((g) => g.items.includes(activeId))?.label ?? NAV_GROUPS[0]?.label ?? "";
   const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [activeGroup]: true }));
   const toggle = (label: string) => setOpen((o) => ({ ...o, [label]: !o[label] }));
+  // Derived from the registry so the footer status can never claim something the OS isn't.
+  const allModuleIds = useMemo(() => [...new Set(NAV_GROUPS.flatMap((g) => g.items))], []);
+  const totalModules = allModuleIds.length;
+  const totalWired = allModuleIds.filter((id) => MODULES[id]?.status === "wired").length;
+  const allWired = totalModules > 0 && totalWired === totalModules;
   return (
     <aside style={{ width: 262, flex: "none", height: "100%", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 14, borderRight: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))", backdropFilter: "blur(26px) saturate(130%)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 2px" }}>
@@ -169,11 +174,14 @@ function Sidebar({ activeId }: { activeId: string }) {
           );
         })}
       </div>
+      {/* Was a hardcoded "Dashboard build in progress" notice — it told every founder the product was
+          unfinished, and had gone stale (all modules are wired). Now derived from the module registry, so
+          it states the truth on its own and can never drift from it again. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 14, border: "1px solid rgba(184,255,44,0.18)", background: "linear-gradient(135deg, rgba(184,255,44,0.10), rgba(184,255,44,0.02))" }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.lime, boxShadow: "0 0 10px " + C.lime, flex: "none" }} />
         <div style={{ flex: 1, lineHeight: 1.25 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600 }}>Dashboard build in progress</div>
-          <div style={{ fontSize: 10, color: faint }}>live pages wired · rest honest</div>
+          <div style={{ fontSize: 11.5, fontWeight: 600 }}>{allWired ? "All modules live" : `${totalWired} of ${totalModules} modules live`}</div>
+          <div style={{ fontSize: 10, color: faint }}>{allWired ? `${totalModules} modules · real data, never faked` : "live pages wired · rest honest"}</div>
         </div>
       </div>
     </aside>
@@ -219,12 +227,23 @@ function ProfileMenu() {
   );
 }
 
-function Topbar() {
+function Topbar({ onMenu }: { onMenu?: () => void } = {}) {
   return (
-    <header style={{ flex: "none", height: 62, padding: "0 22px", display: "flex", alignItems: "center", gap: 16, borderBottom: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.008))", backdropFilter: "blur(22px) saturate(130%)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, width: 330, maxWidth: "38%", padding: "9px 13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: muted }}>
+    <header style={{ flex: "none", height: 62, padding: onMenu ? "0 14px" : "0 22px", display: "flex", alignItems: "center", gap: onMenu ? 10 : 16, borderBottom: "1px solid rgba(255,255,255,0.06)", background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.008))", backdropFilter: "blur(22px) saturate(130%)" }}>
+      {onMenu ? (
+        <button
+          onClick={onMenu}
+          aria-label="Open navigation"
+          style={{ flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer" }}
+        >
+          <Icon name="Menu" size={18} />
+        </button>
+      ) : null}
+      {/* The search affordance is the widest thing in the bar; on a phone it collapses to an icon-sized
+          tap target so the founder identity + live-data pill still fit without clipping. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, width: onMenu ? "auto" : 330, maxWidth: onMenu ? "none" : "38%", flex: onMenu ? 1 : "none", minWidth: 0, padding: "9px 13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: muted }}>
         <Icon name="Search" size={15} />
-        <span style={{ flex: 1, fontSize: 12.5 }}>Ask WOBBLE or jump to anything…</span>
+        <span style={{ flex: 1, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{onMenu ? "Ask WOBBLE…" : "Ask WOBBLE or jump to anything…"}</span>
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" }}>
@@ -236,15 +255,57 @@ function Topbar() {
   );
 }
 
+/**
+ * Viewport breakpoint hook. Starts `false` so the server-rendered markup is always the desktop shell
+ * (no hydration mismatch), then corrects on mount. 860px is where the 262px sidebar stops leaving a
+ * usable content column.
+ */
+function useIsNarrow(breakpoint = 860): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [breakpoint]);
+  return narrow;
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const activeId = pathname.replace(/^\//, "").split("/")[0] || "command";
+  // On a phone the fixed 262px sidebar left ~113px of a 375px screen for actual content (headings
+  // clipped, body text wrapping one word per line). Below the breakpoint it becomes an off-canvas
+  // drawer opened from the topbar, so the content column gets the full width. Desktop is unchanged.
+  const narrow = useIsNarrow();
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => { setNavOpen(false); }, [pathname]); // navigating closes the drawer
+  useEffect(() => { if (!narrow) setNavOpen(false); }, [narrow]); // rotating back to wide resets it
+
   return (
     <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden", background: "radial-gradient(120% 120% at 78% -10%, #0d1206 0%, #08090C 38%, #06070A 100%)", color: C.white, fontFamily: "'General Sans', system-ui, sans-serif" }}>
-      <Sidebar activeId={activeId} />
+      {narrow ? (
+        <>
+          {navOpen ? (
+            <div
+              onClick={() => setNavOpen(false)}
+              aria-hidden
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)", zIndex: 40 }}
+            />
+          ) : null}
+          <div
+            style={{ position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 50, display: "flex", transform: navOpen ? "translateX(0)" : "translateX(-102%)", transition: "transform 0.22s ease", boxShadow: navOpen ? "0 0 40px rgba(0,0,0,0.5)" : "none" }}
+          >
+            <Sidebar activeId={activeId} />
+          </div>
+        </>
+      ) : (
+        <Sidebar activeId={activeId} />
+      )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <Topbar />
-        <main style={{ flex: 1, overflowY: "auto", padding: "26px 30px 50px" }}>{children}</main>
+        <Topbar onMenu={narrow ? () => setNavOpen((v) => !v) : undefined} />
+        <main style={{ flex: 1, overflowY: "auto", padding: narrow ? "18px 16px 40px" : "26px 30px 50px" }}>{children}</main>
       </div>
     </div>
   );
@@ -946,7 +1007,10 @@ function AskPage() {
   const [files, setFiles] = useState<ChatFile[]>([]);
   const [drag, setDrag] = useState(false);
   const [turns, setTurns] = useState<{ role: "you" | "wob"; text: string; meta?: string; files?: { name: string; kind: string }[]; citations?: Record<string, unknown>[]; needsFounderJudgment?: string[] }[]>([]);
-  const greet = useApi<{ greeting: string; subline: string; dayPart: string }>("/api/ai/greeting");
+  // Send the FOUNDER'S local hour — the greeting is time-of-day aware, and the server only knows UTC
+  // (a founder in PKT would be told "good morning" at 2pm). Computed once per mount so it stays stable.
+  const localHour = useMemo(() => new Date().getHours(), []);
+  const greet = useApi<{ greeting: string; subline: string; dayPart: string }>(`/api/ai/greeting?hour=${localHour}`);
   const modelState = useApi<{ models: { id: string; label: string; description: string }[] }>("/api/ai/models");
   const [model, setModel] = useState("");
   const [agentMode, setAgentMode] = useState(false);
