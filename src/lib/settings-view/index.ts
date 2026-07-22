@@ -15,9 +15,10 @@ export interface SettingsOverview {
 }
 
 // The external keys the OS looks for. `configured` reflects the live environment (never leaks values).
-const INTEGRATIONS: Array<{ key: string; label: string; envVar: string }> = [
+const INTEGRATIONS: Array<{ key: string; label: string; envVar: string; aliasEnvVars?: string[] }> = [
   { key: "openrouter", label: "OpenRouter (LLM brain)", envVar: "OPENROUTER_API_KEY" },
-  { key: "apify", label: "Apify (web/social scraper)", envVar: "APIFY_API_KEY" },
+  // APIFY_API_KEY is the legacy alias — a deploy still using it must not read as "not configured".
+  { key: "apify", label: "Apify (web/social scraper)", envVar: "APIFY_API_TOKEN", aliasEnvVars: ["APIFY_API_KEY"] },
   { key: "zernio", label: "Zernio (social publishing)", envVar: "ZERNIO_API_KEY" },
   { key: "search", label: "Search API", envVar: "SEARCH_API_KEY" },
   { key: "fal", label: "fal.ai (video/media gen)", envVar: "FAL_API_KEY" },
@@ -36,7 +37,10 @@ export async function getSettingsOverview(deps: { db?: Db; env?: Record<string, 
 
   const providers = (await listProviderConnections()).map((p) => ({ slug: p.slug, label: p.label, enabled: p.enabled, permissionMode: p.permissionMode, healthStatus: p.healthStatus, allowedModules: p.allowedModules }));
 
-  const integrations: IntegrationStatus[] = INTEGRATIONS.map((i) => ({ ...i, configured: Boolean((env[i.envVar] ?? "").trim()) }));
+  const integrations: IntegrationStatus[] = INTEGRATIONS.map((i) => ({
+    key: i.key, label: i.label, envVar: i.envVar,
+    configured: [i.envVar, ...(i.aliasEnvVars ?? [])].some((v) => Boolean((env[v] ?? "").trim())),
+  }));
 
   return { modelRoles, providers, integrations };
 }

@@ -50,7 +50,7 @@ export class ApifyNotConfiguredError extends Error {
 const DEFAULT_WORST_CASE_USD = 0.1; // conservative per-run bound for a capped UAT run
 
 export async function apifyRunActor(input: ApifyRunInput, deps: ApifyDeps = {}): Promise<ApifyRunOutput> {
-  const token = deps.token ?? process.env.APIFY_API_TOKEN;
+  const token = deps.token ?? process.env.APIFY_API_TOKEN ?? process.env.APIFY_API_KEY;
   if (!token) throw new ApifyNotConfiguredError();
   const fetchImpl = deps.fetchImpl ?? fetch;
   const worst = input.worstCaseUsd ?? DEFAULT_WORST_CASE_USD;

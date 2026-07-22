@@ -117,7 +117,7 @@ export async function runResearchIntelligenceDepartment(
       // The scout ingests into a narrower scope set (wobble|client|global); map the broader research scope.
       const scoutScope = scope === "client" ? "client" : scope === "global" ? "global" : "wobble";
       scoutResult = await scout({ ...input.scoutTarget, scope: scoutScope, clientId }, intel);
-      if (scoutResult && scoutResult.configured === false) api.escalate("competitor scout is not configured (APIFY_API_KEY missing) — ingestion skipped");
+      if (scoutResult && scoutResult.configured === false) api.escalate("competitor scout is not configured (APIFY_API_TOKEN missing) — ingestion skipped");
     }
 
     // 2. Analyse recent observations into durable insights (PENDING founder approval).

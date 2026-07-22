@@ -3,7 +3,8 @@ import type { WobbleService } from "@/lib/domain/free-audit";
 /**
  * Apify scraper client — pulls a prospect's website + social signals to feed the audit's Doc 1 pitch.
  *
- * Gated on APIFY_API_KEY (like Zernio): with no key it's inert and the caller falls back to
+ * Gated on APIFY_API_TOKEN (canonical; APIFY_API_KEY accepted as a legacy alias): with no token it's
+ * inert and the caller falls back to
  * founder-entered data. Runs Apify actors synchronously via run-sync-get-dataset-items. fetchImpl is
  * injectable so request-building + parsing are unit-tested without hitting the network / spending.
  */
@@ -20,7 +21,8 @@ export interface ApifyConfig {
 }
 
 function cfg(c: ApifyConfig = {}) {
-  return { apiKey: c.apiKey ?? process.env.APIFY_API_KEY ?? "", baseUrl: c.baseUrl ?? APIFY_BASE, fetchImpl: c.fetchImpl ?? fetch };
+  // Canonical env var is APIFY_API_TOKEN (Apify's own naming); APIFY_API_KEY remains a temporary alias.
+  return { apiKey: c.apiKey ?? process.env.APIFY_API_TOKEN ?? process.env.APIFY_API_KEY ?? "", baseUrl: c.baseUrl ?? APIFY_BASE, fetchImpl: c.fetchImpl ?? fetch };
 }
 
 /** True when an Apify token is configured. Scraping is skipped (founder-entered fallback) until set. */
@@ -31,7 +33,7 @@ export function apifyConfigured(c: ApifyConfig = {}): boolean {
 /** Run an Apify actor synchronously and return its dataset items. */
 export async function runApifyActor<T = Record<string, unknown>>(actorId: string, input: Record<string, unknown>, c: ApifyConfig = {}): Promise<T[]> {
   const { apiKey, baseUrl, fetchImpl } = cfg(c);
-  if (!apiKey) throw new Error("APIFY_API_KEY is not set");
+  if (!apiKey) throw new Error("APIFY_API_TOKEN is not set");
   const res = await fetchImpl(`${baseUrl}/acts/${actorId}/run-sync-get-dataset-items?token=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -25,7 +25,7 @@ export const PROVIDER_CREDENTIAL_ENV: Record<string, string> = {
   openrouter: "OPENROUTER_API_KEY",
   tavily: "TAVILY_API_KEY",
   search_api: "SEARCH_API_KEY",
-  apify: "APIFY_API_KEY",
+  apify: "APIFY_API_TOKEN",
   fal: "FAL_KEY",
   zernio: "ZERNIO_API_KEY",
   n8n: "N8N_WEBHOOK_SECRET",
