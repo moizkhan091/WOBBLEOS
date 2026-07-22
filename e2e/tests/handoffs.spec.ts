@@ -30,6 +30,10 @@ test.describe("Handoffs — retry & cancel (real effects)", () => {
   test("cancel a live handoff → the DB row becomes cancelled", async ({ page, request }) => {
     await expect.poll(async () => (await handoffByWorkflow(request, WF.cancel))?.deliveryState, { timeout: 15_000 }).toBe("delivered");
 
+    // Cancelling a LIVE handoff now confirms first (it kills in-flight inter-agent work). Playwright
+    // dismisses dialogs by default, which would turn the click into a silent no-op — accept it, since
+    // this test is exercising the founder confirming.
+    page.on("dialog", (dialog) => { void dialog.accept(); });
     await page.goto("/departments");
     await page.locator("select").selectOption("delivered");
 

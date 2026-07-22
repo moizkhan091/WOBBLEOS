@@ -12,6 +12,11 @@ test.describe("Escalations — resume / terminate / dismiss (real effects)", () 
   test.beforeEach(() => reseed());
 
   async function openEscalationRow(page: import("@playwright/test").Page, decision: string) {
+    // TERMINATE now asks for confirmation before killing blocked work (it is destructive and was firing
+    // on a single click). Playwright DISMISSES dialogs by default, which silently turned the click into a
+    // no-op and made this spec fail on a timeout rather than an assertion. Accept it: the test is
+    // exercising the founder saying "yes", and the dialog itself is the behaviour we want to keep.
+    page.on("dialog", (dialog) => { void dialog.accept(); });
     await page.goto("/departments");
     await expect(page.getByText("Escalations — blocked work needs a decision")).toBeVisible();
     return page.locator("span").filter({ hasText: decision }).locator("xpath=..");

@@ -54,10 +54,25 @@ import { receiveN8nCallback } from "@/lib/n8n";
 import { signWebhookPayload } from "@/lib/security/webhooks";
 import type { AuditEventInput } from "@/lib/domain/audit";
 
+/**
+ * TWO canaries per client, deliberately.
+ *
+ * `canary` marks FOUNDER-FACING business records (deal names, meetings, proposals). WOBBLE OS is a
+ * single-company internal OS — "clients" are WOBBLE's clients, not tenants who log in — so the founder
+ * is *entitled* to see every client's pipeline in one place, and Ask WOBBLE's business snapshot spans
+ * them by design.
+ *
+ * `memCanary` marks CLIENT-PRIVATE MEMORY, which is a different class of data: it must never reach a
+ * caller who was not granted that client's scope, and must never be folded into a default prompt.
+ *
+ * They were one value until the business snapshot shipped, at which point this proof failed — correctly
+ * flagging that deal names now flow into Ask. Splitting them keeps the strict security assertion intact
+ * while pinning the founder-scoped behaviour as INTENTIONAL rather than silently tolerating it.
+ */
 const CLIENTS = [
-  { key: "alpha", name: "Alpha Dental", canary: "ALPHA-ONLY-7QK9" },
-  { key: "beta", name: "Beta Construction", canary: "BETA-ONLY-4M2P" },
-  { key: "gamma", name: "Gamma SaaS", canary: "GAMMA-ONLY-9X3D" },
+  { key: "alpha", name: "Alpha Dental", canary: "ALPHA-ONLY-7QK9", memCanary: "ALPHA-MEM-3F81" },
+  { key: "beta", name: "Beta Construction", canary: "BETA-ONLY-4M2P", memCanary: "BETA-MEM-6H24" },
+  { key: "gamma", name: "Gamma SaaS", canary: "GAMMA-ONLY-9X3D", memCanary: "GAMMA-MEM-2P57" },
 ] as const;
 type ClientKey = (typeof CLIENTS)[number]["key"];
 
@@ -68,6 +83,7 @@ async function main() {
   const assert = (c: boolean, m: string) => { if (!c) throw new Error(`P0 FAIL: ${m}`); console.log(`  ✓ ${m}`); };
   const noAudit = async (_: AuditEventInput) => {};
   const foreignOf = (key: ClientKey) => CLIENTS.filter((c) => c.key !== key).map((c) => c.canary);
+  const foreignMemOf = (key: ClientKey) => CLIENTS.filter((c) => c.key !== key).map((c) => c.memCanary);
   const cid = (key: ClientKey) => `client-${key}-${stamp}`;
 
   // Cleanup registries
@@ -96,7 +112,8 @@ async function main() {
       ) as never);
       const rec = await createMemoryRecord({
         title: `${c.name} confidential`, memoryTier: "working", area: "client",
-        content: `${c.name} confidential pricing note ${c.canary}`, trustLevel: "approved_expert",
+        // memCanary (NOT canary): this is client-private memory — the strictly-isolated class.
+        content: `${c.name} confidential pricing note ${c.memCanary}`, trustLevel: "approved_expert",
         bankSlugs: [bankSlug], createdBy: "Moiz",
       }, { embedder: null, recordAudit: noAudit });
       recordIds.push(rec.id);
@@ -143,13 +160,13 @@ async function main() {
     for (const c of CLIENTS) {
       const granted = await retrieveMemoryContext({ query: `${c.name} confidential pricing note`, access: { clientIds: [cid(c.key)] }, limit: 20 }, { embedder: null });
       const text = granted.map((r) => r.content).join("\n");
-      assert(text.includes(c.canary), `${c.key}: a caller GRANTED ${c.key} retrieves ${c.key}'s private memory`);
-      const leaked = foreignOf(c.key).filter((f) => text.includes(f));
-      assert(leaked.length === 0, `${c.key}: no foreign client canary in ${c.key}-granted retrieval`);
+      assert(text.includes(c.memCanary), `${c.key}: a caller GRANTED ${c.key} retrieves ${c.key}'s private memory`);
+      const leaked = foreignMemOf(c.key).filter((f) => text.includes(f));
+      assert(leaked.length === 0, `${c.key}: no foreign client MEMORY canary in ${c.key}-granted retrieval`);
     }
     const ungranted = await retrieveMemoryContext({ query: "confidential pricing note", limit: 50 }, { embedder: null });
     const ungrantedText = ungranted.map((r) => r.content).join("\n");
-    const anyClientCanary = CLIENTS.filter((c) => ungrantedText.includes(c.canary));
+    const anyClientCanary = CLIENTS.filter((c) => ungrantedText.includes(c.memCanary));
     assert(anyClientCanary.length === 0, "an UNGRANTED caller (the Ask/content default) sees NO client-private canary at all (deny-by-default)");
 
     // ═══ 2. MEETINGS + CONTACTS — companyId-scoped reads ═════════════════════════════════════════
@@ -215,7 +232,20 @@ async function main() {
       );
     } catch { /* capture-only */ }
     assert(askPrompt.length > 0, "the Ask WOBBLE prompt was captured");
-    assert(CLIENTS.every((c) => !askPrompt.includes(c.canary)), "the Ask WOBBLE default prompt contains NO client-private canary (client banks are deny-by-default)");
+    // THE security property: client-PRIVATE memory must never reach a default (ungranted) prompt.
+    assert(
+      CLIENTS.every((c) => !askPrompt.includes(c.memCanary)),
+      "the Ask WOBBLE default prompt contains NO client-private MEMORY canary (client banks are deny-by-default)",
+    );
+    // INTENTIONAL, pinned so it can't drift into a leak unnoticed: Ask's business snapshot is
+    // FOUNDER-scoped and spans every client, because this is a single-company OS and the founder owns
+    // the whole pipeline. If this ever stops being true (e.g. the OS goes multi-tenant), this assertion
+    // fails and forces the snapshot to be re-scoped rather than silently exposing one client to another.
+    const businessCanariesInAsk = CLIENTS.filter((c) => askPrompt.includes(c.canary)).length;
+    assert(
+      businessCanariesInAsk === 0 || businessCanariesInAsk === CLIENTS.length,
+      `Ask's business snapshot is founder-scoped — it shows ALL clients' records or none, never a partial subset (saw ${businessCanariesInAsk}/${CLIENTS.length})`,
+    );
 
     // ═══ 6. MEDIA JOBS — client-scoped rows ══════════════════════════════════════════════════════
     console.log("6. media jobs are client-scoped");
