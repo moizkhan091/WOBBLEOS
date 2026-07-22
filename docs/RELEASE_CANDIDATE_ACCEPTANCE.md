@@ -8,7 +8,7 @@
 | Item | Value |
 |---|---|
 | Branch | `feat/founder-accounts-local-uat` |
-| Release-candidate SHA | `bf59315e3fb257669ad1dadee0f3ca60090ead62` |
+| Release-candidate SHA | `e92e17a89e9c68c38ae6b55b3b9dc6175d4791cf` (drill executed at `bf59315`; this SHA adds the two UI fixes + this record, both verified by CI + the full suite) |
 | Base verified SHA (previous green) | `3d3217699194b1315a738647c1155a87e12fb85c` |
 | `main` (untouched by this pass) | `c4831d34f18c40017b874485de377675c72f80d3` |
 | Migration head | `0063_large_apocalypse` (migrations `0000`…`0063`, applied by the compose `migrate` service) |
@@ -29,7 +29,7 @@
 
 | Item | Result | Mechanism |
 |---|---|---|
-| Unit tests | **1351 / 1351 passed** (162 files, 0 failures) at the RC SHA | `npm run test` (vitest) |
+| Unit tests | **1358 / 1358 passed** (163 files, 0 failures) at the RC SHA | `npm run test` (vitest) |
 | DB proofs | 63 run / 66 total, 0 failures (3 manifest-skipped with reasons) | `scripts/run-all-db-proofs.mjs` vs fresh migrated pgvector (:15499) |
 | Production env-template guard (NEW) | PASS (6 tests) | `tests/prod-env-template.test.ts` — every `process.env.*` production read must be documented in `.env.production.example` or exempted with a reason; pins `APIFY_API_TOKEN` canonical; bans the retired shared-login var |
 | Cross-system client isolation (NEW) | PASS — ~45 assertions, 0 foreign canaries | `src/scripts/verify-client-isolation-cross-db.ts` (auto-discovered by the CI DB gate) |
