@@ -1016,6 +1016,9 @@ function AskPage() {
   const [agentMode, setAgentMode] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ question: string; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Keep the newest turn (and the thinking bubble) in view as the conversation grows.
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [turns.length, busy]);
   const models = modelState.data?.models ?? [];
 
   async function addFiles(list: FileList | File[]) {
@@ -1040,7 +1043,9 @@ function AskPage() {
     try {
       if (agentMode && sendFiles.length === 0) {
         // Agent mode: the orchestrator can inspect + operate the OS (destructive actions need confirm).
-        const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, confirmActions: false }) });
+        // NOTE: the field is `question` — askAgentSchema requires it. This used to send `message`, so
+        // EVERY agent-mode request failed validation (422) and Agent mode never worked at all.
+        const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, confirmActions: false }) });
         const j = (await r.json()) as Record<string, unknown>;
         if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) }]);
         else {
@@ -1085,7 +1090,7 @@ function AskPage() {
     setBusy(true);
     setTurns((t) => [...t, { role: "you", text: "✓ Confirmed" }]);
     try {
-      const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: pc.question, confirmActions: true }) });
+      const r = await fetch("/api/ask/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: pc.question, confirmActions: true }) });
       const j = (await r.json()) as Record<string, unknown>;
       const res = (j.result ?? {}) as Record<string, unknown>;
       if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) }]);
@@ -1118,6 +1123,22 @@ function AskPage() {
               </div>
             </div>
           ))}
+          {/* THINKING state. Without this the founder sends a message and watches their own text sit
+              there with no sign the OS heard them — the wait feels like a hang. Mirrors the assistant
+              bubble so the answer visually replaces it when it lands. */}
+          {busy ? (
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <div style={{ maxWidth: "80%", padding: "12px 15px", borderRadius: 14, fontSize: 13.5, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", gap: 9 }}>
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.lime, opacity: 0.85, animation: `wobbleThinking 1.05s ${i * 0.16}s infinite ease-in-out` }} />
+                  ))}
+                </span>
+                <span style={{ fontSize: 12.5, color: faint }}>{agentMode ? "WOBBLE is working — inspecting the OS…" : "WOBBLE is thinking…"}</span>
+              </div>
+            </div>
+          ) : null}
+          <div ref={endRef} />
         </div>
       )}
 
@@ -3322,16 +3343,36 @@ const LEAD_SOURCES = ["manual", "referral", "inbound", "cold_email", "cold_call"
 const fieldLabel: React.CSSProperties = { fontSize: 10.5, color: "#8a8a95", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3, display: "block" };
 
 /** Full lead-capture form — contact + company + qualification, per the ERP brief's Leads spec. */
+/**
+ * Form field primitives at MODULE scope — deliberately NOT declared inside a form component's body.
+ *
+ * They previously were, which created a brand-new component *type* on every render: React then
+ * unmounted and remounted the <input>, so the field lost focus after a SINGLE character and the New
+ * Lead form could not be typed into at all. Anything rendering an input must live out here.
+ */
+function FieldInput({ label, value, onChange, w = 1, ph }: { label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; w?: number; ph?: string }) {
+  return (
+    <div style={{ gridColumn: `span ${w}` }}>
+      <label style={fieldLabel}>{label}</label>
+      <input value={value} onChange={onChange} placeholder={ph} aria-label={label} style={{ ...inputStyle, width: "100%" }} />
+    </div>
+  );
+}
+function FieldSelect({ label, value, onChange, opts }: { label: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; opts: string[] }) {
+  return (
+    <div>
+      <label style={fieldLabel}>{label}</label>
+      <select value={value} onChange={onChange} aria-label={label} style={{ ...selectStyle, width: "100%" }}>
+        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function AddLeadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Record<string, string>>({ name: "", contactName: "", email: "", phone: "", whatsapp: "", companyName: "", website: "", industry: "", source: "manual", campaign: "", intentLevel: "medium", budgetLevel: "unknown", urgencyLevel: "unknown", fitLevel: "unknown", serviceInterest: "", assignedOwner: "", problemStated: "" });
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
-  const F = ({ k, label, w = 1, ph }: { k: string; label: string; w?: number; ph?: string }) => (
-    <div style={{ gridColumn: `span ${w}` }}><label style={fieldLabel}>{label}</label><input value={f[k]} onChange={set(k)} placeholder={ph} style={{ ...inputStyle, width: "100%" }} /></div>
-  );
-  const Sel = ({ k, label, opts }: { k: string; label: string; opts: string[] }) => (
-    <div><label style={fieldLabel}>{label}</label><select value={f[k]} onChange={set(k)} style={{ ...selectStyle, width: "100%" }}>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select></div>
-  );
   async function save() {
     if (!f.name.trim() && !f.companyName.trim()) { setMsg("Enter a lead name or company."); return; }
     setBusy(true); setMsg(null);
@@ -3347,18 +3388,19 @@ function AddLeadModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><div style={{ fontSize: 15, fontWeight: 700 }}>New lead</div><button onClick={onClose} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px", fontSize: 13 }}>✕</button></div>
         <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Contact</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-          <F k="contactName" label="Contact name" /><F k="email" label="Email" ph="name@company.com" /><F k="phone" label="Phone" /><F k="whatsapp" label="WhatsApp" />
+          <FieldInput label="Contact name" value={f.contactName} onChange={set("contactName")} /><FieldInput label="Email" ph="name@company.com" value={f.email} onChange={set("email")} /><FieldInput label="Phone" value={f.phone} onChange={set("phone")} /><FieldInput label="WhatsApp" value={f.whatsapp} onChange={set("whatsapp")} />
         </div>
         <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Company</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-          <F k="companyName" label="Company name" /><F k="website" label="Website" /><F k="industry" label="Industry" /><F k="name" label="Lead label (optional)" ph="defaults to company" />
+          <FieldInput label="Company name" value={f.companyName} onChange={set("companyName")} /><FieldInput label="Website" value={f.website} onChange={set("website")} /><FieldInput label="Industry" value={f.industry} onChange={set("industry")} /><FieldInput label="Lead label (optional)" ph="defaults to company" value={f.name} onChange={set("name")} />
         </div>
         <div style={{ fontSize: 11, color: faint, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Qualification</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <Sel k="intentLevel" label="Intent" opts={LEVELS_UI} /><Sel k="budgetLevel" label="Budget" opts={LEVELS_UI} /><Sel k="urgencyLevel" label="Urgency" opts={LEVELS_UI} /><Sel k="fitLevel" label="Fit" opts={LEVELS_UI} />
+        {/* auto-fit so the four qualification selects wrap instead of clipping to ~80px on a phone */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 10 }}>
+          <FieldSelect label="Intent" opts={LEVELS_UI} value={f.intentLevel} onChange={set("intentLevel")} /><FieldSelect label="Budget" opts={LEVELS_UI} value={f.budgetLevel} onChange={set("budgetLevel")} /><FieldSelect label="Urgency" opts={LEVELS_UI} value={f.urgencyLevel} onChange={set("urgencyLevel")} /><FieldSelect label="Fit" opts={LEVELS_UI} value={f.fitLevel} onChange={set("fitLevel")} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <Sel k="source" label="Source" opts={LEAD_SOURCES} /><F k="campaign" label="Campaign" /><F k="serviceInterest" label="Service interest (comma-sep)" /><F k="assignedOwner" label="Assigned owner" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 10 }}>
+          <FieldSelect label="Source" opts={LEAD_SOURCES} value={f.source} onChange={set("source")} /><FieldInput label="Campaign" value={f.campaign} onChange={set("campaign")} /><FieldInput label="Service interest (comma-sep)" value={f.serviceInterest} onChange={set("serviceInterest")} /><FieldInput label="Assigned owner" value={f.assignedOwner} onChange={set("assignedOwner")} />
         </div>
         <div style={{ marginBottom: 14 }}><label style={fieldLabel}>Problem stated</label><textarea value={f.problemStated} onChange={set("problemStated")} style={{ ...inputStyle, width: "100%", minHeight: 54, resize: "vertical" }} /></div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -3439,6 +3481,8 @@ function CrmPage() {
   const coState = useApi<{ companies: CrmCompany[] }>("/api/crm/companies?limit=200");
   const [addOpen, setAddOpen] = useState(false);
   const [co360, setCo360] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ id: string; stage: string } | null>(null);
   const guard = offlineIf(oppState) ?? offlineIf(leadState) ?? offlineIf(coState);
   if (guard) return guard;
   const opps = oppState.data?.opportunities ?? [];
@@ -3449,7 +3493,15 @@ function CrmPage() {
   const pipelineValue = openOpps.reduce((s, o) => s + o.valueCents, 0);
   const wonValue = opps.filter((o) => o.status === "won").reduce((s, o) => s + o.valueCents, 0);
   async function reload() { oppState.reload(); leadState.reload(); coState.reload(); }
-  async function moveStage(id: string, stage: string) { await fetch(`/api/crm/opportunities/${id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) }); reload(); }
+  async function moveStage(id: string, stage: string) {
+    setDragOverStage(null);
+    // Optimistic: the card lands in the new column immediately, then we reconcile with the server.
+    setPendingMove({ id, stage });
+    try {
+      await fetch(`/api/crm/opportunities/${id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }) });
+      await reload();
+    } finally { setPendingMove(null); }
+  }
   async function convert(lead: CrmLead) {
     if (!window.confirm(`Convert "${lead.name}" into a company + contact + deal?`)) return;
     await fetch(`/api/crm/leads/${lead.id}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
@@ -3486,26 +3538,58 @@ function CrmPage() {
       </Panel>
 
       <Panel>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Pipeline · all stages</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Pipeline · all stages</div>
+          <span style={{ fontSize: 10.5, color: faint }}>drag a card between columns to move it</span>
+        </div>
         <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
           {STAGE_ORDER.map((stage) => {
-            const list = opps.filter((o) => o.stage === stage);
+            // A deal being dragged shows in its DESTINATION column immediately (optimistic).
+            const list = opps.filter((o) => (pendingMove?.id === o.id ? pendingMove.stage : o.stage) === stage);
             const val = list.reduce((s, o) => s + o.valueCents, 0);
             const accent = stage === "won" ? C.lime : stage === "lost" ? C.orange : "#2a2a30";
+            // The first stage is literally called "New Lead" — so UNCONVERTED leads belong here. Without this
+            // a founder adds a lead, sees the New Lead column stay empty, and reasonably thinks it's broken.
+            const stageLeads = stage === "new_lead" ? leads.filter((l) => l.status !== "converted") : [];
+            const isOver = dragOverStage === stage;
             return (
-              <div key={stage} style={{ minWidth: 208, flex: "0 0 208px" }}>
+              <div
+                key={stage}
+                onDragOver={(e) => { e.preventDefault(); if (dragOverStage !== stage) setDragOverStage(stage); }}
+                onDragLeave={() => setDragOverStage((s) => (s === stage ? null : s))}
+                onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/opportunity-id"); if (id) moveStage(id, stage); else setDragOverStage(null); }}
+                style={{ minWidth: 208, flex: "0 0 208px", borderRadius: 10, background: isOver ? "rgba(184,255,44,0.06)" : "transparent", outline: isOver ? `1px dashed ${C.lime}` : "1px dashed transparent", transition: "background 0.12s, outline-color 0.12s", padding: 4 }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, borderTop: `2px solid ${accent}`, paddingTop: 7 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: stage === "won" ? C.lime : stage === "lost" ? C.orange : C.white }}>{STAGE_LABELS[stage]}</span>
-                  <span style={{ fontSize: 10.5, color: faint }}>{list.length}{val ? ` · ${money(val)}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: faint }}>{list.length + stageLeads.length}{val ? ` · ${money(val)}` : ""}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 40 }}>
-                  {list.length === 0 ? <div style={{ fontSize: 10.5, color: "#4a4a52", padding: "10px 4px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 8 }}>—</div> : list.map((o) => (
-                    <div key={o.id} style={{ ...card, padding: "9px 10px" }}>
+                  {stageLeads.map((l) => (
+                    <div key={l.id} style={{ ...card, padding: "9px 10px", borderLeft: `2px solid ${C.blue}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                        <Tag text="lead" color={C.blue} />
+                        <Tag text={`score ${l.score}`} color={l.score >= 60 ? C.lime : l.score >= 30 ? C.blue : C.gray} />
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{l.name}</div>
+                      <button onClick={() => convert(l)} style={{ ...primaryBtn, padding: "4px 9px", fontSize: 11, marginTop: 7, width: "100%" }}>Convert to deal →</button>
+                    </div>
+                  ))}
+                  {list.length === 0 && stageLeads.length === 0 ? <div style={{ fontSize: 10.5, color: "#4a4a52", padding: "10px 4px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 8 }}>—</div> : list.map((o) => (
+                    <div
+                      key={o.id}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.setData("text/opportunity-id", o.id); e.dataTransfer.effectAllowed = "move"; }}
+                      onDragEnd={() => setDragOverStage(null)}
+                      title="Drag to another stage"
+                      style={{ ...card, padding: "9px 10px", cursor: "grab", opacity: pendingMove?.id === o.id ? 0.55 : 1 }}
+                    >
                       <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{o.name}</div>
                       <div style={{ fontSize: 10.5, color: faint, marginTop: 2 }}>{coName(o.companyId)}</div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7, gap: 6 }}>
                         <span style={{ fontSize: 11.5, fontWeight: 600, color: C.lime }}>{money(o.valueCents, o.currency)}</span>
-                        <select value={o.stage} onChange={(e) => moveStage(o.id, e.target.value)} style={{ ...selectStyle, padding: "3px 6px", fontSize: 10.5 }}>
+                        {/* Keyboard/accessible fallback for the drag interaction — never remove. */}
+                        <select value={pendingMove?.id === o.id ? pendingMove.stage : o.stage} onChange={(e) => moveStage(o.id, e.target.value)} aria-label={`Stage for ${o.name}`} style={{ ...selectStyle, padding: "3px 6px", fontSize: 10.5 }}>
                           {STAGE_ORDER.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                         </select>
                       </div>
@@ -4036,6 +4120,23 @@ interface WsAudit { id: string; kind: string; companyId: string | null; business
 interface WsClient { key: string; businessName: string; companyId: string | null; pitch: WsAudit | null; roadmap: WsAudit | null; final: WsAudit | null }
 
 /** The unified audit flow: one client, three stages — pitch → interview roadmap → findings → final deck. */
+/**
+ * Stage shell at MODULE scope. It used to be declared inside AuditWorkspacePage's body, so every
+ * keystroke in the stage-3 findings textareas created a new component type, remounted the textarea and
+ * dropped focus after one character — in the module's primary input. Same class of bug as FieldInput.
+ */
+function Stage({ n, title, done, locked, children }: { n: number; title: string; done: boolean; locked: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ ...card, padding: "13px 15px", opacity: locked ? 0.5 : 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 22, height: 22, borderRadius: "50%", background: done ? C.lime : "#2a2a30", color: done ? "#0b0b0d" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{done ? "✓" : n}</span>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
+      </div>
+      {locked ? <div style={{ fontSize: 11.5, color: faint }}>Complete the previous step first.</div> : children}
+    </div>
+  );
+}
+
 function AuditWorkspacePage() {
   const state = useApi<{ audits: WsAudit[] }>("/api/audit/workspace");
   const [sel, setSel] = useState<string | null>(null);
@@ -4080,18 +4181,6 @@ function AuditWorkspacePage() {
       </div>
     );
   }
-  function Stage({ n, title, done, locked, children }: { n: number; title: string; done: boolean; locked: boolean; children: React.ReactNode }) {
-    return (
-      <div style={{ ...card, padding: "13px 15px", opacity: locked ? 0.5 : 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ width: 22, height: 22, borderRadius: "50%", background: done ? C.lime : "#2a2a30", color: done ? "#0b0b0d" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{done ? "✓" : n}</span>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
-        </div>
-        {locked ? <div style={{ fontSize: 11.5, color: faint }}>Complete the previous step first.</div> : children}
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Panel>

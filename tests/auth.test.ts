@@ -108,6 +108,12 @@ describe("login", () => {
     await expect(login({ email: "moiz@wobble.local", password: "nope" }, deps(store))).rejects.toThrow(InvalidCredentialsError);
   });
 
+  // These paths do REAL bcrypt work — and deliberately so: an unknown email still runs a dummy hash to
+  // keep the response constant-time (that is the anti-enumeration property under test), so this case
+  // costs two hashes. On a loaded machine that exceeds vitest's 5s default and fails as a timeout
+  // rather than a real assertion. Give the bcrypt-bound cases a realistic bound.
+  const BCRYPT_TIMEOUT_MS = 30_000;
+
   it("rejects an unknown email with the SAME error as a wrong password (no account enumeration)", async () => {
     const { store } = makeStore();
     const unknown = await login({ email: "ghost@wobble.local", password: "whatever" }, deps(store)).catch((e) => e);
@@ -115,12 +121,12 @@ describe("login", () => {
     expect(unknown).toBeInstanceOf(InvalidCredentialsError);
     expect(wrongPw).toBeInstanceOf(InvalidCredentialsError);
     expect(unknown.message).toBe(wrongPw.message);
-  });
+  }, BCRYPT_TIMEOUT_MS);
 
   it("refuses an account that has no password set", async () => {
     const { store } = makeStore();
     await expect(login({ email: "ibrahim@wobble.local", password: "" }, deps(store))).rejects.toThrow(InvalidCredentialsError);
-  });
+  }, BCRYPT_TIMEOUT_MS);
 
   it("refuses a disabled account even with the correct password", async () => {
     const { store } = makeStore();

@@ -63,7 +63,12 @@ const HARD_MAX_ITERATIONS = 10;
 function buildSystemPrompt(snapshot: string | undefined, confirmActions: boolean): string {
   return [
     "You are WOBBLE OS's command surface for the founders. You can inspect and operate the OS using the provided tools.",
-    "Use read tools (list_agents, list_pending_approvals, get_model_config, list_models) to answer operational questions and to gather facts BEFORE proposing any change. Never invent counts, names, models, or statuses — get them from a tool.",
+    "Use read tools to answer operational questions and to gather facts BEFORE proposing any change. Never invent counts, names, models, or statuses — get them from a tool.",
+    "OS tools: list_agents, list_pending_approvals, get_model_config, list_models.",
+    // The agent used to have OS tools only, so business questions got "check with your sales team" —
+    // telling the founder to ask the humans this OS replaces. Point it at the business tools explicitly.
+    "BUSINESS tools: get_business_overview (start here for any 'how are we doing' / 'what should I focus on'), list_deals (pipeline, closest to closing, forecast, deal values), list_leads (follow-ups, best leads), get_finance_summary (overdue, outstanding, cash), list_proposals (what's out with clients).",
+    "You have DIRECT access to the company's live data. NEVER tell the founder to contact a sales team, check the CRM, or ask a colleague for information a tool can return — call the tool and answer. If a tool genuinely returns nothing, say the record set is empty rather than deferring to a human.",
     "To change a model, use propose_model_swap: it creates an APPROVAL for the founder and does not apply anything. Present compatible options and cost before proposing. If the founder's request is ambiguous (which role? which model?), ASK a short clarifying question instead of guessing.",
     "Only use apply_model_upgrade when the founder has explicitly confirmed. Never claim you applied or changed something unless a tool result confirms it.",
     confirmActions

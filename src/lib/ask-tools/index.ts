@@ -281,6 +281,105 @@ const pinMemoryTool = defineTool<{ recordId: string; pinned?: boolean; importanc
   },
 });
 
+// ---------------------------------------------------------------- business read tools
+//
+// Every tool above inspects the OS ITSELF (agents, models, memory, approvals). None could look at the
+// company. So asked "which deals are closest to closing?" the agent had nothing to call and fell back to
+// "check with your sales team" — advising the founder to ask the humans it is supposed to replace.
+// These read-only tools give it the commercial picture.
+
+const listDealsTool = defineTool<{ stage?: string; status?: string; limit?: number }>({
+  name: "list_deals",
+  description: "List CRM deals/opportunities with their pipeline stage, value and company — use this for ANY question about the pipeline, what is closest to closing, deal values, forecast, or what to chase today. Never tell the founder to ask a sales team; call this instead.",
+  jsonSchema: objectSchema({
+    stage: { type: "string", description: "Optional pipeline stage filter, e.g. 'negotiation', 'proposal_sent', 'qualified'." },
+    status: { type: "string", description: "Optional status filter: open | won | lost | archived. Defaults to all." },
+    limit: { type: "number", description: "Max deals to return (default 100)." },
+  }),
+  argsSchema: z.object({ stage: z.string().trim().optional(), status: z.string().trim().optional(), limit: z.number().int().min(1).max(500).optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { listOpportunities, listCompanies } = await import("@/lib/crm");
+    const [opps, companies] = await Promise.all([listOpportunities({ limit: args.limit ?? 100 }), listCompanies({ limit: 300 })]);
+    const nameOf = new Map(companies.map((c) => [c.id, c.name]));
+    let list = opps;
+    if (args.stage) list = list.filter((o) => o.stage === args.stage);
+    if (args.status) list = list.filter((o) => o.status === args.status);
+    const sorted = [...list].sort((a, b) => b.valueCents - a.valueCents);
+    return {
+      total: sorted.length,
+      totalValueUsd: sorted.reduce((s, o) => s + o.valueCents, 0) / 100,
+      deals: sorted.map((o) => ({ name: o.name, company: nameOf.get(o.companyId) ?? null, stage: o.stage, status: o.status, valueUsd: o.valueCents / 100, expectedCloseAt: o.expectedCloseAt, nextAction: o.nextAction ?? null })),
+    };
+  },
+});
+
+const listLeadsTool = defineTool<{ limit?: number }>({
+  name: "list_leads",
+  description: "List CRM leads awaiting qualification/conversion, with their score and source. Use for 'who should I follow up with', 'best leads', or lead-volume questions.",
+  jsonSchema: objectSchema({ limit: { type: "number", description: "Max leads (default 100)." } }),
+  argsSchema: z.object({ limit: z.number().int().min(1).max(300).optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { listLeads } = await import("@/lib/crm");
+    const leads = await listLeads({ limit: args.limit ?? 100 });
+    const open = leads.filter((l) => l.status !== "converted");
+    return {
+      total: leads.length,
+      open: open.length,
+      leads: [...open].sort((a, b) => b.score - a.score).map((l) => ({ name: l.name, score: l.score, status: l.status, source: l.source ?? null })),
+    };
+  },
+});
+
+const financeSummaryTool = defineTool<Record<string, never>>({
+  name: "get_finance_summary",
+  description: "Invoices and cash position: overdue count/amount, total outstanding, and paid totals. Use for 'who owes us', 'what's overdue', revenue or cash questions.",
+  jsonSchema: objectSchema({}),
+  argsSchema: z.object({}),
+  mutates: false,
+  handler: async () => {
+    const { listInvoices } = await import("@/lib/finance");
+    const invoices = await listInvoices({ limit: 500 });
+    const now = Date.now();
+    const openish = invoices.filter((i) => !["paid", "cancelled", "draft"].includes(i.status));
+    const overdue = openish.filter((i) => i.dueDate != null && i.dueDate.getTime() < now && i.totalCents - i.amountPaidCents > 0);
+    return {
+      totalInvoices: invoices.length,
+      overdueCount: overdue.length,
+      overdueUsd: overdue.reduce((s, i) => s + (i.totalCents - i.amountPaidCents), 0) / 100,
+      outstandingUsd: openish.reduce((s, i) => s + (i.totalCents - i.amountPaidCents), 0) / 100,
+      paidUsd: invoices.reduce((s, i) => s + i.amountPaidCents, 0) / 100,
+      overdue: overdue.map((i) => ({ number: i.invoiceNumber, dueDate: i.dueDate, openUsd: (i.totalCents - i.amountPaidCents) / 100 })),
+    };
+  },
+});
+
+const listProposalsTool = defineTool<{ status?: string }>({
+  name: "list_proposals",
+  description: "List proposals with status (draft/sent/viewed/approved/accepted/expired). Use for 'what proposals are out', 'what's awaiting client response'.",
+  jsonSchema: objectSchema({ status: { type: "string", description: "Optional status filter." } }),
+  argsSchema: z.object({ status: z.string().trim().optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { listProposals } = await import("@/lib/proposals");
+    const rows = await listProposals({ status: args.status, limit: 200 });
+    return { total: rows.length, proposals: rows.map((p) => ({ title: p.title, status: p.status, valueUsd: p.pricingCents / 100, sentAt: p.sentAt })) };
+  },
+});
+
+const businessOverviewTool = defineTool<Record<string, never>>({
+  name: "get_business_overview",
+  description: "One-call snapshot of the whole commercial position: open/won deals with values by stage, top leads, invoice/cash position and open proposals. Call this FIRST for any broad 'how are we doing', 'what should I focus on today', or status question.",
+  jsonSchema: objectSchema({}),
+  argsSchema: z.object({}),
+  mutates: false,
+  handler: async (_args, ctx) => {
+    const snap = await getSystemSnapshot(ctx.systemMapDeps);
+    return snap.business ?? { note: "no database configured — business state unavailable" };
+  },
+});
+
 export const ASK_TOOLS: ToolDefinition[] = [
   listAgentsTool,
   listPendingApprovalsTool,
@@ -292,6 +391,12 @@ export const ASK_TOOLS: ToolDefinition[] = [
   searchMemoryTool,
   forgetMemoryTool,
   pinMemoryTool,
+  // business reads — so the agent can answer about the COMPANY, not just about itself
+  businessOverviewTool,
+  listDealsTool,
+  listLeadsTool,
+  financeSummaryTool,
+  listProposalsTool,
 ];
 
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));

@@ -28,6 +28,22 @@ export interface ModuleSummary {
   status: string;
 }
 
+/**
+ * Live BUSINESS state — the actual commercial situation, not the OS's own capability map.
+ *
+ * Without this, Ask WOBBLE knew every agent it had but could not answer "which deals are closest to
+ * closing?" — it replied that the detail was "not available in the live system state" while open deals
+ * sat in the CRM. A founder's most common questions are about their business, so the business belongs
+ * in the snapshot.
+ */
+export interface BusinessSummary {
+  openDeals: { count: number; totalCents: number; byStage: Record<string, number>; top: Array<{ name: string; stage: string; valueCents: number }> };
+  wonDeals: { count: number; totalCents: number };
+  leads: { open: number; topScored: Array<{ name: string; score: number; status: string }> };
+  invoices: { overdue: number; overdueCents: number; outstandingCents: number };
+  proposals: { open: number; byStatus: Record<string, number> };
+}
+
 export interface SystemSnapshot {
   agents: { total: number; active: number; byTeam: Record<string, number>; list: AgentSummary[] };
   modules: { total: number; wired: number; planned: number; backendReady: number; list: ModuleSummary[] };
@@ -35,6 +51,8 @@ export interface SystemSnapshot {
   models: { roles: ModelRoleMap; catalogCount: number; catalog: ModelCatalog };
   /** Live inter-agent handoff backbone: how many handoffs sit in each delivery state right now. */
   handoffs: Record<string, number>;
+  /** Live commercial state. Undefined only when no DB is configured (tests / unconfigured deploy). */
+  business?: BusinessSummary;
 }
 
 export interface SystemMapDeps {
@@ -43,7 +61,53 @@ export interface SystemMapDeps {
   getModelRoleMap?: () => Promise<ModelRoleMap>;
   getModelCatalog?: () => Promise<ModelCatalog>;
   getHandoffCounts?: () => Promise<Record<string, number>>;
+  getBusinessSummary?: () => Promise<BusinessSummary | undefined>;
   modules?: ModuleSummary[];
+}
+
+/**
+ * Assemble live commercial state from the CRM/finance/proposal stores. DB-gated and best-effort: any
+ * failure degrades to `undefined` (Ask then answers without it) rather than breaking the whole snapshot.
+ */
+async function defaultBusinessSummary(): Promise<BusinessSummary | undefined> {
+  if (!process.env.DATABASE_URL) return undefined;
+  try {
+    const [{ listOpportunities, listLeads }, { listInvoices }, { listProposals }] = await Promise.all([
+      import("@/lib/crm"), import("@/lib/finance"), import("@/lib/proposals"),
+    ]);
+    const [opps, leads, invoices, proposals] = await Promise.all([
+      listOpportunities({ limit: 500 }), listLeads({ limit: 300 }), listInvoices({ limit: 500 }), listProposals({ limit: 300 }),
+    ]);
+    const open = opps.filter((o) => o.status === "open");
+    const byStage: Record<string, number> = {};
+    for (const o of open) byStage[o.stage] = (byStage[o.stage] ?? 0) + 1;
+    const won = opps.filter((o) => o.status === "won");
+    const now = Date.now();
+    const overdue = invoices.filter((i) => ["sent", "viewed", "partially_paid", "overdue"].includes(i.status) && i.dueDate != null && i.dueDate.getTime() < now && i.totalCents - i.amountPaidCents > 0);
+    const outstanding = invoices.filter((i) => !["paid", "cancelled", "draft"].includes(i.status));
+    const propByStatus: Record<string, number> = {};
+    for (const p of proposals) propByStatus[p.status] = (propByStatus[p.status] ?? 0) + 1;
+    const openLeads = leads.filter((l) => l.status !== "converted");
+    return {
+      openDeals: {
+        count: open.length,
+        totalCents: open.reduce((s, o) => s + o.valueCents, 0),
+        byStage,
+        top: [...open].sort((a, b) => b.valueCents - a.valueCents).slice(0, 8).map((o) => ({ name: o.name, stage: o.stage, valueCents: o.valueCents })),
+      },
+      wonDeals: { count: won.length, totalCents: won.reduce((s, o) => s + o.valueCents, 0) },
+      leads: { open: openLeads.length, topScored: [...openLeads].sort((a, b) => b.score - a.score).slice(0, 5).map((l) => ({ name: l.name, score: l.score, status: l.status })) },
+      invoices: {
+        overdue: overdue.length,
+        overdueCents: overdue.reduce((s, i) => s + (i.totalCents - i.amountPaidCents), 0),
+        outstandingCents: outstanding.reduce((s, i) => s + (i.totalCents - i.amountPaidCents), 0),
+      },
+      proposals: { open: proposals.filter((p) => ["sent", "viewed", "approved"].includes(p.status)).length, byStatus: propByStatus },
+    };
+  } catch (error) {
+    console.error("business summary failed:", error instanceof Error ? error.message : error);
+    return undefined;
+  }
 }
 
 function defaultModules(): ModuleSummary[] {
@@ -59,7 +123,9 @@ export async function getSystemSnapshot(deps: SystemMapDeps = {}): Promise<Syste
   // Env-gated default so this stays DB-free in tests that don't inject the dep.
   const getHandoffCounts = deps.getHandoffCounts ?? (async () => (process.env.DATABASE_URL ? (await import("@/lib/handoff")).handoffStateCounts() : {}));
 
-  const [agents, byType, roles, catalog, handoffs] = await Promise.all([listAgents(), countPending(), roleMapFn(), catalogFn(), getHandoffCounts()]);
+  const getBusiness = deps.getBusinessSummary ?? defaultBusinessSummary;
+
+  const [agents, byType, roles, catalog, handoffs, business] = await Promise.all([listAgents(), countPending(), roleMapFn(), catalogFn(), getHandoffCounts(), getBusiness()]);
 
   const byTeam: Record<string, number> = {};
   let active = 0;
@@ -83,6 +149,7 @@ export async function getSystemSnapshot(deps: SystemMapDeps = {}): Promise<Syste
     approvals: { pending, byType },
     models: { roles, catalogCount: catalog.length, catalog },
     handoffs,
+    business,
   };
 }
 
@@ -117,7 +184,27 @@ export function formatSystemSnapshot(snapshot: SystemSnapshot, opts: { maxAgents
     ? Object.entries(snapshot.handoffs).map(([state, n]) => `${state} ${n}`).join(", ")
     : "none";
 
+  // LIVE BUSINESS STATE first — it answers the questions founders actually ask ("what's closest to
+  // closing?", "who owes us money?"). Ask used to have only the capability map and had to reply that
+  // operational detail was unavailable while real deals sat in the CRM.
+  const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  const b = snapshot.business;
+  const businessLines = b
+    ? [
+        `LIVE BUSINESS STATE (authoritative — read this before saying you lack operational detail):`,
+        `  OPEN DEALS: ${b.openDeals.count} worth ${usd(b.openDeals.totalCents)}. By stage: ${Object.entries(b.openDeals.byStage).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}.`,
+        b.openDeals.top.length
+          ? `  Largest open deals:\n${b.openDeals.top.map((d) => `    - ${d.name} — ${usd(d.valueCents)} [stage=${d.stage}]`).join("\n")}`
+          : `  (no open deals)`,
+        `  WON: ${b.wonDeals.count} deals worth ${usd(b.wonDeals.totalCents)}.`,
+        `  LEADS AWAITING CONVERSION: ${b.leads.open}${b.leads.topScored.length ? ` — top: ${b.leads.topScored.map((l) => `${l.name} (score ${l.score})`).join(", ")}` : ""}.`,
+        `  INVOICES: ${b.invoices.overdue} overdue (${usd(b.invoices.overdueCents)}); ${usd(b.invoices.outstandingCents)} outstanding overall.`,
+        `  PROPOSALS: ${b.proposals.open} open. By status: ${Object.entries(b.proposals.byStatus).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}.`,
+      ]
+    : [];
+
   return [
+    ...businessLines,
     `AGENTS: ${snapshot.agents.total} total (${snapshot.agents.active} active). By team: ${teamStr}.`,
     `${agentLines}${overflow}`,
     `MODULES: ${snapshot.modules.total} total — ${snapshot.modules.wired} wired, ${snapshot.modules.backendReady} backend-ready, ${snapshot.modules.planned} planned. Wired: ${moduleWired}.`,
