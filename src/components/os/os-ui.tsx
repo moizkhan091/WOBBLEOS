@@ -1372,6 +1372,151 @@ function readFileB64(f: File): Promise<string> {
 }
 
 /**
+ * Upload founder-made reels/images straight into the Library.
+ *
+ * MODULE SCOPE deliberately — it renders a file input, and anything rendering an input must never be
+ * declared inside another component's body (that creates a new component type per render, remounts the
+ * input and drops focus/selection mid-interaction).
+ *
+ * Files are read as data URLs and POSTed as a batch. The route answers 207 for a partial batch, which is
+ * the case that matters: 8 uploaded / 2 rejected must be REPORTED, not silently treated as success.
+ */
+function UploadAssetsButton({ onDone }: { onDone: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function onFiles(list: FileList | null) {
+    const files = Array.from(list ?? []);
+    if (!files.length) return;
+    setBusy(true);
+    setMsg(`Uploading ${files.length} file${files.length === 1 ? "" : "s"}…`);
+    try {
+      const payload = await Promise.all(files.map(async (f) => ({
+        filename: f.name,
+        mimeType: f.type || "application/octet-stream",
+        dataBase64: await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result ?? ""));
+          r.onerror = () => reject(new Error(`could not read ${f.name}`));
+          r.readAsDataURL(f);
+        }),
+      })));
+      const res = await postJson("/api/library/upload", { files: payload });
+      if (!res.ok) { setMsg(res.error ?? "Upload failed."); return; }
+      const d = (res.data ?? {}) as { assets?: unknown[]; failedCount?: number; results?: Array<{ filename?: string; error?: string }> };
+      const ok = Array.isArray(d.assets) ? d.assets.length : files.length;
+      const failed = Number(d.failedCount ?? 0);
+      // Name the rejected files and why — "2 failed" with no reason is not actionable.
+      const why = failed && Array.isArray(d.results)
+        ? " — " + d.results.filter((r) => r.error).slice(0, 3).map((r) => `${r.filename}: ${r.error}`).join("; ")
+        : "";
+      setMsg(failed ? `${ok} uploaded, ${failed} rejected${why}` : `${ok} uploaded.`);
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+      if (ref.current) ref.current.value = ""; // let the same file be re-picked after a fix
+    }
+  }
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+      <button
+        onClick={() => ref.current?.click()}
+        disabled={busy}
+        title="Upload your own reels or images into the Library"
+        style={busy ? { ...disabledBtn, padding: "7px 12px", fontSize: 12 } : { ...selectStyle, cursor: "pointer", padding: "7px 12px", fontSize: 12 }}
+      >
+        {busy ? "Uploading…" : "⬆ Upload"}
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,video/x-m4v"
+        onChange={(e) => onFiles(e.target.files)}
+        style={{ display: "none" }}
+        aria-label="Choose reels or images to upload"
+      />
+      {msg ? <span style={{ fontSize: 11.5, color: msg.includes("rejected") || msg.includes("failed") ? C.orange : C.lime }}>{msg}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * Bulk-import a prepared content folder (media + caption per post) into the Library.
+ *
+ * PREVIEW FIRST is the whole design: a real run can create hundreds of assets, so the founder sees the
+ * exact plan (and any warnings) before anything is written. Import stays disabled until a preview has
+ * been run — the same shape as the Backup module's dry-run→apply gate.
+ */
+function ImportFolderButton({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [rootDir, setRootDir] = useState("");
+  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  const [preview, setPreview] = useState<{ scanned?: number; planned?: number; skipped?: number; warnings?: unknown[]; tree?: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function run(dryRun: boolean) {
+    if (!rootDir.trim()) { setMsg("Enter the folder path first."); return; }
+    setBusy(dryRun ? "preview" : "import");
+    setMsg(null);
+    try {
+      const res = await postJson("/api/library/import-folder", { rootDir: rootDir.trim(), dryRun });
+      if (!res.ok) { setMsg(res.error ?? "Import failed."); return; }
+      const d = (res.data ?? {}) as Record<string, unknown>;
+      if (dryRun) {
+        setPreview({ scanned: Number(d.scanned ?? 0), planned: Array.isArray(d.planned) ? d.planned.length : Number(d.planned ?? 0), skipped: Number(d.skipped ?? 0), warnings: Array.isArray(d.warnings) ? d.warnings : [], tree: String(d.tree ?? "") });
+        setMsg(null);
+      } else {
+        setMsg(`Imported ${Number(d.imported ?? 0)} · skipped ${Number(d.skipped ?? 0)} · failed ${Number(d.failed ?? 0)}`);
+        setPreview(null);
+        onDone();
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Import failed.");
+    } finally { setBusy(null); }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} title="Bulk-import a folder of prepared content" style={{ ...selectStyle, cursor: "pointer", padding: "7px 12px", fontSize: 12 }}>
+        📂 Import a folder
+      </button>
+    );
+  }
+  return (
+    <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(620px,96vw)", maxHeight: "90vh", overflow: "auto", background: "#141417", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Import a content folder</div>
+          <button onClick={() => setOpen(false)} aria-label="Close" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 9px" }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, color: faint, lineHeight: 1.55, marginBottom: 12 }}>
+          Each post is a folder holding one media file and its caption (<code>caption.txt</code>, <code>CAPTION.txt</code> or <code>META-AD-COPY.txt</code>). Preview first — nothing is written until you import.
+        </div>
+        <label style={fieldLabel}>Folder path (on the server)</label>
+        <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="C:\path\to\your\content-root" aria-label="Content folder path" style={{ ...inputStyle, width: "100%", marginBottom: 12 }} />
+        {preview ? (
+          <div style={{ ...card, padding: "11px 13px", marginBottom: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>Preview{preview.tree ? ` · ${preview.tree}` : ""} — nothing written yet</div>
+            <div style={{ fontSize: 12, color: muted }}>{preview.planned ?? 0} to import · {preview.skipped ?? 0} already present · {preview.scanned ?? 0} scanned</div>
+            {preview.warnings?.length ? <div style={{ fontSize: 11.5, color: C.orange, marginTop: 6 }}>{preview.warnings.length} warning(s) — those posts will be skipped</div> : null}
+          </div>
+        ) : null}
+        <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => run(true)} disabled={busy !== null} style={busy ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "7px 13px" }}>{busy === "preview" ? "Scanning…" : "Preview"}</button>
+          <button onClick={() => run(false)} disabled={busy !== null || !preview} title={preview ? "Import for real" : "Run a preview first"} style={busy !== null || !preview ? disabledBtn : primaryBtn}>{busy === "import" ? "Importing…" : "Import for real"}</button>
+          {msg ? <span style={{ fontSize: 12, color: msg.startsWith("Imported") ? C.lime : C.orange }}>{msg}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Format picker + actions for a generated artifact (audit report, deck, proposal).
  *
  * The same content is modelled once and can be dressed three ways — 16:9 slides to present, A4 to print
@@ -3815,6 +3960,8 @@ function LibraryPage() {
               <option value="recent">Sort: Newest</option>
             </select>
             <button onClick={runPlan} disabled={planBusy} title="Let the Content Director sequence your whole feed" style={{ ...primaryBtn, padding: "7px 12px", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>{planBusy ? "Planning…" : "✨ Plan my feed"}</button>
+            <UploadAssetsButton onDone={reload} />
+            <ImportFolderButton onDone={reload} />
           </div>
         </div>
         {assets.length === 0 ? (

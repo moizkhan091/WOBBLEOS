@@ -237,7 +237,9 @@ export const CAPTION_FILENAMES = ["caption.txt", "meta-ad-copy.txt"] as const;
  * `unsupported_media` warning — a folder of .md/.json working notes is not a broken post, and
  * warning about every one of them would bury the warnings that matter.
  */
-const MEDIA_LIKE_EXTS = new Set([".m4v", ".avi", ".mkv", ".wmv", ".flv", ".mpg", ".mpeg", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".svg", ".avif"]);
+// .m4v is NOT listed here any more — it is on the upload allowlist now (the pre-existing CLI importer
+// accepted it, so real files in the founder's trees use it), which means it imports rather than warns.
+const MEDIA_LIKE_EXTS = new Set([".avi", ".mkv", ".wmv", ".flv", ".mpg", ".mpeg", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".svg", ".avif"]);
 
 /** Dotfiles are NEVER read or listed — the reels root holds `.elevenlabs-credentials.local.txt`. */
 function isHidden(name: string): boolean {

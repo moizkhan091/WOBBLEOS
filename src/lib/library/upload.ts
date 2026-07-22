@@ -97,6 +97,9 @@ export const ALLOWED_MEDIA_TYPES: Readonly<Record<string, AllowedType>> = {
   "video/mp4": { ext: ".mp4", kind: "video" },
   "video/quicktime": { ext: ".mov", kind: "video" }, // what an iPhone hands you
   "video/webm": { ext: ".webm", kind: "video" },
+  // .m4v — the pre-existing CLI importer accepted it, so real files in the founder's trees use it.
+  // Without this they surfaced as `unsupported_media` warnings and silently never imported.
+  "video/x-m4v": { ext: ".m4v", kind: "video" },
 };
 
 /**

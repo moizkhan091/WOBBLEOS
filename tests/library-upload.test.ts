@@ -177,7 +177,9 @@ describe("storeUploadedMedia — founder media upload ingest", () => {
 
   it("exposes a defensible allowlist and limits", () => {
     expect(Object.keys(ALLOWED_MEDIA_TYPES).sort()).toEqual(
-      ["image/gif", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"].sort(),
+      // video/x-m4v is included because the pre-existing CLI importer accepted .m4v, so real files in
+      // the founder's content trees use it — without it they surfaced as warnings and never imported.
+      ["image/gif", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm", "video/x-m4v"].sort(),
     );
     expect(ALLOWED_MEDIA_TYPES["image/svg+xml"]).toBeUndefined(); // scriptable — deliberately excluded
     expect(DEFAULT_MAX_VIDEO_BYTES).toBe(200 * 1024 * 1024);
