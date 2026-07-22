@@ -234,16 +234,40 @@ export async function getMediaJob(id: string, deps: MediaDeps = {}): Promise<Med
 }
 
 /** Founder-facing pipeline status — honest about what is built vs blocked. */
-export function mediaPipelineStatus(): { pipelineBuilt: boolean; providerConfigured: boolean; provider: string; kinds: readonly string[]; note: string } {
-  const configured = falConfigured();
+/**
+ * Truthful, PER-KIND pipeline status. This previously reported only `falConfigured()` under a hardcoded
+ * `provider: "fal"`, so the UI announced "provider: blocked (set FAL_KEY)" while sitting directly above
+ * succeeded OpenRouter image jobs. Images run on OPENROUTER_API_KEY (no extra credential); only
+ * video/audio/3d depend on FAL_KEY. `providerConfigured` now means "at least one kind can actually run".
+ */
+export function mediaPipelineStatus(): {
+  pipelineBuilt: boolean;
+  providerConfigured: boolean;
+  provider: string;
+  kinds: readonly string[];
+  imageEnabled: boolean;
+  videoAudio3dEnabled: boolean;
+  note: string;
+} {
+  const imageEnabled = openrouterMediaProvider.configured();
+  const videoAudio3dEnabled = falConfigured();
+  const parts = [
+    "Durable pipeline (queue, worker, bounded retries, crash recovery, budget caps).",
+    imageEnabled
+      ? "IMAGES: live on OpenRouter — the same OPENROUTER_API_KEY the OS already uses, no extra credential."
+      : "IMAGES: blocked until OPENROUTER_API_KEY is set (truthfully 'blocked', never faked).",
+    videoAudio3dEnabled
+      ? "VIDEO/AUDIO/3D: live on fal.ai."
+      : "VIDEO/AUDIO/3D: optional — blocked until FAL_KEY is set. Images are unaffected.",
+  ];
   return {
-    pipelineBuilt: true, // durable queue + worker + retries + recovery + UI are built
-    providerConfigured: configured,
-    provider: "fal",
+    pipelineBuilt: true,
+    providerConfigured: imageEnabled || videoAudio3dEnabled,
+    provider: imageEnabled ? "openrouter" : "fal",
     kinds: MEDIA_KINDS,
-    note: configured
-      ? "Pipeline built AND the live fal.ai adapter is wired (queue→poll→result→download to durable storage, with provider_runs cost records). FAL key present — real generation is enabled."
-      : "Pipeline built (durable queue, worker, retries, recovery, UI) and the fal.ai adapter is wired. The live provider is BLOCKED until FAL_KEY is set; until then a submitted job is truthfully 'blocked', never faked.",
+    imageEnabled,
+    videoAudio3dEnabled,
+    note: parts.join(" "),
   };
 }
 

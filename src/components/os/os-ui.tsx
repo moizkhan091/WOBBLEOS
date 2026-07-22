@@ -5222,7 +5222,7 @@ function RestorePanel({ onDone }: { onDone: () => void }) {
 const MEDIA_STATUS_COLORS: Record<string, string> = { queued: "#F5C542", generating: C.blue, succeeded: C.lime, failed: C.orange, canceled: C.gray, blocked: C.orange };
 
 function MediaStudioPage() {
-  const state = useApi<{ pipelineBuilt: boolean; providerConfigured: boolean; provider: string; kinds: string[]; note: string; jobs: Record<string, unknown>[] }>("/api/media?limit=50");
+  const state = useApi<{ pipelineBuilt: boolean; providerConfigured: boolean; provider: string; kinds: string[]; imageEnabled: boolean; videoAudio3dEnabled: boolean; note: string; jobs: Record<string, unknown>[] }>("/api/media?limit=50");
   const [kind, setKind] = useState("image");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
@@ -5259,7 +5259,10 @@ function MediaStudioPage() {
           <span style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: C.lime, background: "rgba(126,217,87,0.12)" }}><Icon name="Clapperboard" size={16} /></span>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Media Studio</div>
           <div style={{ flex: 1 }} />
-          <Tag text={d?.providerConfigured ? "provider: configured" : "provider: blocked (set FAL_KEY)"} color={d?.providerConfigured ? C.lime : "#F5C542"} />
+          {/* Per-kind truth: images run on OpenRouter, video/audio/3d on fal. A single "set FAL_KEY"
+              badge used to show as blocked even while succeeded OpenRouter image jobs sat right below. */}
+          <Tag text={d?.imageEnabled ? "images: live (OpenRouter)" : "images: blocked (set OPENROUTER_API_KEY)"} color={d?.imageEnabled ? C.lime : "#F5C542"} />
+          <Tag text={d?.videoAudio3dEnabled ? "video/audio/3d: live (fal)" : "video/audio/3d: optional (set FAL_KEY)"} color={d?.videoAudio3dEnabled ? C.lime : faint} />
         </div>
         <div style={{ fontSize: 12, color: faint, lineHeight: 1.55, marginBottom: 12 }}>{d?.note}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
