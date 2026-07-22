@@ -380,6 +380,220 @@ const businessOverviewTool = defineTool<Record<string, never>>({
   },
 });
 
+// ------------------------------------------------------- intelligence / source reads
+
+const listSourcesTool = defineTool<{ status?: string; targetType?: string }>({
+  name: "list_sources",
+  description: "List the research sources / tracked accounts the OS monitors (competitor accounts, creator accounts, sites, queries) with approval status, cadence and when each was last checked. Use for 'what are we tracking', 'how many sources', 'is anything new', 'are we still watching X'.",
+  jsonSchema: objectSchema({
+    status: { type: "string", description: "Optional approval filter: pending | approved | rejected." },
+    targetType: { type: "string", description: "Optional type filter, e.g. 'competitor_account', 'creator_account'." },
+  }),
+  argsSchema: z.object({ status: z.string().trim().optional(), targetType: z.string().trim().optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { listResearchTargets } = await import("@/lib/intelligence");
+    const rows = await listResearchTargets({ limit: 300 });
+    let list = rows;
+    if (args.status) list = list.filter((r) => r.approvalStatus === args.status);
+    if (args.targetType) list = list.filter((r) => r.targetType === args.targetType);
+    const byStatus: Record<string, number> = {};
+    for (const r of rows) byStatus[r.approvalStatus] = (byStatus[r.approvalStatus] ?? 0) + 1;
+    return {
+      total: rows.length,
+      byApprovalStatus: byStatus,
+      sources: list.map((r) => ({ id: r.id, name: r.name, type: r.targetType, platform: r.platform, handleOrUrl: r.handleOrUrl, approvalStatus: r.approvalStatus, cadence: r.cadence, lastCheckedAt: r.lastCheckedAt, trustLevel: r.trustLevel })),
+    };
+  },
+});
+
+const proposeSourceTool = defineTool<{ name: string; targetType: string; handleOrUrl?: string; platform?: string; reason: string; evidence: string[]; expectedValue: string; collectionMethod?: string }>({
+  name: "propose_source",
+  description: "Propose a NEW research source / account to track. Creates it PENDING the founder's approval — never active immediately. Use when asked to 'track', 'add', 'start watching' an account, competitor or site.",
+  jsonSchema: objectSchema(
+    {
+      name: { type: "string", description: "Human name of the source, e.g. 'Jao Roberts'." },
+      targetType: { type: "string", description: "competitor_account | creator_account | website | search_query | publication (see the OS's research target types)." },
+      handleOrUrl: { type: "string", description: "The @handle or URL to monitor." },
+      platform: { type: "string", description: "instagram | linkedin | youtube | web …" },
+      reason: { type: "string", description: "Why this source is worth tracking." },
+      evidence: { type: "array", items: { type: "string" }, description: "At least one concrete piece of evidence justifying it." },
+      expectedValue: { type: "string", description: "What the OS expects to learn from it." },
+      collectionMethod: { type: "string", description: "How it would be collected, e.g. 'apify instagram scraper'." },
+    },
+    ["name", "targetType", "reason", "evidence", "expectedValue"],
+  ),
+  argsSchema: z.object({
+    name: z.string().trim().min(1),
+    targetType: z.string().trim().min(1),
+    handleOrUrl: z.string().trim().optional(),
+    platform: z.string().trim().optional(),
+    reason: z.string().trim().min(1),
+    evidence: z.array(z.string().trim().min(1)).min(1),
+    expectedValue: z.string().trim().min(1),
+    collectionMethod: z.string().trim().optional(),
+  }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { proposeResearchSource } = await import("@/lib/intelligence");
+    const row = await proposeResearchSource({
+      targetType: args.targetType as never,
+      name: args.name,
+      platform: args.platform,
+      handleOrUrl: args.handleOrUrl,
+      addedBy: ctx.actor ?? "ask_wobble",
+      proposal: {
+        reason: args.reason,
+        evidence: args.evidence,
+        expectedValue: args.expectedValue,
+        collectionMethod: args.collectionMethod ?? "manual",
+      },
+    });
+    return { sourceId: row.id, name: row.name, approvalStatus: row.approvalStatus, note: "created PENDING your approval — it is not being collected yet" };
+  },
+});
+
+// ------------------------------------------------------- business ACTION tools
+//
+// Everything here creates a DRAFT or a PENDING record inside the existing guardrails (validation +
+// approval + audit). Nothing here sends, publishes, or deletes — those stay confirm-gated surfaces in
+// their own modules, so the agent can never quietly ship something to a client.
+
+const createLeadTool = defineTool<{ name: string; contactName?: string; email?: string; phone?: string; companyName?: string; industry?: string; source?: string; problemStated?: string }>({
+  name: "create_lead",
+  description: "Capture a NEW lead in the CRM. It is scored automatically and lands in the New Lead stage for qualification. Use when the founder says 'add a lead', 'log this prospect', 'someone reached out'.",
+  jsonSchema: objectSchema(
+    {
+      name: { type: "string", description: "Lead label — usually the company name." },
+      contactName: { type: "string" }, email: { type: "string" }, phone: { type: "string" },
+      companyName: { type: "string" }, industry: { type: "string" },
+      source: { type: "string", description: "manual | referral | inbound | cold_email | instagram | linkedin | website_form | whatsapp" },
+      problemStated: { type: "string", description: "The problem the prospect described, in their words." },
+    },
+    ["name"],
+  ),
+  argsSchema: z.object({
+    name: z.string().trim().min(1), contactName: z.string().trim().optional(), email: z.string().trim().optional(),
+    phone: z.string().trim().optional(), companyName: z.string().trim().optional(), industry: z.string().trim().optional(),
+    source: z.string().trim().optional(), problemStated: z.string().trim().optional(),
+  }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { addLead } = await import("@/lib/crm");
+    // The model usually supplies only `name` ("a lead for Skyline Interiors"), which left companyName
+    // blank on the row and starved the scorer. Default the company from the label so the CRM record is
+    // complete and scoreable rather than a bare string.
+    const lead = await addLead({
+      ...args,
+      companyName: args.companyName ?? args.name,
+      source: args.source ?? "manual",
+      createdBy: ctx.actor ?? "ask_wobble",
+    } as never);
+    return { leadId: lead.id, name: lead.name, company: lead.companyName ?? args.name, score: lead.score, status: lead.status, note: "captured in the CRM — it appears in the New Lead column of the pipeline" };
+  },
+});
+
+const runFreeAuditTool = defineTool<{ businessName: string; industry?: string; problems?: string[] }>({
+  name: "run_free_audit",
+  description: "Run the free/quick AI-readiness audit for a business and persist the report. Returns the audit id, its opportunities and estimated upside. Use for 'audit X', 'quick diagnosis for X'.",
+  jsonSchema: objectSchema(
+    { businessName: { type: "string" }, industry: { type: "string" }, problems: { type: "array", items: { type: "string" }, description: "Known pain points, if the founder stated any." } },
+    ["businessName"],
+  ),
+  argsSchema: z.object({ businessName: z.string().trim().min(1), industry: z.string().trim().optional(), problems: z.array(z.string().trim().min(1)).optional() }),
+  mutates: true,
+  handler: async (args) => {
+    const { runFreeAudit } = await import("@/lib/free-audit");
+    const audit = await runFreeAudit({ businessName: args.businessName, industry: args.industry, problems: args.problems ?? [] } as never);
+    return { auditId: audit.id, businessName: audit.businessName, kind: audit.kind, note: "audit stored — you can build a proposal from it with build_proposal_from_audit" };
+  },
+});
+
+const buildProposalFromAuditTool = defineTool<{ auditId: string }>({
+  name: "build_proposal_from_audit",
+  description: "Turn an existing audit into a DRAFT proposal (scope + pricing derived from the audit's findings). The proposal is created as a draft for founder review — it is NOT sent. Use for 'build a proposal from that audit'.",
+  jsonSchema: objectSchema({ auditId: { type: "string", description: "The audit id to build from." } }, ["auditId"]),
+  argsSchema: z.object({ auditId: z.string().trim().min(1) }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { createProposalFromAudit } = await import("@/lib/proposals");
+    const proposal = await createProposalFromAudit(args.auditId, { createdBy: ctx.actor ?? "ask_wobble" });
+    if (!proposal) return { created: false, note: "no audit found with that id" };
+    return { created: true, proposalId: proposal.id, title: proposal.title, status: proposal.status, valueUsd: proposal.pricingCents / 100, note: "DRAFT created — review and send it from the Proposals module" };
+  },
+});
+
+const createInvoiceDraftTool = defineTool<{ description: string; amountUsd: number; companyId?: string; dueInDays?: number }>({
+  name: "create_invoice_draft",
+  description: "Create a DRAFT invoice. Drafts are never sent — the founder approves and sends from the Invoices module. Use for 'invoice X for Y'.",
+  jsonSchema: objectSchema(
+    { description: { type: "string" }, amountUsd: { type: "number" }, companyId: { type: "string" }, dueInDays: { type: "number", description: "Payment terms in days (default 14)." } },
+    ["description", "amountUsd"],
+  ),
+  argsSchema: z.object({ description: z.string().trim().min(1), amountUsd: z.number().min(0), companyId: z.string().trim().optional(), dueInDays: z.number().int().min(0).max(365).optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { createInvoice } = await import("@/lib/finance");
+    const inv = await createInvoice({
+      companyId: args.companyId,
+      lineItems: [{ description: args.description, quantity: 1, unitPriceCents: Math.round(args.amountUsd * 100) }],
+      dueDate: new Date(Date.now() + (args.dueInDays ?? 14) * 86_400_000),
+      createdBy: ctx.actor ?? "ask_wobble",
+    } as never);
+    return { invoiceId: inv.id, number: inv.invoiceNumber, status: inv.status, totalUsd: inv.totalCents / 100, note: "DRAFT — approve and send it from the Invoices module" };
+  },
+});
+
+const generateContentTool = defineTool<{ objective: string; contentTrackId?: string; platforms?: string[] }>({
+  name: "generate_content",
+  description: "Kick off the content team to produce content packets for an objective. Runs as a background job and lands in Content Command for approval — it does NOT publish. Use for 'write posts about X', 'make content for Y'.",
+  jsonSchema: objectSchema(
+    { objective: { type: "string", description: "What the content should achieve." }, contentTrackId: { type: "string", description: "Which content track/brand. Defaults to the WOBBLE company track." }, platforms: { type: "array", items: { type: "string" } } },
+    ["objective"],
+  ),
+  argsSchema: z.object({ objective: z.string().trim().min(1), contentTrackId: z.string().trim().optional(), platforms: z.array(z.string().trim()).optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { enqueueContentGenerationJob } = await import("@/lib/content-worker");
+    const res = await enqueueContentGenerationJob({
+      contentTrackId: args.contentTrackId ?? "track_wobble_company",
+      objective: args.objective,
+      platformFocus: (args.platforms ?? []) as never,
+      requestedBy: ctx.actor ?? "ask_wobble",
+    } as never);
+    return { queued: true, job: res, note: "content team started — drafts will appear in Content Command for your approval" };
+  },
+});
+
+const websiteStatsTool = defineTool<{ period?: string }>({
+  name: "get_website_stats",
+  description: "Live website analytics (visitors, pageviews, sources) for a period. Reports honestly if analytics is not configured rather than inventing numbers.",
+  jsonSchema: objectSchema({ period: { type: "string", description: "e.g. '7d', '30d' (default 30d)." } }),
+  argsSchema: z.object({ period: z.string().trim().optional() }),
+  mutates: false,
+  handler: async (args) => {
+    const { getWebstats } = await import("@/lib/analytics/plausible");
+    return getWebstats(args.period ?? "30d");
+  },
+});
+
+const createTaskTool = defineTool<{ title: string; details?: string; dueInDays?: number; owner?: string }>({
+  name: "create_task",
+  description: "Create a task in Delivery & Ops so a commitment is not lost. Use for 'remind me to…', 'add a task…', or to capture a follow-up you just agreed.",
+  jsonSchema: objectSchema({ title: { type: "string" }, details: { type: "string" }, dueInDays: { type: "number" }, owner: { type: "string" } }, ["title"]),
+  argsSchema: z.object({ title: z.string().trim().min(1), details: z.string().trim().optional(), dueInDays: z.number().int().min(0).max(365).optional(), owner: z.string().trim().optional() }),
+  mutates: true,
+  handler: async (args, ctx) => {
+    const { addTask } = await import("@/lib/tasks");
+    const task = await addTask({
+      title: args.title, details: args.details,
+      dueAt: args.dueInDays != null ? new Date(Date.now() + args.dueInDays * 86_400_000) : undefined,
+      owner: args.owner ?? ctx.actor, createdBy: ctx.actor ?? "ask_wobble",
+    } as never);
+    return { taskId: (task as { id: string }).id, title: args.title };
+  },
+});
+
 export const ASK_TOOLS: ToolDefinition[] = [
   listAgentsTool,
   listPendingApprovalsTool,
@@ -397,6 +611,16 @@ export const ASK_TOOLS: ToolDefinition[] = [
   listLeadsTool,
   financeSummaryTool,
   listProposalsTool,
+  listSourcesTool,
+  websiteStatsTool,
+  // actions — all create DRAFTS or PENDING records inside existing guardrails; none send or publish
+  createLeadTool,
+  runFreeAuditTool,
+  buildProposalFromAuditTool,
+  createInvoiceDraftTool,
+  generateContentTool,
+  proposeSourceTool,
+  createTaskTool,
 ];
 
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));
