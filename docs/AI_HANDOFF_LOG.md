@@ -7038,3 +7038,39 @@ becomes a thin wrapper) in a dedicated change.
 
 Gate: `npm run typecheck` clean; `tests/folder-import.test.ts` 17/17;
 `tests/library-upload.test.ts` 21/21; route-auth-coverage + prod-env-template + library 5 files/89 green.
+
+---
+
+## Eval harness (golden-set, deterministic CI tier) — Claude (Opus 4.8)
+
+NEW FILES ONLY; no existing core module edited (os-ui, ask/**, ask-tools/**, media/**, providers/**,
+system-map/**, db/schema.ts, migrations all untouched — imported read-only where referenced).
+
+WHAT: a self-contained agent/LLM output-QUALITY regression net, runnable as `npm run eval`.
+  - `src/lib/evals/harness.ts` — types (`EvalCase`, `Assertion` discriminated union, `EvalResult`,
+    `EvalSuiteSummary`) + `runEvalCase` / `runSuite` with an INJECTED `produce(input)=>Promise<string>`.
+    Deterministic assertion kinds (pure, no I/O): must_include, must_not_include, matches_schema (Zod),
+    json_parses, must_cite, max_length, non_empty, custom. Plus an OPT-IN `llm_judge` kind that is
+    SKIPPED (never failed, never counted as a failure) unless an `opts.judge` fn is injected. The harness
+    NEVER imports/calls a provider.
+  - `src/lib/evals/wobble-rules.ts` — `WOBBLE_FORBIDDEN_PHRASES` + `brandAssertions()` (one
+    must_not_include per banned claim, case-insensitive) hardcoded from docs/WOBBLE_COMPANY_OS.md §20
+    (+ §16.3, §5.4); `citationAssertion()` matching Ask WOBBLE's inline `[n]` shape
+    (src/lib/domain/ask.ts buildEvidenceBlock).
+  - `src/lib/evals/cases/index.ts` — 8 golden cases (content ×3, proposal ×2, ask ×3) each paired with a
+    recorded on-brand output; `replayProducer()` replays them keyed by JSON.stringify(input) so the run
+    is free/offline/reproducible.
+  - `scripts/run-evals.ts` + `"eval": "tsx scripts/run-evals.ts"` — runs the deterministic tier, prints
+    a pass/fail summary, exits non-zero on any failure. Header documents how to enable live-producer +
+    judge tiers behind an env flag.
+  - `tests/evals.test.ts` — 21 tests: every assertion kind passes-on-good/fails-on-bad, brand phrase
+    caught case-insensitively, matches_schema fails on shape violation, llm_judge SKIPPED w/o judge and
+    evaluated (pass+fail+below-threshold) w/ judge, runSuite aggregation, and the full golden set green.
+
+WHY the split: the deterministic tier is the CI gate because it's pure/free/reproducible — brand-voice
+and structural regressions fail cheaply on every push. The judge tier costs money + is non-deterministic
+(the founder's OpenRouter balance is near-empty), so it's OFF by default and physically cannot spend or
+break CI unless a judge is explicitly injected.
+
+Gate: `npx tsc --noEmit` clean; `tests/evals.test.ts` 21/21; `npm run eval` 8/8 passed (1 judge
+assertion skipped), exit 0.
