@@ -5,6 +5,7 @@ import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { newId } from "@/lib/ids";
 import { recordProviderRun, type RecordProviderRunInput } from "@/lib/provider-runs";
+import { assertProviderAllowance, recordExternalSpend, ProviderBudgetExceededError } from "@/lib/provider-budget";
 import { falMediaProvider } from "@/lib/media/fal-provider";
 import { openrouterMediaProvider } from "@/lib/media/openrouter-provider";
 import {
@@ -81,7 +82,14 @@ export interface MediaDeps {
   recordAudit?: (i: AuditEventInput) => Promise<void>;
   recordProviderRun?: (i: RecordProviderRunInput) => Promise<unknown>;
   providers?: Record<string, MediaProvider>;
+  /** Set false to skip the external-budget circuit-breaker (tests inject fake providers). Default: on when DATABASE_URL is set. */
+  enforceBudget?: boolean;
   now?: Date;
+}
+
+/** The external-budget provider a media provider draws from (image → OpenRouter cap, video/etc → fal). */
+function budgetProviderFor(slug: string): "openrouter" | "fal" | null {
+  return slug === "openrouter" ? "openrouter" : slug === "fal" ? "fal" : null;
 }
 
 async function audit(deps: MediaDeps, i: AuditEventInput): Promise<void> {
@@ -150,6 +158,27 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
     await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider } });
     return { claimed: true, jobId: job.id, status: "blocked" };
   }
+  // BUDGET CIRCUIT-BREAKER. Text generation already passes through assertProviderAllowance + records
+  // spend (providers/index.ts), but MEDIA did not — image jobs could blow straight past the OpenRouter
+  // cap. So before spending: if the provider's external budget is exhausted, BLOCK the job (resumable,
+  // no attempt consumed — exactly like the not-configured path) instead of firing a call that will fail
+  // and churn the queue. This is Paperclip's "overspend pauses queued work". Env-gated + injectable so
+  // unit tests that inject fake providers (and run with no DB) are unaffected.
+  const budgetProvider = budgetProviderFor(provider.slug);
+  const enforceBudget = deps.enforceBudget ?? Boolean(process.env.DATABASE_URL);
+  const worstCents = job.estimatedCostCents || job.budgetCapCents || 0;
+  if (budgetProvider && enforceBudget) {
+    try {
+      await assertProviderAllowance(budgetProvider, worstCents / 100);
+    } catch (error) {
+      if (error instanceof ProviderBudgetExceededError) {
+        await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `${budgetProvider} budget exhausted — top up and retry (${error.message})`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
+        await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider, reason: "budget_exhausted", spent: error.spent, stop: error.stop } });
+        return { claimed: true, jobId: job.id, status: "blocked" };
+      }
+      throw error;
+    }
+  }
   const attemptStart = Date.now();
   // Durable paid-attempt / cost record (WOB-AUD-014) — written on BOTH success and failure.
   const recordRun = (fields: Omit<RecordProviderRunInput, "provider" | "operation" | "requestMetadata">) =>
@@ -168,6 +197,11 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
     const owned = await store.updateOwned(job.id, leaseOwner, { status: "succeeded", outputRefs: result.outputRefs, actualCostCents: result.actualCostCents ?? job.estimatedCostCents, error: null, leaseOwner: null, leaseExpiresAt: null, completedAt: now, updatedAt: now });
     if (!owned) return { claimed: true, jobId: job.id, status: "generating" }; // lost the lease → another worker owns it
     await recordRun({ status: "success", actualCostCents: result.actualCostCents ?? job.estimatedCostCents, responseMetadata: { outputs: result.outputRefs.length } });
+    // Record the spend against the SAME external cap text uses, so image + text share one budget and
+    // the circuit-breaker above can see media usage. Best-effort — a ledger blip never fails the job.
+    if (budgetProvider && enforceBudget) {
+      await recordExternalSpend({ provider: budgetProvider, item: `media.${job.kind}`, model: provider.slug, estimatedMaxCost: worstCents / 100, actualCost: (result.actualCostCents ?? job.estimatedCostCents) / 100, unit: "usd", result: "succeeded", actor: "media_worker" }).catch(() => {});
+    }
     await audit(deps, { eventType: "media.job_succeeded", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: provider.slug, outputs: result.outputRefs.length } });
     return { claimed: true, jobId: job.id, status: "succeeded" };
   } catch (error) {
