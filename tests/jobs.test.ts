@@ -27,13 +27,35 @@ describe("buildJobRow", () => {
 });
 
 describe("evaluateJobFailure", () => {
-  it("retries with exponential backoff while attempts remain", () => {
-    const d1 = evaluateJobFailure({ attempts: 1, maxAttempts: 3, now });
+  // rand=()=>1 makes full jitter deterministic: delay = half + 1*half = the full exponential ceiling.
+  const noJitter = () => 1;
+
+  it("retries with exponential backoff (full ceiling when jitter maxes) while attempts remain", () => {
+    const d1 = evaluateJobFailure({ attempts: 1, maxAttempts: 3, now, random: noJitter });
     expect(d1).toMatchObject({ willRetry: true, nextStatus: "pending", delayMs: 1000 });
     expect(d1.runAfter?.toISOString()).toBe(new Date(now.getTime() + 1000).toISOString());
 
-    const d2 = evaluateJobFailure({ attempts: 2, maxAttempts: 3, now });
+    const d2 = evaluateJobFailure({ attempts: 2, maxAttempts: 3, now, random: noJitter });
     expect(d2.delayMs).toBe(2000);
+  });
+
+  it("applies FULL JITTER between half and full of the exponential ceiling", () => {
+    // attempt 3 → ceiling = 1000 * 2^2 = 4000; jitter keeps delay in [2000, 4000].
+    for (const r of [0, 0.25, 0.5, 0.99, 1]) {
+      const d = evaluateJobFailure({ attempts: 3, maxAttempts: 5, now, random: () => r });
+      expect(d.delayMs).toBeGreaterThanOrEqual(2000);
+      expect(d.delayMs).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  it("caps the backoff so a high attempt count can't schedule a retry absurdly far out", () => {
+    const d = evaluateJobFailure({ attempts: 20, maxAttempts: 30, now, maxDelayMs: 30 * 60_000, random: noJitter });
+    expect(d.delayMs).toBeLessThanOrEqual(30 * 60_000);
+  });
+
+  it("honours a provider Retry-After hint over the computed backoff", () => {
+    const d = evaluateJobFailure({ attempts: 1, maxAttempts: 3, now, retryAfterMs: 12_345, random: noJitter });
+    expect(d.delayMs).toBe(12_345);
   });
 
   it("gives up (failed) once attempts reach maxAttempts", () => {

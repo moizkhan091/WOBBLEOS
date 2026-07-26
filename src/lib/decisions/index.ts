@@ -1,5 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { z } from "zod";
 import { decisions as decisionsTable } from "@/db/schema";
+import { parseStructuredWithRepair, repairInstruction } from "@/lib/providers/structured";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -7,6 +9,9 @@ import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { DECISION_MODULE, buildDecisionRow, canTransitionDecision, topOption, type CreateDecisionInput, type DecisionOption, type DecisionRow, type DecisionStatus, type ReasoningEntry } from "@/lib/domain/decision";
 
 /** Decision Room service. Create/list/transition decisions, AI-score options, commit with a reasoning trail. */
+
+/** The shape the decision scorer must return — validated + repaired via the shared structured helper. */
+const zScoreArray = z.array(z.object({ id: z.string(), score: z.number(), rationale: z.string().optional() }));
 
 export interface DecisionStore {
   insertDecision(row: DecisionRow): Promise<void>;
@@ -112,14 +117,17 @@ export async function scoreDecisionOptions(id: string, input: { actor?: string }
   ];
   const { text, run } = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages, maxTokens: 900 });
 
-  let scores: Array<{ id: string; score: number; rationale?: string }> = [];
-  try {
-    const cleaned = text.replace(/```json\s*|\s*```/g, "").trim();
-    const start = cleaned.indexOf("["); const end = cleaned.lastIndexOf("]");
-    scores = JSON.parse(start >= 0 && end >= 0 ? cleaned.slice(start, end + 1) : cleaned);
-  } catch {
-    throw new Error("decision scorer returned unparseable output");
-  }
+  // Validated structured parse (shared helper) with ONE repair round: a malformed field no longer throws
+  // away the whole scoring pass — the model gets one chance to fix it against the exact validation error.
+  const scoreSchema = zScoreArray;
+  const parsed = await parseStructuredWithRepair(text, scoreSchema, {
+    repair: async (bad, error) => {
+      const r = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: repairInstruction(error) }], maxTokens: 900 });
+      return r.text;
+    },
+  });
+  if (!parsed.ok || !parsed.data) throw new Error(`decision scorer returned unparseable output — ${parsed.error}`);
+  const scores = parsed.data;
   const byId = new Map(scores.map((s) => [s.id, s]));
   const options = d.options.map((o) => { const s = byId.get(o.id); return s ? { ...o, score: Math.max(0, Math.min(100, Math.round(s.score))), rationale: s.rationale ?? o.rationale } : o; });
   const best = topOption(options);

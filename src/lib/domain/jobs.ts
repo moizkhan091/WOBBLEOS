@@ -90,6 +90,13 @@ export interface JobFailureInput {
   maxAttempts: number;
   now?: Date;
   baseDelayMs?: number;
+  /** Cap on the backoff so a high attempt count can't schedule a retry hours/days out. Default 30min. */
+  maxDelayMs?: number;
+  /** A provider-supplied hint (e.g. a 429 `Retry-After`, in ms). When present it OVERRIDES the computed
+   *  backoff — honouring the server's rate-limit window is strictly better than guessing. */
+  retryAfterMs?: number;
+  /** Injectable RNG for the jitter, so tests are deterministic. Defaults to Math.random. */
+  random?: () => number;
 }
 
 export interface JobFailureDecision {
@@ -106,11 +113,22 @@ export interface JobFailureDecision {
 export function evaluateJobFailure(input: JobFailureInput): JobFailureDecision {
   const now = input.now ?? new Date();
   const base = input.baseDelayMs ?? 1000;
+  const maxDelay = input.maxDelayMs ?? 30 * 60_000; // 30min cap — a retry must never be scheduled hours out
+  const rand = input.random ?? Math.random;
   const willRetry = input.attempts < input.maxAttempts;
+  if (!willRetry) return { willRetry: false, nextStatus: "failed", runAfter: null, delayMs: 0 };
 
-  if (willRetry) {
-    const delayMs = base * 2 ** Math.max(0, input.attempts - 1);
-    return { willRetry: true, nextStatus: "pending", runAfter: new Date(now.getTime() + delayMs), delayMs };
+  let delayMs: number;
+  if (input.retryAfterMs != null && input.retryAfterMs >= 0) {
+    // Honour the provider's own rate-limit window (429 Retry-After) instead of guessing.
+    delayMs = Math.min(input.retryAfterMs, maxDelay);
+  } else {
+    // Exponential backoff with FULL JITTER: delay = half + random(0, half). Plain exponential makes a
+    // fleet of workers retry in lockstep (thundering herd) and re-hammer a recovering dependency; the
+    // jitter spreads them out. Capped so late attempts don't schedule absurdly far in the future.
+    const ceiling = Math.min(base * 2 ** Math.max(0, input.attempts - 1), maxDelay);
+    const half = ceiling / 2;
+    delayMs = Math.round(half + rand() * half);
   }
-  return { willRetry: false, nextStatus: "failed", runAfter: null, delayMs: 0 };
+  return { willRetry: true, nextStatus: "pending", runAfter: new Date(now.getTime() + delayMs), delayMs };
 }
