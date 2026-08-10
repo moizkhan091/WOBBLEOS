@@ -847,3 +847,37 @@ usernames (company domain; login sends no mail). Founders rotate on first login.
 
 **Affects (ops, not repo code)**: `/etc/wobble/wobble.env` (PUBLIC_BASE_URL=https://os.wobblepk.com),
 box `/opt/wobble-os` @ ce9a9e6. No application code changed by the deploy.
+
+---
+
+## 2026-08-10 — Keep the AI departments in code; n8n is the IO edge, not the brain (Claude)
+
+**Decision**: Do NOT move WOBBLE's 14 departments / 77 agents into n8n as "one orchestrator agent per
+department with 20-30 sub-agents as tools". Keep orchestration code-native; use n8n for integrations
+(form intake, email, scraping, publishing, WhatsApp).
+
+**Why** (researched, sources in `docs/IMPROVEMENTS_FROM_AI_OS_RESEARCH.md` follow-up):
+- 20-30 tools per agent sits ON the known degradation knee (safe band ~10-20). RAG-MCP (arXiv
+  2505.03275): naive all-tools-in-prompt scored 13.6% selection accuracy vs 43.1% with retrieval.
+- Tool schemas are re-billed on EVERY call (~250-1024 tokens each); n8n's own blog puts multi-agent at
+  10-20x the tokens of single-agent.
+- n8n's OWN docs advise fewer tools per agent and "prompt chaining for the predictable parts".
+  Anthropic scopes orchestrator-workers to tasks where you "can't predict the subtasks" — an audit has
+  five known stages, so the LLM should write each stage's CONTENT, not choose the SEQUENCE.
+- Governance (budget caps, kill switch, spend ledger, approvals, earned autonomy, audit log) would have
+  to be rebuilt in JS code nodes; n8n Git + evals are Enterprise-only and credentials do not sync.
+- Sharpest, architecture-independent point: the instance already runs ~220 client-delivery workflows
+  (JABS). Shared runtime = worker saturation, DB lock contention, queue starvation and credential blast
+  radius across internal AND client work. The real mitigation is a SECOND n8n instance, at which point
+  "we already have n8n" stops being the argument.
+
+**Honest counter-argument accepted**: n8n's per-node visual trace is genuinely better than what the OS
+offers today, and non-developer editing is a real business constraint. Both were named, not dismissed.
+**Consequence**: an agent span/trace view is now owed in the OS (it was already #3 in the research
+backlog) — that is the debt this decision creates.
+
+**Also decided**: the readiness form gets its OWN endpoint rather than extending `/api/n8n/callback`.
+The callback is best-effort by design (its effects must never fail an accepted delivery); a LEAD must
+never be silently swallowed, so the intake route needs the opposite semantics — 500 to force a retry.
+It reuses every security helper (`readCappedRawBody`, `verifyWebhookSignature`, `buildWebhookEventRow`),
+so nothing is duplicated except the failure policy, which is the point.

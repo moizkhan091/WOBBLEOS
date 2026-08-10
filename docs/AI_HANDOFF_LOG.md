@@ -7104,3 +7104,47 @@ critical n8n stack — n8n never restarted (uptime unbroken) and Traefik was not
   version-parity all on ce9a9e6). Memory headroom 5.6 GB free — n8n not starved.
 - **Secrets**: `/etc/wobble/wobble.env` (600, root) holds generated SESSION/MEDIA/webhook secrets + real
   OPENROUTER/ZERNIO/APIFY keys. RECOMMEND rotating the API keys that were exposed in chat.
+
+---
+
+## 2026-08-10 — Website form → OS client container is LIVE end-to-end (Claude)
+
+The founder SOP ("a lead may only enter WOBBLE through the website form") now actually works. Proven in
+production, not on a fixture.
+
+- **OS side** (`0ced4f0`): `src/lib/domain/intake.ts` (pure mapping, pinned to the real payload from n8n
+  execution 204120) + `src/lib/intake` (composes existing CRM primitives in one transaction, dedupes on
+  domain > email > exact name) + `POST /api/webhooks/readiness-form` (timestamped raw-body HMAC, fail
+  closed, 422 for unusable / 500 for transient so n8n retries and a lead is never swallowed).
+- **n8n side** (workflow `Ajd442KDg6EYRlrWTo6hn` "Wobble form"): was a SINGLE naked webhook node — every
+  submission since June was discarded. Now:
+  `Webhook → Normalise submission → Sign for WOBBLE OS (HMAC) → Create client in WOBBLE OS → Compose
+  founder alert → Email founders`.
+  - The payload is `JSON.stringify`'d ONCE and the same string is signed and sent (re-serialising
+    anywhere breaks the HMAC).
+  - Idempotency key `readiness:<email>:<submitted_at>` is stable across n8n retries, so a redelivery
+    dedupes in the OS instead of creating a second lead.
+  - HTTP node: 3 retries + `onError: continueRegularOutput` — a failed OS write STILL emails the
+    founders, with a red "NOT SAVED TO OS" banner and every detail, so no lead is lost.
+  - Email is WOBBLE-branded (`#b8ff2c` on `#070708`), HTML-escaped (a lead can inject nothing), pain
+    points as the hero block, click-to-WhatsApp + mailto, "EXISTING COMPANY" flag on dedupe.
+- **Live proof** (execution 204348): `ok:true`, Bright Smile Dental → company + contact + lead + deal,
+  score 100 / Hot / `qualified`; Gmail message `19febaa1c7eabfed` delivered to all four founders.
+- **n8n gotchas worth remembering**: this instance uses VERSIONED PUBLISHING — `update_workflow` only
+  edits a draft; `publish_workflow` is required or the old version keeps running (a first test showed
+  `lastNodeExecuted: Webhook` and 9ms). Publishing is blocked while anyone has the workflow open in the
+  editor. Saving in the UI silently dropped the Gmail `resource`/`operation` and the Crypto
+  `type`/`encoding`, so those are now pinned explicitly.
+- The Crypto node takes its HMAC secret from an encrypted `crypto` CREDENTIAL, not a node parameter —
+  better, the secret never sits in workflow JSON or an export.
+
+## 2026-08-10 — SECURITY: 45 read handlers served revoked sessions (`88393a0`)
+
+Found while verifying the above: the browser showed CRM data while `/api/auth/session` returned 401.
+The edge proxy (`src/proxy.ts`) can only verify the JWT SIGNATURE — the edge runtime cannot reach
+Postgres — so deep revocation is delegated to each Node handler. Every mutation did that; 45 GET
+handlers imported the gate and never called it. A revoked session or a DISABLED founder kept reading
+CRM, invoices, proposals, audits, memory and the daily brief until the 30-day token expired.
+Gated all 45. `tests/route-auth-coverage.test.ts` missed it because it asked whether a gate appears
+anywhere in the FILE — a gated POST vouched for an ungated GET; added a scan that parses each
+handler's OWN body. Verified live: those endpoints now 401 for the same revoked cookie.
