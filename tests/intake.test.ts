@@ -9,6 +9,7 @@ import {
   mapContextSharing,
   mapPaidAuditOpenness,
   mapRelationship,
+  formatIntakeForAudit,
   mapSubmissionToCrm,
   mapTeamSize,
   mapUrgency,
@@ -16,6 +17,7 @@ import {
   qualify,
   readinessSubmissionSchema,
   resolveWhatsapp,
+  snapshotFromLead,
   stageForSubmission,
   tierForScore,
   validateSubmission,
@@ -375,5 +377,79 @@ describe("intakeReadinessSubmission", () => {
     });
     expect(events[0].eventType).toBe("intake.readiness_form_received");
     expect(events[0].metadata).toMatchObject({ deduped: false, stage: "qualified" });
+  });
+});
+
+// ---------------------------------------------------------------- reading the intake back out
+
+describe("intake read-back (what the audit + question engine consume)", () => {
+  /** A lead row exactly as intakeReadinessSubmission stores it. */
+  function storedLead(overrides: Record<string, unknown> = {}) {
+    const mapped = mapSubmissionToCrm(parse(REAL_SUBMISSION), { now });
+    return {
+      contactName: mapped.lead.contactName ?? null,
+      problemStated: mapped.lead.problemStated ?? null,
+      serviceInterest: mapped.lead.serviceInterest ?? [],
+      score: 100,
+      createdAt: now,
+      metadata: mapped.lead.metadata as Record<string, unknown>,
+      ...overrides,
+    };
+  }
+  const company = { notes: "Dental clinic chain", companySize: "2–10", city: "pakistan, usa ,uk" };
+
+  it("rebuilds every readiness answer from the stored lead", () => {
+    const s = snapshotFromLead(storedLead(), company);
+    expect(s.painPoints).toContain("no-shows");
+    expect(s.currentTools).toBe("WhatsApp, Excel");
+    expect(s.aiWorkflowStage).toBe("Experimenting personally");
+    expect(s.urgency).toBe("Immediately");
+    expect(s.openToPaidAudit).toBe("Yes");
+    expect(s.whatMakesCallUseful).toBe("Know if AI is useful for us");
+    expect(s.focusAreas).toContain("Customer support");
+    expect(s.businessDescription).toBe("Dental clinic chain");
+    expect(s.teamSize).toBe("2–10");
+    expect(s.tier).toBe("Hot");
+  });
+
+  it("renders an audit block that frames answers as CLAIMS, not findings", () => {
+    const block = formatIntakeForAudit([snapshotFromLead(storedLead(), company)]);
+    // The framing is the point: an audit that parrots the form back adds nothing.
+    expect(block).toMatch(/their own words — treat as claims to verify, not findings/);
+    expect(block).toContain("MOST RECENT SUBMISSION");
+    expect(block).toContain("no-shows");
+    expect(block).toContain("WhatsApp, Excel");
+    expect(block).toContain("100/100 (Hot)");
+  });
+
+  it("keeps older submissions (a changed answer is itself a signal) but caps at three", () => {
+    const many = [1, 2, 3, 4, 5].map(() => snapshotFromLead(storedLead(), company));
+    const block = formatIntakeForAudit(many);
+    expect(block.match(/EARLIER SUBMISSION/g) ?? []).toHaveLength(2); // 1 most-recent + 2 earlier
+  });
+
+  it("returns nothing at all when the client never came through the form", () => {
+    expect(formatIntakeForAudit([])).toBe("");
+  });
+
+  it("survives a lead with no readiness metadata rather than throwing", () => {
+    const s = snapshotFromLead({ contactName: "Walk-in", metadata: null, score: null });
+    expect(s.contactName).toBe("Walk-in");
+    expect(s.urgency).toBeNull();
+    expect(s.tier).toBeNull();
+    expect(formatIntakeForAudit([s])).toContain("MOST RECENT SUBMISSION");
+  });
+
+  it("getClientIntakeContext composes snapshots + the audit block, newest first", async () => {
+    const { getClientIntakeContext } = await import("@/lib/intake/context");
+    const ctx = await getClientIntakeContext("co_1", {
+      loadLeads: async () => ({
+        company,
+        leads: [storedLead({ score: 100 }), storedLead({ score: 40, problemStated: "older answer" })],
+      }),
+    });
+    expect(ctx.snapshots).toHaveLength(2);
+    expect(ctx.snapshots[0].score).toBe(100);
+    expect(ctx.auditBlock).toContain("older answer");
   });
 });

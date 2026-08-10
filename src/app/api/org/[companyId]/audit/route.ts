@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 import { getCommercialJourney } from "@/lib/commercial-journey";
 import { runPaidAuditGraph } from "@/lib/paid-audit-graph";
+import { getClientIntakeContext } from "@/lib/intake/context";
 import { getDb } from "@/db";
 import { meetingIntelligence } from "@/db/schema";
 
@@ -33,10 +34,16 @@ export async function POST(request: Request, context: { params: Promise<{ compan
       .from(meetingIntelligence)
       .where(and(eq(meetingIntelligence.companyId, companyId), eq(meetingIntelligence.status, "approved")))) as Array<{ kind: string; content: string }>;
 
+    // The website readiness form is the richest thing we know before a call ever happens — the client's
+    // own words on what is slow, what they run on, and how fast they want to move. It was being stored
+    // and then ignored here, which is precisely the "nothing carries over" the founder complained about.
+    const { snapshots, auditBlock } = await getClientIntakeContext(companyId);
+
     const services = [...new Set(journey.opportunities.flatMap((o) => o.serviceInterest))].filter(Boolean);
     const intakeNotes = [
       journey.qualification ? `QUALIFICATION: Grade ${journey.qualification.grade} (${journey.qualification.overallScore}/100). ${journey.qualification.recommendation}` : null,
       services.length ? `SERVICES OF INTEREST: ${services.join(", ")}` : null,
+      auditBlock || null,
       factRows.length ? `DISCOVERY FINDINGS (from meetings, founder-approved):\n${factRows.map((f) => `- [${f.kind}] ${f.content}`).join("\n")}` : null,
       `Meetings held: ${journey.meetings.length}. Discovery facts captured: ${journey.discoveryFactCount}. Furthest stage: ${journey.stage}.`,
     ]
@@ -54,7 +61,7 @@ export async function POST(request: Request, context: { params: Promise<{ compan
     return NextResponse.json({
       ok: true,
       auditId: result.auditId,
-      inheritedContext: { qualification: Boolean(journey.qualification), services: services.length, discoveryFacts: factRows.length },
+      inheritedContext: { qualification: Boolean(journey.qualification), services: services.length, discoveryFacts: factRows.length, readinessSubmissions: snapshots.length },
       report: { serviceCount: result.report.serviceCount, opportunities: result.report.opportunities.length, executiveSummary: result.report.executiveSummary },
     }, { status: 201 });
   } catch (error) {

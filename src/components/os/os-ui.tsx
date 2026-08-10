@@ -7183,6 +7183,59 @@ type OrgJourney = {
   stage: string;
 };
 type OrgLineage = { nodes: Array<{ id: string; type: string; label: string }>; edges: Array<{ from: string; to: string; relation: string }> };
+type IntakeSnap = {
+  submittedAt: string | null; contactName: string | null; role: string | null; teamSize: string | null;
+  cityMarket: string | null; businessDescription: string | null; focusAreas: string[]; painPoints: string | null;
+  aiWorkflowStage: string | null; currentTools: string | null; urgency: string | null; openToPaidAudit: string | null;
+  canShareWorkflowContext: string | null; whatMakesCallUseful: string | null; score: number | null; tier: string | null;
+};
+
+/** One answer from the readiness form. Rendered only when the client actually answered it. */
+function IntakeFact({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ minWidth: 168, fontSize: 10.5, color: faint, letterSpacing: "0.04em", textTransform: "uppercase", paddingTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 13, color: C.white, lineHeight: 1.5 }}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * What the client told us on the website form — the first thing a founder should see on the container,
+ * because it is what they will open the readiness call with. The pain field is given its own block: it
+ * is the single most useful thing on the form and it reads as a quote, not a table row.
+ */
+function IntakeCard({ snaps }: { snaps: IntakeSnap[] }) {
+  const s = snaps[0];
+  if (!s) return null;
+  return (
+    <div style={{ borderRadius: 14, border: "1px solid rgba(184,255,44,0.22)", background: "rgba(184,255,44,0.04)", padding: "16px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.lime }}>What they told us on the form</span>
+        {s.score !== null ? <Tag text={`${s.tier ?? ""} · ${s.score}/100`} color={C.lime} /> : null}
+        {snaps.length > 1 ? <span style={{ fontSize: 11, color: faint }}>{snaps.length} submissions</span> : null}
+        {s.submittedAt ? <span style={{ fontSize: 11, color: faint, marginLeft: "auto" }}>{new Date(s.submittedAt).toLocaleDateString()}</span> : null}
+      </div>
+      {s.painPoints ? (
+        <div style={{ borderRadius: 10, background: "rgba(0,0,0,0.28)", padding: "12px 14px", marginBottom: 10 }}>
+          <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 5 }}>What is slow, manual or person-dependent</div>
+          <div style={{ fontSize: 14.5, color: C.white, lineHeight: 1.55 }}>{s.painPoints}</div>
+        </div>
+      ) : null}
+      <IntakeFact label="Who filled it in" value={[s.contactName, s.role].filter(Boolean).join(" · ") || null} />
+      <IntakeFact label="What the business does" value={s.businessDescription} />
+      <IntakeFact label="Look here first" value={s.focusAreas.length ? s.focusAreas.join(" · ") : null} />
+      <IntakeFact label="Where they are with AI" value={s.aiWorkflowStage} />
+      <IntakeFact label="Tools they use now" value={s.currentTools} />
+      <IntakeFact label="How soon" value={s.urgency} />
+      <IntakeFact label="Open to a paid audit" value={s.openToPaidAudit} />
+      <IntakeFact label="Can share workflow context" value={s.canShareWorkflowContext} />
+      <IntakeFact label="Wants from the call" value={s.whatMakesCallUseful} />
+      <IntakeFact label="Team / market" value={[s.teamSize, s.cityMarket].filter(Boolean).join(" · ") || null} />
+    </div>
+  );
+}
 
 function OrgMetric({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
   return (
@@ -7202,7 +7255,7 @@ function OrgWorkspacePage() {
   const [selectedId, setSelectedId] = useState<string>("");
   useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
   const [tab, setTab] = useState<"journey" | "artifacts">("journey");
-  const org = useApi<{ journey: OrgJourney; lineage: OrgLineage }>(`/api/org/${selectedId || "__none__"}`);
+  const org = useApi<{ journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] } }>(`/api/org/${selectedId || "__none__"}`);
   const [auditBusy, setAuditBusy] = useState(false);
   const [auditMsg, setAuditMsg] = useState<string | null>(null);
   async function runClientAudit() {
@@ -7212,9 +7265,9 @@ function OrgWorkspacePage() {
       const r = await fetch(`/api/org/${selectedId}/audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       if (r.ok && j.ok !== false) {
-        const c = (j.inheritedContext ?? {}) as { discoveryFacts?: number; services?: number; qualification?: boolean };
+        const c = (j.inheritedContext ?? {}) as { discoveryFacts?: number; services?: number; qualification?: boolean; readinessSubmissions?: number };
         const rep = (j.report ?? {}) as { opportunities?: number; serviceCount?: number };
-        setAuditMsg(`Audit complete ✓ — inherited ${c.discoveryFacts ?? 0} discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities across ${Number(rep.serviceCount ?? 0)} services. See the Artifacts tab.`);
+        setAuditMsg(`Audit complete ✓ — inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities across ${Number(rep.serviceCount ?? 0)} services. See the Artifacts tab.`);
         org.reload();
       } else setAuditMsg("Error: " + String(j.error ?? r.status));
     } finally { setAuditBusy(false); }
@@ -7259,6 +7312,7 @@ function OrgWorkspacePage() {
           </div>
           {tab === "journey" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "—"} tone={j.qualification ? C.lime : undefined} />
                 <OrgMetric label="meetings" value={j.meetings.length} />

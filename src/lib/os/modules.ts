@@ -50,7 +50,7 @@ export const MODULES: Record<string, ModuleDef> = {
   offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "wired", api: "/api/offers", tagline: "Design, test and iterate offers. Run experiments, score what works, promote the winner — low-confidence bets never reach a founder cold." },
 
   // REVENUE (Wobble ERP Control Layer)
-  org: { id: "org", label: "Org Workspace", title: "Organisation Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "One organisation's whole commercial journey in one place — qualification grade, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a company; the lineage assembles itself." },
+  org: { id: "org", label: "Clients", title: "Client Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "One client, everything about them, in one place — what they told us on the website form, their qualification, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a client; the rest assembles itself. Start here — qualification grade, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a company; the lineage assembles itself." },
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone — companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
   audit_workspace: { id: "audit_workspace", label: "Audit Workspace", title: "Audit Workspace", icon: "FolderKanban", status: "wired", api: "/api/audit/workspace", tagline: "Run a client through the whole audit in one place — Doc 1 pitch → Doc 2 internal interview roadmap → record findings → Doc 3 final McKinsey deck. Each client's data stays isolated." },
   free_audit: { id: "free_audit", label: "Quick Pitch", title: "Free AI Audit / Pitch", icon: "ClipboardCheck", status: "wired", api: "/api/audit/free", tagline: "The fast top-of-funnel: map a prospect's gaps to the full Wobble service menu + generate a niche-customized pitch. The full 3-stage flow lives in Audit Workspace." },
@@ -94,7 +94,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["ask", "brief", "command", "cockpit", "departments", "agents"] },
   { label: "INTELLIGENCE & SOURCES", items: ["radar", "sources", "intelligence", "learning", "brain", "memory"] },
   { label: "CONTENT STUDIO", items: ["topics", "content", "library", "media", "social", "seo", "webstats"] },
-  { label: "REVENUE / CRM", items: ["crm", "org", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
+  { label: "REVENUE / CRM", items: ["org", "crm", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
   { label: "DELIVERY & OPS", items: ["projects", "meetings", "tasks", "automations", "comms"] },
   { label: "WOBBLE HQ", items: ["decision", "offers", "taste", "optimizer"] },
   { label: "SYSTEM", items: ["approvals", "security", "connections", "skills", "workers", "handoff", "costs", "audit", "backup", "settings"] },

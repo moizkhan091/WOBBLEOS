@@ -309,6 +309,110 @@ export function stageForSubmission(s: ReadinessSubmission, q: Qualification): Pi
 
 // ---------------------------------------------------------------- mapping to CRM inputs
 
+// ---------------------------------------------------------------- reading the intake back out
+//
+// Capturing the form is only half the job. Everything below turns a stored submission back into
+// context the rest of the OS can consume — today the client-centric paid audit, next the pre-call
+// question engine. Without this the answers sit in a metadata blob and no agent ever reads them,
+// which is exactly the "info doesn't get passed along" the founder complained about.
+
+/** One past form submission, flattened out of the lead row it was stored on. */
+export interface IntakeSnapshot {
+  submittedAt: string | null;
+  contactName: string | null;
+  role: string | null;
+  teamSize: string | null;
+  cityMarket: string | null;
+  businessDescription: string | null;
+  focusAreas: string[];
+  painPoints: string | null;
+  aiWorkflowStage: string | null;
+  currentTools: string | null;
+  urgency: string | null;
+  openToPaidAudit: string | null;
+  canShareWorkflowContext: string | null;
+  whatMakesCallUseful: string | null;
+  score: number | null;
+  tier: Tier | null;
+}
+
+/** Narrow shape of the stored lead row this reads — keeps the function DB-free and testable. */
+export interface StoredLeadLike {
+  contactName?: string | null;
+  problemStated?: string | null;
+  serviceInterest?: string[] | null;
+  score?: number | null;
+  createdAt?: Date | string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+function str(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s ? s : null;
+}
+
+/** Rebuild a snapshot from a lead captured by the readiness form. */
+export function snapshotFromLead(lead: StoredLeadLike, company?: { notes?: string | null; companySize?: string | null; city?: string | null }): IntakeSnapshot {
+  const meta = (lead.metadata ?? {}) as Record<string, unknown>;
+  const readiness = (meta.readiness ?? {}) as Record<string, unknown>;
+  const score = typeof lead.score === "number" ? lead.score : null;
+  return {
+    submittedAt: str(meta.submittedAt) ?? (lead.createdAt ? new Date(lead.createdAt).toISOString() : null),
+    contactName: str(lead.contactName),
+    role: str((meta.role as string) ?? null),
+    teamSize: str(company?.companySize),
+    cityMarket: str(meta.cityMarket) ?? str(company?.city),
+    businessDescription: str(company?.notes),
+    focusAreas: Array.isArray(lead.serviceInterest) ? lead.serviceInterest.filter(Boolean) : [],
+    painPoints: str(lead.problemStated),
+    aiWorkflowStage: str(readiness.aiWorkflowStage),
+    currentTools: str(readiness.currentTools),
+    urgency: str(readiness.urgency),
+    openToPaidAudit: str(readiness.openToPaidAudit),
+    canShareWorkflowContext: str(readiness.canShareWorkflowContext),
+    whatMakesCallUseful: str(readiness.whatMakesCallUseful),
+    score,
+    tier: score === null ? null : tierForScore(score),
+  };
+}
+
+/**
+ * Render stored submissions as an intake block for the paid-audit graph.
+ *
+ * The audit team is told these are the CLIENT'S OWN WORDS, because a self-reported bottleneck is
+ * evidence to investigate rather than a conclusion to repeat back — a report that just parrots the
+ * form adds nothing the founder didn't already have. Newest submission first; older ones are kept
+ * (trimmed) because a change of answer over time is itself a signal.
+ */
+export function formatIntakeForAudit(snapshots: IntakeSnapshot[]): string {
+  if (!snapshots.length) return "";
+  const line = (label: string, v: string | null | undefined) => (v ? `- ${label}: ${v}` : null);
+  const render = (s: IntakeSnapshot, index: number) =>
+    [
+      index === 0 ? "MOST RECENT SUBMISSION" : `EARLIER SUBMISSION (${s.submittedAt ?? "date unknown"})`,
+      line("Who filled it in", [s.contactName, s.role].filter(Boolean).join(", ") || null),
+      line("Team size", s.teamSize),
+      line("City / market", s.cityMarket),
+      line("What the business does", s.businessDescription),
+      s.focusAreas.length ? `- Where they asked us to look first: ${s.focusAreas.join(", ")}` : null,
+      line("What they say is slow, manual or person-dependent", s.painPoints),
+      line("Where they are with AI today", s.aiWorkflowStage),
+      line("Tools they use now", s.currentTools),
+      line("How soon they want to move", s.urgency),
+      line("Open to a paid audit", s.openToPaidAudit),
+      line("Willing to share workflow context", s.canShareWorkflowContext),
+      line("What would make the call useful to them", s.whatMakesCallUseful),
+      s.score !== null ? `- Inbound qualification score: ${s.score}/100 (${s.tier})` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+  return [
+    "WHAT THE CLIENT TOLD US ON THE WEBSITE READINESS FORM (their own words — treat as claims to verify, not findings):",
+    ...snapshots.slice(0, 3).map(render),
+  ].join("\n\n");
+}
+
 export interface MappedIntake {
   company: CreateCompanyInput;
   contact: CreateContactInput | null;
