@@ -25,7 +25,18 @@ import {
  */
 
 const SECRET = "test-secret-at-least-16-chars-long";
-const now = new Date("2026-07-09T12:00:00.000Z");
+/**
+ * Anchored to the REAL clock, deliberately.
+ *
+ * A session JWT's `exp` is verified against real time (that is the correct production behaviour — a
+ * token must expire on the wall clock, not on an injectable one). A hard-coded `now` therefore mints a
+ * token that is genuinely expired once SESSION_TTL_SECONDS has passed since that date, and every
+ * verifySession test flips red on a day nobody touched auth. That is exactly what happened: the
+ * previous literal 2026-07-09 + 30d TTL started failing on 2026-08-08.
+ *
+ * Tests that need a DIFFERENT point in time derive it from this one (see the 40-day expiry case).
+ */
+const now = new Date();
 
 const PASSWORDS = { moiz: "moiz-password-123", ali: "ali-password-456" };
 

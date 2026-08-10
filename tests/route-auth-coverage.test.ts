@@ -30,6 +30,7 @@ const PUBLIC_MUTATION_ROUTES = new Set<string>([
   "webhooks/intelligence/route.ts", // raw-body HMAC verified
   "webhooks/zernio/route.ts", // raw-body HMAC verified
   "n8n/callback/route.ts", // timestamped raw-body HMAC verified
+  "webhooks/readiness-form/route.ts", // timestamped raw-body HMAC verified; the website form is the only lead door, and n8n holds no founder session
 ]);
 
 /**
