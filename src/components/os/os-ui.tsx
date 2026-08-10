@@ -7249,53 +7249,288 @@ function OrgMetric({ label, value, tone }: { label: string; value: string | numb
 const ORG_STAGE_ORDER = ["org", "qualified", "opportunity", "discovery", "paid_audit", "proposal", "won", "project"];
 function stageColor(s: string) { return s === "project" || s === "won" ? C.lime : s === "org" ? C.gray : C.blue; }
 
+type OrgContact = { id: string; fullName: string; role: string | null; email: string | null; phone: string | null; whatsapp: string | null; linkedin: string | null; relationshipType: string; isDecisionMaker: boolean };
+type OrgAudit = { id: string; kind: string; status: string; businessName: string | null; createdAt: string; executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string };
+type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null };
+type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
+type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[] };
+type MeetingFactRow = { id: string; kind: string; content: string; confidence: number; sourceSnippet: string | null; status: string };
+type MeetingWithFacts = { meetingId: string; title: string; meetingType: string; status: string; createdAt: string; facts: MeetingFactRow[] };
+
+const orgMoney = (cents: number, ccy: string) => `${ccy} ${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
+/** Section heading used throughout the client container. */
+function OrgSection({ title, right }: { title: string; right?: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>{title}</div>
+      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
+      {right}
+    </div>
+  );
+}
+
+/** Contacts you can actually reach. The container stored these and displayed none of them. */
+function ContactsPanel({ contacts }: { contacts: OrgContact[] }) {
+  if (!contacts.length) return <div style={{ fontSize: 12.5, color: faint }}>No contacts on this client yet.</div>;
+  const chip = (href: string, label: string) => (
+    <a href={href} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: C.lime, textDecoration: "none", padding: "3px 9px", borderRadius: 8, border: "1px solid rgba(184,255,44,0.25)", background: "rgba(184,255,44,0.06)" }}>{label}</a>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {contacts.map((c) => (
+        <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+          <span style={{ fontSize: 13.5, color: C.white }}>{c.fullName}</span>
+          {c.role ? <span style={{ fontSize: 11.5, color: faint }}>{c.role}</span> : null}
+          {c.isDecisionMaker ? <Tag text="decision maker" color={C.lime} /> : null}
+          <span style={{ flex: 1 }} />
+          {c.email ? chip(`mailto:${c.email}`, c.email) : null}
+          {c.phone ? chip(`tel:${c.phone.replace(/[^0-9+]/g, "")}`, c.phone) : null}
+          {c.whatsapp ? chip(`https://wa.me/${c.whatsapp.replace(/[^0-9]/g, "")}`, "WhatsApp") : null}
+          {c.linkedin ? chip(c.linkedin, "LinkedIn") : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Pre-call questions, generated fresh for this client — never drawn from a bank. The website form's
+ * own answer combinations run past six figures, so a recycled list is instantly recognisable on a call.
+ */
+function QuestionsPanel({ companyId, initial, onGenerated }: { companyId: string; initial: CallQuestionSetRow | null; onGenerated: () => void }) {
+  const [set, setSet] = useState<CallQuestionSetRow | null>(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setSet(initial); }, [initial]);
+
+  async function generate() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/org/${companyId}/questions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; set?: CallQuestionSetRow; error?: string };
+      if (r.ok && j.ok && j.set) { setSet(j.set); onGenerated(); } else setErr(String(j.error ?? r.status));
+    } catch (e) { setErr(e instanceof Error ? e.message : "failed"); } finally { setBusy(false); }
+  }
+
+  const tierColor = (t: string) => (t === "opener" ? C.blue : t === "probe" ? C.orange : C.lime);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+        <button onClick={generate} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Writing questions…" : set ? "Regenerate questions" : "Generate questions for the first call"}</button>
+        <span style={{ fontSize: 11, color: faint }}>written for this client from their form answers + approved call findings + what WOBBLE can deliver</span>
+      </div>
+      {err ? <div style={{ fontSize: 12, color: C.orange }}>Error: {err}</div> : null}
+      {!set ? <div style={{ fontSize: 12.5, color: faint }}>No questions yet — generate a set before the readiness call.</div> : (
+        <>
+          <div style={{ borderRadius: 12, border: "1px solid rgba(184,255,44,0.22)", background: "rgba(184,255,44,0.04)", padding: "13px 15px" }}>
+            <div style={{ fontSize: 10.5, color: C.lime, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Open with</div>
+            <div style={{ fontSize: 14, color: C.white, lineHeight: 1.55 }}>{set.opening}</div>
+          </div>
+          {set.gaps && set.gaps.length ? <div style={{ fontSize: 11.5, color: C.orange }}>Not fully covered: {set.gaps.join(", ").replace(/_/g, " ")} — worth asking these yourself.</div> : null}
+          {["opener", "core", "probe"].map((tier) => {
+            const qs = set.questions.filter((q) => q.tier === tier);
+            if (!qs.length) return null;
+            return (
+              <div key={tier} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>{tier}</div>
+                {qs.map((q, i) => (
+                  <div key={i} style={{ padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <Tag text={q.coverage.replace(/_/g, " ")} color={tierColor(tier)} />
+                      <div style={{ fontSize: 14, color: C.white, lineHeight: 1.5, flex: 1 }}>{q.question}</div>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: faint, marginTop: 6, lineHeight: 1.45 }}>{q.why}{q.basedOn ? " · they said: " + q.basedOn : ""}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {set.doNotAsk && set.doNotAsk.length ? (
+            <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>Do not re-ask (the form already told us): {set.doNotAsk.join(" · ")}</div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Hand a call back to the OS: it becomes a meeting on this client plus discovery facts you approve. */
+function TranscriptPanel({ companyId, onChanged }: { companyId: string; onChanged: () => void }) {
+  const facts = useApi<{ meetings: MeetingWithFacts[]; counts: { meetings: number; pending: number; approved: number } }>(`/api/org/${companyId}/transcript`);
+  const [text, setText] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function submit() {
+    if (text.trim().length < 40) { setMsg("Error: paste the actual transcript — that is too short to extract anything from."); return; }
+    setBusy(true); setMsg("Reading the call and pulling out discovery facts…");
+    try {
+      const r = await fetch(`/api/org/${companyId}/transcript`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: text, title: title.trim() || undefined }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; extracted?: number; error?: string };
+      if (r.ok && j.ok) { setMsg(`Saved — ${j.extracted ?? 0} discovery fact(s) extracted. Approve the ones that are right; the audit only uses approved facts.`); setText(""); setTitle(""); facts.reload(); onChanged(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  async function review(factId: string, decision: "approved" | "rejected") {
+    await fetch(`/api/org/${companyId}/transcript`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ factId, decision }) });
+    facts.reload(); onChanged();
+  }
+
+  const meetings = facts.data?.meetings ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Call title (optional)" aria-label="Call title" style={{ ...inputStyle, fontSize: 12.5 }} />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Paste the call transcript or your notes here…" aria-label="Call transcript" style={{ ...inputStyle, fontFamily: "inherit", resize: "vertical", lineHeight: 1.5 }} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={submit} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Reading the call…" : "Give the call back to WOBBLE"}</button>
+          <span style={{ fontSize: 11, color: faint }}>becomes a meeting on this client + discovery facts you approve, which the audit then uses</span>
+        </div>
+        {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+      </div>
+
+      {meetings.length ? meetings.map((m) => (
+        <div key={m.meetingId} style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+            <Tag text={m.meetingType.replace(/_/g, " ")} color={C.blue} />
+            <span style={{ fontSize: 13, color: C.white }}>{m.title}</span>
+            <span style={{ fontSize: 11, color: faint }}>{m.facts.filter((f) => f.status === "approved").length}/{m.facts.length} approved</span>
+          </div>
+          {m.facts.map((f) => (
+            <div key={f.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap", padding: "10px 13px", borderRadius: 11, border: "1px solid " + (f.status === "approved" ? "rgba(184,255,44,0.22)" : "rgba(255,255,255,0.06)"), background: f.status === "approved" ? "rgba(184,255,44,0.04)" : "rgba(255,255,255,0.02)" }}>
+              <Tag text={f.kind.replace(/_/g, " ")} color={f.status === "approved" ? C.lime : C.gray} />
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 13, color: C.white, lineHeight: 1.5 }}>{f.content}</div>
+                {f.sourceSnippet ? <div style={{ fontSize: 11.5, color: faint, marginTop: 4, fontStyle: "italic" }}>{f.sourceSnippet}</div> : null}
+              </div>
+              <span style={{ fontSize: 11, color: faint }}>{f.confidence}%</span>
+              {f.status === "pending_review" ? (
+                <span style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => review(f.id, "approved")} style={{ ...primaryBtn, padding: "5px 11px", fontSize: 11 }}>Approve</button>
+                  <button onClick={() => review(f.id, "rejected")} style={{ ...rejectBtn, padding: "5px 11px", fontSize: 11 }}>Reject</button>
+                </span>
+              ) : <Tag text={f.status.replace(/_/g, " ")} color={f.status === "approved" ? C.lime : C.orange} />}
+            </div>
+          ))}
+        </div>
+      )) : <div style={{ fontSize: 12.5, color: faint }}>No calls given back yet.</div>}
+    </div>
+  );
+}
+
+/** A completed audit you can actually read — it used to be an unclickable status pill. */
+function AuditsPanel({ items }: { items: OrgAudit[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  if (!items.length) return <div style={{ fontSize: 12.5, color: faint }}>No audits yet.</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {items.map((a) => {
+        const open = openId === a.id;
+        return (
+          <div key={a.id} style={{ borderRadius: 11, border: "1px solid " + (open ? "rgba(184,255,44,0.25)" : "rgba(255,255,255,0.06)"), background: "rgba(255,255,255,0.02)", overflow: "hidden" }}>
+            <button onClick={() => setOpenId(open ? null : a.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 13px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", flexWrap: "wrap" }}>
+              <Tag text={a.kind} color={C.blue} />
+              <Tag text={a.status} color={a.status === "complete" ? C.lime : C.gray} />
+              <span style={{ fontSize: 12.5, color: C.white, flex: 1 }}>{a.businessName ?? a.id}</span>
+              <span style={{ fontSize: 11, color: faint }}>{a.opportunityCount} opportunities</span>
+              <span style={{ fontSize: 11, color: faint }}>{open ? "hide" : "read"}</span>
+            </button>
+            {open ? (
+              <div style={{ padding: "0 14px 14px" }}>
+                {a.executiveSummary ? (
+                  <div style={{ fontSize: 13.5, color: C.white, lineHeight: 1.6, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.28)" }}>{a.executiveSummary}</div>
+                ) : <div style={{ fontSize: 12.5, color: faint }}>This audit has no executive summary stored.</div>}
+                <a href="/audit_workspace" style={{ display: "inline-block", marginTop: 10, fontSize: 11.5, color: C.lime, textDecoration: "none" }}>Open the full report in Audit Workspace</a>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
-  const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=200");
+  const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
   const [selectedId, setSelectedId] = useState<string>("");
+  const [filter, setFilter] = useState("");
   useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
-  const [tab, setTab] = useState<"journey" | "artifacts">("journey");
-  const org = useApi<{ journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] } }>(`/api/org/${selectedId || "__none__"}`);
-  const [auditBusy, setAuditBusy] = useState(false);
-  const [auditMsg, setAuditMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<"overview" | "callprep" | "artifacts">("overview");
+  const org = useApi<{
+    journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;
+    contacts?: OrgContact[]; audits?: OrgAudit[]; proposals?: OrgProposalRow[]; invoices?: OrgInvoiceRow[];
+  }>(`/api/org/${selectedId || "__none__"}`);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+
   async function runClientAudit() {
     if (!selectedId) return;
-    setAuditBusy(true); setAuditMsg("Running a McKinsey-depth audit from this client's stored context (~1 min)…");
+    setBusyKey("audit"); setActionMsg("Running a McKinsey-depth audit from this client's stored context (~1-2 min)…");
     try {
       const r = await fetch(`/api/org/${selectedId}/audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
       if (r.ok && j.ok !== false) {
         const c = (j.inheritedContext ?? {}) as { discoveryFacts?: number; services?: number; qualification?: boolean; readinessSubmissions?: number };
         const rep = (j.report ?? {}) as { opportunities?: number; serviceCount?: number };
-        setAuditMsg(`Audit complete ✓ — inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities across ${Number(rep.serviceCount ?? 0)} services. See the Artifacts tab.`);
+        setActionMsg(`Audit complete — inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} approved discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities found. Read it under Artifacts.`);
         org.reload();
-      } else setAuditMsg("Error: " + String(j.error ?? r.status));
-    } finally { setAuditBusy(false); }
+      } else setActionMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
   }
 
-  if (companiesApi.loading) return <StateBlock kind="loading" message="Loading organisations…" />;
+  async function buildProposalFromLatestAudit() {
+    const audit = (org.data?.audits ?? []).find((a) => a.status === "complete");
+    if (!audit) { setActionMsg("Error: run a paid audit first — the proposal is built from its findings."); return; }
+    setBusyKey("proposal"); setActionMsg("Building the proposal from this client's audit…");
+    try {
+      const r = await fetch("/api/proposals/from-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId: audit.id }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; proposal?: { id: string; title: string }; error?: string };
+      if (r.ok && j.ok && j.proposal) { setActionMsg(`Proposal created: ${j.proposal.title}. It is on this client under Artifacts, and in Proposals.`); org.reload(); }
+      else setActionMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
+  }
+
+  if (companiesApi.loading) return <StateBlock kind="loading" message="Loading clients…" />;
   if (companiesApi.error) return <StateBlock kind="error" message={companiesApi.error} />;
-  if (!companies.length) return <StateBlock kind="empty" message="No organisations yet — create a company in Pipeline / CRM." />;
+  if (!companies.length) return <StateBlock kind="empty" message="No clients yet — they arrive automatically from the website readiness form, or add one in Pipeline / CRM." />;
 
   const j = org.data?.journey;
   const l = org.data?.lineage;
+  const contacts = org.data?.contacts ?? [];
+  const auditItems = org.data?.audits ?? [];
+  const proposalItems = org.data?.proposals ?? [];
+  const invoiceItems = org.data?.invoices ?? [];
   const relLabel: Record<string, string> = { meeting_opp: "meeting → opportunity", opp_audit: "opportunity → audit", opp_proposal: "opportunity → proposal", audit_proposal: "audit → proposal", opp_project: "opportunity → project", proposal_project: "proposal → project" };
+  const shown = filter.trim() ? companies.filter((c) => c.name.toLowerCase().includes(filter.trim().toLowerCase())) : companies;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {companies.map((c) => (
-          <button key={c.id} onClick={() => setSelectedId(c.id)} style={{ padding: "7px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, border: "1px solid " + (c.id === selectedId ? "rgba(184,255,44,0.3)" : "rgba(255,255,255,0.1)"), background: c.id === selectedId ? "rgba(184,255,44,0.1)" : "rgba(255,255,255,0.03)", color: c.id === selectedId ? C.white : muted }}>{c.name}</button>
-        ))}
+      {/* Searchable picker — a pill row is fine at two clients and unusable at thirty. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {companies.length > 8 ? (
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Search ${companies.length} clients…`} aria-label="Search clients" style={{ ...inputStyle, maxWidth: 340, fontSize: 12.5 }} />
+        ) : null}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", maxHeight: 132, overflowY: "auto" }}>
+          {shown.map((c) => (
+            <button key={c.id} onClick={() => setSelectedId(c.id)} style={{ padding: "7px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, border: "1px solid " + (c.id === selectedId ? "rgba(184,255,44,0.3)" : "rgba(255,255,255,0.1)"), background: c.id === selectedId ? "rgba(184,255,44,0.1)" : "rgba(255,255,255,0.03)", color: c.id === selectedId ? C.white : muted }}>{c.name}</button>
+          ))}
+          {!shown.length ? <span style={{ fontSize: 12.5, color: faint }}>No client matches that.</span> : null}
+        </div>
       </div>
-      {org.loading ? <StateBlock kind="loading" message="Assembling the org's journey…" /> : org.error ? <StateBlock kind="error" message={org.error} /> : j ? (
+
+      {org.loading ? <StateBlock kind="loading" message="Assembling this client…" /> : org.error ? <StateBlock kind="error" message={org.error} /> : j ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 500 }}>{j.company.name}</h2>
-            <Tag text={"stage: " + j.stage} color={stageColor(j.stage)} />
+            <Tag text={"stage: " + j.stage.replace(/_/g, " ")} color={stageColor(j.stage)} />
             {j.company.industry ? <span style={{ fontSize: 12, color: faint }}>{j.company.industry}</span> : null}
           </div>
-          {/* the journey rail — the furthest-reached stage lit in lime */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             {ORG_STAGE_ORDER.map((s, i) => {
               const reached = ORG_STAGE_ORDER.indexOf(j.stage) >= i;
@@ -7305,61 +7540,89 @@ function OrgWorkspacePage() {
               </span>;
             })}
           </div>
-          <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            {(["journey", "artifacts"] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{t === "journey" ? "Journey" : "Artifacts & Lineage"}</button>
+
+          <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap" }}>
+            {([["overview", "Overview"], ["callprep", "Call prep"], ["artifacts", "Artifacts & Lineage"]] as const).map(([t, label]) => (
+              <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{label}</button>
             ))}
           </div>
-          {tab === "journey" ? (
+
+          {tab === "overview" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
+              <OrgSection title="CONTACTS" />
+              <ContactsPanel contacts={contacts} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "—"} tone={j.qualification ? C.lime : undefined} />
-                <OrgMetric label="meetings" value={j.meetings.length} />
-                <OrgMetric label="discovery facts" value={j.discoveryFactCount} />
-                <OrgMetric label="opportunities" value={j.opportunities.length} />
+                <OrgMetric label="calls given back" value={j.meetings.length} />
+                <OrgMetric label="approved findings" value={j.discoveryFactCount} />
+                <OrgMetric label="open deals" value={j.opportunities.length} />
               </div>
               {j.qualification ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5, padding: "11px 14px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.14)", background: "rgba(184,255,44,0.03)" }}><b style={{ color: C.lime }}>Qualification {j.qualification.grade}</b> — {j.qualification.recommendation}</div> : null}
-              {/* Client-centric commercial action: create the paid audit FROM this client — it inherits the stored context. */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                <button onClick={runClientAudit} disabled={auditBusy} style={auditBusy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{auditBusy ? "Running audit…" : "⚡ Run Paid Audit from this client"}</button>
-                <span style={{ fontSize: 11, color: faint }}>inherits their form answers + qualification + discovery findings + services — no re-typing</span>
+
+              <OrgSection title="DEALS" />
+              {j.opportunities.length ? j.opportunities.map((o) => (
+                <a key={o.id} href="/crm" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", textDecoration: "none" }}>
+                  <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
+                  <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
+                  {o.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.valueCents, "USD")}</span> : null}
+                  <span style={{ fontSize: 11, color: faint }}>open in pipeline →</span>
+                </a>
+              )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
+
+              <OrgSection title="DO SOMETHING FOR THIS CLIENT" />
+              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+                <button onClick={runClientAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busyKey === "audit" ? "Running audit…" : "Run Paid Audit"}</button>
+                <button onClick={buildProposalFromLatestAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "proposal" ? "Building…" : "Build Proposal from the audit"}</button>
+                <a href="/free_audit" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12, textDecoration: "none", display: "inline-block" }}>Quick Pitch</a>
+                <a href="/invoices" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12, textDecoration: "none", display: "inline-block" }}>Invoices</a>
               </div>
-              {auditMsg ? <div style={{ fontSize: 12, color: auditMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{auditMsg}</div> : null}
-              <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em", marginTop: 4 }}>MEETINGS & DISCOVERY</div>
-              {j.meetings.length ? j.meetings.map((m) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-                  <Tag text={m.meetingType.replace(/_/g, " ")} color={C.blue} />
-                  <span style={{ fontSize: 13, flex: 1 }}>{m.title}</span>
-                  <span style={{ fontSize: 11.5, color: faint }}>{m.approvedDiscoveryFacts}/{m.discoveryFactCount} facts approved</span>
-                </div>
-              )) : <div style={{ fontSize: 12.5, color: faint }}>No meetings yet.</div>}
+              <div style={{ fontSize: 11, color: faint }}>The audit inherits their form answers, approved call findings and services — nothing is re-typed.</div>
+              {actionMsg ? <div style={{ fontSize: 12.5, color: actionMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{actionMsg}</div> : null}
+            </div>
+          ) : tab === "callprep" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <OrgSection title="QUESTIONS FOR THE FIRST CALL" />
+              <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} />
+              <OrgSection title="AFTER THE CALL — GIVE IT BACK" />
+              <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <OrgMetric label="paid transformation audits" value={j.paidTransformationAudits.length} tone={j.paidTransformationAudits.length ? C.lime : undefined} />
-                <OrgMetric label="free audits" value={j.freeAudits} />
-                <OrgMetric label="proposals" value={j.proposals.length} />
+                <OrgMetric label="audits" value={auditItems.length} tone={auditItems.length ? C.lime : undefined} />
+                <OrgMetric label="proposals" value={proposalItems.length} />
+                <OrgMetric label="invoices" value={invoiceItems.length} />
                 <OrgMetric label="projects" value={j.projects.length} />
               </div>
-              {j.paidTransformationAudits.length ? <>
-                <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PAID TRANSFORMATION AUDITS</div>
-                {j.paidTransformationAudits.map((a) => <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}><Tag text={a.status} color={a.status === "complete" ? C.lime : C.gray} /><span style={{ fontSize: 12.5 }}>{a.businessName ?? a.id}</span></div>)}
-              </> : null}
-              {j.proposals.length ? <>
-                <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PROPOSALS</div>
-                {j.proposals.map((p) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}><Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} /><span style={{ fontSize: 12.5, flex: 1 }}>{p.title}</span><span style={{ fontSize: 11, color: faint }}>v{p.version}</span></div>)}
-              </> : null}
-              <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em" }}>PROVENANCE ({l?.edges.length ?? 0} derivation edges)</div>
+              <OrgSection title="AUDITS" />
+              <AuditsPanel items={auditItems} />
+              <OrgSection title="PROPOSALS" />
+              {proposalItems.length ? proposalItems.map((p) => (
+                <a key={p.id} href="/docs" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", textDecoration: "none" }}>
+                  <Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} />
+                  <span style={{ fontSize: 12.5, color: C.white, flex: 1 }}>{p.title}</span>
+                  {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
+                  <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
+                </a>
+              )) : <div style={{ fontSize: 12.5, color: faint }}>No proposals yet — build one from a completed audit on the Overview tab.</div>}
+              <OrgSection title="INVOICES" />
+              {invoiceItems.length ? invoiceItems.map((i) => (
+                <a key={i.id} href="/invoices" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", textDecoration: "none" }}>
+                  <Tag text={i.status} color={i.status === "paid" ? C.lime : C.orange} />
+                  <span style={{ fontSize: 12.5, color: C.white, flex: 1 }}>{i.number}</span>
+                  <span style={{ fontSize: 12, color: muted }}>{orgMoney(i.amountPaidCents, i.currency)} / {orgMoney(i.totalCents, i.currency)}</span>
+                </a>
+              )) : <div style={{ fontSize: 12.5, color: faint }}>No invoices yet.</div>}
+              <OrgSection title={`PROVENANCE (${l?.edges.length ?? 0} derivation edges)`} />
               {l && l.edges.length ? l.edges.map((e, i) => {
                 const from = l.nodes.find((n) => n.id === e.from), to = l.nodes.find((n) => n.id === e.to);
-                return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
-              }) : <div style={{ fontSize: 12.5, color: faint }}>No artifact derivation edges yet — this org hasn't produced downstream artifacts.</div>}
+                return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted, flexWrap: "wrap" }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
+              }) : <div style={{ fontSize: 12.5, color: faint }}>No derivation edges yet — these appear once an audit or proposal is produced from this client&apos;s deal.</div>}
             </div>
           )}
         </>
-      ) : <StateBlock kind="empty" message="Select an organisation above." />}
+      ) : <StateBlock kind="empty" message="Select a client above." />}
     </div>
   );
 }

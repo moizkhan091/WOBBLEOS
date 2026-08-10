@@ -50,12 +50,19 @@ export async function POST(request: Request, context: { params: Promise<{ compan
       .filter(Boolean)
       .join("\n\n");
 
+    // Link the audit to the client's live deal, not just the company. Without this the audit saves with
+    // a null opportunity_id, no opp→audit derivation edge is ever created, and the workspace's headline
+    // promise ("the provenance graph that shows how each was derived") can never draw anything.
+    const liveDeal =
+      journey.opportunities.find((o) => o.stage !== "won" && o.stage !== "lost") ?? journey.opportunities[0];
+
     const result = await runPaidAuditGraph({
       businessName: journey.company.name,
       industry: journey.company.industry ?? "general business",
       intakeNotes: intakeNotes || `Client ${journey.company.name} — no stored context yet.`,
       requestedBy: auth,
       companyId,
+      opportunityId: liveDeal?.id,
     });
 
     return NextResponse.json({
