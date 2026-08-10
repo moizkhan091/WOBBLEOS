@@ -7074,3 +7074,33 @@ break CI unless a judge is explicitly injected.
 
 Gate: `npx tsc --noEmit` clean; `tests/evals.test.ts` 21/21; `npm run eval` 8/8 passed (1 judge
 assertion skipped), exit 0.
+
+---
+
+## 2026-08-10 — PRODUCTION GO-LIVE: os.wobblepk.com (Claude)
+
+WOBBLE OS is LIVE in production on the founder's Hostinger VPS (72.60.209.27), coexisting with the
+critical n8n stack — n8n never restarted (uptime unbroken) and Traefik was not reconfigured.
+
+- **Build**: ce9a9e6. Compose project `wobbleos` (isolated from `root` project that runs n8n/traefik).
+  Files: `docker-compose.prod.yml` + `docker-compose.vps.yml` overlay, `--env-file /etc/wobble/wobble.env`.
+- **Coexistence strategy that worked**: Traefik already runs `providers.docker.exposedbydefault=false`,
+  so our containers are invisible to it unless labeled. The overlay attaches ONLY `app` to Traefik's
+  existing external network `root_default` (aliased `edge`), drops the host port, and mirrors n8n's
+  routing EXACTLY: entrypoints `web,websecure`, `tls.certresolver=mytlschallenge` (ACME TLS-ALPN-01),
+  HSTS middleware. db + both workers stay on the private `wobbleos_default` network, no host ports.
+- **DNS**: `os.wobblepk.com` A → 72.60.209.27 (apex parked, `www` on Netlify — both untouched). NOTE the
+  domain is `wobblepk.com` (double-B); "wooblepk" was a typo that cost a detour.
+- **Cert**: Let's Encrypt issued on 2nd poll via TLS-ALPN-01. `https://os.wobblepk.com` → HTTP 200,
+  `ssl_verify_result=0`. HTTP:80 → 301 → HTTPS. `/` → 307 → `/login`.
+- **DB**: fresh pgvector, `drizzle-kit migrate` applied 64 migrations (head 0063). `db:seed` populated the
+  operational backbone: 77 agents, 14 departments, 10 WOBBLE-brain memories, 4 budget caps, 4 provider
+  connections (openrouter enabled), 2 content tracks, taste profiles, approval actions.
+- **Founder accounts**: 4 profiles provisioned with strong random passwords (min-12 rule). Logins are
+  `<first>@wobblepk.com` (username only; no mail sent). Moiz = super-admin. Verified end-to-end: live
+  POST /api/auth/login → `{ok:true,founder:"Moiz",isSuperAdmin:true}` + secure HttpOnly session cookie.
+  Founders should rotate on first login (self-service change requires current pw + revokes other sessions).
+- **Readiness**: `/api/health/ready` all-green (database, storage, worker fresh, video-worker fresh,
+  version-parity all on ce9a9e6). Memory headroom 5.6 GB free — n8n not starved.
+- **Secrets**: `/etc/wobble/wobble.env` (600, root) holds generated SESSION/MEDIA/webhook secrets + real
+  OPENROUTER/ZERNIO/APIFY keys. RECOMMEND rotating the API keys that were exposed in chat.

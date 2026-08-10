@@ -823,3 +823,27 @@ Context: the topbar search affordance was inert on every screen. Building it rai
   +mimeTypeForExtension, shared persistBytes), `src/app/api/library/import-folder/route.ts` (new),
   `.env.production.example` (LIBRARY_IMPORT_ROOTS), `tests/folder-import.test.ts` (new),
   `tests/library-upload.test.ts`.
+
+---
+
+## 2026-08-10 — Deploy WOBBLE OS beside n8n via a non-invasive Traefik overlay (Claude)
+
+**Decision**: Ship to the founder's live VPS by JOINING the existing Traefik rather than standing up our
+own reverse proxy or touching the running n8n stack.
+
+**Why**: The VPS runs a business-critical n8n behind Traefik. Founder was explicit: do not tangle with or
+risk the existing containers. Traefik's `exposedbydefault=false` means opt-in-by-label routing, so a second
+proxy is unnecessary and would fight for :80/:443. Mirroring n8n's own labels (same entrypoints, same
+`mytlschallenge` resolver) is the lowest-risk path to a valid cert.
+
+**Context / how**: Separate compose project `wobbleos`; overlay adds `app` to `root_default` + Traefik
+labels + `ports: !override []`; private services keep no host ports. Deployed internally FIRST (loopback,
+no Traefik labels) to verify build/migrate/seed/health, THEN applied the overlay so ACME only fires once
+DNS was confirmed green — avoiding Let's Encrypt failed-validation rate limits.
+
+**Founder credentials**: chose NOT to invent the master password silently; seeded passwordless profiles,
+then set strong random passwords only when the founder asked for logins. `@wobblepk.com` chosen as login
+usernames (company domain; login sends no mail). Founders rotate on first login.
+
+**Affects (ops, not repo code)**: `/etc/wobble/wobble.env` (PUBLIC_BASE_URL=https://os.wobblepk.com),
+box `/opt/wobble-os` @ ce9a9e6. No application code changed by the deploy.
