@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/crm/opportunities?stage=&status=&limit= — pipeline deals. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   try {
     const opportunities = await listOpportunities({ stage: url.searchParams.get("stage") ?? undefined, status: url.searchParams.get("status") ?? undefined, limit: Number(url.searchParams.get("limit") ?? 300) });

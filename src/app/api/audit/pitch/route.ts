@@ -18,8 +18,10 @@ const schema = z.object({
 });
 
 /** GET /api/audit/pitch — list Doc-1 pitches. */
-export async function GET() {
+export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   try {
     const audits = await listAudits({ kind: "pitch", limit: 100 });
     return NextResponse.json({ ok: true, audits });

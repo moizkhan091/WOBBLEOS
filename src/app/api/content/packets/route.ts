@@ -22,6 +22,8 @@ const apiCreateContentPacketSchema = createContentPacketSchema.extend({
 
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);
   const limitParam = searchParams.get("limit");

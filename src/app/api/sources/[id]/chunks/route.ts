@@ -20,6 +20,8 @@ const attachChunksSchema = z.object({
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
 
   const { id } = await context.params;
   const { searchParams } = new URL(request.url);

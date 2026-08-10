@@ -19,6 +19,8 @@ function parseEnabled(value: string | null): boolean | undefined {
 /** GET /api/connections - list external API/tool connections without secrets. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const { searchParams } = new URL(request.url);
   try {
     const connections = await listConnections({

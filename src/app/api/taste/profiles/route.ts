@@ -27,6 +27,8 @@ function limitFrom(url: URL): number | undefined {
 
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const scopeRaw = url.searchParams.get("scope");
   const scope = TASTE_PROFILE_SCOPES.includes(scopeRaw as (typeof TASTE_PROFILE_SCOPES)[number]) ? (scopeRaw as (typeof TASTE_PROFILE_SCOPES)[number]) : undefined;

@@ -10,9 +10,11 @@ function dbUnavailable() {
 }
 
 /** GET /api/connections/[id] - connection detail by id or slug, with no secrets exposed. */
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
-  const { id } = await context.params;
+   const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
+ const { id } = await context.params;
   try {
     const connection = await getConnection(id);
     if (!connection) return NextResponse.json({ ok: false, error: "connection not found" }, { status: 404 });

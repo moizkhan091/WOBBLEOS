@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 /** List derived Decision-Learning policies (proposed/active/…), optionally filtered by scope/status. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   const scope = u.searchParams.get("scope") as PolicyScope | null;
   const status = u.searchParams.get("status") as PolicyStatus | null;

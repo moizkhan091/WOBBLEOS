@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/tasks?status=&assignedTo=&opportunityId=&companyId=&limit= */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   try {
     const tasks = await listTasks({ status: u.searchParams.get("status") ?? undefined, assignedTo: u.searchParams.get("assignedTo") ?? undefined, opportunityId: u.searchParams.get("opportunityId") ?? undefined, companyId: u.searchParams.get("companyId") ?? undefined, limit: Number(u.searchParams.get("limit") ?? 300) });

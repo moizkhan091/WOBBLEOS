@@ -13,6 +13,8 @@ const SCOPE_TYPES = ["company", "department", "client", "project"] as const;
 /** The evidence-tiered AIOS value snapshot for a scope. KPIs are honestly null until work is inventoried. */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   const type = (u.searchParams.get("scope") ?? "company") as AiosValueScope["type"];
   if (!SCOPE_TYPES.includes(type)) return NextResponse.json({ ok: false, error: `invalid scope '${type}'` }, { status: 422 });

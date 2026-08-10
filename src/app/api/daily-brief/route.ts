@@ -20,6 +20,8 @@ function scopeFrom(url: URL): BriefScope {
 /** The latest persisted Daily Founder Brief for a scope (progressive-disclosure, evidence-linked). */
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const scope = scopeFrom(new URL(request.url));
   try {
     const latest = await getLatestDailyBrief(scope);

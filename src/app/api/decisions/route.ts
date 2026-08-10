@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return NextResponse.json({ ok: false, error: "DATABASE_URL is not configured" }, { status: 503 });
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const u = new URL(request.url);
   try {
     const decisions = await listDecisions({ status: u.searchParams.get("status") ?? undefined, category: u.searchParams.get("category") ?? undefined, limit: Number(u.searchParams.get("limit") ?? 200) });

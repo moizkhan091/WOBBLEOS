@@ -20,6 +20,8 @@ function dbUnavailable() {
 
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return dbUnavailable();
+  const auth = await requireFounder(request);
+  if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()));
   if (!parsed.success) {

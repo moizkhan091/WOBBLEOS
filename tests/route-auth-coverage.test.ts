@@ -139,6 +139,52 @@ describe("route authorization coverage (WOB-AUD-004)", () => {
   });
 
   /**
+   * EVERY EXPORTED HANDLER is gated — not merely every FILE.
+   *
+   * The two scans above ask whether a gate name appears anywhere in the source. That is a
+   * false-negative machine: a route file whose POST calls requireFounder passes the scan even when its
+   * GET never does. That is exactly how 45 read handlers (CRM, invoices, proposals, audits, memory,
+   * daily brief…) shipped relying only on the edge proxy — which verifies the JWT SIGNATURE and cannot
+   * reach the database, so a REVOKED session or a DISABLED founder kept reading them until the 30-day
+   * token expired.
+   *
+   * This scan parses each handler's own body, so a gate on one method can never vouch for another.
+   */
+  it("every exported handler calls the gate in ITS OWN body (a gated POST must not vouch for an ungated GET)", () => {
+    /** Body of the handler starting at `fromIndex`: skip the parameter list, then brace-match. */
+    const handlerBody = (src: string, fromIndex: number): string => {
+      let i = src.indexOf("(", fromIndex);
+      for (let depth = 0; i < src.length; i++) {
+        if (src[i] === "(") depth++;
+        else if (src[i] === ")" && --depth === 0) break;
+      }
+      const open = src.indexOf("{", i);
+      let depth = 0;
+      for (let k = open; k < src.length; k++) {
+        if (src[k] === "{") depth++;
+        else if (src[k] === "}" && --depth === 0) return src.slice(open, k);
+      }
+      return src.slice(open);
+    };
+
+    const unguarded: string[] = [];
+    for (const file of files) {
+      const src = sourceOf(file);
+      const key = relKey(file);
+      if (PUBLIC_MUTATION_ROUTES.has(key) || PUBLIC_READ_ROUTES.has(key)) continue;
+      for (const m of src.matchAll(/export\s+async\s+function\s+(GET|HEAD|POST|PUT|PATCH|DELETE)\s*\(/g)) {
+        const body = handlerBody(src, m.index! + m[0].length - 1);
+        if (!SESSION_GATES.some((gate) => body.includes(gate))) unguarded.push(`${key} [${m[1]}]`);
+      }
+    }
+    expect(
+      unguarded,
+      `these HANDLERS do not call a session gate (${SESSION_GATES.join("/")}) in their own body.\n` +
+        `The edge proxy only checks the JWT signature, so each one serves a revoked session:\n${unguarded.join("\n")}`,
+    ).toEqual([]);
+  }, SCAN_TIMEOUT_MS);
+
+  /**
    * Client-supplied identity must never be TRUSTED (WOB-UAT-030).
    *
    * A route may still ACCEPT an identity field for compatibility with older callers, but it must
