@@ -4,7 +4,7 @@ import { requireFounder, isAuthError } from "@/lib/auth/route";
 import { getCommercialJourney, getArtifactLineage } from "@/lib/commercial-journey";
 import { getClientIntakeContext } from "@/lib/intake/context";
 import { getStoredQuestionSet } from "@/lib/call-questions";
-import { audits, crmContacts, invoices, proposals } from "@/db/schema";
+import { audits, crmCompanies, crmContacts, invoices, proposals } from "@/db/schema";
 import { getDb } from "@/db";
 
 export const runtime = "nodejs";
@@ -33,11 +33,12 @@ export async function GET(request: Request, context: { params: Promise<{ company
 
   try {
     const db = getDb();
-    const [journey, lineage, intake, questionSet, contactRows, auditRows, proposalRows, invoiceRows] = await Promise.all([
+    const [journey, lineage, intake, questionSet, companyRows, contactRows, auditRows, proposalRows, invoiceRows] = await Promise.all([
       getCommercialJourney(companyId),
       getArtifactLineage(companyId),
       getClientIntakeContext(companyId).catch(() => ({ snapshots: [] })),
       getStoredQuestionSet(companyId).catch(() => null),
+      db.select({ website: crmCompanies.website, socialLinks: crmCompanies.socialLinks, notes: crmCompanies.notes }).from(crmCompanies).where(eq(crmCompanies.id, companyId)).limit(1),
       db.select().from(crmContacts).where(eq(crmContacts.companyId, companyId)).limit(50),
       db.select().from(audits).where(eq(audits.companyId, companyId)).orderBy(desc(audits.createdAt)).limit(20),
       db.select().from(proposals).where(eq(proposals.companyId, companyId)).orderBy(desc(proposals.createdAt)).limit(20),
@@ -49,6 +50,9 @@ export async function GET(request: Request, context: { params: Promise<{ company
       journey,
       lineage,
       intake: { snapshots: intake.snapshots },
+      // The Quick Pitch graph wants the client's public presence; without it the container could only
+      // link out to a blank form and the founder would retype what we already hold.
+      company: { website: companyRows[0]?.website ?? null, socialLinks: (companyRows[0]?.socialLinks ?? {}) as Record<string, string>, notes: companyRows[0]?.notes ?? null },
       questions: questionSet,
       contacts: contactRows.map((c) => ({
         id: c.id,

@@ -51,6 +51,14 @@ async function audit(deps: MeetingIntelligenceDeps, input: AuditEventInput): Pro
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
 }
 
+/**
+ * A discovery call is where the money numbers are said out loud, and this extraction feeds the audit,
+ * which feeds the proposal, which sets the price. A mini model reliably drops figures and fumbles the
+ * arithmetic that turns "30% of 240 a week" into "~70 slots", so this one task pays for a strong model.
+ * Override per-call via deps.model.
+ */
+const EXTRACTION_MODEL = "anthropic/claude-sonnet-4.5";
+
 export async function extractMeetingIntelligence(meetingId: string, deps: MeetingIntelligenceDeps = {}): Promise<MeetingIntelligenceRow[]> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
@@ -62,13 +70,39 @@ export async function extractMeetingIntelligence(meetingId: string, deps: Meetin
 
   const runProvider = deps.runProvider ?? (async (i) => runTextProvider({ ...i, usageContext: { agentSlug: MEETING_INTELLIGENCE_AGENT, module: MEETING_INTELLIGENCE_MODULE } }));
   const messages: ProviderChatMessage[] = [
-    { role: "system", content: `You extract DISCOVERY intelligence from a sales/discovery meeting for WOBBLE. Return STRICT JSON only: {"facts":[{"kind","content","confidence","sourceSnippet"}]}. kind ∈ ${JSON.stringify(MEETING_INTELLIGENCE_KINDS)}. confidence 0-100 = how clearly the transcript supports it. sourceSnippet = a SHORT verbatim quote from the transcript. Extract only what is actually said — never infer facts that are not supported. If nothing qualifies, return {"facts":[]}.` },
+    {
+      role: "system",
+      content: [
+        "You extract DISCOVERY intelligence from a sales/discovery call for WOBBLE, an AI-OS consultancy.",
+        "",
+        'Return STRICT JSON only: {"facts":[{"kind","content","confidence","sourceSnippet"}]}.',
+        `kind ∈ ${JSON.stringify(MEETING_INTELLIGENCE_KINDS)}.`,
+        "",
+        "`content` is the FINDING. It must stand on its own for someone who will never read this transcript:",
+        "- Never just repeat the quote. \"we're losing around 70 slots\" is a quote, not a finding.",
+        '  The finding is: "Loses ~70 appointment slots a week to no-shows (30% of ~240 weekly appointments across 3 clinics)."',
+        "- CAPTURE EVERY NUMBER, with its unit and what it measures. Volumes, rates, times, headcounts, prices,",
+        "  thresholds. Numbers are the single most valuable thing on the call — missing one loses real money.",
+        "- COMBINE numbers stated in different places when they describe the same thing, and do the arithmetic",
+        "  when the transcript fully supports it (e.g. 30% of 240/week = ~70/week; 70 × PKR 8,000 = ~PKR 560k/week).",
+        "  Show that working inside the finding so a human can check it.",
+        "- Name the thing: which tool, which team, which location, which step.",
+        "- One distinct finding per fact. Do not emit the same finding twice under different kinds.",
+        "",
+        "`sourceSnippet` is a SHORT verbatim quote that proves the finding. It must differ from `content`.",
+        "`confidence` 0-100 = how clearly the transcript supports it. Use <70 when you inferred or did arithmetic.",
+        "",
+        "Extract only what the transcript supports — never invent a number that was not said or implied by one",
+        'that was. If nothing qualifies, return {"facts":[]}.',
+      ].join("\n"),
+    },
     { role: "user", content: `Meeting: ${meeting.title}\n\nTranscript / notes:\n${meeting.transcript.slice(0, 8000)}\n\nReturn STRICT JSON only.` },
   ];
-  const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model: deps.model ?? "openai/gpt-4o-mini", messages, maxTokens: 1200, temperature: 0.1 });
+  const model = deps.model ?? EXTRACTION_MODEL;
+  const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model, messages, maxTokens: 1800, temperature: 0.1 });
   const facts = parseExtraction(r.text);
 
-  const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: f.content, confidence: f.confidence, sourceSnippet: f.sourceSnippet, model: deps.model ?? "openai/gpt-4o-mini", createdBy: actor }, { now }));
+  const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: f.content, confidence: f.confidence, sourceSnippet: f.sourceSnippet, model, createdBy: actor }, { now }));
   await store.insertFacts(rows);
   await audit(deps, { eventType: "meeting_intelligence.extracted", module: MEETING_INTELLIGENCE_MODULE, entityType: "meeting", entityId: meetingId, actor, metadata: { count: rows.length, kinds: [...new Set(rows.map((x) => x.kind))] } });
   return rows;

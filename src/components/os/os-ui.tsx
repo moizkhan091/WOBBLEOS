@@ -7465,6 +7465,7 @@ function OrgWorkspacePage() {
   const org = useApi<{
     journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;
     contacts?: OrgContact[]; audits?: OrgAudit[]; proposals?: OrgProposalRow[]; invoices?: OrgInvoiceRow[];
+    company?: { website: string | null; socialLinks: Record<string, string>; notes: string | null };
   }>(`/api/org/${selectedId || "__none__"}`);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -7481,6 +7482,31 @@ function OrgWorkspacePage() {
         setActionMsg(`Audit complete — inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} approved discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities found. Read it under Artifacts.`);
         org.reload();
       } else setActionMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
+  }
+
+  async function runQuickPitch() {
+    if (!j) return;
+    const snap = (org.data?.intake?.snapshots ?? [])[0];
+    const co = org.data?.company;
+    setBusyKey("pitch"); setActionMsg("Writing a quick pitch from what we already know about this client…");
+    try {
+      const r = await fetch("/api/audit/pitch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: j.company.name,
+          industry: j.company.industry ?? undefined,
+          companyId: selectedId,
+          website: co?.website ?? undefined,
+          instagram: co?.socialLinks?.instagram ?? undefined,
+          // Their own words are the problem list — nothing here is invented or retyped.
+          problems: [snap?.painPoints, ...(snap?.focusAreas ?? [])].filter(Boolean) as string[],
+          signals: [snap?.currentTools ? `Runs on: ${snap.currentTools}` : null, snap?.urgency ? `Timing: ${snap.urgency}` : null, snap?.teamSize ? `Team: ${snap.teamSize}` : null].filter(Boolean) as string[],
+        }),
+      });
+      const jj = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && jj.ok !== false) { setActionMsg("Quick pitch created from this client's form answers — open it in Quick Pitch."); org.reload(); }
+      else setActionMsg("Error: " + String(jj.error ?? r.status));
     } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
   }
 
@@ -7574,10 +7600,10 @@ function OrgWorkspacePage() {
               <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
                 <button onClick={runClientAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busyKey === "audit" ? "Running audit…" : "Run Paid Audit"}</button>
                 <button onClick={buildProposalFromLatestAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "proposal" ? "Building…" : "Build Proposal from the audit"}</button>
-                <a href="/free_audit" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12, textDecoration: "none", display: "inline-block" }}>Quick Pitch</a>
+                <button onClick={runQuickPitch} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "pitch" ? "Writing pitch…" : "Write a Quick Pitch"}</button>
                 <a href="/invoices" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12, textDecoration: "none", display: "inline-block" }}>Invoices</a>
               </div>
-              <div style={{ fontSize: 11, color: faint }}>The audit inherits their form answers, approved call findings and services — nothing is re-typed.</div>
+              <div style={{ fontSize: 11, color: faint }}>The audit and the pitch both inherit their form answers, approved call findings and services — nothing is re-typed. An invoice is drafted automatically when a proposal is accepted.</div>
               {actionMsg ? <div style={{ fontSize: 12.5, color: actionMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{actionMsg}</div> : null}
             </div>
           ) : tab === "callprep" ? (
