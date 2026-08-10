@@ -39,19 +39,47 @@ const factSchema = z.object({
 const extractionSchema = z.object({ facts: z.array(factSchema) });
 
 /** Parse + validate the extractor's JSON output. Tolerates prose/fences; drops malformed facts, never invents. */
+/**
+ * Salvage whole fact objects out of a response whose JSON never closed.
+ *
+ * A long call produces long findings, and a response that hits the token ceiling ends mid-array. The
+ * previous all-or-nothing parse threw the ENTIRE extraction away in that case — a 45-minute discovery
+ * call, every number in it, lost because the last object was half-written. Fact objects are flat, so
+ * each complete `{...}` can be recovered independently; only the truncated tail is discarded.
+ */
+function salvageFacts(raw: string): ExtractedFact[] {
+  const out: ExtractedFact[] = [];
+  for (const match of raw.match(/\{[^{}]*\}/g) ?? []) {
+    try {
+      const parsed = factSchema.safeParse(JSON.parse(match));
+      if (parsed.success) out.push({ ...parsed.data, confidence: Math.round(parsed.data.confidence) });
+    } catch {
+      // not a fact object (or itself truncated) — skip it
+    }
+  }
+  return out;
+}
+
 export function parseExtraction(raw: string): ExtractedFact[] {
   let json: unknown;
   try {
     const m = raw.match(/\{[\s\S]*\}/);
     json = JSON.parse(m ? m[0] : raw);
   } catch {
+    // Truncated or fenced output — recover the complete facts rather than losing the whole call.
+    const salvaged = salvageFacts(raw);
+    if (salvaged.length) return salvaged;
     throw new Error("meeting extraction returned unparseable output");
   }
   const parsed = extractionSchema.safeParse(json);
   if (!parsed.success) {
     // fall back to salvaging any well-formed facts from a facts[] array
     const facts = (json as { facts?: unknown }).facts;
-    if (!Array.isArray(facts)) throw new Error("meeting extraction missing a facts[] array");
+    if (!Array.isArray(facts)) {
+      const salvaged = salvageFacts(raw);
+      if (salvaged.length) return salvaged;
+      throw new Error("meeting extraction missing a facts[] array");
+    }
     return facts.map((f) => factSchema.safeParse(f)).filter((r) => r.success).map((r) => ({ ...r.data, confidence: Math.round(r.data.confidence) }));
   }
   return parsed.data.facts.map((f) => ({ ...f, confidence: Math.round(f.confidence) }));

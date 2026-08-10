@@ -83,3 +83,33 @@ describe("Meeting Intelligence — service", () => {
     await expect(extractMeetingIntelligence("nope", { store: memStore(), runProvider: provider, recordAudit: async () => {} })).rejects.toThrow(/not found/);
   });
 });
+
+describe("parseExtraction — a truncated response must not lose the whole call", () => {
+  const fact = (content: string, kind = "pain") =>
+    `{"kind":"${kind}","content":"${content}","confidence":90,"sourceSnippet":"they said it"}`;
+
+  it("recovers the complete facts when the JSON never closed", () => {
+    // What a real token-ceiling truncation looks like: valid facts, then a half-written one, no closer.
+    const truncated = `{"facts":[${fact("Loses ~70 slots a week (30% of ~240)")},${fact("Six receptionists at PKR 45,000/mo", "current_stack")},{"kind":"budget","content":"Under PKR 500`;
+    const facts = parseExtraction(truncated);
+    expect(facts).toHaveLength(2);
+    expect(facts[0].content).toContain("70 slots");
+    expect(facts[1].kind).toBe("current_stack");
+  });
+
+  it("still throws when there is genuinely nothing to salvage", () => {
+    expect(() => parseExtraction("I'm sorry, I cannot help with that.")).toThrowError(/unparseable/);
+  });
+
+  it("prefers the clean parse when the response is whole", () => {
+    const whole = `{"facts":[${fact("A complete finding")}]}`;
+    expect(parseExtraction(whole)).toHaveLength(1);
+  });
+
+  it("ignores objects in the response that are not facts", () => {
+    const noisy = `{"meta":{"model":"x"},"facts":[${fact("Real finding")}]`;
+    const facts = parseExtraction(noisy);
+    expect(facts).toHaveLength(1);
+    expect(facts[0].content).toBe("Real finding");
+  });
+});

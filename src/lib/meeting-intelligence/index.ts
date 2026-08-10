@@ -96,10 +96,10 @@ export async function extractMeetingIntelligence(meetingId: string, deps: Meetin
         'that was. If nothing qualifies, return {"facts":[]}.',
       ].join("\n"),
     },
-    { role: "user", content: `Meeting: ${meeting.title}\n\nTranscript / notes:\n${meeting.transcript.slice(0, 8000)}\n\nReturn STRICT JSON only.` },
+    { role: "user", content: `Meeting: ${meeting.title}\n\nTranscript / notes:\n${meeting.transcript.slice(0, 24000)}\n\nReturn STRICT JSON only.` },
   ];
   const model = deps.model ?? EXTRACTION_MODEL;
-  const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model, messages, maxTokens: 1800, temperature: 0.1 });
+  const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model, messages, maxTokens: 4000, temperature: 0.1 });
   const facts = parseExtraction(r.text);
 
   const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: f.content, confidence: f.confidence, sourceSnippet: f.sourceSnippet, model, createdBy: actor }, { now }));
