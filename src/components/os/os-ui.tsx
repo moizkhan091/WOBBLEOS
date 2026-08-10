@@ -7323,7 +7323,7 @@ function OrgWorkspacePage() {
               {/* Client-centric commercial action: create the paid audit FROM this client — it inherits the stored context. */}
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
                 <button onClick={runClientAudit} disabled={auditBusy} style={auditBusy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{auditBusy ? "Running audit…" : "⚡ Run Paid Audit from this client"}</button>
-                <span style={{ fontSize: 11, color: faint }}>inherits this client&apos;s qualification + discovery findings + services — no re-typing</span>
+                <span style={{ fontSize: 11, color: faint }}>inherits their form answers + qualification + discovery findings + services — no re-typing</span>
               </div>
               {auditMsg ? <div style={{ fontSize: 12, color: auditMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{auditMsg}</div> : null}
               <div style={{ fontSize: 11, color: faint, letterSpacing: "0.1em", marginTop: 4 }}>MEETINGS & DISCOVERY</div>
