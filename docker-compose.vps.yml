@@ -1,0 +1,51 @@
+# WOBBLE OS — VPS overlay for a host that ALREADY runs Traefik (e.g. alongside n8n).
+#
+# Applied ON TOP of docker-compose.prod.yml:
+#   docker compose -p wobbleos -f docker-compose.prod.yml -f docker-compose.vps.yml --env-file <env> up -d --build
+#
+# It changes NOTHING about the existing stack. Traefik runs with providers.docker.exposedbydefault=false,
+# so it ignores every container that does not opt in — our app opts in with the labels below and is routed
+# exactly the way n8n is (same entrypoints, same `mytlschallenge` cert resolver). db + both workers stay on
+# the private project network and publish no host port. We only JOIN Traefik's existing network to be
+# reachable; we never touch n8n, Traefik's config, or any global docker state.
+#
+# WOBBLE_PUBLIC_HOST (the bare hostname, e.g. os.example.com) is injected at deploy time.
+
+networks:
+  # The project-private network db/app/workers talk on (created per compose project).
+  default: {}
+  # Traefik's existing network — external, we only attach to it (do not create/modify).
+  edge:
+    external: true
+    name: root_default
+
+services:
+  app:
+    # App must reach db/workers (default) AND be reachable by Traefik (edge).
+    networks:
+      - default
+      - edge
+    # No host port: Traefik connects over the `edge` network on the container's internal :3000.
+    ports: !override []
+    labels:
+      traefik.enable: "true"
+      # App is multi-homed; tell Traefik which network to dial it on.
+      traefik.docker.network: "root_default"
+      traefik.http.routers.wobbleos.rule: "Host(`${WOBBLE_PUBLIC_HOST}`)"
+      traefik.http.routers.wobbleos.entrypoints: "web,websecure"
+      traefik.http.routers.wobbleos.tls: "true"
+      traefik.http.routers.wobbleos.tls.certresolver: "mytlschallenge"
+      traefik.http.services.wobbleos.loadbalancer.server.port: "3000"
+      # Mirror n8n's transport hardening (HSTS + sniff/XSS protection) on our router too.
+      traefik.http.routers.wobbleos.middlewares: "wobbleos-sec@docker"
+      traefik.http.middlewares.wobbleos-sec.headers.sslRedirect: "true"
+      traefik.http.middlewares.wobbleos-sec.headers.stsSeconds: "315360000"
+      traefik.http.middlewares.wobbleos-sec.headers.stsIncludeSubdomains: "true"
+      traefik.http.middlewares.wobbleos-sec.headers.stsPreload: "true"
+      traefik.http.middlewares.wobbleos-sec.headers.forceSTSHeader: "true"
+      traefik.http.middlewares.wobbleos-sec.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.wobbleos-sec.headers.browserXssFilter: "true"
+    # 2-core box shared with n8n — keep our footprint modest.
+    deploy:
+      resources:
+        limits: { cpus: "1.5", memory: 1200m, pids: 512 }
