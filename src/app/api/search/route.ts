@@ -75,7 +75,7 @@ export async function GET(request: Request) {
         .where(and(ilike(crmOpportunities.name, pattern), isNull(crmOpportunities.archivedAt)))
         .orderBy(desc(crmOpportunities.createdAt))
         .limit(PER_KIND),
-      db.select({ id: crmLeads.id, name: crmLeads.name, status: crmLeads.status, source: crmLeads.source })
+      db.select({ id: crmLeads.id, name: crmLeads.name, status: crmLeads.status, source: crmLeads.source, companyId: crmLeads.companyId })
         .from(crmLeads)
         .where(and(ilike(crmLeads.name, pattern), isNull(crmLeads.archivedAt)))
         .orderBy(desc(crmLeads.createdAt))
@@ -99,9 +99,11 @@ export async function GET(request: Request) {
     ]);
 
     const results: SearchResult[] = [
-      ...companies.map((r) => ({ kind: "company", id: r.id, label: r.name, sublabel: [r.status, r.industry].filter(Boolean).join(" · ") || undefined, href: "/crm" })),
+      // A company opens its CONTAINER with that client already selected, not the pipeline board. The
+      // pipeline is a list of deals; the container is everything the founder was actually looking for.
+      ...companies.map((r) => ({ kind: "company", id: r.id, label: r.name, sublabel: [r.status, r.industry].filter(Boolean).join(" · ") || undefined, href: `/org?client=${encodeURIComponent(r.id)}` })),
       ...opportunities.map((r) => ({ kind: "deal", id: r.id, label: r.name, sublabel: [r.stage, r.status].filter(Boolean).join(" · ") || undefined, href: "/crm" })),
-      ...leads.map((r) => ({ kind: "lead", id: r.id, label: r.name, sublabel: [r.status, r.source].filter(Boolean).join(" · ") || undefined, href: "/crm" })),
+      ...leads.map((r) => ({ kind: "lead", id: r.id, label: r.name, sublabel: [r.status, r.source].filter(Boolean).join(" · ") || undefined, href: r.companyId ? `/org?client=${encodeURIComponent(r.companyId)}` : "/crm" })),
       ...proposalRows.map((r) => ({ kind: "proposal", id: r.id, label: r.title, sublabel: r.status || undefined, href: "/docs" })),
       // A paid audit is not on the Quick Pitch page, so sending a founder to /free_audit for one would
       // be a dead end — the row they clicked would not be there. Route by the audit's own kind.

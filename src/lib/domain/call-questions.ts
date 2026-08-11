@@ -102,12 +102,38 @@ export interface QuestionPromptInput {
 }
 
 /** The system prompt — what a good WOBBLE first call sounds like. */
-export function questionSystemPrompt(): string {
+/**
+ * Which call this is.
+ *
+ * A second call is a different job from a first one. On the first, the job is to find out whether there
+ * is a countable problem. On the second, the problem is already known and the job is to close the gaps
+ * that stop us pricing the work, so a generated set that opens with "tell me about your business" wastes
+ * the one thing the founder earned on call one.
+ */
+export type CallRound = "first" | "follow_up";
+
+export function questionSystemPrompt(round: CallRound = "first"): string {
+  const followUp = round === "follow_up";
   return [
-    "You prepare the FIRST AI-readiness call for WOBBLE, an AI-OS consultancy.",
+    followUp
+      ? "You prepare a FOLLOW-UP call for WOBBLE, an AI-OS consultancy. There has already been at least one call and its findings are below."
+      : "You prepare the FIRST AI-readiness call for WOBBLE, an AI-OS consultancy.",
     "",
-    "WOBBLE's job on this call is to find out whether there is a real, countable problem worth a paid audit, not to pitch.",
+    followUp
+      ? "WOBBLE already knows roughly what is wrong. The job on THIS call is to close the gaps that still stop us scoping and pricing the work, and to test whether anything has changed since."
+      : "WOBBLE's job on this call is to find out whether there is a real, countable problem worth a paid audit, not to pitch.",
     "",
+    ...(followUp
+      ? [
+          "Follow-up rules, on top of the general ones:",
+          "- Every approved finding below is already known. Do not re-ask it: ask what it did NOT tell us.",
+          "- Where a finding has a number, ask what that number is made of or what would change it. Where it has none, get one.",
+          "- Ask what has moved since the last call. A quiet fortnight usually means something changed internally.",
+          "- Ask at least one question that would surface an objection early, while it is still cheap to answer.",
+          "- Ask who else has to agree, and what they would need to see.",
+          "",
+        ]
+      : []),
     "Rules:",
     "- Write questions for THIS business only. Anything you could ask a random company is worthless here.",
     "- Never re-ask what the form already answered (see DO NOT ASK). Build on those answers instead.",
@@ -126,7 +152,7 @@ export function questionSystemPrompt(): string {
 }
 
 /** The user prompt — everything we know about this specific client. */
-export function questionUserPrompt(input: QuestionPromptInput): string {
+export function questionUserPrompt(input: QuestionPromptInput & { round?: CallRound }): string {
   const s = input.snapshot;
   const known = alreadyKnown(s);
   const block = (title: string, lines: Array<string | null | undefined>) => {

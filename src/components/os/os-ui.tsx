@@ -7344,7 +7344,7 @@ type OrgAudit = { id: string; kind: string; status: string; businessName: string
 type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
-type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[] };
+type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
 type MeetingFactRow = { id: string; kind: string; content: string; confidence: number; sourceSnippet: string | null; status: string };
 type MeetingWithFacts = { meetingId: string; title: string; meetingType: string; status: string; createdAt: string; facts: MeetingFactRow[] };
 
@@ -7411,7 +7411,12 @@ function QuestionsPanel({ companyId, initial, onGenerated }: { companyId: string
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
         <button onClick={generate} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Writing questions…" : set ? "Regenerate questions" : "Generate questions for the first call"}</button>
-        <span style={{ fontSize: 11, color: faint }}>written for this client from their form answers + approved call findings + what WOBBLE can deliver</span>
+        {set?.round === "follow_up" ? <Tag text="follow-up call" color={C.blue} /> : null}
+        <span style={{ fontSize: 11, color: faint }}>
+          {set?.round === "follow_up"
+            ? "a call already happened, so these close the gaps that still stop us pricing the work rather than repeating what is known"
+            : "written for this client from their form answers + approved call findings + what WOBBLE can deliver"}
+        </span>
       </div>
       {err ? <div style={{ fontSize: 12, color: C.orange }}>Error: {err}</div> : null}
       {!set ? <div style={{ fontSize: 12.5, color: faint }}>No questions yet — generate a set before the readiness call.</div> : (
@@ -8434,7 +8439,13 @@ function OrgWorkspacePage() {
   const companies = companiesApi.data?.companies ?? [];
   const [selectedId, setSelectedId] = useState<string>("");
   const [filter, setFilter] = useState("");
-  useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
+  // A search hit deep-links here as /org?client=<id>. Honour it before falling back to the first
+  // client, otherwise clicking a client in the command palette lands on somebody else's container.
+  useEffect(() => {
+    if (selectedId || !companies.length) return;
+    const wanted = new URLSearchParams(window.location.search).get("client");
+    setSelectedId(wanted && companies.some((c) => c.id === wanted) ? wanted : companies[0].id);
+  }, [companies, selectedId]);
   const [tab, setTab] = useState<"overview" | "callprep" | "dealteam" | "artifacts" | "head">("overview");
   const org = useApi<{
     journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;

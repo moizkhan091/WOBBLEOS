@@ -14,6 +14,7 @@ import {
   coverageRepairInstruction,
   missingCoverage,
   questionSystemPrompt,
+  type CallRound,
   questionUserPrompt,
   type CallQuestionSet,
 } from "@/lib/domain/call-questions";
@@ -37,6 +38,8 @@ export interface GeneratedQuestionSet extends CallQuestionSet {
   generatedAt: string;
   /** Coverage areas still missing after the repair round — surfaced, never hidden. */
   gaps: string[];
+  /** Which call this set was written for. A follow-up set builds on the last call rather than repeating it. */
+  round: CallRound;
   modelRunId: string | null;
 }
 
@@ -47,6 +50,8 @@ export interface CallQuestionsDeps {
   recordAudit?: (input: AuditEventInput) => Promise<void>;
   now?: Date;
   actor?: string;
+  /** Override which call this is. Left unset, it is inferred from whether any findings are approved. */
+  round?: CallRound;
 }
 
 async function defaultLoadContext(companyId: string) {
@@ -95,8 +100,12 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
   const { snapshots } = await getClientIntakeContext(companyId).catch(() => ({ snapshots: [] }));
   const snapshot = snapshots[0];
 
+  // Which call this is decides the whole job. Approved findings mean a call already happened, so asking
+  // "tell me about your business" again would throw away what the founder earned on it.
+  const round: CallRound = deps.round ?? ((context.approvedFacts?.length ?? 0) > 0 ? "follow_up" : "first");
+
   const messages: ProviderChatMessage[] = [
-    { role: "system", content: questionSystemPrompt() },
+    { role: "system", content: questionSystemPrompt(round) },
     {
       role: "user",
       content: questionUserPrompt({
@@ -105,6 +114,7 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
         snapshot,
         services: WOBBLE_SERVICES.map((s) => s.name),
         approvedFacts: context.approvedFacts,
+        round,
       }),
     },
   ];
@@ -158,6 +168,7 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
     companyName: context.name,
     generatedAt: now.toISOString(),
     gaps,
+    round,
     modelRunId,
   };
 
@@ -168,7 +179,7 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
     entityType: "crm_company",
     entityId: companyId,
     actor,
-    metadata: { questions: result.questions.length, gaps: result.gaps, usedFormAnswers: Boolean(snapshot), approvedFacts: context.approvedFacts.length },
+    metadata: { questions: result.questions.length, gaps: result.gaps, round, usedFormAnswers: Boolean(snapshot), approvedFacts: context.approvedFacts.length },
   });
 
   return result;

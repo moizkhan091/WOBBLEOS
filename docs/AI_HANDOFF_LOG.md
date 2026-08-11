@@ -7287,3 +7287,15 @@ transaction, fills blanks on the survivor without overwriting anything, and ARCH
 pointer to the winner, so a regretted merge can be unpicked by hand. Nothing is ever deleted.
 
 Gate: typecheck clean, 1675 tests pass, build clean.
+
+## 2026-08-11 - Second calls, and search that lands where you meant (Claude)
+
+The question engine wrote first-call questions every time. A second call is a different job: the problem
+is already known and what is missing is whatever still stops us pricing the work. It now picks its round
+from whether any findings are approved, and a follow-up set is told not to re-ask a known finding, to
+ask what a number is made of, to ask what has moved since, to surface an objection while it is cheap,
+and to find out who else has to agree. The panel says which round it wrote.
+
+Command-palette hits on a company (or a lead that has one) now open that client's CONTAINER with the
+client already selected, via /org?client=<id>. They used to open the pipeline board, which is a list of
+deals rather than the thing the founder searched for.

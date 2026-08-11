@@ -153,3 +153,32 @@ describe("call questions — output validation", () => {
     if (parsed.success) expect(parsed.data.doNotAsk).toEqual([]);
   });
 });
+
+describe("the question engine knows which call it is preparing", () => {
+  it("prepares a first call by default", () => {
+    const p = questionSystemPrompt();
+    expect(p).toContain("FIRST AI-readiness call");
+    expect(p).not.toContain("FOLLOW-UP call");
+  });
+
+  it("prepares a follow-up differently, not just with a different label", () => {
+    const p = questionSystemPrompt("follow_up");
+    expect(p).toContain("FOLLOW-UP call");
+    expect(p).toContain("Do not re-ask it");
+    expect(p).toContain("what has moved since the last call");
+  });
+
+  it("tells a follow-up to surface objections and find who else must agree", () => {
+    const p = questionSystemPrompt("follow_up");
+    expect(p).toContain("surface an objection early");
+    expect(p).toContain("who else has to agree");
+  });
+
+  it("keeps the general rules on both rounds, so neither drifts into a different job", () => {
+    for (const round of ["first", "follow_up"] as const) {
+      const p = questionSystemPrompt(round);
+      expect(p, round).toContain("Chase NUMBERS");
+      expect(p, round).toContain("STRICT JSON only");
+    }
+  });
+});
