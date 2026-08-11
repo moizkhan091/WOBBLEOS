@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { IntakeSnapshot } from "@/lib/domain/intake";
+import { HOUSE_STYLE_PROMPT } from "@/lib/domain/house-style";
 
 /**
  * Pre-call question engine (pure, DB-free and provider-free).
@@ -116,6 +117,8 @@ export function questionSystemPrompt(): string {
     "- If they said a previous tool failed, find out WHY — that is the single biggest predictor of whether we can help.",
     `- Cover every one of these areas at least once: ${COVERAGE_AREAS.join(", ")}.`,
     "- Tier them: 'opener' to get them talking, 'core' for what we must leave knowing, 'probe' for the follow-up that gets the number.",
+    "",
+    HOUSE_STYLE_PROMPT,
     "",
     "Return STRICT JSON only, matching:",
     '{"opening":"…","questions":[{"question":"…","why":"…","coverage":"<area>","tier":"opener|core|probe","basedOn":"…"}],"doNotAsk":["…"]}',

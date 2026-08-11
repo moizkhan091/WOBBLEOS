@@ -6,6 +6,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { parseStructuredWithRepair, repairInstruction } from "@/lib/providers/structured";
 import { WOBBLE_SERVICES } from "@/lib/domain/free-audit";
+import { sanitizeDeep } from "@/lib/domain/house-style";
 import { getClientIntakeContext } from "@/lib/intake/context";
 import {
   CALL_QUESTIONS_MODULE,
@@ -150,8 +151,9 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
     }
   }
 
+  // Deterministic net: the instruction gets it right most of the time, this makes it always.
   const result: GeneratedQuestionSet = {
-    ...set,
+    ...sanitizeDeep(set),
     companyId,
     companyName: context.name,
     generatedAt: now.toISOString(),

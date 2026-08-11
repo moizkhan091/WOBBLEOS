@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ProviderMessage } from "@/lib/providers";
 import { WOBBLE_SERVICES } from "@/lib/domain/free-audit";
+import { sanitizeDeep, withHouseStyle } from "@/lib/domain/house-style";
 
 /**
  * Paid Audit Graph (pure domain) — the McKinsey-depth AI audit team.
@@ -149,7 +150,7 @@ export function buildDiscoveryPrompt(ctx: AuditContext): ProviderMessage[] {
   const system = `You are the DISCOVERY partner on a McKinsey-grade AI transformation audit. Map the business in DEPTH from the stakeholder notes — do not be brief. For each of the three systems (how they ACQUIRE customers, DELIVER the work, SUPPORT/retain customers), list the concrete PROCESS STEPS with detail, the tool used, and the pain at that step. Then the bottlenecks with root cause + business impact, and any key metrics they mentioned. Be specific to THIS business; infer sensibly where notes are thin. Respond with STRICT JSON only:
 {"situation":"2-4 sentence narrative of where the business is today","acquisition":[{"step":"...","detail":"...","tool":"...","pain":"..."}],"delivery":[{...}],"support":[{...}],"bottlenecks":[{"area":"...","pain":"...","rootCause":"...","severity":"low|medium|high","businessImpact":"..."}],"keyMetrics":[{"label":"...","value":"..."}]}`;
   const user = [`BUSINESS: ${ctx.businessName}${ctx.industry ? ` (${ctx.industry})` : ""}`, `STAKEHOLDER NOTES:\n${ctx.intakeNotes}`, ctx.freeAuditSummary ? `PRELIMINARY SCAN: ${ctx.freeAuditSummary}` : null].filter(Boolean).join("\n\n");
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 export function buildOpportunityPrompt(ctx: AuditContext, discovery: Discovery): ProviderMessage[] {
@@ -157,21 +158,21 @@ export function buildOpportunityPrompt(ctx: AuditContext, discovery: Discovery):
 {"opportunities":[{"title":"...","area":"...","service":"wobble-slug-or-empty","description":"...","howItWorks":"...","expectedOutcome":"...","impact":"low|medium|high","difficulty":"low|medium|high","monthlyHoursSaved":0,"estimatedMonthlyValueCents":0,"kpis":["..."]}]}
 WOBBLE SERVICE MENU (use these slugs): ${SERVICE_MENU}`;
   const user = `CURRENT STATE:\n${JSON.stringify(discovery)}\n\nBUSINESS: ${ctx.businessName}. Generate the full opportunity set (12-20).`;
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 export function buildPrioritizationPrompt(opps: OpportunitySet): ProviderMessage[] {
   const system = `You are the PRIORITIZATION partner. Sort opportunities onto an impact/difficulty matrix: quickWins = high impact + low/medium difficulty; bigSwings = high impact + high difficulty. Reference opportunities by their exact titles, and give a clear sequencing rationale. Respond with STRICT JSON only:
 {"quickWins":["title",...],"bigSwings":["title",...],"rationale":"why this sequence"}`;
   const user = `OPPORTUNITIES:\n${JSON.stringify(opps.opportunities.map((o) => ({ title: o.title, impact: o.impact, difficulty: o.difficulty })))}`;
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 export function buildRoadmapPrompt(opps: OpportunitySet, priority: Prioritization): ProviderMessage[] {
   const system = `You are the ROADMAP architect. Build a detailed phased 12-month plan (4-5 phases). Phase 1 = quick wins for fast ROI. For EACH phase give: title, month range, focus, 2-4 objectives, the concrete deliverables, the opportunity item titles it delivers, and the expected outcome at the end of the phase. Respond with STRICT JSON only:
 {"phases":[{"title":"...","months":"Month 1-3","focus":"...","objectives":["..."],"deliverables":["..."],"items":["title",...],"expectedOutcome":"..."}]}`;
   const user = `QUICK WINS: ${priority.quickWins.join(", ")}\nBIG SWINGS: ${priority.bigSwings.join(", ")}\n\nALL OPPORTUNITIES:\n${JSON.stringify(opps.opportunities.map((o) => o.title))}`;
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 export function buildReportPrompt(ctx: AuditContext, discovery: Discovery, opps: OpportunitySet, roadmap: Roadmap): ProviderMessage[] {
@@ -179,7 +180,7 @@ export function buildReportPrompt(ctx: AuditContext, discovery: Discovery, opps:
 CRITICAL: all money amounts are INTEGER CENTS (dollars×100). Example: $18,000/month = 1800000; a $45,000 build = 4500000. Ground ROI in the business's own economics (deal value, lead volume, hours saved, leaked revenue) — realistic, not trivial, not inflated. Respond with STRICT JSON only:
 {"executiveSummary":"...","situationSummary":"...","roi":{"estimatedMonthlyUpsideCents":1800000,"estimatedImplementationCents":4500000,"paybackMonths":6,"breakdown":[{"area":"...","monthlyValueCents":0}]},"risks":[{"risk":"...","mitigation":"..."}],"successMetrics":["..."],"recommendedTechStack":["..."],"nextSteps":["..."]}`;
   const user = `BUSINESS: ${ctx.businessName}\nSITUATION: ${discovery.situation}\nBOTTLENECKS: ${discovery.bottlenecks.map((b) => b.pain).join("; ")}\nOPPORTUNITIES (${opps.opportunities.length}): ${opps.opportunities.map((o) => o.title).slice(0, 20).join("; ")}\nROADMAP PHASES: ${roadmap.phases.length}`;
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 // ---------------------------------------------------------------- assembly
@@ -210,7 +211,10 @@ export function assemblePaidAuditReport(input: {
   roadmap: Roadmap;
   report: AuditReportNode;
 }): PaidAuditReport {
-  return {
+  // The audit is the most client-facing thing WOBBLE produces, so house style is enforced on the way
+  // OUT as well as instructed on the way in. sanitizeDeep walks every nested string (opportunities,
+  // roadmap phases, risks) rather than only the summary a reader sees first.
+  return sanitizeDeep({
     businessName: input.businessName,
     industry: input.industry ?? null,
     executiveSummary: input.report.executiveSummary,
@@ -225,5 +229,5 @@ export function assemblePaidAuditReport(input: {
     recommendedTechStack: input.report.recommendedTechStack,
     nextSteps: input.report.nextSteps,
     serviceCount: new Set(input.opportunities.opportunities.map((o) => o.service).filter(Boolean)).size,
-  };
+  });
 }

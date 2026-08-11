@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ProviderMessage } from "@/lib/providers";
 import { WOBBLE_SERVICES, diagnose, type RunAuditInput, type AuditReport } from "@/lib/domain/free-audit";
+import { withHouseStyle } from "@/lib/domain/house-style";
 
 /**
  * Doc 1 — "What Wobble can do" pitch (pure domain). MERGES the Free-Audit gap diagnosis with a
@@ -51,7 +52,7 @@ export function buildPitchPrompt(input: { businessName: string; industry?: strin
 {"headline":"...","situation":"2-3 sentences on their market/niche","whatWeNoticed":["..."],"services":[{"name":"...","whatItDoes":"niche-specific","outcomeForYou":"the result for a ${input.industry ?? "business like theirs"}"}],"whyWobble":"...","cta":"..."}
 WOBBLE SERVICE MENU: ${SERVICE_MENU}`;
   const user = [`BUSINESS: ${input.businessName}`, `WHAT OUR SCAN FOUND (gaps): ${gaps || "(run a call to learn more)"}`, input.signalsText ? `SCRAPED SIGNALS:\n${input.signalsText.slice(0, 5000)}` : null].filter(Boolean).join("\n\n");
-  return [{ role: "system", content: system }, { role: "user", content: user }];
+  return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
 /** Deterministic fallback pitch (no LLM) — from the free-audit diagnosis + generic service blurbs. */

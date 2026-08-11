@@ -4,6 +4,7 @@ import { meetings as meetingsTable, meetingIntelligence } from "@/db/schema";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { HOUSE_STYLE_PROMPT, sanitizeHouseStyle } from "@/lib/domain/house-style";
 import {
   MEETING_INTELLIGENCE_KINDS,
   parseExtraction,
@@ -94,6 +95,8 @@ export async function extractMeetingIntelligence(meetingId: string, deps: Meetin
         "",
         "Extract only what the transcript supports — never invent a number that was not said or implied by one",
         'that was. If nothing qualifies, return {"facts":[]}.',
+        "",
+        HOUSE_STYLE_PROMPT,
       ].join("\n"),
     },
     { role: "user", content: `Meeting: ${meeting.title}\n\nTranscript / notes:\n${meeting.transcript.slice(0, 24000)}\n\nReturn STRICT JSON only.` },
@@ -102,7 +105,7 @@ export async function extractMeetingIntelligence(meetingId: string, deps: Meetin
   const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model, messages, maxTokens: 4000, temperature: 0.1 });
   const facts = parseExtraction(r.text);
 
-  const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: f.content, confidence: f.confidence, sourceSnippet: f.sourceSnippet, model, createdBy: actor }, { now }));
+  const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: sanitizeHouseStyle(f.content), confidence: f.confidence, sourceSnippet: f.sourceSnippet, model, createdBy: actor }, { now }));
   await store.insertFacts(rows);
   await audit(deps, { eventType: "meeting_intelligence.extracted", module: MEETING_INTELLIGENCE_MODULE, entityType: "meeting", entityId: meetingId, actor, metadata: { count: rows.length, kinds: [...new Set(rows.map((x) => x.kind))] } });
   return rows;
