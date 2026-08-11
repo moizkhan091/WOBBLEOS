@@ -7263,7 +7263,7 @@ function FindingDrawer({ finding, onClose, onAct, busy }: { finding: SecFinding;
 type OrgJourney = {
   company: { id: string; name: string; industry: string | null; status: string | null; clientType: string | null };
   qualification: { grade: string; overallScore: number; recommendation: string; version: number } | null;
-  opportunities: Array<{ id: string; name: string; stage: string | null; valueCents: number; linkedAuditIds: string[]; linkedProposalId: string | null; linkedProjectIds: string[] }>;
+  opportunities: Array<{ id: string; name: string; stage: string | null; valueCents: number; nextAction?: string | null; linkedAuditIds: string[]; linkedProposalId: string | null; linkedProjectIds: string[] }>;
   meetings: Array<{ id: string; title: string; meetingType: string; discoveryFactCount: number; approvedDiscoveryFacts: number }>;
   discoveryFactCount: number;
   paidTransformationAudits: Array<{ id: string; status: string; businessName: string | null }>;
@@ -7341,7 +7341,7 @@ function stageColor(s: string) { return s === "project" || s === "won" ? C.lime 
 
 type OrgContact = { id: string; fullName: string; role: string | null; email: string | null; phone: string | null; whatsapp: string | null; linkedin: string | null; relationshipType: string; isDecisionMaker: boolean };
 type OrgAudit = { id: string; kind: string; status: string; businessName: string | null; createdAt: string; executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean };
-type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[] };
@@ -7760,7 +7760,8 @@ type MCRole = {
 };
 type MCView = {
   roles: MCRole[]; preset: string;
-  catalog: Array<{ id: string; label: string; costTier: string; provider: string }>;
+  presets: Array<{ id: string; label: string; description: string }>;
+  catalog: Array<{ id: string; label: string; costTier: string; provider: string; usdPerMillionInput: number | null; usdPerMillionOutput: number | null }>;
   spend: { todayUsd: number; totalUsd: number; dailyCapUsd: number | null; capEnabled: boolean; capUsed: number };
   totals: { runs: number; failures: number; costUsd: number };
 };
@@ -7775,6 +7776,13 @@ const DEPT_LABELS: Record<string, string> = {
 };
 
 const usd = (n: number) => (n >= 1 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(4)}` : "$0");
+/** What a model costs, per million tokens in/out. Shown at the moment of choosing, not on the invoice. */
+const priceLabel = (m: { usdPerMillionInput: number | null; usdPerMillionOutput: number | null; costTier?: string }) =>
+  m.usdPerMillionInput !== null && m.usdPerMillionOutput !== null
+    ? `  $${m.usdPerMillionInput}/$${m.usdPerMillionOutput} per M`
+    : m.costTier
+      ? `  (${m.costTier})`
+      : "";
 const tierColor = (t: string) => (t === "cheap" ? C.lime : t === "premium" ? C.orange : t === "strong" ? C.blue : C.gray);
 
 /**
@@ -7836,11 +7844,7 @@ function ModelControlPage() {
       {/* Presets */}
       <OrgSection title="PRESETS" right={<span style={{ fontSize: 11, color: faint }}>currently: {v.preset}</span>} />
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-        {([
-          ["economy", "Economy", "Everything cheap. Audits and transcript extraction get noticeably worse."],
-          ["balanced", "Balanced", "Strong only where a cheap model measurably fails. Recommended."],
-          ["premium", "Premium", "Strong everywhere. Several times the cost."],
-        ] as const).map(([p, label, desc]) => (
+        {v.presets.map(({ id: p, label, description: desc }) => (
           <button key={p} onClick={() => apply({ preset: p }, `preset:${p}`)} disabled={busy !== null} title={desc}
             style={busy ? disabledBtn : v.preset === p ? { ...primaryBtn, padding: "9px 15px" } : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "9px 15px" }}>
             {busy === `preset:${p}` ? "Applying…" : label}
@@ -7895,6 +7899,12 @@ function ModelControlPage() {
                   <div style={{ fontSize: 10.5, color: faint }}>
                     {r.avgLatencyMs ? `${(r.avgLatencyMs / 1000).toFixed(1)}s avg` : "not run yet"}
                   </div>
+                  {(() => {
+                    const m = v.catalog.find((c) => c.id === r.model);
+                    return m && m.usdPerMillionInput !== null ? (
+                      <div style={{ fontSize: 10.5, color: faint }}>${m.usdPerMillionInput}/${m.usdPerMillionOutput} per M</div>
+                    ) : null;
+                  })()}
                 </div>
                 <select
                   value={r.model}
@@ -7903,8 +7913,8 @@ function ModelControlPage() {
                   aria-label={`Model for ${r.label}`}
                   style={{ ...inputStyle, width: "auto", minWidth: 210, fontSize: 12, padding: "7px 10px" }}
                 >
-                  {(v.catalog.length ? v.catalog : [{ id: r.model, label: r.model, costTier: "mid", provider: "openrouter" }]).map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}{m.costTier ? ` (${m.costTier})` : ""}</option>
+                  {(v.catalog.length ? v.catalog : [{ id: r.model, label: r.model, costTier: "mid", provider: "openrouter", usdPerMillionInput: null, usdPerMillionOutput: null }]).map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}{priceLabel(m)}</option>
                   ))}
                   {v.catalog.some((m) => m.id === r.model) ? null : <option value={r.model}>{r.model} (current)</option>}
                 </select>
@@ -7923,13 +7933,348 @@ function ModelControlPage() {
   );
 }
 
+
+type WorklistEntryRow = {
+  companyId: string; name: string; industry: string | null; status: string | null;
+  health: { score: number; band: string; headline: string; signals: Array<{ label: string; points: number; detail: string }>; daysSinceTouch: number | null; daysInStage: number | null };
+  next: { kind: string; label: string; because: string; urgency: number };
+  deal: { id: string; name: string; stage: string; status: string; valueCents: number; currency: string } | null;
+  lastTouchAt: string | null;
+  counts: { meetings: number; approvedFindings: number; proposals: number; audits: number; contacts: number };
+  hasIntake: boolean; hasQuestions: boolean;
+};
+type WorklistView = {
+  entries: WorklistEntryRow[];
+  totals: { clients: number; needAttention: number; openDeals: number; openPipelineCents: number; overdueActions: number };
+};
+
+const BAND_COLOR: Record<string, string> = { healthy: C.lime, slipping: C.blue, at_risk: C.orange, cold: C.orange };
+const BAND_LABEL: Record<string, string> = { healthy: "healthy", slipping: "slipping", at_risk: "at risk", cold: "cold" };
+
+/** "3 days ago", not an ISO string nobody reads. */
+function agoLabel(iso: string | null): string {
+  if (!iso) return "never";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return days + "d ago";
+  return Math.floor(days / 30) + "mo ago";
+}
+
+/**
+ * The worklist. What a founder opening Revenue should see before any tool: who needs them, why, and
+ * the one thing to do about it. Ranked server-side by the same rules that produce the reason text, so
+ * the order is always arguable rather than mysterious.
+ */
+function WorklistPanel({ onPick, selectedId }: { onPick: (companyId: string) => void; selectedId: string }) {
+  const state = useApi<WorklistView>("/api/crm/worklist");
+  const [showAll, setShowAll] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [committing, setCommitting] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ text: string; date: string }>({ text: "", date: "" });
+  const [msg, setMsg] = useState<string | null>(null);
+
+  if (state.loading) return <StateBlock kind="loading" message="Working out who needs you today…" />;
+  if (state.error) return <StateBlock kind="error" message={state.error} />;
+  const v = state.data;
+  if (!v || !v.entries.length) return null;
+
+  const attention = v.entries.filter((e) => e.next.urgency >= 50);
+  const shown = showAll ? v.entries : attention.length ? attention.slice(0, 6) : v.entries.slice(0, 3);
+
+  async function commit(opportunityId: string) {
+    if (!draft.text.trim()) return;
+    setCommitting(opportunityId); setMsg(null);
+    try {
+      const r = await fetch("/api/crm/worklist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opportunityId, nextAction: draft.text.trim(), nextActionAt: draft.date ? new Date(draft.date + "T09:00:00.000Z").toISOString() : null }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setMsg("Committed. It will show as overdue here if the date passes."); setDraft({ text: "", date: "" }); setExpanded(null); state.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setCommitting(null); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <OrgMetric label="clients" value={v.totals.clients} />
+        <OrgMetric label="need attention" value={v.totals.needAttention} tone={v.totals.needAttention ? C.orange : undefined} />
+        <OrgMetric label="open deals" value={v.totals.openDeals} />
+        <OrgMetric label="open pipeline" value={orgMoney(v.totals.openPipelineCents, "USD")} tone={v.totals.openPipelineCents ? C.lime : undefined} />
+        <OrgMetric label="overdue" value={v.totals.overdueActions} tone={v.totals.overdueActions ? C.orange : undefined} />
+      </div>
+
+      {shown.map((e) => {
+        const open = expanded === e.companyId;
+        return (
+          <div key={e.companyId} style={{ borderRadius: 12, border: "1px solid " + (e.companyId === selectedId ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.07)"), background: e.companyId === selectedId ? "rgba(184,255,44,0.05)" : "rgba(255,255,255,0.02)", overflow: "hidden" }}>
+            <div style={{ display: "flex", gap: 11, alignItems: "center", flexWrap: "wrap", padding: "11px 13px" }}>
+              <span title={e.health.score + "/100"} style={{ minWidth: 42, textAlign: "center", fontSize: 13, fontWeight: 600, color: BAND_COLOR[e.health.band] ?? C.gray }}>{e.health.score}</span>
+              <button onClick={() => onPick(e.companyId)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13.5, color: C.white }}>{e.name}</div>
+                <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{e.next.because}</div>
+              </button>
+              <Tag text={BAND_LABEL[e.health.band] ?? e.health.band} color={BAND_COLOR[e.health.band] ?? C.gray} />
+              {e.deal ? <Tag text={e.deal.stage.replace(/_/g, " ")} color={C.blue} /> : null}
+              {e.deal && e.deal.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(e.deal.valueCents, e.deal.currency)}</span> : null}
+              <span style={{ fontSize: 11, color: faint, minWidth: 66, textAlign: "right" }}>{agoLabel(e.lastTouchAt)}</span>
+              <span style={{ fontSize: 12, color: e.next.urgency >= 100 ? C.orange : C.white, padding: "5px 10px", borderRadius: 8, border: "1px solid " + (e.next.urgency >= 100 ? "rgba(255,107,0,0.35)" : "rgba(255,255,255,0.1)") }}>{e.next.label}</span>
+              <button onClick={() => { setExpanded(open ? null : e.companyId); setDraft({ text: e.next.label, date: "" }); }} aria-label={"Why " + e.name + " is ranked here"} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 12 }}>{open ? "hide" : "why"}</button>
+            </div>
+            {open ? (
+              <div style={{ padding: "0 13px 12px 13px", display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                  {e.health.signals.map((sig, i) => (
+                    <span key={i} title={sig.detail} style={{ fontSize: 10.5, padding: "3px 8px", borderRadius: 7, border: "1px solid " + (sig.points < 0 ? "rgba(255,107,0,0.3)" : "rgba(184,255,44,0.25)"), color: sig.points < 0 ? C.orange : C.lime }}>
+                      {sig.label} {sig.points > 0 ? "+" : ""}{sig.points}
+                    </span>
+                  ))}
+                </div>
+                {e.health.signals.map((sig, i) => <div key={i} style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{sig.detail}</div>)}
+                <div style={{ fontSize: 11.5, color: faint }}>
+                  {e.counts.meetings} call(s) · {e.counts.approvedFindings} approved findings · {e.counts.audits} audit(s) · {e.counts.proposals} proposal(s) · {e.counts.contacts} contact(s)
+                  {e.hasIntake ? " · answered the form" : " · never filled the form"}{e.hasQuestions ? " · questions ready" : ""}
+                </div>
+                {e.deal ? (
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                    <input value={draft.text} onChange={(ev) => setDraft({ ...draft, text: ev.target.value })} placeholder="Commit the next action…" aria-label="Next action" style={{ ...inputStyle, flex: 1, minWidth: 220, fontSize: 12, padding: "7px 10px" }} />
+                    <input type="date" value={draft.date} onChange={(ev) => setDraft({ ...draft, date: ev.target.value })} aria-label="Next action date" style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "7px 10px" }} />
+                    <button onClick={() => commit(e.deal!.id)} disabled={committing !== null || !draft.text.trim()} style={committing || !draft.text.trim() ? disabledBtn : { ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>{committing === e.deal.id ? "Saving…" : "Commit"}</button>
+                  </div>
+                ) : <div style={{ fontSize: 11.5, color: faint }}>No deal on this client yet, so there is nowhere to hang a next action. Create one in Pipeline / CRM.</div>}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</div> : null}
+      {v.entries.length > shown.length || showAll ? (
+        <button onClick={() => setShowAll(!showAll)} style={{ alignSelf: "flex-start", background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 12 }}>
+          {showAll ? "show only what needs me" : "show all " + v.entries.length + " clients"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+
+type ObjectionRow = { objection: string; rootedIn: string; likelihood: string; answer: string; proof?: string };
+type FollowUpRow = { channel: string; subject: string; body: string; asksFor: string; groundedIn: string; generatedAt?: string };
+type DealTeamView = { objections: { objections: ObjectionRow[]; generatedAt?: string } | null; followUp: FollowUpRow | null };
+
+const LIKELIHOOD_COLOR: Record<string, string> = { high: C.orange, medium: C.blue, low: C.gray };
+
+/**
+ * The deal team on one client: the objections they will raise, and the message to send next.
+ *
+ * Both agents refuse to run on an empty container rather than inventing a generic objection list, so
+ * the error you get before a call is a real answer: there is nothing to reason from yet.
+ */
+function DealTeamPanel({ companyId }: { companyId: string }) {
+  const state = useApi<DealTeamView>(`/api/org/${companyId || "__none__"}/deal-team`);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [channel, setChannel] = useState<"whatsapp" | "email" | "linkedin">("whatsapp");
+  const [purpose, setPurpose] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function run(body: Record<string, unknown>, key: string) {
+    setBusy(key); setMsg(null);
+    try {
+      const r = await fetch(`/api/org/${companyId}/deal-team`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setMsg(null); state.reload(); }
+      else setMsg(String(j.error ?? r.status));
+    } catch (e) { setMsg(e instanceof Error ? e.message : "failed"); } finally { setBusy(null); }
+  }
+
+  const v = state.data;
+  const objections = v?.objections?.objections ?? [];
+  const followUp = v?.followUp ?? null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <OrgSection title="OBJECTIONS THEY WILL RAISE" right={<span style={{ fontSize: 11, color: faint }}>{v?.objections?.generatedAt ? "generated " + agoLabel(v.objections.generatedAt) : "not run yet"}</span>} />
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => run({ agent: "objection_handler" }, "obj")} disabled={busy !== null || !companyId} style={busy || !companyId ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
+          {busy === "obj" ? "Thinking like the client…" : objections.length ? "Redo the objections" : "Work out the objections"}
+        </button>
+        <span style={{ fontSize: 11.5, color: faint }}>Reads their form answers, approved call findings and the proposal on the table.</span>
+      </div>
+      {objections.map((o, i) => (
+        <div key={i} style={{ padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Tag text={o.likelihood} color={LIKELIHOOD_COLOR[o.likelihood] ?? C.gray} />
+            <span style={{ fontSize: 13, color: C.white, flex: 1, minWidth: 200 }}>&ldquo;{o.objection}&rdquo;</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: faint }}>comes from: {o.rootedIn}</div>
+          <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{o.answer}</div>
+          {o.proof ? <div style={{ fontSize: 11.5, color: C.lime }}>proof: {o.proof}</div> : null}
+        </div>
+      ))}
+
+      <OrgSection title="THE NEXT MESSAGE" right={<span style={{ fontSize: 11, color: faint }}>drafted, never sent</span>} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={channel} onChange={(e) => setChannel(e.target.value as "whatsapp" | "email" | "linkedin")} aria-label="Channel" style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "7px 10px" }}>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="email">Email</option>
+          <option value="linkedin">LinkedIn DM</option>
+        </select>
+        <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="What is this message for? (optional)" aria-label="Purpose" style={{ ...inputStyle, flex: 1, minWidth: 220, fontSize: 12, padding: "7px 10px" }} />
+        <button onClick={() => run({ agent: "follow_up_writer", channel, purpose: purpose.trim() || undefined }, "fu")} disabled={busy !== null || !companyId} style={busy || !companyId ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
+          {busy === "fu" ? "Writing…" : "Draft it"}
+        </button>
+      </div>
+      {followUp ? (
+        <div style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Tag text={followUp.channel} color={C.blue} />
+            <span style={{ fontSize: 11.5, color: faint, flex: 1 }}>asks for: {followUp.asksFor}</span>
+            <button
+              onClick={() => { void navigator.clipboard?.writeText((followUp.subject ? followUp.subject + "\n\n" : "") + followUp.body); setCopied(true); setTimeout(() => setCopied(false), 1800); }}
+              style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}
+            >{copied ? "copied" : "copy"}</button>
+          </div>
+          {followUp.subject ? <div style={{ fontSize: 13, color: C.white }}>{followUp.subject}</div> : null}
+          <div style={{ fontSize: 13, color: C.white, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{followUp.body}</div>
+          <div style={{ fontSize: 11.5, color: faint }}>grounded in: {followUp.groundedIn}</div>
+        </div>
+      ) : null}
+      {msg ? <div style={{ fontSize: 12.5, color: C.orange, lineHeight: 1.5 }}>{msg}</div> : null}
+      {state.error ? <div style={{ fontSize: 12, color: C.orange }}>{state.error}</div> : null}
+    </div>
+  );
+}
+
+
+type CritiqueItem = { issue: string; severity: string; where: string; fix: string };
+type PreSendReview = {
+  critique: { verdict: string; headline: string; items: CritiqueItem[] };
+  pricing: { verdict: string; headline: string; affordability: string; notes: string[] };
+};
+
+const VERDICT_COLOR: Record<string, string> = { would_sign: C.lime, would_hesitate: C.blue, would_refuse: C.orange, consistent: C.lime, low: C.blue, high: C.orange, not_enough_history: C.gray };
+const SEVERITY_COLOR: Record<string, string> = { blocker: C.orange, serious: C.orange, minor: C.gray };
+
+/**
+ * The pre-send review on one proposal: the deal reviewer arguing the client's side, and the pricing
+ * analyst checking the quote against what WOBBLE has charged before. Advisory. Nothing is changed.
+ */
+function PreSendReviewButton({ proposalId, stored }: { proposalId: string; stored?: PreSendReview | null }) {
+  const [review, setReview] = useState<PreSendReview | null>(stored ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  async function run() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/proposals/${proposalId}/pre-send-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; critique?: PreSendReview["critique"]; pricing?: PreSendReview["pricing"] };
+      if (r.ok && j.ok && j.critique && j.pricing) { setReview({ critique: j.critique, pricing: j.pricing }); setOpen(true); }
+      else setErr(String(j.error ?? r.status));
+    } catch (e) { setErr(e instanceof Error ? e.message : "failed"); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
+          {busy ? "Two agents reading it…" : review ? "Review again" : "Review before sending"}
+        </button>
+        {review ? (
+          <>
+            <Tag text={review.critique.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.critique.verdict] ?? C.gray} />
+            <Tag text={"price " + review.pricing.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.pricing.verdict] ?? C.gray} />
+            <button onClick={() => setOpen(!open)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11.5 }}>{open ? "hide" : "read it"}</button>
+          </>
+        ) : null}
+      </div>
+      {err ? <div style={{ fontSize: 11.5, color: C.orange }}>{err}</div> : null}
+      {review && open ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+          <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.critique.headline}</div>
+          {review.critique.items.map((it, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3, paddingLeft: 10, borderLeft: "2px solid " + (SEVERITY_COLOR[it.severity] ?? C.gray) }}>
+              <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                <Tag text={it.severity} color={SEVERITY_COLOR[it.severity] ?? C.gray} />
+                <span style={{ fontSize: 11.5, color: faint }}>{it.where}</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.5 }}>{it.issue}</div>
+              <div style={{ fontSize: 12, color: C.lime, lineHeight: 1.5 }}>fix: {it.fix}</div>
+            </div>
+          ))}
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.pricing.headline}</div>
+            {review.pricing.affordability ? <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{review.pricing.affordability}</div> : null}
+            {review.pricing.notes.map((n, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{n}</div>)}
+          </div>
+          <div style={{ fontSize: 11, color: faint }}>Advisory. No price was changed and nothing was sent.</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+const PIPELINE_STAGE_LIST = [
+  "new_lead", "contacted", "qualified", "ai_readiness_call_booked", "call_completed",
+  "paid_audit_offered", "paid_audit_sold", "audit_in_progress", "audit_delivered",
+  "proposal_sent", "negotiation", "won", "lost", "nurture",
+] as const;
+
+/**
+ * Move a deal from inside the client container, instead of opening the pipeline in another tab and
+ * hunting for the same deal. Closing it (won or lost) requires a reason, because a loss with no reason
+ * teaches nothing and a win with no reason cannot be repeated.
+ */
+function DealStageControl({ opportunityId, stage, onMoved }: { opportunityId: string; stage: string; onMoved: () => void }) {
+  const [target, setTarget] = useState(stage);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const needsReason = target === "won" || target === "lost";
+
+  async function move() {
+    if (target === stage) return;
+    if (needsReason && !reason.trim()) { setMsg("Say what actually decided it, it is the only part worth keeping."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/crm/opportunities/${opportunityId}/stage`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: target, reason: reason.trim() || undefined }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; project?: { id: string } | null };
+      if (r.ok && j.ok) { setMsg(j.project ? "Moved. A delivery project was created." : "Moved."); setReason(""); onMoved(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
+      <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Move deal to stage" style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 9px" }}>
+        {PIPELINE_STAGE_LIST.map((st) => <option key={st} value={st}>{st.replace(/_/g, " ")}</option>)}
+      </select>
+      {needsReason && target !== stage ? (
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target === "lost" ? "Why did we lose it?" : "What actually closed it?"} aria-label="Reason" style={{ ...inputStyle, flex: 1, minWidth: 200, fontSize: 11.5, padding: "5px 9px" }} />
+      ) : null}
+      <button onClick={move} disabled={busy || target === stage} style={busy || target === stage ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
+        {busy ? "Moving…" : "Move"}
+      </button>
+      {msg ? <span style={{ fontSize: 11.5, color: msg.startsWith("Error") || msg.startsWith("Say") ? C.orange : C.lime }}>{msg}</span> : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
   const [selectedId, setSelectedId] = useState<string>("");
   const [filter, setFilter] = useState("");
   useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
-  const [tab, setTab] = useState<"overview" | "callprep" | "artifacts" | "head">("overview");
+  const [tab, setTab] = useState<"overview" | "callprep" | "dealteam" | "artifacts" | "head">("overview");
   const org = useApi<{
     journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;
     contacts?: OrgContact[]; audits?: OrgAudit[]; proposals?: OrgProposalRow[]; invoices?: OrgInvoiceRow[];
@@ -8005,6 +8350,10 @@ function OrgWorkspacePage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Before any tool: who needs you, and the one thing to do about them. */}
+      <OrgSection title="WHO NEEDS YOU TODAY" right={<span style={{ fontSize: 11, color: faint }}>ranked by what is blocking, not by name</span>} />
+      <WorklistPanel selectedId={selectedId} onPick={setSelectedId} />
+
       {/* Searchable picker — a pill row is fine at two clients and unusable at thirty. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {companies.length > 8 ? (
@@ -8036,7 +8385,7 @@ function OrgWorkspacePage() {
           </div>
 
           <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap" }}>
-            {([["overview", "Overview"], ["callprep", "Call prep"], ["artifacts", "Artifacts & Lineage"], ["head", "Ask the Head"]] as const).map(([t, label]) => (
+            {([["overview", "Overview"], ["callprep", "Call prep"], ["dealteam", "Deal team"], ["artifacts", "Artifacts & Lineage"], ["head", "Ask the Head"]] as const).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{label}</button>
             ))}
           </div>
@@ -8057,12 +8406,17 @@ function OrgWorkspacePage() {
 
               <OrgSection title="DEALS" />
               {j.opportunities.length ? j.opportunities.map((o) => (
-                <a key={o.id} href="/crm" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", textDecoration: "none" }}>
-                  <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
-                  <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
-                  {o.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.valueCents, "USD")}</span> : null}
-                  <span style={{ fontSize: 11, color: faint }}>open in pipeline →</span>
-                </a>
+                <div key={o.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
+                    <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
+                    {o.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.valueCents, "USD")}</span> : null}
+                    {o.nextAction ? <span style={{ fontSize: 11.5, color: faint }}>next: {o.nextAction}</span> : null}
+                    <a href="/crm" style={{ fontSize: 11, color: faint, textDecoration: "none" }}>open in pipeline →</a>
+                  </div>
+                  {/* Move it here rather than in another tab; closing it demands a reason. */}
+                  <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={org.reload} />
+                </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
 
               <OrgSection title="DO SOMETHING FOR THIS CLIENT" />
@@ -8082,6 +8436,8 @@ function OrgWorkspacePage() {
               <OrgSection title="AFTER THE CALL, GIVE IT BACK" />
               <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
             </div>
+          ) : tab === "dealteam" ? (
+            <DealTeamPanel companyId={selectedId} />
           ) : tab === "head" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <OrgSection title="HEAD OF REVENUE AND CRM" />
@@ -8099,12 +8455,16 @@ function OrgWorkspacePage() {
               <AuditsPanel items={auditItems} />
               <OrgSection title="PROPOSALS" />
               {proposalItems.length ? proposalItems.map((p) => (
-                <a key={p.id} href="/docs" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", textDecoration: "none" }}>
-                  <Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} />
-                  <span style={{ fontSize: 12.5, color: C.white, flex: 1 }}>{p.title}</span>
-                  {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
-                  <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
-                </a>
+                <div key={p.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} />
+                    <a href="/docs" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{p.title}</a>
+                    {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
+                    <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
+                  </div>
+                  {/* Two agents argue with it before a client ever sees it. */}
+                  <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
+                </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No proposals yet — build one from a completed audit on the Overview tab.</div>}
               <OrgSection title="INVOICES" />
               {invoiceItems.length ? invoiceItems.map((i) => (

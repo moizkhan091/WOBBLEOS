@@ -52,6 +52,10 @@ export interface ModelRoleDef {
 
 const CHEAP = "openai/gpt-4o-mini";
 const STRONG = "anthropic/claude-sonnet-4.5";
+// The frugal pair. Verified live on OpenRouter: Flash Lite is $0.10/$0.40 per million tokens and Flash
+// is $0.30/$2.50, against GPT-4o mini at $0.15/$0.60 and Sonnet 4.5 at $3/$15.
+const FRUGAL_CHEAP = "google/gemini-2.5-flash-lite";
+const FRUGAL_STRONG = "google/gemini-2.5-flash";
 
 /**
  * Every model decision in the OS.
@@ -63,6 +67,10 @@ const STRONG = "anthropic/claude-sonnet-4.5";
  */
 export const MODEL_ROLE_CATALOG: ModelRoleDef[] = [
   // Revenue and CRM
+  { role: "objection_handling", label: "Objection handler", department: "revenue_crm", purpose: "Turns a client's own form answers and approved call findings into the objections they will actually raise, and the answer to each in their language.", defaultModel: STRONG, needsJudgment: true, agents: ["objection_handler"] },
+  { role: "follow_up_writing", label: "Follow-up writer", department: "revenue_crm", purpose: "Drafts the next message to a client in the right channel and register, grounded in what was said. Drafts only, a founder sends.", defaultModel: STRONG, needsJudgment: true, agents: ["follow_up_writer"] },
+  { role: "deal_review", label: "Deal reviewer", department: "proposal", purpose: "Argues the client's side of a proposal before it is sent: what is unproven, what is priced without a reason, what would make this client refuse.", defaultModel: STRONG, needsJudgment: true, agents: ["deal_reviewer"] },
+  { role: "pricing_analysis", label: "Pricing analyst", department: "proposal", purpose: "Checks a quote against what WOBBLE has quoted before and against the client's own stated economics. Advisory, a founder sets every price.", defaultModel: STRONG, needsJudgment: true, agents: ["pricing_analyst"] },
   { role: "revenue_head", label: "Head of Revenue", department: "revenue_crm", purpose: "Runs the department in conversation, decides what to do about a client and drives the tools.", defaultModel: STRONG, needsJudgment: true, agents: ["revenue_head"] },
   { role: "call_questions", label: "Pre-call questions", department: "revenue_crm", purpose: "Writes the questions for a client's next call from their form answers and approved findings.", defaultModel: STRONG, needsJudgment: true, agents: ["call_question_engine"] },
   { role: "meeting_intelligence", label: "Call transcript extraction", department: "revenue_crm", purpose: "Pulls findings and money numbers out of a call. A cheap model drops the figures and fumbles the arithmetic.", defaultModel: STRONG, needsJudgment: true, agents: ["meeting_intelligence_analyst"] },
@@ -101,16 +109,18 @@ export const ROLE_BY_NAME = new Map(MODEL_ROLE_CATALOG.map((r) => [r.role, r]));
 
 // ---------------------------------------------------------------- presets
 
-export const PRESETS = ["economy", "balanced", "premium"] as const;
+export const PRESETS = ["frugal", "economy", "balanced", "premium"] as const;
 export type Preset = (typeof PRESETS)[number];
 
 export const PRESET_LABELS: Record<Preset, string> = {
+  frugal: "Frugal",
   economy: "Economy",
   balanced: "Balanced",
   premium: "Premium",
 };
 
 export const PRESET_DESCRIPTIONS: Record<Preset, string> = {
+  frugal: "Roughly a tenth of Balanced. Judgment work moves to Gemini 2.5 Flash, everything else to Flash Lite. Both are real, current models and cheaper per token than GPT-4o mini, but nothing in this codebase has been validated on them yet.",
   economy: "Everything on the cheap model. Cheapest possible, and the audit and transcript quality will drop noticeably.",
   balanced: "Strong only where a cheap model measurably fails: judgment work. Everything mechanical stays cheap.",
   premium: "Strong everywhere. Best output, several times the cost.",
@@ -125,6 +135,10 @@ export const PRESET_DESCRIPTIONS: Record<Preset, string> = {
 export function presetModel(preset: Preset, role: ModelRoleDef, cheap = CHEAP, strong = STRONG): string {
   if (preset === "economy") return cheap;
   if (preset === "premium") return strong;
+  // Frugal is Balanced's shape on a cheaper pair of models: judgment still gets the better one, the rest
+  // still gets the cheaper one. It exists because $3/M vs $0.30/M is the difference between running the
+  // OS all week and running out on Tuesday.
+  if (preset === "frugal") return role.needsJudgment ? FRUGAL_STRONG : FRUGAL_CHEAP;
   return role.needsJudgment ? strong : cheap;
 }
 

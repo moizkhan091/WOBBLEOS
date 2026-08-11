@@ -12,6 +12,9 @@ import { newId } from "@/lib/ids";
  * protects conversion); the Paid Audit is the McKinsey-depth engagement (separate module/team).
  */
 
+/** Lead source stamped on a company/lead created by the free audit, so the magnet is attributable. */
+export const FREE_AUDIT_SOURCE = "free_audit";
+
 export const FREE_AUDIT_MODULE = "free_audit";
 
 // ---------------------------------------------------------------- Wobble service catalog
@@ -80,6 +83,10 @@ export const runAuditSchema = z.object({
   opportunityId: z.string().trim().min(1).optional(),
   businessName: z.string().trim().min(1),
   industry: z.string().trim().min(1).optional(),
+  // Identity, so a free audit run for a business we already know attaches to that container instead of
+  // creating a twin. Domain is the strongest signal; email is the fallback.
+  website: z.string().trim().min(1).optional(),
+  email: z.string().trim().email().optional(),
   problems: z.array(z.string().trim().min(1)).default([]),
   signals: z.array(z.string().trim().min(1)).default([]),
   monthlyLeads: z.number().int().min(0).optional(),

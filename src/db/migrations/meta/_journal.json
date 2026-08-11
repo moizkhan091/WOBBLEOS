@@ -456,6 +456,20 @@
       "when": 1784464483310,
       "tag": "0064_model_role_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1784464484310,
+      "tag": "0065_model_catalog_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1784464485310,
+      "tag": "0066_deal_team_roles",
+      "breakpoints": true
     }
   ]
 }

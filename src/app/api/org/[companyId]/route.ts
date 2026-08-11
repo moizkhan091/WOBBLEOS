@@ -79,7 +79,12 @@ export async function GET(request: Request, context: { params: Promise<{ company
           hasRoadmap: Boolean(report.roadmap),
         };
       }),
-      proposals: proposalRows.map((p) => ({ id: p.id, title: p.title, status: p.status, version: p.version, totalCents: p.pricingCents ?? 0, currency: p.currency ?? "USD" })),
+      // preSendReview travels with the proposal so a founder returning tomorrow sees yesterday's verdict
+      // instead of paying for it again.
+      proposals: proposalRows.map((p) => ({
+        id: p.id, title: p.title, status: p.status, version: p.version, totalCents: p.pricingCents ?? 0, currency: p.currency ?? "USD",
+        preSendReview: ((p.metadata ?? {}) as Record<string, unknown>).preSendReview ?? null,
+      })),
       invoices: invoiceRows.map((i) => ({ id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate })),
     });
   } catch (error) {

@@ -9,6 +9,8 @@ import {
   buildContactRow,
   buildLeadRow,
   buildOpportunityRow,
+  reasonFieldForStage,
+  stageRequiresReason,
   statusForStage,
   type CompanyRow,
   type ContactRow,
@@ -278,6 +280,14 @@ export async function moveOpportunityStage(id: string, newStage: PipelineStage, 
   const status = statusForStage(newStage);
   const fields: Partial<OpportunityRow> = { stage: newStage, status, updatedAt: now };
   if (newStage === "won") fields.probability = 100;
+  // Closing a deal without recording why teaches nothing. The reason goes on the ROW, not only into
+  // stage history, so "why do we lose" is one query rather than a trawl through an audit trail.
+  if (stageRequiresReason(newStage)) {
+    const reason = input.reason?.trim();
+    if (!reason) throw new Error(`moving a deal to '${newStage}' needs a reason: what actually decided it`);
+    const field = reasonFieldForStage(newStage);
+    if (field) (fields as Record<string, unknown>)[field] = reason;
+  }
   await withTransaction(store, async (tx) => {
     await tx.updateOpportunity(id, fields);
     await tx.insertStageHistory({ id: newId("hist"), opportunityId: id, oldStage: opp.stage, newStage, movedBy: input.actor ?? "system", reason: input.reason ?? null, createdAt: now });

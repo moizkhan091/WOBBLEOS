@@ -77,7 +77,7 @@ export interface IntakeResult {
  * "Wobble Media" because they look similar is far more damaging than creating a second container the
  * founder can merge by hand.
  */
-async function defaultFindExistingCompany(input: { domain: string | null; name: string; email?: string }): Promise<CompanyRow | null> {
+export async function findExistingCompanyContainer(input: { domain: string | null; name: string; email?: string }): Promise<CompanyRow | null> {
   if (!process.env.DATABASE_URL) return null;
   const db = getDb();
   const name = input.name.trim().toLowerCase();
@@ -123,7 +123,7 @@ export async function intakeReadinessSubmission(raw: unknown, deps: IntakeDeps =
 
   const mapped = mapSubmissionToCrm(submission, { now });
 
-  const existing = await (deps.findExistingCompany ?? defaultFindExistingCompany)({
+  const existing = await (deps.findExistingCompany ?? findExistingCompanyContainer)({
     domain: mapped.domain,
     name: mapped.displayName,
     email: submission.contact?.email || undefined,

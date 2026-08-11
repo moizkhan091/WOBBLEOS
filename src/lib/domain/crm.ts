@@ -37,6 +37,26 @@ export const PIPELINE_STAGES = [
 ] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
+/**
+ * Stages you may not enter without saying why.
+ *
+ * A lost deal with no reason teaches nothing: six months later the pipeline shows five losses and no
+ * pattern. Won is here too, for the opposite reason: what actually closed a deal is the most reusable
+ * thing the OS can learn, and nobody writes it down after the fact.
+ */
+export const STAGES_REQUIRING_REASON = ["lost", "won"] as const;
+
+export function stageRequiresReason(stage: PipelineStage): boolean {
+  return (STAGES_REQUIRING_REASON as readonly string[]).includes(stage);
+}
+
+/** Which column a stage's reason belongs in, so it is queryable rather than buried in history. */
+export function reasonFieldForStage(stage: PipelineStage): "lostReason" | "winReason" | null {
+  if (stage === "lost") return "lostReason";
+  if (stage === "won") return "winReason";
+  return null;
+}
+
 export const OPPORTUNITY_STATUSES = ["open", "won", "lost", "archived"] as const;
 export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
 

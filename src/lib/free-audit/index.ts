@@ -1,9 +1,11 @@
 import { desc, eq } from "drizzle-orm";
-import { audits as auditsTable } from "@/db/schema";
+import { audits as auditsTable, crmCompanies, crmLeads } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
-import { FREE_AUDIT_MODULE, buildAuditRow, diagnose, type AuditRow, type RunAuditInput } from "@/lib/domain/free-audit";
+import { FREE_AUDIT_MODULE, FREE_AUDIT_SOURCE, buildAuditRow, diagnose, type AuditRow, type RunAuditInput } from "@/lib/domain/free-audit";
+import { findExistingCompanyContainer } from "@/lib/intake";
+import { newId } from "@/lib/ids";
 
 /**
  * Free Audit service (IO). Runs the deterministic diagnosis, persists the audit, links it to a CRM
@@ -23,10 +25,65 @@ export interface FreeAuditDeps {
   now?: Date;
 }
 
+/**
+ * A free audit is the lead magnet, so the business it was run for belongs in the pipeline.
+ *
+ * Before this, running a free audit for a business nobody had entered in the CRM produced an audit row
+ * pointing at nothing: the founder could read the report but the business never appeared in Clients,
+ * never got a health score, and never showed up in the worklist. The audit was the last anyone heard
+ * of them.
+ *
+ * The container is found the same way the website form finds it (domain, then email, then an exact
+ * name) so a business that later fills the form ENRICHES this record instead of forking a twin.
+ */
+export async function ensureAuditLandsInPipeline(
+  input: { businessName: string; website?: string | null; industry?: string | null; email?: string | null; createdBy?: string | null },
+  now: Date,
+  db: Db = getDb(),
+): Promise<{ companyId: string; created: boolean }> {
+  const domain = (input.website ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] || null;
+  const existing = await findExistingCompanyContainer({ domain, name: input.businessName, email: input.email ?? undefined });
+  if (existing) return { companyId: existing.id, created: false };
+
+  const companyId = newId("company");
+  await db.insert(crmCompanies).values({
+    id: companyId,
+    name: input.businessName.trim(),
+    industry: input.industry ?? null,
+    website: input.website ?? null,
+    email: input.email ?? null,
+    leadSource: FREE_AUDIT_SOURCE,
+    status: "prospect",
+    tags: ["free_audit"],
+    createdBy: input.createdBy ?? "free_audit",
+    createdAt: now,
+    updatedAt: now,
+  });
+  // A lead as well as a company: the pipeline counts leads, and a free audit IS an expression of interest.
+  await db.insert(crmLeads).values({
+    id: newId("lead"),
+    name: input.businessName.trim(),
+    companyId,
+    companyName: input.businessName.trim(),
+    website: input.website ?? null,
+    industry: input.industry ?? null,
+    email: input.email ?? null,
+    source: FREE_AUDIT_SOURCE,
+    status: "new",
+    problemStated: "Ran the free AI audit.",
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { companyId, created: true };
+}
+
 export async function runFreeAudit(input: RunAuditInput, deps: FreeAuditDeps = {}): Promise<AuditRow> {
   const store = deps.store ?? defaultStore();
+  const now = deps.now ?? new Date();
   const report = diagnose(input);
-  const row = buildAuditRow(input, report, { now: deps.now, kind: "free" });
+  // Land it in the pipeline first, so the audit row carries the container id rather than orphaning it.
+  const companyId = input.companyId ?? (process.env.DATABASE_URL ? (await ensureAuditLandsInPipeline({ businessName: input.businessName, website: input.website, industry: input.industry, createdBy: input.createdBy }, now)).companyId : undefined);
+  const row = buildAuditRow({ ...input, companyId }, report, { now: deps.now, kind: "free" });
   await store.insertAudit(row);
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))({
     eventType: "audit.free_completed",

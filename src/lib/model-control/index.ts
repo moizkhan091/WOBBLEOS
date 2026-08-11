@@ -7,6 +7,9 @@ import { getModelCatalog, getModelRoleMap, setModelForRole } from "@/lib/model-r
 import {
   MODEL_CONTROL_MODULE,
   MODEL_ROLE_CATALOG,
+  PRESETS,
+  PRESET_DESCRIPTIONS,
+  PRESET_LABELS,
   ROLE_BY_NAME,
   detectPreset,
   downgradeWarnings,
@@ -41,7 +44,9 @@ export interface RoleView extends ModelRoleDef {
 export interface ModelControlView {
   roles: RoleView[];
   preset: ReturnType<typeof detectPreset>;
-  catalog: Array<{ id: string; label: string; costTier: string; provider: string }>;
+  /** The presets the page offers, from the domain, so adding one cannot leave the UI behind. */
+  presets: Array<{ id: string; label: string; description: string }>;
+  catalog: Array<{ id: string; label: string; costTier: string; provider: string; usdPerMillionInput: number | null; usdPerMillionOutput: number | null }>;
   spend: {
     todayUsd: number;
     totalUsd: number;
@@ -116,12 +121,19 @@ export async function getModelControlView(): Promise<ModelControlView> {
   return {
     roles,
     preset: detectPreset(current),
-    catalog: (catalog as Array<{ id: string; label?: string; costTier?: string; provider?: string }>).map((m) => ({
-      id: m.id,
-      label: m.label ?? m.id,
-      costTier: m.costTier ?? "mid",
-      provider: m.provider ?? "openrouter",
-    })),
+    presets: PRESETS.map((p) => ({ id: p, label: PRESET_LABELS[p], description: PRESET_DESCRIPTIONS[p] })),
+    catalog: (catalog as Array<{ id: string; label?: string; costTier?: string; provider?: string; modalities?: string[]; status?: string; usdPerMillionInput?: number; usdPerMillionOutput?: number }>)
+      // Only models a text role can actually be pointed at. Offering an embedding or video model in a
+      // dropdown that would reject it on submit is worse than not offering it.
+      .filter((m) => (m.modalities ?? ["text"]).includes("text") && m.status !== "deprecated")
+      .map((m) => ({
+        id: m.id,
+        label: m.label ?? m.id,
+        costTier: m.costTier ?? "mid",
+        provider: m.provider ?? "openrouter",
+        usdPerMillionInput: m.usdPerMillionInput ?? null,
+        usdPerMillionOutput: m.usdPerMillionOutput ?? null,
+      })),
     spend: {
       todayUsd,
       totalUsd: num(totalSpend[0]?.cost),

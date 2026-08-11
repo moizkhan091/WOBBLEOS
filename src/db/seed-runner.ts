@@ -67,6 +67,11 @@ function modelRoles() {
     proposal_architect: or(process.env.PROPOSAL_ARCHITECT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     content_render: or(process.env.CONTENT_RENDER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     offer_validation: or(process.env.OFFER_VALIDATION_MODEL?.trim() || "openai/gpt-4o-mini"),
+    // The deal team: four agents that sit between a good call and a signature. All judgment work.
+    objection_handling: or(process.env.OBJECTION_HANDLING_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    follow_up_writing: or(process.env.FOLLOW_UP_WRITING_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    deal_review: or(process.env.DEAL_REVIEW_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    pricing_analysis: or(process.env.PRICING_ANALYSIS_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
   };
 }
 

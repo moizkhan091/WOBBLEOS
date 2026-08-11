@@ -1,3 +1,4 @@
+import { ensureAuditLandsInPipeline } from "@/lib/free-audit";
 import { diagnose, buildAuditRow, SERVICE_BY_SLUG, WOBBLE_SERVICES, FREE_AUDIT_MODULE, type RunAuditInput, type AuditReport, type AuditRow } from "@/lib/domain/free-audit";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -109,7 +110,10 @@ export async function runFreeAuditTeam(input: RunAuditInput, deps: FreeAuditTeam
   }
 
   const enrichedReport = { ...report, enrichment } as AuditReport & { enrichment: FreeAuditEnrichment };
-  const row = buildAuditRow(input, enrichedReport, { now: deps.now, kind: "free" });
+  // The enriched path is still the lead magnet, so it lands the business in the pipeline too. Without
+  // this, whether a free audit produced a client depended on which button the founder pressed.
+  const companyId = input.companyId ?? (process.env.DATABASE_URL ? (await ensureAuditLandsInPipeline({ businessName: input.businessName, website: input.website ?? null, industry: input.industry ?? null, email: input.email ?? null, createdBy: input.createdBy ?? null }, deps.now ?? new Date())).companyId : undefined);
+  const row = buildAuditRow({ ...input, companyId }, enrichedReport, { now: deps.now, kind: "free" });
   await store.insertAudit(row);
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))({
     eventType: "audit.free_team_completed",

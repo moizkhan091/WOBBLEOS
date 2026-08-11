@@ -74,6 +74,10 @@ const EXEMPT: Record<string, string> = {
   PROPOSAL_ARCHITECT_MODEL: "tuning-with-default — per-role model override",
   CONTENT_RENDER_MODEL: "tuning-with-default — per-role model override",
   OFFER_VALIDATION_MODEL: "tuning-with-default — per-role model override",
+  OBJECTION_HANDLING_MODEL: "tuning-with-default — per-role model override",
+  FOLLOW_UP_WRITING_MODEL: "tuning-with-default — per-role model override",
+  DEAL_REVIEW_MODEL: "tuning-with-default — per-role model override",
+  PRICING_ANALYSIS_MODEL: "tuning-with-default — per-role model override",
 };
 
 function walk(dir: string): string[] {

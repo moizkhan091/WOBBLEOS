@@ -7228,3 +7228,37 @@ no cache and no restart. An unset role now displays what it actually resolves to
 not the catalog default.
 
 Gate: typecheck clean, 1606 tests pass, build clean.
+
+## 2026-08-11 - Revenue/CRM: the worklist, the deal team, and the lead magnet (Claude)
+
+**The worklist.** Revenue opened on seven tools and no answer to "who do I call first". It now opens on
+a ranked list of every client with a health score, the reason for the score, and the one thing to do
+next. All of it is computed from rows the OS already holds (`src/lib/domain/client-health.ts`), so it
+costs nothing to recompute and every number is arguable: expand a row and it lists the signals that
+produced it. Assembled set-based across all companies in one pass (`src/lib/client-worklist`), never
+per client. A founder can commit the next action and its date straight from the row; it lands on the
+opportunity, so the worklist, the deal and the container can never disagree about what was promised.
+
+**The deal team.** Four agents had been registered and left `paused` for months because nothing ran
+them. All four now have real execution paths in `src/lib/deal-team`:
+- objection_handler - the objections THIS client will raise, rooted in their own form answers and
+  approved findings, with the answer to each. Refuses to run on an empty container rather than
+  inventing a generic list.
+- follow_up_writer - the next message, per channel, drafted and never sent.
+- deal_reviewer + pricing_analyst - run together as the pre-send review on a proposal. The reviewer
+  argues the client's side; the analyst checks the quote against what WOBBLE has quoted other clients
+  (this client's own proposals are excluded, or it would compare the quote with itself). The verdict is
+  stored on the proposal, so returning tomorrow does not mean paying for it again.
+Each has its own model role, so one can be made cheaper without touching the others.
+
+**The lead magnet reached the pipeline.** A free audit for a business nobody had entered in the CRM
+produced an audit row pointing at nothing: readable report, invisible business. Both the fast and the
+enriched paths now find-or-create the client container using the same identity rules as the website
+form (domain, then email, then an exact name), so a business that later fills the form enriches that
+record instead of forking a twin.
+
+**Closing a deal now needs a reason.** `moveOpportunityStage` writes it to `lostReason`/`winReason` on
+the row rather than only into stage history, and refuses to close without one. Deals can be moved from
+inside the client container instead of in another tab.
+
+Gate: typecheck clean, 1656 tests pass, build clean.

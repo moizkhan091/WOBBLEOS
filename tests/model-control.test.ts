@@ -8,6 +8,7 @@ import {
   resolveChanges,
   ROLE_BY_NAME,
 } from "@/lib/domain/model-control";
+import { DEFAULT_MODEL_CATALOG } from "@/lib/domain/model-registry";
 
 const CHEAP = "openai/gpt-4o-mini";
 const STRONG = "anthropic/claude-sonnet-4.5";
@@ -103,5 +104,51 @@ describe("model control — warns before a founder degrades real work", () => {
 
   it("says nothing when the change is an upgrade", () => {
     expect(downgradeWarnings([{ role: "meeting_intelligence", model: STRONG }], new Set([CHEAP]))).toEqual([]);
+  });
+});
+
+describe("model control — the frugal preset", () => {
+  const FRUGAL_CHEAP = "google/gemini-2.5-flash-lite";
+  const FRUGAL_STRONG = "google/gemini-2.5-flash";
+
+  it("keeps balanced's shape on a cheaper pair", () => {
+    for (const r of MODEL_ROLE_CATALOG) {
+      expect(presetModel("frugal", r), r.role).toBe(r.needsJudgment ? FRUGAL_STRONG : FRUGAL_CHEAP);
+    }
+  });
+
+  it("is detectable, so the page can show which preset is live", () => {
+    const map = Object.fromEntries(MODEL_ROLE_CATALOG.map((r) => [r.role, presetModel("frugal", r)]));
+    expect(detectPreset(map)).toBe("frugal");
+  });
+
+  it("only names models that exist in the shipped catalog", () => {
+    const ids = new Set(DEFAULT_MODEL_CATALOG.map((m) => m.id));
+    expect(ids.has(FRUGAL_CHEAP)).toBe(true);
+    expect(ids.has(FRUGAL_STRONG)).toBe(true);
+  });
+
+  it("really is cheaper than balanced on both halves", () => {
+    const price = (id: string) => DEFAULT_MODEL_CATALOG.find((m) => m.id === id)!;
+    expect(price(FRUGAL_CHEAP).usdPerMillionOutput!).toBeLessThan(price("openai/gpt-4o-mini").usdPerMillionOutput!);
+    expect(price(FRUGAL_STRONG).usdPerMillionOutput!).toBeLessThan(price("anthropic/claude-sonnet-4.5").usdPerMillionOutput!);
+  });
+});
+
+describe("model control — the catalog can be costed", () => {
+  it("every active text model carries a price, so no dropdown entry is a mystery", () => {
+    const textModels = DEFAULT_MODEL_CATALOG.filter((m) => m.modalities.includes("text") && m.status === "active");
+    expect(textModels.length).toBeGreaterThanOrEqual(6);
+    for (const m of textModels) {
+      expect(m.usdPerMillionInput, `${m.id} has no input price`).toBeTypeOf("number");
+      expect(m.usdPerMillionOutput, `${m.id} has no output price`).toBeTypeOf("number");
+    }
+  });
+
+  it("output always costs at least as much as input, which is how these providers price", () => {
+    for (const m of DEFAULT_MODEL_CATALOG) {
+      if (m.usdPerMillionInput === undefined || m.usdPerMillionOutput === undefined) continue;
+      expect(m.usdPerMillionOutput, m.id).toBeGreaterThanOrEqual(m.usdPerMillionInput);
+    }
   });
 });

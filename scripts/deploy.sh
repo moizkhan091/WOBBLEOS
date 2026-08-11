@@ -5,11 +5,25 @@
 # Preferred usage (production secrets stay outside the checkout):
 #   bash scripts/deploy.sh /etc/wobble/wobble.env
 #
+# The production secrets live at /etc/wobble/wobble.env (root-only, deliberately outside the checkout,
+# so a fresh `git archive` extraction can never clobber them). That file also carries WOBBLE_PUBLIC_HOST,
+# which the vps overlay interpolates into the Traefik Host rule.
+#
 # Optional env: COMPOSE_FILE, ENV_FILE (used only when no positional path is supplied), READY_URL,
 # READY_TIMEOUT. The legacy default is .env.production for backward compatibility.
 set -euo pipefail
 
-COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.prod.yml}
+# One or more compose files, colon-separated (the same convention Compose's own COMPOSE_FILE uses).
+# This box runs prod + the vps overlay: the overlay carries the Traefik labels, so deploying with only
+# docker-compose.prod.yml silently drops the router and takes the public host offline.
+COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.prod.yml:docker-compose.vps.yml}
+COMPOSE_ARGS=()
+IFS=':' read -r -a _compose_files <<< "$COMPOSE_FILE"
+for _f in "${_compose_files[@]}"; do
+  [ -n "$_f" ] || continue
+  [ -f "$_f" ] || { echo "XX  compose file not found: $_f" >&2; exit 1; }
+  COMPOSE_ARGS+=(-f "$_f")
+done
 ENV_FILE_INPUT=${1:-${ENV_FILE:-.env.production}}
 READY_URL=${READY_URL:-http://127.0.0.1:3000/api/health/ready}
 READY_TIMEOUT=${READY_TIMEOUT:-180}
@@ -41,10 +55,10 @@ export WOBBLE_BUILD_ID="${WOBBLE_BUILD_ID:-$(git rev-parse HEAD 2>/dev/null || e
 echo "==> build id: $WOBBLE_BUILD_ID"
 
 echo "==> validating compose config"
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" config >/dev/null
 
 echo "==> docker compose up -d --build (app + db + migrate + worker + worker-video)"
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d --build
 
 echo "==> waiting for readiness at $READY_URL (timeout ${READY_TIMEOUT}s)"
 deadline=$(( $(date +%s) + READY_TIMEOUT ))
@@ -54,12 +68,12 @@ until curl -fsS "$READY_URL" >/dev/null 2>&1; do
     echo "    Last readiness response:" >&2
     curl -sS "$READY_URL" >&2 || true
     echo "" >&2
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >&2 || true
+    docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" ps >&2 || true
     exit 1
   fi
   sleep 5
 done
 
 echo "==> READY. Current services:"
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" ps
 echo "==> WOBBLE OS deploy finished OK at $(date -u +%FT%TZ)"

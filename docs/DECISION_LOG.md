@@ -928,3 +928,34 @@ degrading rather than quietly making the audits worse.
 Decision: re-seeding must never overwrite a founder's model switch, but must add roles that did not exist
 when the database was seeded. jsonb `new || existing` gives exactly that, in both the migration and the
 seeder.
+
+## 2026-08-11 - Ranking clients is arithmetic, not a model call
+
+Decision: client health and the next action are deterministic functions over rows the OS already has.
+A model call per client would be too expensive to run on every page load, and a founder cannot argue
+with a score whose reasons are not written down. Every signal carries its own sentence, and the same
+rules that rank the list produce the reason text shown next to it.
+
+## 2026-08-11 - An agent with no execution path stays paused
+
+Decision reaffirmed: the four deal-team agents were flipped to `active` only in the same change that
+gave them code that runs them. The registry-integrity guard enforces this in both directions, and the
+declaration of where each one runs lives in the test, so a rename trips it.
+
+## 2026-08-11 - A deal cannot close without a reason
+
+Decision: `won` and `lost` require a reason, and it is written to a column on the opportunity, not just
+to stage history. "Why do we lose" should be one query. This is enforced in the service, so every
+caller (route, Ask, automation) gets the same rule.
+
+## 2026-08-11 - Deploying this box needs both compose files and the pinned project name
+
+Context: a deploy run with only docker-compose.prod.yml, from /opt/wobble-os, silently created a SECOND
+stack under the compose project "wobble-os" (derived from the directory) with its own empty database
+volume, alongside the real "wobbleos" stack. The live data was never touched and the duplicate was
+removed, but every container reported healthy throughout.
+
+Decision: /usr/local/bin/wobble-deploy on the VPS pins `-p wobbleos`, passes both compose files, and
+reads secrets from /etc/wobble/wobble.env. scripts/deploy.sh now takes a colon-separated COMPOSE_FILE
+and defaults to both files; a test pins that. WOBBLE_PUBLIC_HOST is recorded in the env file so the
+Traefik Host rule can never interpolate to empty.
