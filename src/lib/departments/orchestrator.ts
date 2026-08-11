@@ -198,7 +198,7 @@ export async function runDepartment<T>(input: RunDepartmentInput<T>, deps: RunDe
     selectSpecialists: (need) => selectSpecialists(members, need),
     authorizeMember: (member, request) => {
       const decision = authorizeMemberAction(department.permissions, member, request);
-      if (!decision.ok) throw new Error(`department '${department.slug}': member '${member.memberRef}' unauthorized — ${decision.errors.join("; ")}`);
+      if (!decision.ok) throw new Error(`department '${department.slug}': member '${member.memberRef}' unauthorized, ${decision.errors.join("; ")}`);
       return decision;
     },
     checkBudget: (spend) => enforceBudget(department.budget, spend),

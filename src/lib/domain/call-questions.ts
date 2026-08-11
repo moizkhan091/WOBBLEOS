@@ -32,10 +32,10 @@ export type CoverageArea = (typeof COVERAGE_AREAS)[number];
 
 export const COVERAGE_INTENT: Record<CoverageArea, string> = {
   how_they_get_customers: "Where demand actually comes from today and what happens to it end to end.",
-  the_bottleneck_in_numbers: "Turn the pain they described into countable reality — volumes, times, rates, frequency.",
+  the_bottleneck_in_numbers: "Turn the pain they described into countable reality, volumes, times, rates, frequency.",
   current_stack_and_data: "What they run on, where the data lives, and what is reachable for an audit.",
   who_decides_and_how: "Who signs, who blocks, and what their decision process looks like.",
-  what_a_fix_is_worth: "The money on the table — deal value, cost of the failure, budget reality.",
+  what_a_fix_is_worth: "The money on the table, deal value, cost of the failure, budget reality.",
   constraints_and_past_attempts: "What has already been tried, why it failed, and what would rule us out.",
 };
 
@@ -76,15 +76,15 @@ export function missingCoverage(set: { questions: CallQuestion[] }): CoverageAre
 export function alreadyKnown(snap: IntakeSnapshot | undefined): string[] {
   if (!snap) return [];
   const known: Array<string | null> = [
-    snap.businessDescription ? `What the business does — they said: "${snap.businessDescription}"` : null,
-    snap.focusAreas.length ? `Which area to look at first — they chose: ${snap.focusAreas.join(", ")}` : null,
-    snap.painPoints ? `Their headline pain — they wrote: "${snap.painPoints}"` : null,
-    snap.currentTools ? `Which tools they use — they listed: ${snap.currentTools}` : null,
-    snap.aiWorkflowStage ? `How far along they are with AI — they said: ${snap.aiWorkflowStage}` : null,
-    snap.urgency ? `How soon they want to move — they said: ${snap.urgency}` : null,
-    snap.openToPaidAudit ? `Whether they are open to a paid audit — they said: ${snap.openToPaidAudit}` : null,
-    snap.teamSize ? `Team size — ${snap.teamSize}` : null,
-    snap.cityMarket ? `Which market they operate in — ${snap.cityMarket}` : null,
+    snap.businessDescription ? `What the business does, they said: "${snap.businessDescription}"` : null,
+    snap.focusAreas.length ? `Which area to look at first, they chose: ${snap.focusAreas.join(", ")}` : null,
+    snap.painPoints ? `Their headline pain, they wrote: "${snap.painPoints}"` : null,
+    snap.currentTools ? `Which tools they use, they listed: ${snap.currentTools}` : null,
+    snap.aiWorkflowStage ? `How far along they are with AI, they said: ${snap.aiWorkflowStage}` : null,
+    snap.urgency ? `How soon they want to move, they said: ${snap.urgency}` : null,
+    snap.openToPaidAudit ? `Whether they are open to a paid audit, they said: ${snap.openToPaidAudit}` : null,
+    snap.teamSize ? `Team size, ${snap.teamSize}` : null,
+    snap.cityMarket ? `Which market they operate in, ${snap.cityMarket}` : null,
   ];
   return known.filter(Boolean) as string[];
 }
@@ -106,7 +106,7 @@ export function questionSystemPrompt(): string {
   return [
     "You prepare the FIRST AI-readiness call for WOBBLE, an AI-OS consultancy.",
     "",
-    "WOBBLE's job on this call is to find out whether there is a real, countable problem worth a paid audit — not to pitch.",
+    "WOBBLE's job on this call is to find out whether there is a real, countable problem worth a paid audit, not to pitch.",
     "",
     "Rules:",
     "- Write questions for THIS business only. Anything you could ask a random company is worthless here.",
@@ -114,7 +114,7 @@ export function questionSystemPrompt(): string {
     "- Chase NUMBERS. 'Leads are slow' is not usable; 'how many enquiries a week and how long until someone replies' is.",
     "- Prefer how-it-actually-works-today over hypotheticals. Ask what happened with the last one, not what usually happens.",
     "- One question per question. No stacked or leading questions, no jargon a clinic owner would not use.",
-    "- If they said a previous tool failed, find out WHY — that is the single biggest predictor of whether we can help.",
+    "- If they said a previous tool failed, find out WHY, that is the single biggest predictor of whether we can help.",
     `- Cover every one of these areas at least once: ${COVERAGE_AREAS.join(", ")}.`,
     "- Tier them: 'opener' to get them talking, 'core' for what we must leave knowing, 'probe' for the follow-up that gets the number.",
     "",
@@ -153,10 +153,10 @@ export function questionUserPrompt(input: QuestionPromptInput): string {
     block("WHAT WOBBLE CAN ACTUALLY DELIVER (only open doors we can walk through):", input.services.slice(0, 25)),
     block("ALREADY LEARNED ON EARLIER CALLS (build on these, do not re-ask):", (input.approvedFacts ?? []).slice(0, 20)),
     block("MARKET / COMPETITOR CONTEXT WOBBLE HOLDS:", (input.marketNotes ?? []).slice(0, 10)),
-    block("DO NOT ASK — the form already told us:", known),
+    block("DO NOT ASK, the form already told us:", known),
     "",
     s?.painPoints
-      ? `The most valuable thing you can do is turn their stated pain — "${s.painPoints}" — into countable reality on this call.`
+      ? `The most valuable thing you can do is turn their stated pain, "${s.painPoints}", into countable reality on this call.`
       : "They did not describe a specific pain, so the call must find one before anything else.",
     "",
     "Return STRICT JSON only.",

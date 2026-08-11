@@ -10,17 +10,17 @@ import { addMeeting, listMeetings } from "@/lib/meetings";
 import { listCompanies } from "@/lib/crm";
 import { extractMeetingIntelligence, reviewMeetingFact, listMeetingFacts } from "@/lib/meeting-intelligence";
 
-const TRANSCRIPT = `Owner: Honestly we miss maybe 30 calls a week — front desk is slammed and people just book with whoever answers first.
+const TRANSCRIPT = `Owner: Honestly we miss maybe 30 calls a week, front desk is slammed and people just book with whoever answers first.
 WOBBLE: What does a missed call cost you?
 Owner: A new patient is worth a few hundred dollars over the year, so it adds up fast. Budget isn't the problem if it actually pays back.
 Owner: I make the decision here, it's my three clinics.
-Owner: Right now it's paper diaries and WhatsApp — nothing connected.
+Owner: Right now it's paper diaries and WhatsApp, nothing connected.
 Owner: My only worry is it sounding robotic to patients, that would hurt us.
 WOBBLE: Understood. We'd start with the missed-call recovery, prove it, then expand.
 Owner: Good. Let's talk again next Tuesday and you show me exactly how it answers.`;
 
 async function main() {
-  const TITLE = "AI Readiness Call — Nova Dental (UAT)";
+  const TITLE = "AI Readiness Call, Nova Dental (UAT)";
   const company = (await listCompanies({ includeArchived: true, limit: 500 })).find((c) => /Nova Dental/i.test(c.name));
   let meeting = (await listMeetings({ limit: 500 })).find((m) => m.title === TITLE);
   if (!meeting) {

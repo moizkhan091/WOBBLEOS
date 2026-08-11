@@ -45,7 +45,7 @@ async function main() {
     if (!intel.store.updateResearchTarget) throw new Error("store lacks updateResearchTarget");
     await intel.store.updateResearchTarget(pendingIds[0], { approvalStatus: "approved" });
 
-    assert(await approvedCount() === 11, "after approving ONE: exactly 11 approved (the invariant — never 14)");
+    assert(await approvedCount() === 11, "after approving ONE: exactly 11 approved (the invariant, never 14)");
     assert(await pendingCount() === 3, "after approving ONE: the OTHER 3 proposals are STILL pending (not activated)");
 
     // The scheduler's scout set (approved only) is exactly the 11 — the other 3 are never scouted.

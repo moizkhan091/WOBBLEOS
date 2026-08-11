@@ -109,7 +109,7 @@ async function audit(deps: ContentRenderDeps, input: AuditEventInput): Promise<v
 /** Render a topic/packet into on-brand image assets. Statics = 1 image; carousels = one image per slide. */
 export async function renderContent(input: RenderContentInput, deps: ContentRenderDeps = {}): Promise<RenderContentResult> {
   const provider = deps.provider ?? openrouterMediaProvider;
-  if (!provider.configured()) throw new Error("image provider not configured (OPENROUTER_API_KEY) — rendering is blocked, never faked");
+  if (!provider.configured()) throw new Error("image provider not configured (OPENROUTER_API_KEY), rendering is blocked, never faked");
 
   const switches = deps.loadKillSwitches ? await deps.loadKillSwitches() : await loadEngagedSwitches();
   assertNotKilled(switches, "provider", IMAGE_PROVIDER);

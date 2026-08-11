@@ -45,8 +45,8 @@ async function main() {
     "Foreground: bold typographic headline, perfectly legible, high contrast against the background:",
     "  headline: \"Missed calls are missed patients.\"",
     "  subline (smaller): \"WOBBLE AI answers every one.\"",
-    "Typography must be clean, unbroken, correctly spelled — no warped or invented letters.",
-    "Style: premium, minimal, editorial — match the aesthetic direction of the attached brand reference (dark, moody, focused product lighting).",
+    "Typography must be clean, unbroken, correctly spelled, no warped or invented letters.",
+    "Style: premium, minimal, editorial, match the aesthetic direction of the attached brand reference (dark, moody, focused product lighting).",
     "No people's faces in sharp focus. No clutter. No watermark.",
   ].join("\n");
 

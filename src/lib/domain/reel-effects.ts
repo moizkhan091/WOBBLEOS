@@ -26,7 +26,7 @@ export interface CatalogEffect {
  */
 export const CORE_EFFECTS: CatalogEffect[] = [
   // ── kinetic typography ──
-  { id: "word-pop", group: "kinetic-type", name: "Per-word pop", what: "each spoken word snaps up + fades in on its exact VO beat", how: "wrap words in .w[data-t]; tl.fromTo(w,{opacity:0,yPercent:60},{opacity:1,yPercent:0,duration:0.2,ease:'power3.out'},t)", when: "the backbone of every reel — always" },
+  { id: "word-pop", group: "kinetic-type", name: "Per-word pop", what: "each spoken word snaps up + fades in on its exact VO beat", how: "wrap words in .w[data-t]; tl.fromTo(w,{opacity:0,yPercent:60},{opacity:1,yPercent:0,duration:0.2,ease:'power3.out'},t)", when: "the backbone of every reel, always" },
   { id: "scale-bounce-word", group: "kinetic-type", name: "Scale-bounce word", what: "a key word overshoots from small to full", how: "tl.fromTo(el,{scale:0.6},{scale:1,duration:0.35,ease:'back.out(2.2)'},t)", when: "the ONE hero word of a line" },
   { id: "color-flip-emphasis", group: "kinetic-type", name: "Color-flip emphasis", what: "the key word tints (orange=pain, blue=fix, lime=win) on its beat", how: "give the .w an accent class (.o/.blue/.lime); the pop reveal shows the colour", when: "one accent word per line" },
   { id: "strike-through", group: "kinetic-type", name: "Strike-through kill", what: "a line scales across a word/number to cross it out", how: "a ::after bar; tl.fromTo(bar,{scaleX:0},{scaleX:1,duration:0.3,ease:'power2.in'},t)", when: "kill 'voicemail', an old cost, a myth" },
@@ -51,16 +51,16 @@ export const CORE_EFFECTS: CatalogEffect[] = [
   { id: "flowmap-nodes", group: "layout", name: "Flow-map nodes + connectors", what: "system nodes light up and connectors draw between them", how: "nodes pop (back.out); SVG connector stroke-dashoffset draws after each node", when: "'here's the flow' mechanism reveal" },
   { id: "step-circles", group: "data-viz", name: "Follow-up step circles", what: "numbered circles 1..5 with a 'SALE ✓' on the 5th", how: "circles static; the win circle tl.fromTo({scale:0.5},{scale:1,ease:'back.out(2.2)'},t)", when: "'most sales close after the 5th follow-up'" },
   // ── cuts / transitions ──
-  { id: "hard-smash-cut", group: "cut-transition", name: "Hard smash cut", what: "0-frame scene swap — the default beat energy", how: "tl.set(prev,{autoAlpha:0},t); tl.set(next,{autoAlpha:1},t)", when: "every 1–2s beat" },
+  { id: "hard-smash-cut", group: "cut-transition", name: "Hard smash cut", what: "0-frame scene swap, the default beat energy", how: "tl.set(prev,{autoAlpha:0},t); tl.set(next,{autoAlpha:1},t)", when: "every 1-2s beat" },
   { id: "scale-blur-settle", group: "cut-transition", name: "Scale+blur settle", what: "a scene enters slightly scaled + blurred and settles", how: "tl.fromTo(scene,{scale:1.05,filter:'blur(9px)'},{scale:1,filter:'blur(0px)',duration:0.22,ease:'power2.out'},inT); alternate scale up/down per scene", when: "scene entrances" },
   { id: "zoom-through", group: "cut-transition", name: "Zoom-through exit", what: "a scene scales up + blurs + fades on exit into the next", how: "tl.to(scene,{scale:1.6,filter:'blur(10px)',autoAlpha:0,duration:0.3},outT)", when: "act boundaries" },
   { id: "whip-pan", group: "cut-transition", name: "Whip-pan slide", what: "a directional translate + motion blur between scenes", how: "tl.fromTo(next,{xPercent:60,filter:'blur(8px)'},{xPercent:0,filter:'blur(0)',duration:0.26,ease:'power2.in'},t)", when: "lateral topic changes" },
   { id: "white-flash", group: "motion-impact", name: "White impact flash", what: "a single white frame punches on a heavy beat", how: "#flash{background:#fff;opacity:0}; tl.to(flash,{opacity:0.35,duration:0.05},t).to(flash,{opacity:0,duration:0.25},t+0.06)", when: "a shock / capture / slam beat" },
   // ── motion / impact / ambience ──
   { id: "shake-impact", group: "motion-impact", name: "Shake / impact", what: "a heavy word/number jitters", how: "tl.to(el,{x:'+=8',yoyo:true,repeat:5,duration:0.04},t) then reset", when: "a shock number" },
-  { id: "scale-pulse", group: "motion-impact", name: "Scale pulse (capture)", what: "a 101–104% bump on the beat", how: "tl.to(el,{scale:1.04,yoyo:true,repeat:1,duration:0.4,ease:'sine.inOut'},t)", when: "CTA button, a landed word" },
+  { id: "scale-pulse", group: "motion-impact", name: "Scale pulse (capture)", what: "a 101-104% bump on the beat", how: "tl.to(el,{scale:1.04,yoyo:true,repeat:1,duration:0.4,ease:'sine.inOut'},t)", when: "CTA button, a landed word" },
   { id: "particle-burst", group: "motion-impact", name: "Particle / coin burst", what: "small particles pop out on a win", how: "seeded rnd() places N dots; tl.fromTo(dot,{scale:0,x:0,y:0},{scale:1,x:rnd()*range,y:rnd()*range,opacity:0,duration:0.5},t)", when: "money-recovered / win" },
-  { id: "grain-vignette", group: "ambience", name: "Grain + vignette", what: "animated SVG-noise grain + radial vignette for cinematic depth (static overlays)", how: "#grain feTurbulence bg @ opacity .06 mix-blend overlay; #vign radial-gradient — no animation needed", when: "always — never a flat black" },
+  { id: "grain-vignette", group: "ambience", name: "Grain + vignette", what: "animated SVG-noise grain + radial vignette for cinematic depth (static overlays)", how: "#grain feTurbulence bg @ opacity .06 mix-blend overlay; #vign radial-gradient, no animation needed", when: "always, never a flat black" },
   { id: "radial-glow", group: "ambience", name: "Radial glow focal", what: "a soft light center behind the subject", how: "scene background: radial-gradient(85% 55% at 50% 36%, lighter, darker)", when: "every dark scene" },
   { id: "gradient-morph-bg", group: "ambience", name: "Gradient-morph background", what: "a slow background colour drift (seek-safe via a long tween)", how: "tl.to(scene,{'--a':'#...',duration:SCENE_LEN},inT) tweening a CSS var used in the gradient", when: "under-the-hood / ambient scenes" },
   { id: "cta-button", group: "ui-mockup", name: "CTA button", what: "a pill button pops in and pulses ('Book a free AI audit →')", how: "tl.fromTo(btn,{opacity:0,y:30,scale:0.9},{opacity:1,y:0,scale:1,ease:'back.out(1.8)'},t); then a yoyo scale pulse", when: "the signoff/CTA beat" },
@@ -97,10 +97,10 @@ function fullVocabulary(): string {
 export function reelEffectCatalog(): string {
   return [
     "FORMATS (pick the one that fits THIS topic): " + REEL_FORMATS.map((f) => f.name).join(" · "),
-    "STYLE LANES (commit to ONE look): " + REEL_VARIETY_DIALS.styleLanes.map((l) => l.split(" — ")[0]).join(" · "),
+    "STYLE LANES (commit to ONE look): " + REEL_VARIETY_DIALS.styleLanes.map((l) => l.split(", ")[0]).join(" · "),
     "ENGINE NOTE: " + REEL_RENDERABLE_CAPABILITIES.slice(3, 4).join(" "),
-    `CORE EFFECTS with exact recipes (author these verbatim — the reliable backbone):\n${coreRecipes()}`,
-    `THE FULL LIBRARY (${EFFECT_LIBRARY.length} techniques cataloged from real WOBBLE reels — compose MANY per reel, ≥10 across ≥4 groups; author any of them in the same seek-safe GSAP-on-the-master-timeline style; invent new ones too):\n${fullVocabulary()}`,
+    `CORE EFFECTS with exact recipes (author these verbatim, the reliable backbone):\n${coreRecipes()}`,
+    `THE FULL LIBRARY (${EFFECT_LIBRARY.length} techniques cataloged from real WOBBLE reels, compose MANY per reel, ≥10 across ≥4 groups; author any of them in the same seek-safe GSAP-on-the-master-timeline style; invent new ones too):\n${fullVocabulary()}`,
   ].join("\n\n");
 }
 

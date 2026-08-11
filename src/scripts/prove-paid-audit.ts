@@ -10,7 +10,7 @@ import { closeDb } from "@/db";
 import { runPaidAuditGraph } from "@/lib/paid-audit-graph";
 
 const NOTES =
-  "3 clinics in Karachi. Front desk drowns in WhatsApp and missed calls — we lose ~30 calls/week and bookings go to whoever answers first. Paper diaries, no CRM, manual appointment reminders. High appointment volume, lots of no-shows. Owner makes the decisions, keen to modernise but wary of agencies. Budget is fine if it pays back.";
+  "3 clinics in Karachi. Front desk drowns in WhatsApp and missed calls, we lose ~30 calls/week and bookings go to whoever answers first. Paper diaries, no CRM, manual appointment reminders. High appointment volume, lots of no-shows. Owner makes the decisions, keen to modernise but wary of agencies. Budget is fine if it pays back.";
 
 async function main() {
   const res = await runPaidAuditGraph({
@@ -22,9 +22,9 @@ async function main() {
   console.log(`  opportunities=${r.opportunities.length} roadmap-phases=${r.roadmap.length} risks=${r.risks.length} nextSteps=${r.nextSteps.length} serviceCount=${r.serviceCount}`);
   console.log(`  exec: ${r.executiveSummary.slice(0, 140)}`);
   console.log(`  top opportunity: ${r.opportunities[0]?.title} (impact ${r.opportunities[0]?.impact})`);
-  if (r.opportunities.length === 0) throw new Error("no opportunities — the opportunity node still failed to parse");
-  if (r.roadmap.length === 0) throw new Error("no roadmap phases — a downstream node failed");
-  console.log("  DONE: Paid AI Audit ran all 5 nodes (opportunity node parsed cleanly — truncation bug fixed).");
+  if (r.opportunities.length === 0) throw new Error("no opportunities, the opportunity node still failed to parse");
+  if (r.roadmap.length === 0) throw new Error("no roadmap phases, a downstream node failed");
+  console.log("  DONE: Paid AI Audit ran all 5 nodes (opportunity node parsed cleanly, truncation bug fixed).");
 }
 
 main().then(() => closeDb()).catch(async (e) => { console.error(e); await closeDb(); process.exit(1); });

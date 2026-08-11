@@ -143,7 +143,7 @@ export function computeDepartmentHealth(
   // Same rule the version-parity gate uses for a stale heartbeat: `unknown` is never silently "fine".
   // This is last so a real, nameable problem above always wins over "I couldn't check".
   const unknown = bindings.filter((b) => b.required && b.state === "unknown");
-  if (unknown.length) return { status: "unknown", reasons: unknown.map((b) => `cannot verify ${b.kind} '${b.ref}' — no recent signal`) };
+  if (unknown.length) return { status: "unknown", reasons: unknown.map((b) => `cannot verify ${b.kind} '${b.ref}', no recent signal`) };
 
   return { status: "healthy", reasons: [] };
 }

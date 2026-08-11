@@ -95,8 +95,8 @@ export type PublisherAvailability =
 export function publisherAvailability(registry: Record<string, PublisherAdapter> = defaultPublisherRegistry()): PublisherAvailability[] {
   return PUBLISHERS.map((publisher) => {
     if (publisher === "manual") return { publisher, state: "manual" as const, detail: "WOBBLE prepares the post; you publish it and mark it done." };
-    if (registry[publisher]) return { publisher, state: "operational" as const, detail: "Connected — WOBBLE publishes automatically at the scheduled time." };
-    return { publisher, state: "blocked" as const, detail: `Not configured — set ZERNIO_API_KEY to enable ${publisher}. Posts cannot be scheduled to it until then.` };
+    if (registry[publisher]) return { publisher, state: "operational" as const, detail: "Connected, WOBBLE publishes automatically at the scheduled time." };
+    return { publisher, state: "blocked" as const, detail: `Not configured, set ZERNIO_API_KEY to enable ${publisher}. Posts cannot be scheduled to it until then.` };
   });
 }
 
@@ -417,8 +417,8 @@ export async function dispatchDuePosts(deps: LibraryDeps & { enforceAutonomy?: b
     if (!publisher) {
       const known = (PUBLISHERS as readonly string[]).includes(post.publisher);
       const error = known
-        ? `publisher '${post.publisher}' is not configured — publishing blocked (no credentials)`
-        : `publisher '${post.publisher}' has no adapter — this post can never be published and must be re-scheduled to a supported publisher`;
+        ? `publisher '${post.publisher}' is not configured, publishing blocked (no credentials)`
+        : `publisher '${post.publisher}' has no adapter, this post can never be published and must be re-scheduled to a supported publisher`;
       await store.updateScheduledPost(post.id, { status: "failed", error, updatedAt: now });
       await (deps.recordAudit ?? defaultRecordAudit)({
         eventType: "library.post_failed",

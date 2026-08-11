@@ -82,7 +82,7 @@ export async function defaultAcceptAndEmit(id: string, buildEnvelope: (p: Propos
     // classification here too — Sales/CRM handles internal + client_confidential. A mismatch rolls back the
     // whole transaction (accept + emit), so a mis-classified proposal never even flips to accepted.
     const check = validateHandoff(envelope, { permittedDataClassifications: ["internal", "client_confidential"] });
-    if (!check.ok) throw new Error(`proposal accept: outbox emit rejected — ${check.errors.join("; ")}`);
+    if (!check.ok) throw new Error(`proposal accept: outbox emit rejected, ${check.errors.join("; ")}`);
     const row = buildHandoffRow(envelope, { now });
     const inserted = await tx
       .insert(handoffsTable)

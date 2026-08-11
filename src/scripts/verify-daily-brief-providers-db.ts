@@ -36,7 +36,7 @@ async function main() {
     const ph = await providerHealthProvider(companyScope, ctx);
     const phSig = ph.find((s) => s.evidence.some((e) => e.ref === ids.worker));
     assert(!!phSig && phSig.category === "provider_health" && phSig.actionRequired === true, "provider_health: the STALE worker surfaces a signal (evidence → the worker heartbeat)");
-    assert((await providerHealthProvider(clientScope, ctx)).every((s) => s.evidence.every((e) => e.ref !== ids.worker)), "provider_health is company-scoped — a client-scoped brief skips it");
+    assert((await providerHealthProvider(clientScope, ctx)).every((s) => s.evidence.every((e) => e.ref !== ids.worker)), "provider_health is company-scoped, a client-scoped brief skips it");
 
     // kpi — the overdue task aggregates into a signal.
     const kpi = await kpiProvider(companyScope, ctx);

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const secret = process.env.INTELLIGENCE_WEBHOOK_SECRET;
   if (!secret) {
     return NextResponse.json(
-      { ok: false, error: "ingestion webhook disabled — set INTELLIGENCE_WEBHOOK_SECRET" },
+      { ok: false, error: "ingestion webhook disabled, set INTELLIGENCE_WEBHOOK_SECRET" },
       { status: 503 },
     );
   }

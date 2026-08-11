@@ -34,7 +34,7 @@ async function main() {
   const apifySpentBefore = await getProviderSpend("apify");
   console.log(`  [apify] item=step6-apify-5item provider=apify actor=apify/rag-web-browser maxItems=3 max-charge=$0.10 spent=$${apifySpentBefore} stop=$${apifyBudget.stop}`);
   if (apifySpentBefore > 0) {
-    console.log(`  [apify] SKIP — already proven ($${apifySpentBefore} recorded); not re-spending (founder cap: one test)`);
+    console.log(`  [apify] SKIP, already proven ($${apifySpentBefore} recorded); not re-spending (founder cap: one test)`);
   } else try {
     const a = await apifyRunActor(
       { actorId: "apify/rag-web-browser", input: { query: "AI receptionist for dental clinics", maxResults: 3 }, maxItems: 3, item: "step6-apify-5item", worstCaseUsd: 0.1, actor: "Moiz" },

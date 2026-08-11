@@ -40,14 +40,14 @@ async function main() {
     const dry = await restoreSnapshot(snapshot, { mode: "dry_run", tables: ["offers"], actor: "Moiz" });
     const dryOffers = dry.tables.find((t) => t.key === "offers")!;
     assert(dry.mode === "dry_run" && dryOffers.newRows >= 1, "DRY_RUN reports ≥1 new row for offers (the missing one)");
-    assert(!(await getOffer(lostId)), "DRY_RUN wrote NOTHING — the lost offer is still absent (a true preview)");
+    assert(!(await getOffer(lostId)), "DRY_RUN wrote NOTHING, the lost offer is still absent (a true preview)");
 
     // APPLY: additively re-inserts ONLY the missing row; the modified existing row is NOT overwritten.
     const applied = await restoreSnapshot(snapshot, { mode: "apply", tables: ["offers"], actor: "Moiz" });
     const back = await getOffer(lostId);
     assert(!!back && back.name === "Lost Offer", "APPLY re-inserted the lost offer (restored from the snapshot)");
     const kept = await getOffer(keepId);
-    assert(!!kept && kept.name === "MODIFIED_KEEP", "NON-DESTRUCTIVE: the existing (modified) offer was NOT overwritten/reverted — restore only fills MISSING rows");
+    assert(!!kept && kept.name === "MODIFIED_KEEP", "NON-DESTRUCTIVE: the existing (modified) offer was NOT overwritten/reverted, restore only fills MISSING rows");
     assert(applied.totalInserted >= 1, "APPLY reports the additive insert count");
     assert((await db.select({ id: auditLogs.id }).from(auditLogs).where(eq(auditLogs.eventType, "backup.restored"))).length >= 1, "an APPLY writes a backup.restored audit record");
 

@@ -164,7 +164,7 @@ export interface RenderOptions {
 
 /** Cents → `$15,000`. Shared by the legacy wrappers, the invoice and the commercials block. */
 export function formatMoney(cents: number | undefined | null, currency = "USD"): string {
-  if (cents === undefined || cents === null || Number.isNaN(cents)) return "—";
+  if (cents === undefined || cents === null || Number.isNaN(cents)) return "-";
   try {
     return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
   } catch {
@@ -259,7 +259,7 @@ function commercialsSections(doc: WobbleDocument): DocumentSection[] {
       columns: ["Detail", "Amount"],
       rows: c.lineItems.map((li) => ({
         label: li.label,
-        cells: [li.detail ?? "—", li.amountCents === undefined ? "Included" : formatMoney(li.amountCents, c.currency ?? "USD")],
+        cells: [li.detail ?? "-", li.amountCents === undefined ? "Included" : formatMoney(li.amountCents, c.currency ?? "USD")],
       })),
       ...(c.notes ? { note: c.notes } : {}),
     });
@@ -367,7 +367,7 @@ export function renderDocument(doc: WobbleDocument, format: DocumentFormat, opti
 
   const ordered = [...orderSections(doc.sections ?? []), ...commercialsSections(doc)];
   const pieces = ordered.map((s) => renderSection(s, format));
-  const docTitle = `${doc.client} — ${doc.title}`;
+  const docTitle = `${doc.client}, ${doc.title}`;
 
   if (format === "deck16x9") {
     const slides = pieces.map((html) => `<div class="wob-slide">${html}</div>`).join("");
@@ -429,7 +429,7 @@ export function renderInvoiceHtml(doc: WobbleDocument, options?: RenderOptions):
     `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:${space(40, format)}px;">` +
     `<div style="${typeCss(TYPE.wordmark, format)}">wobble<span style="color:${COLORS.lime}">.</span></div>` +
     `<div style="text-align:right;${typeCss(TYPE.eyebrowSmall, format)}color:${TEXT.l5};line-height:2;">` +
-    `${esc(upper(doc.title || "Invoice"))}<br><span style="color:${COLORS.lime}">${esc(c?.invoiceNumber ?? "—")}</span>` +
+    `${esc(upper(doc.title || "Invoice"))}<br><span style="color:${COLORS.lime}">${esc(c?.invoiceNumber ?? "-")}</span>` +
     `</div></div>`;
 
   // The one thing the reader is looking for, at headline size.
@@ -449,8 +449,8 @@ export function renderInvoiceHtml(doc: WobbleDocument, options?: RenderOptions):
   const meta =
     `<div style="display:grid;grid-template-columns:1fr 1fr;gap:${space(20, format)}px ${space(44, format)}px;margin-bottom:${space(34, format)}px;">` +
     metaCell("Billed to", (c?.billTo ?? [doc.client]).join(", ")) +
-    metaCell("Issued", c?.issuedDate ?? "—") +
-    metaCell("Reference", c?.invoiceNumber ?? "—") +
+    metaCell("Issued", c?.issuedDate ?? "-") +
+    metaCell("Reference", c?.invoiceNumber ?? "-") +
     metaCell("Currency", currency) +
     `</div>`;
 
@@ -476,7 +476,7 @@ export function renderInvoiceHtml(doc: WobbleDocument, options?: RenderOptions):
               `</tr>`,
           )
           .join("")
-      : `<tr><td colspan="3" style="padding:${space(14, format)}px 0;border-top:1px solid ${LINES.hairline};${typeCss(TYPE.tableCell, format)}color:${TEXT.l5};">—</td></tr>`) +
+      : `<tr><td colspan="3" style="padding:${space(14, format)}px 0;border-top:1px solid ${LINES.hairline};${typeCss(TYPE.tableCell, format)}color:${TEXT.l5};">, </td></tr>`) +
     `</tbody><tfoot><tr>` +
     `<td colspan="2" style="padding:${space(16, format)}px 0;border-top:2px solid ${COLORS.lime};${typeCss(TYPE.panelLabel, format)}color:${COLORS.lime};">Total due</td>` +
     `<td style="padding:${space(16, format)}px 0;border-top:2px solid ${COLORS.lime};text-align:right;${typeCss(TYPE.amountSplit, format)}">${esc(total)}</td>` +
@@ -519,7 +519,7 @@ export function renderInvoiceHtml(doc: WobbleDocument, options?: RenderOptions):
     `<span style="${typeCss(TYPE.eyebrowSmall, format)}color:${COLORS.lime};">PAGE 01</span>` +
     `</footer></main>`;
 
-  return shell(`${doc.client} — ${doc.title}`, `${baseCss(format, options)}${documentCss(format)}`, body);
+  return shell(`${doc.client}, ${doc.title}`, `${baseCss(format, options)}${documentCss(format)}`, body);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -598,7 +598,7 @@ function stepText(step: Step): string {
   if (typeof step === "string") return step;
   const head = step.step ?? "";
   const tail = [step.detail, step.tool ? `(${step.tool})` : "", step.pain ? `⚠ ${step.pain}` : ""].filter(Boolean).join(" · ");
-  return tail ? `${head} — ${tail}` : head;
+  return tail ? `${head}, ${tail}` : head;
 }
 
 /** Contents rows are derived from the section dividers so the index can never drift from the body. */
@@ -639,7 +639,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       cards: [
         { title: "Estimated monthly upside", body: formatMoney(roi.estimatedMonthlyUpsideCents), numeral: "01" },
         { title: "Implementation", body: formatMoney(roi.estimatedImplementationCents), numeral: "02" },
-        { title: "Payback", body: roi.paybackMonths === undefined ? "—" : `${roi.paybackMonths} months`, numeral: "03" },
+        { title: "Payback", body: roi.paybackMonths === undefined ? "-" : `${roi.paybackMonths} months`, numeral: "03" },
       ],
       ...(report.situationSummary ? { callout: { label: "The situation", text: report.situationSummary } } : {}),
     });
@@ -651,7 +651,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       numeral: 2,
       eyebrow: ["Section 02", "Current State"],
       title: "How the business runs today",
-      lead: "The acquisition, delivery and support path exactly as it runs now — before anything is automated.",
+      lead: "The acquisition, delivery and support path exactly as it runs now, before anything is automated.",
     });
   }
 
@@ -673,7 +673,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       type: "constraintsToOutcomes",
       eyebrow: ["Section 02", "Current State"],
       title: "From constraints to outcomes",
-      constraints: bottlenecks.map((b) => [b.area, b.pain, b.businessImpact].filter(Boolean).join(" — ")),
+      constraints: bottlenecks.map((b) => [b.area, b.pain, b.businessImpact].filter(Boolean).join(", ")),
       outcomes: opps.slice(0, 6).map((o) => ({
         label: o.title ?? o.name ?? o.area ?? "Opportunity",
         text: o.expectedOutcome ?? o.description ?? o.reason ?? "",
@@ -695,7 +695,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       body.push({
         type: "cardGrid",
         eyebrow: ["Section 03", "Opportunities"],
-        title: opps.length > 6 ? `AI opportunities ${i + 1}–${i + chunk.length}` : "AI opportunities",
+        title: opps.length > 6 ? `AI opportunities ${i + 1}, ${i + chunk.length}` : "AI opportunities",
         columns: Math.min(chunk.length, 3),
         invertLast: i + 6 >= opps.length,
         cards: chunk.map((o, j) => ({
@@ -761,7 +761,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       eyebrow: ["Section 05", "Risk"],
       title: "Risks and mitigations",
       columns: ["Mitigation"],
-      rows: risks.map((r) => ({ label: r.risk ?? "Risk", cells: [r.mitigation ?? "—"] })),
+      rows: risks.map((r) => ({ label: r.risk ?? "Risk", cells: [r.mitigation ?? "-"] })),
     });
   }
 
@@ -800,7 +800,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       title: biz,
       subtitle:
         report.executiveSummary ??
-        `A full AI opportunity audit — current-state map, ${opps.length} prioritised opportunities, a phased roadmap and the commercial case.`,
+        `A full AI opportunity audit, current-state map, ${opps.length} prioritised opportunities, a phased roadmap and the commercial case.`,
       metaRight: ["AI Transformation Audit", "Confidential · Prepared by Wobble"],
       footerRight: [report.industry ?? "AI Readiness"],
     },
@@ -822,7 +822,7 @@ export function buildAuditDocument(report: AuditReportShape): WobbleDocument {
       totalCents: roi.estimatedImplementationCents ?? 0,
       splits: [
         { label: "Est. monthly upside", value: formatMoney(roi.estimatedMonthlyUpsideCents) },
-        { label: "Payback", value: roi.paybackMonths === undefined ? "—" : `${roi.paybackMonths} months` },
+        { label: "Payback", value: roi.paybackMonths === undefined ? "-" : `${roi.paybackMonths} months` },
       ],
       terms: (roi.breakdown ?? []).map((b) => ({ label: b.area ?? "Area", value: `${formatMoney(b.monthlyValueCents)}/mo` })),
       approval: {

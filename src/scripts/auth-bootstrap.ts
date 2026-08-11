@@ -109,7 +109,7 @@ async function list() {
       [
         r.id.padEnd(19),
         (r.displayName ?? "").padEnd(9),
-        (r.email ?? "—").padEnd(25),
+        (r.email ?? "-").padEnd(25),
         (r.status ?? "").padEnd(9),
         (r.isSuperAdmin ? "yes" : "no").padEnd(6),
         (r.passwordHash ? "set" : "UNSET").padEnd(9),
@@ -146,14 +146,14 @@ async function seedTest() {
       .returning({ id: founderProfiles.id });
 
     if (updated.length === 0) {
-      console.error(`  ! ${f.id} does not exist — run \`npm run db:seed\` first`);
+      console.error(`  ! ${f.id} does not exist, run \`npm run db:seed\` first`);
       continue;
     }
     issued.push({ email: f.email, password });
   }
 
   console.log("");
-  console.log("Synthetic founder accounts (LOCAL UAT ONLY — printed once, not stored anywhere):");
+  console.log("Synthetic founder accounts (LOCAL UAT ONLY, printed once, not stored anywhere):");
   console.log("");
   for (const i of issued) console.log(`  ${i.email.padEnd(24)} ${i.password}`);
   console.log("");
@@ -171,7 +171,7 @@ async function setFounder() {
   const rows = await db.select().from(founderProfiles).where(eq(founderProfiles.id, id)).limit(1);
   const existing = rows[0];
   if (!existing) {
-    console.error(`no founder profile with id "${id}" — see --list`);
+    console.error(`no founder profile with id "${id}", see --list`);
     process.exit(1);
   }
 
@@ -212,7 +212,7 @@ async function setFounder() {
 
   // A credential rotation invalidates existing sessions for that founder.
   const revoked = await revokeFounderSessions(id);
-  console.log(`set password for ${existing.displayName} <${normalizeEmail(email)}> — ${revoked} existing session(s) revoked`);
+  console.log(`set password for ${existing.displayName} <${normalizeEmail(email)}>, ${revoked} existing session(s) revoked`);
 }
 
 async function main() {

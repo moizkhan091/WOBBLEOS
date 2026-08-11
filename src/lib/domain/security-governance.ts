@@ -284,7 +284,7 @@ export function reviewPolicies(state: PolicyReviewState): SecurityFindingDraft[]
       kind: "policy",
       severity: "low",
       title: `Department '${d.slug}' may handle RESTRICTED data`,
-      detail: `'${d.slug}' is active and permitted the highest data classification. Confirm this is required — the classification gate is enforced at dispatch, so a needless grant widens real blast radius.`,
+      detail: `'${d.slug}' is active and permitted the highest data classification. Confirm this is required, the classification gate is enforced at dispatch, so a needless grant widens real blast radius.`,
       affectedAssetType: "department",
       affectedAssetId: d.slug,
       detectedBy: "risk_compliance_agent",

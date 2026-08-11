@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const gate = loginRateLimiter.check(clientKey);
   if (!gate.allowed) {
     return NextResponse.json(
-      { ok: false, error: "too many login attempts — try again later" },
+      { ok: false, error: "too many login attempts, try again later" },
       { status: 429, headers: { "Retry-After": String(gate.retryAfterSeconds) } },
     );
   }

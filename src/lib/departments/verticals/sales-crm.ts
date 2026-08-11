@@ -142,7 +142,7 @@ export async function runSalesCrmDepartment(input: RunSalesCrmDepartmentInput, d
     const won = await moveOpportunityStage(
       input.opportunityId,
       "won",
-      { actor: input.requestedBy, reason: "proposal accepted — advanced by Sales & CRM" },
+      { actor: input.requestedBy, reason: "proposal accepted, advanced by Sales & CRM" },
       { ...crmDeps, onOpportunityWon: crmDeps.onOpportunityWon ?? (async () => {}) },
     );
     if (!won) throw new Error(`sales_crm: could not advance opportunity '${input.opportunityId}' to won`);

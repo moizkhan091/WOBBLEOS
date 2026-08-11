@@ -13,16 +13,16 @@ import { parseJsonObject } from "@/lib/domain/content-graph";
 // The WOBBLE / Moiz Khan creative system, reverse-engineered from the real 196-asset library + LinkedIn
 // infographics. These are PREMIUM, art-directed, editorial social designs with real craft — NOT flat vector
 // graphics. Every prompt is anchored here AND paired with reference images so the model matches the real look.
-export const WOBBLE_VISUAL_SYSTEM = `WOBBLE / Moiz Khan creative system — STUDY THE ATTACHED REFERENCE IMAGES and match their craft, energy, and finish exactly. These are top-studio editorial social ads, NOT flat vector graphics, NOT generic minimalism. Non-negotiable rules on EVERY asset:
+export const WOBBLE_VISUAL_SYSTEM = `WOBBLE / Moiz Khan creative system, STUDY THE ATTACHED REFERENCE IMAGES and match their craft, energy, and finish exactly. These are top-studio editorial social ads, NOT flat vector graphics, NOT generic minimalism. Non-negotiable rules on EVERY asset:
 - ONE bold idea, made unmissable. A HUGE ultra-bold CONDENSED sans-serif headline (Druk / Anton / Archivo Black energy) dominates the top. The single most important phrase is set in ONE saturated ACCENT colour; the rest is heavy near-black. Tight leading, confident, oversized.
-- A vivid, TACTILE SCENE that turns the idea into a real physical metaphor — commit fully to ONE of these treatments:
+- A vivid, TACTILE SCENE that turns the idea into a real physical metaphor, commit fully to ONE of these treatments:
   (A) CINEMATIC 3D RENDER: a dramatic hero object + clay/3D figures acting out the metaphor (e.g. a giant glossy magnet pulling little clay houses & people), on a saturated colour field, cinematic studio lighting, real shadows, depth of field, rich texture.
   (B) REAL-OBJECT PHOTOGRAPHIC DATA-VIZ: real photographed miniature objects arranged into a chart/diagram (e.g. mini shopping carts forming a donut chart) on cream/textured paper, soft daylight, accent-colour segments.
-  (C) HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on key phrases, hand-drawn doodle icons, numbered steps — looks genuinely hand-made and smart.
-- Background: a saturated single colour (electric orange, deep green, cobalt, crimson) OR cream paper OR notebook paper — high contrast and confident, NEVER a plain flat black slab.
+  (C) HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on key phrases, hand-drawn doodle icons, numbered steps, looks genuinely hand-made and smart.
+- Background: a saturated single colour (electric orange, deep green, cobalt, crimson) OR cream paper OR notebook paper, high contrast and confident, NEVER a plain flat black slab.
 - Supporting line in ITALIC SERIF or handwritten marker. A pill-shaped label tag (like "FOR REALTORS") and/or a pill-shaped CTA button.
 - A small "wobble." wordmark or "Follow Moiz Khan on LinkedIn" in a corner.
-- The finish must read as expensive, distinctive, scroll-stopping — art-directed by a great studio. Render ALL on-image text crisply and spelled EXACTLY as given.`;
+- The finish must read as expensive, distinctive, scroll-stopping, art-directed by a great studio. Render ALL on-image text crisply and spelled EXACTLY as given.`;
 
 export type RenderPlatform = "instagram" | "linkedin" | "x" | "youtube" | "multi";
 
@@ -54,11 +54,11 @@ export const WOBBLE_REFERENCE_EXEMPLARS: Record<RenderTreatment, string[]> = {
 
 const TREATMENT_BRIEF: Record<RenderTreatment, string> = {
   cinematic_3d:
-    "TREATMENT A — CINEMATIC 3D RENDER: build a dramatic hero object + clay/3D figures that act out the metaphor, on a saturated colour field with cinematic studio lighting, real shadows, depth of field and rich texture (like the giant magnet pulling clay houses reference).",
+    "TREATMENT A, CINEMATIC 3D RENDER: build a dramatic hero object + clay/3D figures that act out the metaphor, on a saturated colour field with cinematic studio lighting, real shadows, depth of field and rich texture (like the giant magnet pulling clay houses reference).",
   photographic_dataviz:
-    "TREATMENT B — REAL-OBJECT PHOTOGRAPHIC DATA-VIZ: photograph real miniature objects arranged into a chart/diagram on cream textured paper with soft daylight and accent-colour segments (like the mini shopping-carts donut-chart reference).",
+    "TREATMENT B, REAL-OBJECT PHOTOGRAPHIC DATA-VIZ: photograph real miniature objects arranged into a chart/diagram on cream textured paper with soft daylight and accent-colour segments (like the mini shopping-carts donut-chart reference).",
   hand_notebook:
-    "TREATMENT C — HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on the key phrases, hand-drawn doodle icons and numbered steps (like the 'wake your dead database' reference).",
+    "TREATMENT C, HAND-DRAWN NOTEBOOK: authentic spiral-notebook / lined paper, black marker hand-lettering, YELLOW highlighter on the key phrases, hand-drawn doodle icons and numbered steps (like the 'wake your dead database' reference).",
 };
 
 export interface StaticPromptInput {
@@ -91,7 +91,7 @@ export function buildStaticImagePrompt(input: StaticPromptInput): string {
   const accent = input.accentColor ?? "electric lime (#B8FF2C)";
   return [
     // block 1 — intent / artifact
-    `Art-direct and render a PREMIUM, scroll-stopping WOBBLE social STATIC as a directed PHOTOGRAPH/render (NOT a flat AI poster), ${aspectFor(input.platform ?? "multi")}. STUDY the attached WOBBLE reference images and MATCH their craft, density, lighting and finish. Use each reference only for composition/lighting/finish grammar — NOT for its wording, logo, or subject.`,
+    `Art-direct and render a PREMIUM, scroll-stopping WOBBLE social STATIC as a directed PHOTOGRAPH/render (NOT a flat AI poster), ${aspectFor(input.platform ?? "multi")}. STUDY the attached WOBBLE reference images and MATCH their craft, density, lighting and finish. Use each reference only for composition/lighting/finish grammar, NOT for its wording, logo, or subject.`,
     ``,
     WOBBLE_VISUAL_SYSTEM,
     input.brandNotes ? `\nExtra art-direction from WOBBLE's design DNA: ${input.brandNotes}` : ``,
@@ -99,25 +99,25 @@ export function buildStaticImagePrompt(input: StaticPromptInput): string {
     TREATMENT_BRIEF[treatment],
     ``,
     // block 2 — subject / scene
-    `SCENE / SET (this IS the image — a clever, literal, dramatic physical metaphor built from real objects): ${input.metaphor ?? `invent a striking real-world physical metaphor that makes this instantly obvious — ${input.teachingJob}`}`,
+    `SCENE / SET (this IS the image, a clever, literal, dramatic physical metaphor built from real objects): ${input.metaphor ?? `invent a striking real-world physical metaphor that makes this instantly obvious — ${input.teachingJob}`}`,
     input.subject ? `SUBJECT (hero object, exact material/finish/condition): ${input.subject}` : ``,
     // block 3 — light / camera / composition / grade / texture (the realism)
     `LIGHT (physics, not vibe): ${input.light ?? "a single motivated key light with a clear direction and colour temperature, gentle fill, a thin separating rim, and a soft believable contact shadow"}.`,
-    `CAMERA: ${input.camera ?? "deliberate framing with a real focal-plane — subject sharp, background falling gently soft; reserve clean space at the top for the headline"}.`,
-    `GRADE: ${input.grade ?? "a filmic tone curve — lifted shadows, rolled-off highlights, true-to-life colour"}.`,
-    `TEXTURE: ${input.texture ?? "fine film grain, real material texture, dust and micro-imperfections, honest contact shadows — reads photographed, never synthetic"}.`,
+    `CAMERA: ${input.camera ?? "deliberate framing with a real focal-plane, subject sharp, background falling gently soft; reserve clean space at the top for the headline"}.`,
+    `GRADE: ${input.grade ?? "a filmic tone curve, lifted shadows, rolled-off highlights, true-to-life colour"}.`,
+    `TEXTURE: ${input.texture ?? "fine film grain, real material texture, dust and micro-imperfections, honest contact shadows, reads photographed, never synthetic"}.`,
     input.mood ? `MOOD: ${input.mood}.` : ``,
     ``,
     // block 4 — the exact copy
-    `HEADLINE — EXACT TEXT, render VERBATIM, huge ultra-bold condensed, dominating the top: "${input.hook}"`,
+    `HEADLINE, EXACT TEXT, render VERBATIM, huge ultra-bold condensed, dominating the top: "${input.hook}"`,
     input.accentPhrase ? `Set ONLY the phrase "${input.accentPhrase}" in ${accent}; the rest of the headline heavy near-black. No other words coloured.` : `Put ${accent} on the single most important word; the rest heavy near-black.`,
-    input.subhead ? `Supporting line (italic serif or handwritten marker, smaller) — EXACT TEXT: "${input.subhead}"` : ``,
+    input.subhead ? `Supporting line (italic serif or handwritten marker, smaller), EXACT TEXT: "${input.subhead}"` : ``,
     input.labelTag ? `A pill-shaped label tag, EXACT TEXT: "${input.labelTag}", top area.` : ``,
     input.cta ? `A pill-shaped CTA button, EXACT TEXT: "${input.cta}".` : ``,
     `A small "wobble." wordmark in a lower corner.`,
     ``,
     // block 5 — constraints + negative list
-    `CONSTRAINTS: ${aspectFor(input.platform ?? "multi")}. Background colour field: ${input.colorField ?? "a saturated, confident colour that suits the metaphor (never a plain flat black slab)"}. Render ALL text crisp and spelled EXACTLY as written — no extra words, no duplicate text, no invented labels.`,
+    `CONSTRAINTS: ${aspectFor(input.platform ?? "multi")}. Background colour field: ${input.colorField ?? "a saturated, confident colour that suits the metaphor (never a plain flat black slab)"}. Render ALL text crisp and spelled EXACTLY as written, no extra words, no duplicate text, no invented labels.`,
     `NEGATIVE (avoid all of): ${RENDER_NEGATIVE_LIST}.`,
   ]
     .filter((l) => l !== ``)
@@ -152,16 +152,16 @@ export function buildCarouselSlidePrompts(input: CarouselPromptInput): string[] 
   return input.slides.map((slide, i) => {
     const roleLabel = slide.role ?? (i === 0 ? "cover" : i === total - 1 ? "cta" : "mechanism");
     return [
-      `Design carousel SLIDE ${i + 1} of ${total} for the WOBBLE brand in ${aspect}. This is the "${roleLabel}" slide — it MUST look like part of the same designed set as the other slides (same palette, type system, grid).`,
+      `Design carousel SLIDE ${i + 1} of ${total} for the WOBBLE brand in ${aspect}. This is the "${roleLabel}" slide, it MUST look like part of the same designed set as the other slides (same palette, type system, grid).`,
       ``,
       WOBBLE_VISUAL_SYSTEM,
       input.brandNotes ? `\nAdditional brand art-direction: ${input.brandNotes}` : ``,
       ``,
       i === 0
-        ? `SLIDE ROLE — COVER: a bold hook cover. Render this exact headline huge: "${input.hook}". Add a small "swipe →" affordance and the "wobble." wordmark.`
+        ? `SLIDE ROLE, COVER: a bold hook cover. Render this exact headline huge: "${input.hook}". Add a small "swipe →" affordance and the "wobble." wordmark.`
         : roleLabel === "cta"
-          ? `SLIDE ROLE — CTA: a clean close. Render: "${slide.heading}"${slide.body ? ` and below it: "${slide.body}"` : ``}. One soft call to action${input.cta ? `: "${input.cta}"` : ` (e.g. "Book a free AI audit")`}. Lime accent on the CTA.`
-          : `SLIDE ROLE — ${roleLabel.toUpperCase()}: render heading "${slide.heading}"${slide.body ? ` with supporting text "${slide.body}"` : ``}. Use a simple editorial graphic (icon / node-arrow flow / highlighted number) so the point is instantly clear. Keep text concise and correctly spelled.`,
+          ? `SLIDE ROLE, CTA: a clean close. Render: "${slide.heading}"${slide.body ? ` and below it: "${slide.body}"` : ``}. One soft call to action${input.cta ? `: "${input.cta}"` : ` (e.g. "Book a free AI audit")`}. Lime accent on the CTA.`
+          : `SLIDE ROLE, ${roleLabel.toUpperCase()}: render heading "${slide.heading}"${slide.body ? ` with supporting text "${slide.body}"` : ``}. Use a simple editorial graphic (icon / node-arrow flow / highlighted number) so the point is instantly clear. Keep text concise and correctly spelled.`,
       ``,
       `Output a single finished slide image, premium and distinctive, unmistakably WOBBLE.`,
     ]
@@ -200,16 +200,16 @@ export type RenderConcept = z.infer<typeof renderConceptSchema>;
 /** The Art Director prompt: given a topic, design a scroll-stopping WOBBLE render concept (treatment + a real
  *  physical metaphor + accent + colour), matching the reference library's craft. */
 export function buildArtDirectorPrompt(input: { hook: string; teachingJob: string; pillar?: string; platform?: string }): { system: string; user: string } {
-  const system = `You are WOBBLE's ART DIRECTOR + photographer + gaffer + colourist. Design ONE scroll-stopping social static in the real WOBBLE / Moiz Khan style — a directed PHOTOGRAPH/render, not a bland AI poster.
+  const system = `You are WOBBLE's ART DIRECTOR + photographer + gaffer + colourist. Design ONE scroll-stopping social static in the real WOBBLE / Moiz Khan style, a directed PHOTOGRAPH/render, not a bland AI poster.
 
 ${WOBBLE_VISUAL_SYSTEM}
 
-METHOD — decide every slot like a real shoot (the difference between amateur and pro is how much YOU decide vs. let the model default):
+METHOD, decide every slot like a real shoot (the difference between amateur and pro is how much YOU decide vs. let the model default):
 - Turn the topic into a concrete, cleverly LITERAL physical metaphor built from real objects (like: a giant glossy magnet labelled AGENCY pulling clay houses; mini shopping carts arranged as a donut chart; a hand-drawn notebook page). Describe a real SCENE.
 - LIGHT is physics, never vibe: name the source, direction/angle, colour temperature (Kelvin), hard/soft quality, fill, rim, and the exact SHADOW it casts.
 - CAMERA: framing (close/wide/top-down), viewpoint (eye-level/low), the focal-length + aperture FEEL (e.g. "50mm three-quarter, f4, background falling gently soft"), and reserved clean space for the headline.
-- GRADE: a film stock / tone curve (lifted shadows, rolled-off highlights) — not "cinematic".
-- TEXTURE: real imperfection — grain, paper fibre, dust, wear, contact shadows, uneven exposure — so it reads photographed, not synthetic.
+- GRADE: a film stock / tone curve (lifted shadows, rolled-off highlights), not "cinematic".
+- TEXTURE: real imperfection, grain, paper fibre, dust, wear, contact shadows, uneven exposure, so it reads photographed, not synthetic.
 - Choose the treatment + a saturated colour field. Pick ONE accent phrase FROM the headline.
 
 Respond with STRICT JSON only (every field filled, specific and physical):
@@ -245,11 +245,11 @@ export type CarouselDeck = z.infer<typeof carouselDeckSchema>;
 
 /** The Carousel Director: turn a topic into a cohesive teaching DECK (cover → problem → mechanism steps → proof → CTA). */
 export function buildCarouselDirectorPrompt(input: { hook: string; teachingJob: string; pillar?: string }): { system: string; user: string } {
-  const system = `You are WOBBLE's CAROUSEL DIRECTOR. Turn the topic into a cohesive 5-7 slide teaching carousel in the WOBBLE style — a viewer should SWIPE and actually learn the mechanism, then get one soft CTA. Every slide teaches a different layer (never repeat).
+  const system = `You are WOBBLE's CAROUSEL DIRECTOR. Turn the topic into a cohesive 5-7 slide teaching carousel in the WOBBLE style, a viewer should SWIPE and actually learn the mechanism, then get one soft CTA. Every slide teaches a different layer (never repeat).
 
 ${WOBBLE_VISUAL_SYSTEM}
 
-Structure: slide 1 = COVER (the hook), then PROBLEM, then 2-4 MECHANISM slides (the real steps — tools, inputs, actions, outputs, decisions, failure routes), optionally PROOF, then a CTA slide. Keep each slide's text tight and concrete.
+Structure: slide 1 = COVER (the hook), then PROBLEM, then 2-4 MECHANISM slides (the real steps, tools, inputs, actions, outputs, decisions, failure routes), optionally PROOF, then a CTA slide. Keep each slide's text tight and concrete.
 
 Respond with STRICT JSON only:
 {"treatment":"cinematic_3d|photographic_dataviz|hand_notebook","accentColor":"e.g. electric orange","colorField":"background colour field or paper","labelTag":"short pill label","slides":[{"role":"cover|problem|mechanism|proof|cta","heading":"short slide heading","body":"1-2 tight teaching lines"}]}`;

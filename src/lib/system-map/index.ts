@@ -32,7 +32,7 @@ export interface ModuleSummary {
  * Live BUSINESS state — the actual commercial situation, not the OS's own capability map.
  *
  * Without this, Ask WOBBLE knew every agent it had but could not answer "which deals are closest to
- * closing?" — it replied that the detail was "not available in the live system state" while open deals
+ * closing?", it replied that the detail was "not available in the live system state" while open deals
  * sat in the CRM. A founder's most common questions are about their business, so the business belongs
  * in the snapshot.
  */
@@ -191,7 +191,7 @@ export function formatSystemSnapshot(snapshot: SystemSnapshot, opts: { maxAgents
   const b = snapshot.business;
   const businessLines = b
     ? [
-        `LIVE BUSINESS STATE (authoritative — read this before saying you lack operational detail):`,
+        `LIVE BUSINESS STATE (authoritative, read this before saying you lack operational detail):`,
         `  OPEN DEALS: ${b.openDeals.count} worth ${usd(b.openDeals.totalCents)}. By stage: ${Object.entries(b.openDeals.byStage).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}.`,
         b.openDeals.top.length
           ? `  Largest open deals:\n${b.openDeals.top.map((d) => `    - ${d.name} — ${usd(d.valueCents)} [stage=${d.stage}]`).join("\n")}`
@@ -207,7 +207,7 @@ export function formatSystemSnapshot(snapshot: SystemSnapshot, opts: { maxAgents
     ...businessLines,
     `AGENTS: ${snapshot.agents.total} total (${snapshot.agents.active} active). By team: ${teamStr}.`,
     `${agentLines}${overflow}`,
-    `MODULES: ${snapshot.modules.total} total — ${snapshot.modules.wired} wired, ${snapshot.modules.backendReady} backend-ready, ${snapshot.modules.planned} planned. Wired: ${moduleWired}.`,
+    `MODULES: ${snapshot.modules.total} total, ${snapshot.modules.wired} wired, ${snapshot.modules.backendReady} backend-ready, ${snapshot.modules.planned} planned. Wired: ${moduleWired}.`,
     `APPROVALS PENDING: ${snapshot.approvals.pending} (${approvalStr}).`,
     `INTER-AGENT HANDOFFS (live backbone): ${handoffStr}.`,
     `MODEL ROLES: ${roleStr}. Model catalog: ${snapshot.models.catalogCount} models.`,

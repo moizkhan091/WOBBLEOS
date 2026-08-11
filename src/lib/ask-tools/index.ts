@@ -127,7 +127,7 @@ const listModelsTool = defineTool<{ modality?: (typeof MODEL_MODALITIES)[number]
 
 const proposeModelSwapTool = defineTool<{ role: string; toModelId: string; rationale: string; confidence?: number }>({
   name: "propose_model_swap",
-  description: "Propose changing the model for an agent role. Creates an APPROVAL for the founder to accept or reject — it is never applied automatically. Validated against the catalog (blocks incompatible models).",
+  description: "Propose changing the model for an agent role. Creates an APPROVAL for the founder to accept or reject, it is never applied automatically. Validated against the catalog (blocks incompatible models).",
   jsonSchema: objectSchema(
     {
       role: { type: "string", description: "The agent role to change, e.g. 'content_strategy', 'ask_wobble'." },
@@ -290,7 +290,7 @@ const pinMemoryTool = defineTool<{ recordId: string; pinned?: boolean; importanc
 
 const listDealsTool = defineTool<{ stage?: string; status?: string; limit?: number }>({
   name: "list_deals",
-  description: "List CRM deals/opportunities with their pipeline stage, value and company — use this for ANY question about the pipeline, what is closest to closing, deal values, forecast, or what to chase today. Never tell the founder to ask a sales team; call this instead.",
+  description: "List CRM deals/opportunities with their pipeline stage, value and company, use this for ANY question about the pipeline, what is closest to closing, deal values, forecast, or what to chase today. Never tell the founder to ask a sales team; call this instead.",
   jsonSchema: objectSchema({
     stage: { type: "string", description: "Optional pipeline stage filter, e.g. 'negotiation', 'proposal_sent', 'qualified'." },
     status: { type: "string", description: "Optional status filter: open | won | lost | archived. Defaults to all." },
@@ -376,7 +376,7 @@ const businessOverviewTool = defineTool<Record<string, never>>({
   mutates: false,
   handler: async (_args, ctx) => {
     const snap = await getSystemSnapshot(ctx.systemMapDeps);
-    return snap.business ?? { note: "no database configured — business state unavailable" };
+    return snap.business ?? { note: "no database configured, business state unavailable" };
   },
 });
 
@@ -409,7 +409,7 @@ const listSourcesTool = defineTool<{ status?: string; targetType?: string }>({
 
 const proposeSourceTool = defineTool<{ name: string; targetType: string; handleOrUrl?: string; platform?: string; reason: string; evidence: string[]; expectedValue: string; collectionMethod?: string }>({
   name: "propose_source",
-  description: "Propose a NEW research source / account to track. Creates it PENDING the founder's approval — never active immediately. Use when asked to 'track', 'add', 'start watching' an account, competitor or site.",
+  description: "Propose a NEW research source / account to track. Creates it PENDING the founder's approval, never active immediately. Use when asked to 'track', 'add', 'start watching' an account, competitor or site.",
   jsonSchema: objectSchema(
     {
       name: { type: "string", description: "Human name of the source, e.g. 'Jao Roberts'." },
@@ -449,7 +449,7 @@ const proposeSourceTool = defineTool<{ name: string; targetType: string; handleO
         collectionMethod: args.collectionMethod ?? "manual",
       },
     });
-    return { sourceId: row.id, name: row.name, approvalStatus: row.approvalStatus, note: "created PENDING your approval — it is not being collected yet" };
+    return { sourceId: row.id, name: row.name, approvalStatus: row.approvalStatus, note: "created PENDING your approval, it is not being collected yet" };
   },
 });
 
@@ -464,7 +464,7 @@ const createLeadTool = defineTool<{ name: string; contactName?: string; email?: 
   description: "Capture a NEW lead in the CRM. It is scored automatically and lands in the New Lead stage for qualification. Use when the founder says 'add a lead', 'log this prospect', 'someone reached out'.",
   jsonSchema: objectSchema(
     {
-      name: { type: "string", description: "Lead label — usually the company name." },
+      name: { type: "string", description: "Lead label, usually the company name." },
       contactName: { type: "string" }, email: { type: "string" }, phone: { type: "string" },
       companyName: { type: "string" }, industry: { type: "string" },
       source: { type: "string", description: "manual | referral | inbound | cold_email | instagram | linkedin | website_form | whatsapp" },
@@ -489,7 +489,7 @@ const createLeadTool = defineTool<{ name: string; contactName?: string; email?: 
       source: args.source ?? "manual",
       createdBy: ctx.actor ?? "ask_wobble",
     } as never);
-    return { leadId: lead.id, name: lead.name, company: lead.companyName ?? args.name, score: lead.score, status: lead.status, note: "captured in the CRM — it appears in the New Lead column of the pipeline" };
+    return { leadId: lead.id, name: lead.name, company: lead.companyName ?? args.name, score: lead.score, status: lead.status, note: "captured in the CRM, it appears in the New Lead column of the pipeline" };
   },
 });
 
@@ -505,13 +505,13 @@ const runFreeAuditTool = defineTool<{ businessName: string; industry?: string; p
   handler: async (args) => {
     const { runFreeAudit } = await import("@/lib/free-audit");
     const audit = await runFreeAudit({ businessName: args.businessName, industry: args.industry, problems: args.problems ?? [] } as never);
-    return { auditId: audit.id, businessName: audit.businessName, kind: audit.kind, note: "audit stored — you can build a proposal from it with build_proposal_from_audit" };
+    return { auditId: audit.id, businessName: audit.businessName, kind: audit.kind, note: "audit stored, you can build a proposal from it with build_proposal_from_audit" };
   },
 });
 
 const buildProposalFromAuditTool = defineTool<{ auditId: string }>({
   name: "build_proposal_from_audit",
-  description: "Turn an existing audit into a DRAFT proposal (scope + pricing derived from the audit's findings). The proposal is created as a draft for founder review — it is NOT sent. Use for 'build a proposal from that audit'.",
+  description: "Turn an existing audit into a DRAFT proposal (scope + pricing derived from the audit's findings). The proposal is created as a draft for founder review, it is NOT sent. Use for 'build a proposal from that audit'.",
   jsonSchema: objectSchema({ auditId: { type: "string", description: "The audit id to build from." } }, ["auditId"]),
   argsSchema: z.object({ auditId: z.string().trim().min(1) }),
   mutates: true,
@@ -519,13 +519,13 @@ const buildProposalFromAuditTool = defineTool<{ auditId: string }>({
     const { createProposalFromAudit } = await import("@/lib/proposals");
     const proposal = await createProposalFromAudit(args.auditId, { createdBy: ctx.actor ?? "ask_wobble" });
     if (!proposal) return { created: false, note: "no audit found with that id" };
-    return { created: true, proposalId: proposal.id, title: proposal.title, status: proposal.status, valueUsd: proposal.pricingCents / 100, note: "DRAFT created — review and send it from the Proposals module" };
+    return { created: true, proposalId: proposal.id, title: proposal.title, status: proposal.status, valueUsd: proposal.pricingCents / 100, note: "DRAFT created, review and send it from the Proposals module" };
   },
 });
 
 const createInvoiceDraftTool = defineTool<{ description: string; amountUsd: number; companyId?: string; dueInDays?: number }>({
   name: "create_invoice_draft",
-  description: "Create a DRAFT invoice. Drafts are never sent — the founder approves and sends from the Invoices module. Use for 'invoice X for Y'.",
+  description: "Create a DRAFT invoice. Drafts are never sent, the founder approves and sends from the Invoices module. Use for 'invoice X for Y'.",
   jsonSchema: objectSchema(
     { description: { type: "string" }, amountUsd: { type: "number" }, companyId: { type: "string" }, dueInDays: { type: "number", description: "Payment terms in days (default 14)." } },
     ["description", "amountUsd"],
@@ -540,13 +540,13 @@ const createInvoiceDraftTool = defineTool<{ description: string; amountUsd: numb
       dueDate: new Date(Date.now() + (args.dueInDays ?? 14) * 86_400_000),
       createdBy: ctx.actor ?? "ask_wobble",
     } as never);
-    return { invoiceId: inv.id, number: inv.invoiceNumber, status: inv.status, totalUsd: inv.totalCents / 100, note: "DRAFT — approve and send it from the Invoices module" };
+    return { invoiceId: inv.id, number: inv.invoiceNumber, status: inv.status, totalUsd: inv.totalCents / 100, note: "DRAFT, approve and send it from the Invoices module" };
   },
 });
 
 const generateContentTool = defineTool<{ objective: string; contentTrackId?: string; platforms?: string[] }>({
   name: "generate_content",
-  description: "Kick off the content team to produce content packets for an objective. Runs as a background job and lands in Content Command for approval — it does NOT publish. Use for 'write posts about X', 'make content for Y'.",
+  description: "Kick off the content team to produce content packets for an objective. Runs as a background job and lands in Content Command for approval, it does NOT publish. Use for 'write posts about X', 'make content for Y'.",
   jsonSchema: objectSchema(
     { objective: { type: "string", description: "What the content should achieve." }, contentTrackId: { type: "string", description: "Which content track/brand. Defaults to the WOBBLE company track." }, platforms: { type: "array", items: { type: "string" } } },
     ["objective"],
@@ -561,7 +561,7 @@ const generateContentTool = defineTool<{ objective: string; contentTrackId?: str
       platformFocus: (args.platforms ?? []) as never,
       requestedBy: ctx.actor ?? "ask_wobble",
     } as never);
-    return { queued: true, job: res, note: "content team started — drafts will appear in Content Command for your approval" };
+    return { queued: true, job: res, note: "content team started, drafts will appear in Content Command for your approval" };
   },
 });
 
@@ -633,8 +633,8 @@ const importFolderTool = defineTool<{ rootDir: string; dryRun?: boolean; campaig
       ...res,
       dryRun,
       note: dryRun
-        ? "PREVIEW ONLY — nothing was written. Tell me to import for real and I'll run it."
-        : "imported into the Library — the assets are now schedulable",
+        ? "PREVIEW ONLY, nothing was written. Tell me to import for real and I'll run it."
+        : "imported into the Library, the assets are now schedulable",
     };
   },
 });
@@ -669,7 +669,7 @@ const listLibraryTool = defineTool<{ status?: string; limit?: number }>({
 
 const schedulePostTool = defineTool<{ assetId: string; platform: string; scheduledAt: string; publisher?: string }>({
   name: "schedule_post",
-  description: "Schedule a Library asset to publish on a platform at a time. Reversible — it queues the post; it does NOT publish on the spot (the due-post dispatcher handles that and still honours the founder-confirm hold). Use for 'schedule the reel for Tuesday 9am on Instagram'.",
+  description: "Schedule a Library asset to publish on a platform at a time. Reversible, it queues the post; it does NOT publish on the spot (the due-post dispatcher handles that and still honours the founder-confirm hold). Use for 'schedule the reel for Tuesday 9am on Instagram'.",
   jsonSchema: objectSchema(
     {
       assetId: { type: "string", description: "The Library asset id (get it from list_library)." },
@@ -695,7 +695,7 @@ const schedulePostTool = defineTool<{ assetId: string; platform: string; schedul
     const when = new Date(args.scheduledAt);
     if (Number.isNaN(when.getTime())) return { scheduled: false, error: `could not parse scheduledAt '${args.scheduledAt}'` };
     const post = await schedulePost({ assetId: args.assetId, platform: args.platform as never, scheduledAt: when, publisher: publisher as never, createdBy: ctx.actor ?? "ask_wobble" });
-    return { scheduled: true, postId: post.id, platform: post.platform, scheduledAt: post.scheduledAt, publisher: post.publisher, status: post.status, note: publisher === "manual" ? "queued for YOU to post manually — mark it posted afterwards" : "queued for automatic publishing" };
+    return { scheduled: true, postId: post.id, platform: post.platform, scheduledAt: post.scheduledAt, publisher: post.publisher, status: post.status, note: publisher === "manual" ? "queued for YOU to post manually, mark it posted afterwards" : "queued for automatic publishing" };
   },
 });
 
@@ -715,7 +715,7 @@ const markPostedTool = defineTool<{ assetId: string; platform: string; publisher
   handler: async (args, ctx) => {
     const { markAssetPostedOnPlatform } = await import("@/lib/library");
     const res = await markAssetPostedOnPlatform(args.assetId, args.platform as never, { publisherRef: args.publisherRef, actor: ctx.actor ?? "ask_wobble" } as never);
-    return { marked: true, result: res, note: `${args.platform} recorded as posted — other platforms are unchanged` };
+    return { marked: true, result: res, note: `${args.platform} recorded as posted, other platforms are unchanged` };
   },
 });
 

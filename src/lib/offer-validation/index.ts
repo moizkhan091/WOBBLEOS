@@ -101,11 +101,11 @@ export async function runOfferValidation(offerId: string, deps: OfferValidationD
     : deps.searchEvidence;
   if (searchEvidence) {
     try {
-      const q = `${offer.promise ?? offer.name} — demand, competitors, and objections for ${offer.audience ?? "small businesses"}`;
+      const q = `${offer.promise ?? offer.name}, demand, competitors, and objections for ${offer.audience ?? "small businesses"}`;
       const ev = await searchEvidence({ query: q, item: "offer-validation", actor });
       evidenceCount = ev.results.length;
       if (evidenceCount > 0) {
-        evidenceBlock = "Evidence (web):\n" + ev.results.slice(0, 5).map((r, i) => `[${i + 1}] ${r.title} — ${r.url}\n${r.content.slice(0, 300)}`).join("\n");
+        evidenceBlock = "Evidence (web):\n" + ev.results.slice(0, 5).map((r, i) => `[${i + 1}] ${r.title}, ${r.url}\n${r.content.slice(0, 300)}`).join("\n");
       }
     } catch (e) {
       evidenceBlock = `Evidence: (gathering failed: ${e instanceof Error ? e.message : String(e)})`;

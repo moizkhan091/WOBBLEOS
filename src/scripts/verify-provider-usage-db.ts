@@ -45,7 +45,7 @@ async function main() {
     assert(usage.estimationStatus === "actual", "usage marked ACTUAL (not estimated)");
     assert(Number(usage.calculatedCostUsd) >= 0, "internally-calculated cost persisted");
     if (usage.providerReportedCostUsd !== null) { assert(Number(usage.providerReportedCostUsd) >= 0 && usage.verificationStatus === "verified", "provider-reported cost persisted + marked verified"); }
-    else { console.log("  · OpenRouter did not return a cost field on this call — calculated cost used, verificationStatus=unverified (honest)"); }
+    else { console.log("  · OpenRouter did not return a cost field on this call, calculated cost used, verificationStatus=unverified (honest)"); }
     assert(usage.departmentSlug === slug && usage.clientWorkspaceId === `${tag}_co`, "usage is tenant-scoped (department + client workspace)");
 
     // 3. A budget reservation settles to the ACTUAL usage, not an estimate.

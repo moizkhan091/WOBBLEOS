@@ -63,7 +63,7 @@ async function main() {
     cleanup.push(() => db.delete(handoffs).where(eq(handoffs.workflowId, wfPass)));
     cleanup.push(() => db.delete(handoffs).where(eq(handoffs.workflowId, wfFail)));
 
-    console.log("\nStep 1 — a STRONG audit PASSES the QA gate → the business_audit handoff is emitted to Proposal:");
+    console.log("\nStep 1, a STRONG audit PASSES the QA gate → the business_audit handoff is emitted to Proposal:");
     const rPass = await dispatchBusinessAuditToProposal(
       { auditId: `aud_pass_${uniq}`, businessName: "Acme HVAC", companyId: wfPass },
       { store: handoffStore(db), qa: { result: result(strongReport()), deps: qaDeps() }, recordAudit: async () => {}, now },
@@ -75,7 +75,7 @@ async function main() {
     const emitted = (await db.select().from(handoffs).where(eq(handoffs.workflowId, wfPass))).filter((h) => h.department === "proposal");
     assert(emitted.length === 1 && emitted[0].deliveryState === "delivered", "exactly one business_audit handoff is delivered to Proposal (released)");
 
-    console.log("\nStep 2 — a WEAK audit is BLOCKED → NO downstream handoff + a real escalation:");
+    console.log("\nStep 2, a WEAK audit is BLOCKED → NO downstream handoff + a real escalation:");
     const rFail = await dispatchBusinessAuditToProposal(
       { auditId: `aud_fail_${uniq}`, businessName: "Acme HVAC", companyId: wfFail },
       { store: handoffStore(db), qa: { result: result(weakReport()), deps: qaDeps() }, recordAudit: async () => {}, now },
@@ -87,7 +87,7 @@ async function main() {
     const esc = await db.select().from(escalations).where(eq(escalations.workflowId, wfFail));
     assert(esc.length >= 1 && esc.some((e) => e.departmentSlug === "paid_audit"), "a REAL founder-visible escalation row was raised on the QA block");
 
-    console.log("\nStep 3 — idempotency: re-running the gate does not double-write the review or re-emit:");
+    console.log("\nStep 3, idempotency: re-running the gate does not double-write the review or re-emit:");
     const again = await dispatchBusinessAuditToProposal(
       { auditId: `aud_pass_${uniq}`, businessName: "Acme HVAC", companyId: wfPass },
       { store: handoffStore(db), qa: { result: result(strongReport()), deps: qaDeps() }, recordAudit: async () => {}, now },

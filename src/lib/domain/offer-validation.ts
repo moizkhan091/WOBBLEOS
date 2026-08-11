@@ -27,12 +27,12 @@ export const OFFER_VALIDATION_DIMENSIONS: OfferValidationDimensionDef[] = [
   { slug: "pain_acuity", name: "Pain Acuity", agentSlug: "offer_pain_acuity_agent", weight: 1.2, question: "How acute and expensive is the pain this offer removes? Is it a bleeding-neck problem or a nice-to-have?" },
   { slug: "icp_fit", name: "ICP Fit", agentSlug: "offer_icp_fit_agent", weight: 1.2, question: "How well does this offer fit WOBBLE's ICP (Pakistan-first owner-led SMBs with budget and operational pain)?" },
   { slug: "differentiation", name: "Differentiation", agentSlug: "offer_differentiation_agent", weight: 1.1, question: "How differentiated is this vs agencies and generic automation? Is the 'capability inside the business' angle clear?" },
-  { slug: "pricing_viability", name: "Pricing Viability", agentSlug: "offer_pricing_agent", weight: 1.0, question: "Is the price model viable — enough value to justify it, and affordable for the ICP?" },
+  { slug: "pricing_viability", name: "Pricing Viability", agentSlug: "offer_pricing_agent", weight: 1.0, question: "Is the price model viable, enough value to justify it, and affordable for the ICP?" },
   { slug: "proof_strength", name: "Proof Strength", agentSlug: "offer_proof_agent", weight: 1.0, question: "How strong is the available proof (mechanism credibility, demos, before/after) for the promise?" },
   { slug: "urgency", name: "Urgency", agentSlug: "offer_urgency_agent", weight: 0.9, question: "Why now? Is there a compelling reason the buyer must act soon rather than later?" },
   { slug: "competition", name: "Competitive Pressure", agentSlug: "offer_competition_agent", weight: 0.9, question: "How crowded is the competitive landscape and can WOBBLE win against it?" },
   { slug: "delivery_feasibility", name: "Delivery Feasibility", agentSlug: "offer_delivery_agent", weight: 1.1, question: "Can WOBBLE actually deliver this reliably with AI employees + automations, within its safety boundaries?" },
-  { slug: "message_clarity", name: "Message Clarity", agentSlug: "offer_message_agent", weight: 0.8, question: "Is the promise clear, specific, and believable in one line — or vague/overpromised?" },
+  { slug: "message_clarity", name: "Message Clarity", agentSlug: "offer_message_agent", weight: 0.8, question: "Is the promise clear, specific, and believable in one line, or vague/overpromised?" },
   { slug: "risk_objections", name: "Risk & Objections", agentSlug: "offer_risk_agent", weight: 1.0, question: "What are the biggest objections/risks (incl. the payment/AI-safety boundary) and how answerable are they? (higher score = lower risk)" },
 ];
 

@@ -31,7 +31,7 @@ export class KillSwitchEngagedError extends Error {
     readonly targetRef: string,
     readonly switchReason: string,
   ) {
-    super(`blocked by kill switch on ${targetType}:${targetRef} — ${switchReason}`);
+    super(`blocked by kill switch on ${targetType}:${targetRef}, ${switchReason}`);
     this.name = "KillSwitchEngagedError";
   }
 }

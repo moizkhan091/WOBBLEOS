@@ -135,7 +135,7 @@ function evaluatePaidAudit(input: QaBoardEvaluationInput<PaidAuditResult>): QaCr
 const CONTENT_QUALITY_CRITERIA: QaCriterion[] = [
   { key: "impact_threshold", stage: "copywriting", required: true, weight: 1.5, description: "Predicted impact meets the post-worthiness bar." },
   { key: "platform_fit", stage: "strategy", required: false, weight: 1, description: "The pack fits the chosen platform's format + audience." },
-  { key: "grounded_provenance", stage: "research", required: true, weight: 1.5, description: "Claims are grounded — the pack carries source/chunk/insight provenance." },
+  { key: "grounded_provenance", stage: "research", required: true, weight: 1.5, description: "Claims are grounded, the pack carries source/chunk/insight provenance." },
   { key: "quality_gate_passed", stage: "scoring", required: false, weight: 1, description: "The graph's own quality gate did not fail/block the pack." },
 ];
 
@@ -254,7 +254,7 @@ export const contentQualityBoard: QaBoard<ContentGraphResult> = {
   department: "content",
   targetArtifactSchema: "content_pack",
   systemPolicy:
-    "You are the INDEPENDENT Content Quality reviewer. You did not write this pack. Judge the content_pack ONLY against impact, platform fit, grounded provenance, and the graph's own quality gate — using the evidence carried on the pack. Return pass/fail/revise/blocked with the exact failed stage.",
+    "You are the INDEPENDENT Content Quality reviewer. You did not write this pack. Judge the content_pack ONLY against impact, platform fit, grounded provenance, and the graph's own quality gate, using the evidence carried on the pack. Return pass/fail/revise/blocked with the exact failed stage.",
   memoryScopes: ["qa_rubric"],
   criteria: CONTENT_QUALITY_CRITERIA,
   thresholds: { passScore: 0.75, reviseFloor: 0.4 },
@@ -269,7 +269,7 @@ export const contentBrandBoard: QaBoard<ContentGraphResult> = {
   department: "content",
   targetArtifactSchema: "content_pack",
   systemPolicy:
-    "You are the INDEPENDENT Content Brand reviewer. You did not write this pack. Judge brand fit against the WOBBLE premium teach-first voice, the strategic setup (angle + audience), and whether claims are supported — using only the evidence on the pack. Return pass/fail/revise/blocked with the exact failed stage.",
+    "You are the INDEPENDENT Content Brand reviewer. You did not write this pack. Judge brand fit against the WOBBLE premium teach-first voice, the strategic setup (angle + audience), and whether claims are supported, using only the evidence on the pack. Return pass/fail/revise/blocked with the exact failed stage.",
   memoryScopes: ["qa_rubric", "brand"],
   criteria: CONTENT_BRAND_CRITERIA,
   thresholds: { passScore: 0.75, reviseFloor: 0.4 },
@@ -292,7 +292,7 @@ export interface SecurityIsolationArtifact {
 }
 
 const SECURITY_ISOLATION_CRITERIA: QaCriterion[] = [
-  { key: "tenant_isolated", stage: "handoff", required: true, weight: 2, description: "Client/tenant scope matches the receiver — no cross-tenant leakage." },
+  { key: "tenant_isolated", stage: "handoff", required: true, weight: 2, description: "Client/tenant scope matches the receiver, no cross-tenant leakage." },
   { key: "memory_scope_authorized", stage: "handoff", required: true, weight: 1.5, description: "Authorized memory scopes never exceed the receiver's grant." },
   { key: "classification_permitted", stage: "handoff", required: true, weight: 1.5, description: "Data classification is permitted for the destination." },
 ];
@@ -396,7 +396,7 @@ export const securityTenantIsolationBoardImpl: QaBoard<SecurityIsolationArtifact
   department: "security_governance",
   targetArtifactSchema: "handoff_envelope",
   systemPolicy:
-    "Independent security reviewer: verify client/tenant isolation and memory-scope authorization are enforced — no cross-tenant leakage, no scope widening — before work is accepted. Judged DETERMINISTICALLY against validateHandoff's real output, never an opinion.",
+    "Independent security reviewer: verify client/tenant isolation and memory-scope authorization are enforced, no cross-tenant leakage, no scope widening, before work is accepted. Judged DETERMINISTICALLY against validateHandoff's real output, never an opinion.",
   memoryScopes: ["qa_rubric"],
   criteria: SECURITY_ISOLATION_CRITERIA,
   // 0.95 keeps the original intent: every required isolation criterion must pass. There is no partial

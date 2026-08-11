@@ -20,7 +20,7 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 /** Human-readable scope label so callers/UI never mistake this for full DR. */
 export const BACKUP_EXPORT_SCOPE = "limited-json-export";
 export const BACKUP_EXPORT_NOTE =
-  "Limited JSON export of selected business tables (capped per table) — NOT a full database backup or disaster recovery. Use scripts/backup-db.sh + dr-drill.sh for real DR.";
+  "Limited JSON export of selected business tables (capped per table), NOT a full database backup or disaster recovery. Use scripts/backup-db.sh + dr-drill.sh for real DR.";
 
 // The tables worth snapshotting (business data, not ephemeral job/queue rows).
 const BACKUP_TABLES: Array<{ key: string; table: typeof schema.crmCompanies }> = [
@@ -115,7 +115,7 @@ export function validateSnapshot(snapshot: unknown): SnapshotValidation {
     if (!Array.isArray(s.data[key])) errors.push(`table '${key}' is not an array of rows`);
     else for (const row of s.data[key]) if (!row || typeof (row as { id?: unknown }).id !== "string") { errors.push(`table '${key}' has a row without a string id`); break; }
   }
-  if (Array.isArray(s.truncated) && s.truncated.length) warnings.push(`snapshot was TRUNCATED for: ${s.truncated.join(", ")} — those tables are incomplete`);
+  if (Array.isArray(s.truncated) && s.truncated.length) warnings.push(`snapshot was TRUNCATED for: ${s.truncated.join(", ")}, those tables are incomplete`);
   return { ok: errors.length === 0, errors, warnings, version: s.version ?? null, tableKeys };
 }
 
@@ -163,7 +163,7 @@ export async function restoreSnapshot(
     if (!table || (filter && !filter.has(key))) continue;
     const candidates = rows as Array<Record<string, unknown>>;
     if (!candidates.length) { results.push({ key, candidateRows: 0, newRows: 0, existingRows: 0, inserted: 0 }); continue; }
-    if (candidates.length > PER_TABLE_RESTORE_CAP) { warnings.push(`table '${key}' has ${candidates.length} rows (> ${PER_TABLE_RESTORE_CAP} cap) — skipped`); continue; }
+    if (candidates.length > PER_TABLE_RESTORE_CAP) { warnings.push(`table '${key}' has ${candidates.length} rows (> ${PER_TABLE_RESTORE_CAP} cap), skipped`); continue; }
     const ids = candidates.map((r) => String(r.id));
     const idCol = (table as unknown as { id: never }).id;
     // CHUNK the existence check so a large snapshot can't exceed Postgres's bind-parameter ceiling (~65k).
@@ -181,7 +181,7 @@ export async function restoreSnapshot(
       inserted = (out as unknown[]).length;
       // Honesty: if fewer rows inserted than were "new" by id, a SECONDARY unique constraint (e.g. invoice number)
       // blocked them — surface it so the gap between newRows and inserted is never silent. Existing data is untouched.
-      if (inserted < newRows.length) warnings.push(`table '${key}': ${newRows.length - inserted} missing row(s) were NOT restored — blocked by a unique constraint other than id (existing data unchanged)`);
+      if (inserted < newRows.length) warnings.push(`table '${key}': ${newRows.length - inserted} missing row(s) were NOT restored, blocked by a unique constraint other than id (existing data unchanged)`);
     }
     results.push({ key, candidateRows: candidates.length, newRows: newRows.length, existingRows: candidates.length - newRows.length, inserted });
   }

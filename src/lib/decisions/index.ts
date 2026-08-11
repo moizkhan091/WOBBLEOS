@@ -39,7 +39,7 @@ async function defaultLoadPolicyGuidance(category?: string): Promise<string> {
     const relevant = policies.filter((p) => p.status === "active");
     if (!relevant.length) return "";
     return (
-      "LEARNED DECISION POLICIES (founder-approved standing preferences from past committed decisions — weight them, but the specifics of THIS decision still win where they genuinely conflict):\n" +
+      "LEARNED DECISION POLICIES (founder-approved standing preferences from past committed decisions, weight them, but the specifics of THIS decision still win where they genuinely conflict):\n" +
       relevant.slice(0, 12).map((p) => `- ${p.statement}`).join("\n")
     );
   } catch {
@@ -113,7 +113,7 @@ export async function scoreDecisionOptions(id: string, input: { actor?: string }
   const messages: ProviderChatMessage[] = [
     { role: "system", content: "You are WOBBLE's decision analyst. Score each option 0-100 for how well it serves the stated goal, weighing pros/cons, risk, and speed-to-value. Reply ONLY with a JSON array like [{\"id\":\"opt_x\",\"score\":78,\"rationale\":\"one crisp line\"}]. No prose." },
     ...(policyGuidance ? [{ role: "system" as const, content: policyGuidance }] : []),
-    { role: "user", content: `Decision: ${d.title}\nContext: ${d.context ?? "(none)"}\n\nOptions:\n${d.options.map((o) => `- id=${o.id} | ${o.label}${o.rationale ? ` — ${o.rationale}` : ""}${o.pros?.length ? ` | pros: ${o.pros.join(", ")}` : ""}${o.cons?.length ? ` | cons: ${o.cons.join(", ")}` : ""}`).join("\n")}` },
+    { role: "user", content: `Decision: ${d.title}\nContext: ${d.context ?? "(none)"}\n\nOptions:\n${d.options.map((o) => `- id=${o.id} | ${o.label}${o.rationale ? `, ${o.rationale}` : ""}${o.pros?.length ? ` | pros: ${o.pros.join(", ")}` : ""}${o.cons?.length ? ` | cons: ${o.cons.join(", ")}` : ""}`).join("\n")}` },
   ];
   const { text, run } = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages, maxTokens: 900 });
 
@@ -126,7 +126,7 @@ export async function scoreDecisionOptions(id: string, input: { actor?: string }
       return r.text;
     },
   });
-  if (!parsed.ok || !parsed.data) throw new Error(`decision scorer returned unparseable output — ${parsed.error}`);
+  if (!parsed.ok || !parsed.data) throw new Error(`decision scorer returned unparseable output, ${parsed.error}`);
   const scores = parsed.data;
   const byId = new Map(scores.map((s) => [s.id, s]));
   const options = d.options.map((o) => { const s = byId.get(o.id); return s ? { ...o, score: Math.max(0, Math.min(100, Math.round(s.score))), rationale: s.rationale ?? o.rationale } : o; });

@@ -45,7 +45,7 @@ async function main() {
   assert(open[0].severity === "high" && open[0].assignee === "founder_command_centre", "severity + assignee are set");
 
   // 3. Founder resolves it with an action the workflow can read.
-  assert(await resolveEscalation(open[0].id, { action: "resume", resolution: "budget raised — resume", resolvedBy: "Moiz" }, { store: escStore(db), recordAudit: async () => {}, now }), "founder resolved the escalation");
+  assert(await resolveEscalation(open[0].id, { action: "resume", resolution: "budget raised, resume", resolvedBy: "Moiz" }, { store: escStore(db), recordAudit: async () => {}, now }), "founder resolved the escalation");
   const resolved = await listEscalations({ departmentSlug: slug, status: "resolved" }, { store: escStore(db) });
   assert(resolved.length === 1 && resolved[0].resolutionAction === "resume" && resolved[0].resolvedBy === "Moiz", "resolution recorded (action=resume, resolvedBy=Moiz)");
 

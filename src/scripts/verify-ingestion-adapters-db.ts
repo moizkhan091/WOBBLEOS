@@ -65,7 +65,7 @@ async function main() {
     // 4) A content-less, URL-less source → NO adapter applies (clean, never a silent failure).
     const emptyId = await mkActiveSource("empty", { sourceType: "manual_note" });
     const empty = await runSourceIntake(emptyId, { context: {} });
-    assert(empty.ok && empty.chunks === 0 && empty.note === "no adapter applies", "a URL-less + content-less source cleanly yields NO adapter (0 chunks, explicit note — not a silent scrape failure)");
+    assert(empty.ok && empty.chunks === 0 && empty.note === "no adapter applies", "a URL-less + content-less source cleanly yields NO adapter (0 chunks, explicit note, not a silent scrape failure)");
     assert((await lastRun(emptyId))?.status === "cancelled", "the no-adapter intake run is CANCELLED (honest terminal state)");
 
     console.log("\n✅ ingestion-adapters DB proof passed");

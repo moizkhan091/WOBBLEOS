@@ -144,7 +144,7 @@ const EXTERNAL_PROVIDER_LOCK_KEY = 918273645; // arbitrary stable app-wide key
 export class ProviderConcurrencyError extends Error {
   readonly name = "ProviderConcurrencyError";
   constructor() {
-    super("external provider concurrency limit (1) reached — another paid call is in flight");
+    super("external provider concurrency limit (1) reached, another paid call is in flight");
   }
 }
 

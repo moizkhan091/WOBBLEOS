@@ -68,10 +68,10 @@ async function main() {
     const after = await getProviderSpend("openrouter", { db });
     assert(after > before, `media success RECORDED spend to the shared cap (${before.toFixed(2)} → ${after.toFixed(2)})`);
 
-    console.log("\n✅ media budget circuit-breaker proof passed — exhausted pauses (blocks, resumable); success shares the text cap");
+    console.log("\n✅ media budget circuit-breaker proof passed, exhausted pauses (blocks, resumable); success shares the text cap");
   } finally {
     if (jobIds.length) await db.delete(mediaJobs).where(inArray(mediaJobs.id, jobIds)).catch(() => {});
-    // Scope cleanup to THIS run's rows only — the shared gate DB holds other proofs' ledger entries.
+    // Scope cleanup to THIS run's rows only, the shared gate DB holds other proofs' ledger entries.
     await db.delete(externalProviderSpend).where(eq(externalProviderSpend.item, spendItem)).catch(() => {});
     await db.delete(externalProviderSpend).where(eq(externalProviderSpend.item, `media.image`)).catch(() => {});
     await closeDb().catch(() => {});

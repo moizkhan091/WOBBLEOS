@@ -153,7 +153,7 @@ export function formatTasteGuidance(
   weights.sort((a, b) => Math.abs(Number(b[1])) - Math.abs(Number(a[1])));
   const favour = weights.filter(([, w]) => Number(w) > 0).slice(0, 6).map(([k]) => k);
   const avoid = weights.filter(([, w]) => Number(w) < 0).slice(0, 6).map(([k]) => k);
-  const lines: string[] = ["LEARNED FOUNDER TASTE (from real approvals / rejections / edits — apply as a strong preference; it tunes but never overrides approved brand rules):"];
+  const lines: string[] = ["LEARNED FOUNDER TASTE (from real approvals / rejections / edits, apply as a strong preference; it tunes but never overrides approved brand rules):"];
   if (favour.length) lines.push(`- FAVOUR: ${favour.join(", ")}`);
   if (avoid.length) lines.push(`- AVOID: ${avoid.join(", ")}`);
   for (const c of constraints.slice(0, 8)) lines.push(`- CONSTRAINT: ${c}`);

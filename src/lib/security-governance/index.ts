@@ -272,7 +272,7 @@ async function annotateClearedIncidents(runId: string, ranKinds: Set<string>, st
       at: now.toISOString(),
       actor: GOVERNANCE_ORCHESTRATOR,
       event: INCIDENT_CONDITION_CLEARED,
-      detail: `The '${decision.kind}' check ran in ${runId} and did not re-raise '${decision.sourceKey}'. The underlying condition is no longer detected — safe to close after founder review.`,
+      detail: `The '${decision.kind}' check ran in ${runId} and did not re-raise '${decision.sourceKey}'. The underlying condition is no longer detected, safe to close after founder review.`,
     };
     await db
       .update(securityIncidents)
@@ -453,7 +453,7 @@ export async function actOnFinding(
   if (!finding) return { ok: false, error: `finding '${input.id}' not found`, status: 404 };
 
   if (input.action === "resolve" && !input.closureProof && !input.note) {
-    return { ok: false, error: "resolving a finding requires closure proof (what re-verified it) or an explicit note — a finding marked done without evidence proves nothing", status: 422 };
+    return { ok: false, error: "resolving a finding requires closure proof (what re-verified it) or an explicit note, a finding marked done without evidence proves nothing", status: 422 };
   }
 
   const next: Record<FindingAction, string> = {

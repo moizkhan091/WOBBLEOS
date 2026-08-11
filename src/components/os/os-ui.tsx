@@ -357,7 +357,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
           if (!r.ok || j.ok === false) {
             // 503 (no DATABASE_URL) is a normal local state, not a scary failure — say so plainly.
             setHits([]);
-            setSearchError(r.status === 503 ? "Records unavailable — no database connected." : String(j.error ?? "HTTP " + r.status));
+            setSearchError(r.status === 503 ? "Records unavailable, no database connected." : String(j.error ?? "HTTP " + r.status));
           } else {
             setHits(Array.isArray(j.results) ? j.results : []);
           }
@@ -483,7 +483,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
           {searching ? <PaletteNote text="Searching records…" /> : null}
           {searchError ? <PaletteNote text={searchError} tone={C.orange} /> : null}
           {!query ? <PaletteNote text="Type to jump to a module or find a company, deal, lead, proposal, audit or content packet." /> : null}
-          {query && query.length < SEARCH_MIN_CHARS ? <PaletteNote text="Keep typing — records need at least two characters." /> : null}
+          {query && query.length < SEARCH_MIN_CHARS ? <PaletteNote text="Keep typing, records need at least two characters." /> : null}
           {query.length >= SEARCH_MIN_CHARS && nothingMatched && !searchError ? <PaletteNote text={`No module or record matches “${query}”. Press Enter to ask WOBBLE instead.`} /> : null}
         </div>
       </div>
@@ -607,9 +607,9 @@ function fmtMoney(v: unknown): string {
   return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtTime(v: unknown): string {
-  if (!v) return "—";
+  if (!v) return ", ";
   const d = new Date(v as string);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString();
+  return isNaN(d.getTime()) ? "-" : d.toLocaleString();
 }
 function offlineIf(s: ApiState<unknown>): React.ReactNode | null {
   if (s.loading) return <StateBlock kind="loading" />;
@@ -707,7 +707,7 @@ function toggleBtn(active: boolean): React.CSSProperties {
   return { padding: "8px 14px", borderRadius: 10, border: "1px solid " + (active ? "rgba(184,255,44,0.4)" : "rgba(255,255,255,0.12)"), background: active ? "rgba(184,255,44,0.12)" : "rgba(255,255,255,0.03)", color: active ? C.lime : muted, fontSize: 12, fontWeight: 600, cursor: "pointer" };
 }
 function Field({ label, value }: { label: string; value: unknown }) {
-  const v = value == null || value === "" ? "—" : String(value);
+  const v = value == null || value === "" ? "-" : String(value);
   return (
     <div>
       <div style={{ fontSize: 10.5, letterSpacing: "0.06em", color: faint, fontWeight: 600, marginBottom: 4 }}>{label.toUpperCase()}</div>
@@ -825,7 +825,7 @@ function CostsPage() {
               <div style={{ padding: 22, textAlign: "center", color: muted, fontSize: 13 }}>No model runs logged yet.</div>
             ) : (
               runs.map((r, i) => {
-                const status = String(r.status ?? "—");
+                const status = String(r.status ?? "-");
                 const col = status === "succeeded" ? C.lime : status === "error" ? C.orange : C.blue;
                 return (
                   <div key={String(r.id ?? i)} style={{ display: "flex", alignItems: "center", padding: "13px 14px", borderBottom: i < runs.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
@@ -834,7 +834,7 @@ function CostsPage() {
                       <div style={{ fontSize: 10.5, color: faint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(r.module ?? r.role ?? "")} · {fmtTime(r.createdAt)}</div>
                     </div>
                     <div style={{ width: 110, flex: "none" }}><StatusPill label={status} color={col} /></div>
-                    <div style={{ width: 90, flex: "none", fontSize: 12, color: muted }}>{r.latencyMs != null ? String(r.latencyMs) + "ms" : "—"}</div>
+                    <div style={{ width: 90, flex: "none", fontSize: 12, color: muted }}>{r.latencyMs != null ? String(r.latencyMs) + "ms" : "-"}</div>
                     <div style={{ width: 90, flex: "none", textAlign: "right", fontSize: 12, color: muted }}>{fmtMoney(r.costEstimate)}</div>
                   </div>
                 );
@@ -1409,7 +1409,7 @@ function UploadAssetsButton({ onDone }: { onDone: () => void }) {
       const failed = Number(d.failedCount ?? 0);
       // Name the rejected files and why — "2 failed" with no reason is not actionable.
       const why = failed && Array.isArray(d.results)
-        ? " — " + d.results.filter((r) => r.error).slice(0, 3).map((r) => `${r.filename}: ${r.error}`).join("; ")
+        ? "- " + d.results.filter((r) => r.error).slice(0, 3).map((r) => `${r.filename}: ${r.error}`).join("; ")
         : "";
       setMsg(failed ? `${ok} uploaded, ${failed} rejected${why}` : `${ok} uploaded.`);
       onDone();
@@ -1525,9 +1525,9 @@ function ImportFolderButton({ onDone }: { onDone: () => void }) {
  * Chromium; if the host has no Chromium the route answers 503 with the reason rather than a broken file.
  */
 const ARTIFACT_FORMATS: Array<{ id: string; label: string; hint: string }> = [
-  { id: "deck16x9", label: "Slides", hint: "16:9 — present on screen" },
-  { id: "deckA4", label: "A4", hint: "A4 portrait — print / leave-behind" },
-  { id: "document", label: "Document", hint: "Prose report — read & annotate" },
+  { id: "deck16x9", label: "Slides", hint: "16:9, present on screen" },
+  { id: "deckA4", label: "A4", hint: "A4 portrait, print / leave-behind" },
+  { id: "document", label: "Document", hint: "Prose report, read & annotate" },
 ];
 
 function ArtifactLinks({ base, label = "Open", compact }: { base: string; label?: string; compact?: boolean }) {
@@ -1664,7 +1664,7 @@ function AskPage() {
     const all = Array.from(list);
     const tooBig = all.filter((f) => f.size > MAX);
     const arr = all.filter((f) => f.size <= MAX).slice(0, 10);
-    if (tooBig.length) setTurns((t) => [...t, { role: "wob", text: `Skipped ${tooBig.map((f) => f.name).join(", ")} — over 12 MB. Compress or crop and try again.` }]);
+    if (tooBig.length) setTurns((t) => [...t, { role: "wob", text: `Skipped ${tooBig.map((f) => f.name).join(", ")}, over 12 MB. Compress or crop and try again.` }]);
     if (!arr.length) return;
     const built = await Promise.all(arr.map(async (f) => ({ id: Math.random().toString(36).slice(2), name: f.name, size: f.size, mimeType: f.type || "application/octet-stream", kind: fileKind(f), preview: fileKind(f) === "image" ? URL.createObjectURL(f) : null, dataBase64: await readFileB64(f) })));
     setFiles((prev) => [...prev, ...built].slice(0, 10));
@@ -1703,7 +1703,7 @@ function AskPage() {
         const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: question, useMemory: true, model: model || undefined, attachments: sendFiles.map((f) => ({ filename: f.name, mimeType: f.mimeType, dataBase64: f.dataBase64 })) }) });
         const j = (await r.json()) as Record<string, unknown>;
         if (!r.ok || j.ok === false) setTurns((t) => [...t, { role: "wob", text: "Error: " + String(j.error ?? "HTTP " + r.status) + (r.status === 503 ? " (connect the database)" : "") }]);
-        else setTurns((t) => [...t, { role: "wob", text: String(j.text ?? ""), meta: [Array.isArray(j.attachments) && j.attachments.length ? (j.attachments as string[]).join(" · ") : null, j.runId ? "run " + String(j.runId) : null].filter(Boolean).join(" — ") }]);
+        else setTurns((t) => [...t, { role: "wob", text: String(j.text ?? ""), meta: [Array.isArray(j.attachments) && j.attachments.length ? (j.attachments as string[]).join(" · ") : null, j.runId ? "run " + String(j.runId) : null].filter(Boolean).join(", ") }]);
       } else {
         const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, maxTokens: 600 }) });
         const j = (await r.json()) as Record<string, unknown>;
@@ -1730,7 +1730,7 @@ function AskPage() {
   async function confirmAgent(approve: boolean) {
     const pc = pendingConfirm;
     setPendingConfirm(null);
-    if (!pc || !approve) { if (pc) setTurns((t) => [...t, { role: "wob", text: "Cancelled — nothing was applied." }]); return; }
+    if (!pc || !approve) { if (pc) setTurns((t) => [...t, { role: "wob", text: "Cancelled, nothing was applied." }]); return; }
     setBusy(true);
     setTurns((t) => [...t, { role: "you", text: "✓ Confirmed" }]);
     try {
@@ -1814,7 +1814,7 @@ function AskPage() {
             ))}
           </div>
         ) : null}
-        <textarea value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Ask WOBBLE anything — or drop an image / PDF / doc to analyze…" rows={2} style={{ width: "100%", padding: "6px 6px 10px", border: "none", background: "transparent", color: C.white, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit" }} />
+        <textarea value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Ask WOBBLE anything, or drop an image / PDF / doc to analyze…" rows={2} style={{ width: "100%", padding: "6px 6px 10px", border: "none", background: "transparent", color: C.white, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
           {models.length ? (
@@ -1923,7 +1923,7 @@ function EditMemoryModal({ record, actor, onClose, onDone }: { record: Record<st
     const res = await memApi("/api/memory/records/" + encodeURIComponent(id), "PATCH", { title, content, editedBy: actor });
     setBusy(false);
     if (!res.ok) { setMsg("Error: " + res.error); return; }
-    setMsg("Saved — memory re-embedded so search stays correct."); setTimeout(onDone, 800);
+    setMsg("Saved, memory re-embedded so search stays correct."); setTimeout(onDone, 800);
   }
   async function restoreVersion(vid: string) {
     const res = await memApi("/api/memory/records/" + encodeURIComponent(id) + "/versions/" + encodeURIComponent(vid) + "/restore", "POST", { restoredBy: actor });
@@ -1988,7 +1988,7 @@ function ManagedMemoryList({ actor, status }: { actor: string; status: "active" 
       : act === "archive" ? await memApi("/api/memory/records/" + id, "DELETE", { archivedBy: actor, reason: "removed from dashboard" })
       : await memApi("/api/memory/records/" + id + "/restore", "POST", { restoredBy: actor });
     setBusyId(null);
-    setNote(res.ok ? null : "Error: could not " + act + " — " + String(res.error));
+    setNote(res.ok ? null : "Error: could not " + act + ", " + String(res.error));
     if (res.ok) setBump((x) => x + 1);
   }
   if (!recs.length) return <StateBlock kind="empty" message={status === "archived" ? "Nothing archived. Deleted memories live here for 48h before purge." : "No memories yet."} />;
@@ -2040,7 +2040,7 @@ function MemoryConflictsPanel({ actor }: { actor: string }) {
     setBusyId(null);
     // Resolving archives one side of the conflict — a failure that reloaded the list unchanged looked
     // exactly like "the conflict came back", so it has to be named.
-    setNote(res.ok ? null : "Error: could not resolve — " + String(res.error));
+    setNote(res.ok ? null : "Error: could not resolve, " + String(res.error));
     if (res.ok) setBump((x) => x + 1);
   }
   if (!conflicts.length) return <StateBlock kind="empty" message="No open conflicts. When a new memory contradicts an existing one, it shows up here to resolve." />;
@@ -2086,7 +2086,7 @@ function MemoryReviewPanel({ actor }: { actor: string }) {
     setBusyId(id); setNote(null);
     const res = await memApi("/api/memory/records/" + encodeURIComponent(id) + "/review", "POST", { reviewedBy: actor });
     setBusyId(null);
-    if (!res.ok) { setNote("Error: could not confirm — " + String(res.error)); return; }
+    if (!res.ok) { setNote("Error: could not confirm, " + String(res.error)); return; }
     setBump((x) => x + 1);
   }
   if (!recs.length) return <StateBlock kind="empty" message="Nothing stale. Memories resurface here for re-confirmation as they age." />;
@@ -2170,7 +2170,7 @@ const MEM_TABS = [
   { id: "conflicts", label: "Conflicts" },
   { id: "review", label: "Stale review" },
   // Renamed from "What WOBBLE knows about me": founder memory is transparent, so this surface shows
-  // ANY founder's company profile — your own is editable, a colleague's is read-only.
+  // ANY founder's company profile, your own is editable, a colleague's is read-only.
   { id: "mine", label: "Founder profiles" },
   { id: "archived", label: "Recently deleted" },
 ];
@@ -2220,7 +2220,7 @@ function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<str
       const res = await fetch("/api/sources/" + encodeURIComponent(id) + "/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reingest" }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) { setMsg("Re-ingest failed: " + String(j.error ?? res.status)); return; }
-      setMsg(`Re-ingested via ${j.adapter ?? "adapter"} — ${j.chunks ?? 0} chunk(s).`);
+      setMsg(`Re-ingested via ${j.adapter ?? "adapter"}, ${j.chunks ?? 0} chunk(s).`);
       chunks.reload(); // keep the drawer open so the founder sees the freshly-collected chunks
     } finally { setBusy(false); }
   }
@@ -2233,7 +2233,7 @@ function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<str
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) { setMsg((action === "deactivate" ? "Deactivate" : "Reactivate") + " failed: " + String(j.error ?? res.status)); return; }
       const preserved = j.impact?.chunksPreserved;
-      setMsg(action === "deactivate" ? `Deactivated — collection stopped. ${typeof preserved === "number" ? preserved : 0} evidence chunk(s) preserved (reversible).` : "Reactivated — the source is back in the collection feed.");
+      setMsg(action === "deactivate" ? `Deactivated, collection stopped. ${typeof preserved === "number" ? preserved : 0} evidence chunk(s) preserved (reversible).` : "Reactivated, the source is back in the collection feed.");
       onChanged?.();
     } finally { setBusy(false); }
   }
@@ -2269,7 +2269,7 @@ function SourceDetailDrawer({ source, onClose, onChanged }: { source: Record<str
           <div style={{ ...card, padding: "12px 13px" }}>
             <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginBottom: 9 }}>
               {status === "archived"
-                ? "This source is DEACTIVATED — no new collection or propagation. Existing evidence is preserved. Reactivate to resume."
+                ? "This source is DEACTIVATED, no new collection or propagation. Existing evidence is preserved. Reactivate to resume."
                 : "Deactivating stops new collection + propagation. Existing evidence stays accessible; the action is reversible."}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3040,7 +3040,7 @@ function IntelligenceControlBar({ onRan }: { onRan: () => void }) {
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input value={scoutHandle} onChange={(e) => setScoutHandle(e.target.value)} placeholder="IG @handle to scout now" style={{ ...inputStyle, width: 200 }} />
-        <button onClick={() => { if (!scoutHandle.trim()) { setMsg("Enter a handle to scout."); return; } post("/api/intelligence/scout", { handleOrUrl: scoutHandle, platform: "instagram" }, "scout", (j) => j.configured === false ? "Set APIFY_API_TOKEN to enable the scout." : `Scouted — ${Number(j.found ?? 0)} posts ingested pending.`); }} disabled={busy === "scout"} style={busy === "scout" ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "8px 12px" }}>{busy === "scout" ? "Scouting…" : "⚡ Run scout"}</button>
+        <button onClick={() => { if (!scoutHandle.trim()) { setMsg("Enter a handle to scout."); return; } post("/api/intelligence/scout", { handleOrUrl: scoutHandle, platform: "instagram" }, "scout", (j) => j.configured === false ? "Set APIFY_API_TOKEN to enable the scout." : `Scouted, ${Number(j.found ?? 0)} posts ingested pending.`); }} disabled={busy === "scout"} style={busy === "scout" ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "8px 12px" }}>{busy === "scout" ? "Scouting…" : "⚡ Run scout"}</button>
         <button onClick={() => post("/api/intelligence/analyze", {}, "analyze", (j) => `Analyst proposed ${Number(j.proposedInsights ?? 0)} insight(s).`)} disabled={busy === "analyze"} style={busy === "analyze" ? disabledBtn : { ...selectStyle, cursor: "pointer", padding: "8px 12px" }}>{busy === "analyze" ? "Analyzing…" : "⚡ Run analyst"}</button>
       </div>
       {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 9 }}>{msg}</div> : null}
@@ -3813,7 +3813,7 @@ function LibraryPage() {
     // from "there was nothing to plan".
     if (!res.ok) { setMsg("Could not build a feed plan: " + String(res.error)); return; }
     const items = res.data?.items as FeedPlanItemUI[] | undefined;
-    if (!items?.length) { setMsg("No plan produced — there are no unposted assets to schedule."); return; }
+    if (!items?.length) { setMsg("No plan produced, there are no unposted assets to schedule."); return; }
     setPlan({ items, summary: String(res.data?.summary ?? "") });
   }
   async function doSchedule() {
@@ -3906,7 +3906,7 @@ function LibraryPage() {
           <select data-testid="publisher-select" value={publisher} onChange={(e) => setPublisher(e.target.value)} aria-label="Publisher" style={selectStyle}>
             {(pubs.data?.publishers ?? [{ publisher: "manual", state: "manual", detail: "" }]).map((p) => (
               <option key={p.publisher} value={p.publisher} disabled={p.state === "blocked"} title={p.detail}>
-                {p.publisher}{p.state === "blocked" ? " — blocked (no credentials)" : p.state === "manual" ? " — you post it" : ""}
+                {p.publisher}{p.state === "blocked" ? ", blocked (no credentials)" : p.state === "manual" ? ", you post it" : ""}
               </option>
             ))}
           </select>
@@ -3932,8 +3932,8 @@ function LibraryPage() {
         );
         return (
           <>
-            <Section title="Scheduled — in the queue" color={C.blue} list={queuePosts} empty="Nothing scheduled. Schedule an asset above, or use Plan my feed." />
-            {postedPosts.length ? <Section title="Posted — already live" color={C.lime} list={postedPosts} empty="Nothing posted yet." /> : null}
+            <Section title="Scheduled, in the queue" color={C.blue} list={queuePosts} empty="Nothing scheduled. Schedule an asset above, or use Plan my feed." />
+            {postedPosts.length ? <Section title="Posted, already live" color={C.lime} list={postedPosts} empty="Nothing posted yet." /> : null}
             {otherPosts.length ? <Section title="Failed / cancelled" color={C.orange} list={otherPosts} empty="None." /> : null}
           </>
         );
@@ -4308,7 +4308,7 @@ function CrmPage() {
       </Panel>
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Companies ({companies.length})</div>
-        {companies.length === 0 ? <StateBlock kind="empty" message="No companies yet. Convert a lead or win a deal — click any company here to open its 360." /> : (
+        {companies.length === 0 ? <StateBlock kind="empty" message="No companies yet. Convert a lead or win a deal, click any company here to open its 360." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {companies.map((c) => (
               <button key={c.id} onClick={() => setCo360(c.id)} style={{ ...card, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left", border: "1px solid rgba(255,255,255,0.085)", color: C.white }}>
@@ -4646,7 +4646,7 @@ function FreeAuditPage() {
     const res = await postJson("/api/proposals/from-audit", { auditId });
     setBusyKey(null);
     if (!res.ok) { setMsg("Could not build a proposal: " + String(res.error)); return; }
-    setMsg(`Proposal drafted for ${businessName} — open Proposals to price, approve and send it.`);
+    setMsg(`Proposal drafted for ${businessName}, open Proposals to price, approve and send it.`);
   }
   const impactColor = (i: string) => (i === "high" ? C.lime : i === "medium" ? C.blue : C.gray);
   const rep = result?.report;
@@ -4683,7 +4683,7 @@ function FreeAuditPage() {
         <textarea value={problems} onChange={(e) => setProblems(e.target.value)} placeholder="Anything else they said (one problem per line)…" style={{ ...inputStyle, width: "100%", minHeight: 58, resize: "vertical" }} />
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
           <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer" }}>{busyKey === "diagnose" ? "Diagnosing…" : "Quick diagnosis"}</button>
-          <button onClick={runPitch} disabled={busy} title="Doc 1 — the niche-customized 'what Wobble can do' pitch" style={busy ? disabledBtn : primaryBtn}>{busyKey === "pitch" ? "Writing pitch…" : "✨ Generate AI pitch"}</button>
+          <button onClick={runPitch} disabled={busy} title="Doc 1, the niche-customized 'what Wobble can do' pitch" style={busy ? disabledBtn : primaryBtn}>{busyKey === "pitch" ? "Writing pitch…" : "✨ Generate AI pitch"}</button>
           <ActionMsg msg={msg} />
         </div>
       </Panel>
@@ -4792,7 +4792,7 @@ function PaidAuditPage() {
     const res = await postJson("/api/audit/paid", { businessName: name, industry: industry || undefined, intakeNotes: notes, companyId: companyId || undefined });
     setBusy(false);
     if (!res.ok) {
-      setMsg(res.data?.needsModelKey ? "The audit team needs an LLM key — set OPENROUTER_API_KEY in .env to run it live." : "Error: " + String(res.error));
+      setMsg(res.data?.needsModelKey ? "The audit team needs an LLM key, set OPENROUTER_API_KEY in .env to run it live." : "Error: " + String(res.error));
       return;
     }
     const rpt = res.data?.report as PaidAuditReportUI | undefined;
@@ -4807,7 +4807,7 @@ function PaidAuditPage() {
     const res = await postJson("/api/proposals/from-audit", { auditId });
     setProposalBusy(false);
     if (!res.ok) { setMsg("Could not build a proposal: " + String(res.error)); return; }
-    setMsg(`Proposal drafted for ${businessName} — open Proposals to price, approve and send it.`);
+    setMsg(`Proposal drafted for ${businessName}, open Proposals to price, approve and send it.`);
   }
   const lvl = (v: string) => (v === "high" ? C.lime : v === "medium" ? C.blue : C.gray);
   const rep = report;
@@ -4846,7 +4846,7 @@ function PaidAuditPage() {
               <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
                 <Kpi label="Monthly upside" value={money(rep.roi.estimatedMonthlyUpsideCents)} icon="TrendingUp" color={C.lime} />
                 <Kpi label="Implementation" value={money(rep.roi.estimatedImplementationCents ?? 0)} icon="Wallet" color={C.blue} />
-                <Kpi label="Payback" value={`${rep.roi.paybackMonths ?? "—"} mo`} icon="Hourglass" color="#B87CFF" />
+                <Kpi label="Payback" value={`${rep.roi.paybackMonths ?? "-"} mo`} icon="Hourglass" color="#B87CFF" />
               </div>
             ) : null}
             {/* The report used to render in full and offer nothing to do next. Export + build proposal
@@ -4940,7 +4940,7 @@ function ProposalsPage() {
     setBusy(false);
     if (!res.ok) { setMsg("Could not build proposal: " + String(res.error)); return; }
     setAuditId("");
-    setMsg("Proposal built — it is in the list below as a draft.");
+    setMsg("Proposal built, it is in the list below as a draft.");
     listState.reload();
   }
   async function act(id: string, action: string, title: string) {
@@ -4950,7 +4950,7 @@ function ProposalsPage() {
     const res = await postJson(`/api/proposals/${id}/action`, { action });
     setRowBusy(null);
     if (!res.ok) { setRowMsg({ id, text: "Could not " + action + ": " + String(res.error) }); return; }
-    if (action === "accept" && res.data?.invoiceId) setMsg("Accepted — invoice drafted (see Invoices & Finance).");
+    if (action === "accept" && res.data?.invoiceId) setMsg("Accepted, invoice drafted (see Invoices & Finance).");
     listState.reload();
   }
   const actionsFor = (st: string): Array<{ a: string; label: string }> => {
@@ -4968,7 +4968,7 @@ function ProposalsPage() {
           <div style={{ fontSize: 14, fontWeight: 600 }}>Proposals</div>
           <StatusPill label="LIVE" color={C.lime} />
         </div>
-        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 740 }}>Build a client proposal straight from an audit's findings — services, scope, timeline and pricing. A founder approves before it's sent; <b>accepting a proposal auto-drafts the invoice</b>. This closes the loop: Audit → Proposal → Invoice.</div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 740 }}>Build a client proposal straight from an audit's findings, services, scope, timeline and pricing. A founder approves before it's sent; <b>accepting a proposal auto-drafts the invoice</b>. This closes the loop: Audit → Proposal → Invoice.</div>
       </Panel>
 
       <Panel>
@@ -5108,7 +5108,7 @@ function AuditWorkspacePage() {
           <div style={{ fontSize: 14, fontWeight: 600 }}>Audit Workspace</div>
           <StatusPill label="LIVE" color={C.lime} />
         </div>
-        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 760 }}>One client, the whole audit: <b>Doc 1</b> niche pitch → <b>Doc 2</b> internal interview roadmap → record findings → <b>Doc 3</b> final McKinsey deck. Each client's data stays isolated — the AI never sees another client's docs.</div>
+        <div style={{ fontSize: 12.4, color: muted, lineHeight: 1.55, maxWidth: 760 }}>One client, the whole audit: <b>Doc 1</b> niche pitch → <b>Doc 2</b> internal interview roadmap → record findings → <b>Doc 3</b> final McKinsey deck. Each client's data stays isolated, the AI never sees another client's docs.</div>
       </Panel>
 
       <Panel>
@@ -5493,7 +5493,7 @@ function DecisionRoomPage() {
     try {
       const r = await fetch(`/api/decision-policies/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Policy activated — it now guides future decisions of this type." : "Policy declined."); policies.reload(); }
+      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Policy activated, it now guides future decisions of this type." : "Policy declined."); policies.reload(); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
@@ -5533,7 +5533,7 @@ function DecisionRoomPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Open a decision</div>
         <input value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} placeholder="What are we deciding?" style={{ ...inputStyle, marginBottom: 8 }} />
         <textarea value={f.context} onChange={(e) => setF((s) => ({ ...s, context: e.target.value }))} placeholder="Context / the goal this serves…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
-        <textarea value={f.options} onChange={(e) => setF((s) => ({ ...s, options: e.target.value }))} placeholder="Options — one per line" rows={3} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+        <textarea value={f.options} onChange={(e) => setF((s) => ({ ...s, options: e.target.value }))} placeholder="Options, one per line" rows={3} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
         <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Open decision"}</button>
         {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, marginTop: 8 }}>{msg}</div> : null}
       </Panel>
@@ -5582,7 +5582,7 @@ function DecisionRoomPage() {
                 </div>
               ))}
             </div>
-            {decided ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 8 }}>Decided: <span style={{ color: C.white }}>{decided.label}</span>{d.decisionRationale ? ` — ${d.decisionRationale}` : ""}</div> : null}
+            {decided ? <div style={{ fontSize: 11.5, color: faint, marginBottom: 8 }}>Decided: <span style={{ color: C.white }}>{decided.label}</span>{d.decisionRationale ? `, ${d.decisionRationale}` : ""}</div> : null}
             {d.status !== "decided" && d.status !== "archived" ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => act(d.id, { action: "score" }, "score_" + d.id)} disabled={busy === "score_" + d.id || d.options.length === 0} style={busy === "score_" + d.id ? disabledBtn : { ...primaryBtn, padding: "7px 12px", fontSize: 12 }}>{busy === "score_" + d.id ? "Scoring…" : "⚡ Let WOBBLE score"}</button>
@@ -5651,10 +5651,10 @@ function OfferLabPage() {
           <input value={f.audience} onChange={(e) => setF((s) => ({ ...s, audience: e.target.value }))} placeholder="Audience / ICP" style={inputStyle} />
         </div>
         <input value={f.promise} onChange={(e) => setF((s) => ({ ...s, promise: e.target.value }))} placeholder="The promise (the outcome you sell)" style={{ ...inputStyle, marginBottom: 8 }} />
-        <textarea value={f.hypothesis} onChange={(e) => setF((s) => ({ ...s, hypothesis: e.target.value }))} placeholder="Hypothesis — why this wins…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+        <textarea value={f.hypothesis} onChange={(e) => setF((s) => ({ ...s, hypothesis: e.target.value }))} placeholder="Hypothesis, why this wins…" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
         <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 8, marginBottom: 8 }}>
           <input value={f.price} onChange={(e) => setF((s) => ({ ...s, price: e.target.value }))} placeholder="Price (USD)" type="number" style={inputStyle} />
-          <textarea value={f.deliverables} onChange={(e) => setF((s) => ({ ...s, deliverables: e.target.value }))} placeholder="Deliverables — one per line" rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+          <textarea value={f.deliverables} onChange={(e) => setF((s) => ({ ...s, deliverables: e.target.value }))} placeholder="Deliverables, one per line" rows={2} style={{ ...inputStyle, resize: "vertical" }} />
         </div>
         <button onClick={create} disabled={busy === "create"} style={busy === "create" ? disabledBtn : primaryBtn}>{busy === "create" ? "…" : "Create offer"}</button>
         {msg ? <div style={{ fontSize: 12, color: C.orange, marginTop: 8 }}>{msg}</div> : null}
@@ -5850,7 +5850,7 @@ function AutomationsPage() {
         </div>
         {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Ran") ? C.lime : C.orange, marginTop: 8 }}>{msg}</div> : null}
       </Panel>
-      {rules.length === 0 ? <StateBlock kind="empty" message="No automation rules yet. Create one — it'll enqueue a real job when it fires." /> : rules.map((r) => (
+      {rules.length === 0 ? <StateBlock kind="empty" message="No automation rules yet. Create one, it'll enqueue a real job when it fires." /> : rules.map((r) => (
         <Panel key={r.id}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.enabled ? C.lime : "rgba(255,255,255,0.2)" }} />
@@ -5918,7 +5918,7 @@ function SeoPage() {
     const res = await postJson("/api/content/generate", { objective, formatFocus: ["text"] });
     setBusy(null);
     if (!res.ok) { setMsg("Could not draft: " + String(res.error)); return; }
-    setMsg(`Drafting "${b.title}" — the content worker is generating packets; review them in Content Command.`);
+    setMsg(`Drafting "${b.title}", the content worker is generating packets; review them in Content Command.`);
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
@@ -6016,7 +6016,7 @@ function RadarPage() {
     try {
       const r = await fetch(`/api/intelligence/targets/${id}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Source approved — it will be scouted on its cadence." : "Source declined."); suggested.reload(); }
+      if (r.ok && j.ok !== false) { setMsg(action === "approve" ? "Source approved, it will be scouted on its cadence." : "Source declined."); suggested.reload(); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
@@ -6163,7 +6163,7 @@ function SocialPage() {
     const res = await postJson("/api/content/generate", { objective, formatFocus });
     setBusy(null);
     if (!res.ok) { setMsg("Could not draft: " + String(res.error)); return; }
-    setMsg(`Drafting "${idea.idea.slice(0, 60)}" — the content worker is generating packets; review them in Content Command.`);
+    setMsg(`Drafting "${idea.idea.slice(0, 60)}", the content worker is generating packets; review them in Content Command.`);
   }
   const chips = (title: string, items?: string[]) => items?.length ? (
     <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, letterSpacing: "0.05em", color: faint, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>{title}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{items.map((x, i) => <Tag key={i} text={x} color={C.gray} />)}</div></div>
@@ -6269,7 +6269,7 @@ function WebstatsPage() {
       </div>
     );
   }
-  const fmtDur = (s?: number) => s == null ? "—" : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+  const fmtDur = (s?: number) => s == null ? "-" : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 820 }}>
       {d?.error ? <div style={{ fontSize: 12, color: C.orange }}>Plausible error: {d.error}</div> : null}
@@ -6420,7 +6420,7 @@ function MediaStudioPage() {
       const r = await fetch("/api/media", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, prompt: prompt.trim(), estimatedCostCents: 0, budgetCapCents: 500 }) });
       const j = await r.json();
       if (!r.ok || !j.ok) { setMsg("Submit failed: " + String(j.error ?? (j.errors ? j.errors.join("; ") : r.status))); return; }
-      setMsg("Job queued. The worker will run it — or hold it as 'blocked' until a provider key is set (never faked).");
+      setMsg("Job queued. The worker will run it, or hold it as 'blocked' until a provider key is set (never faked).");
       setPrompt("");
       state.reload();
     } finally { setBusy(false); }
@@ -6459,7 +6459,7 @@ function MediaStudioPage() {
         </div>
         {msg ? <div style={{ fontSize: 11.5, color: msg.includes("failed") ? C.orange : C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
       </Panel>
-      {jobs.length === 0 ? <StateBlock kind="empty" message="No media jobs yet. Queue one above — a job is durable and worker-driven, and stays honest ('blocked') when no provider is configured." /> : (
+      {jobs.length === 0 ? <StateBlock kind="empty" message="No media jobs yet. Queue one above, a job is durable and worker-driven, and stays honest ('blocked') when no provider is configured." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {jobs.map((j, i) => {
             const st = String(j.status ?? "queued");
@@ -6566,7 +6566,7 @@ function DepartmentsPage() {
 
   async function act(id: string, action: "redrive" | "cancel", h: HandoffView) {
     // Cancelling stops work mid-flight between two agents; it is not resumable from this screen.
-    if (action === "cancel" && !window.confirm(`Cancel the handoff ${h.sourceAgent} → ${h.destinationAgent ?? "—"}?\n\nThe work in flight is abandoned. It cannot be resumed from here — it would have to be re-run.`)) return;
+    if (action === "cancel" && !window.confirm(`Cancel the handoff ${h.sourceAgent} → ${h.destinationAgent ?? "-"}?\n\nThe work in flight is abandoned. It cannot be resumed from here, it would have to be re-run.`)) return;
     setBusy(id);
     setMsg(null);
     const res = await postJson(`/api/handoffs/${id}/action`, { action });
@@ -6598,7 +6598,7 @@ function DepartmentsPage() {
   const escList = escs.data?.escalations ?? [];
   const bud = deptFilter ? budget.data?.budget : undefined;
   const kpiList = deptFilter ? kpis.data?.kpis ?? [] : [];
-  const fmtKpi = (v: KpiView) => (v.value === null ? "—" : v.unit === "ratio" ? `${Math.round(v.value * 100)}%` : v.unit === "ms" ? `${Math.round(v.value / 100) / 10}s` : v.unit === "cents" ? `$${(v.value / 100).toFixed(2)}` : String(v.value));
+  const fmtKpi = (v: KpiView) => (v.value === null ? "-" : v.unit === "ratio" ? `${Math.round(v.value * 100)}%` : v.unit === "ms" ? `${Math.round(v.value / 100) / 10}s` : v.unit === "cents" ? `$${(v.value / 100).toFixed(2)}` : String(v.value));
   // The page-level guard only ever covered `depts`. Handoffs, escalations, budget and KPIs each had NO
   // loading or error handling, so a 500 from /api/handoffs rendered the EMPTY state — "No handoffs
   // match" — presenting an outage as everything being fine. Each panel now reports its own state.
@@ -6612,8 +6612,8 @@ function DepartmentsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
         <Kpi label="Departments" value={String(list.length)} icon="Network" color={C.lime} />
         <Kpi label="Active" value={String(list.filter((d) => d.status === "active").length)} icon="CircleDot" color={C.blue} />
-        <Kpi label="Handoffs in-flight" value={handoffs.error ? "—" : String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" sub={handoffs.error ? "handoff API unreachable" : undefined} />
-        <Kpi label="Open escalations" value={escs.error ? "—" : String(escs.data?.counts?.open ?? 0)} icon="AlertTriangle" color={escs.error ? C.orange : escList.length ? C.orange : C.gray} sub={escs.error ? "escalation API unreachable" : undefined} />
+        <Kpi label="Handoffs in-flight" value={handoffs.error ? "-" : String((counts.delivered ?? 0) + (counts.processing ?? 0) + (counts.acknowledged ?? 0))} icon="ArrowLeftRight" color="#F5C542" sub={handoffs.error ? "handoff API unreachable" : undefined} />
+        <Kpi label="Open escalations" value={escs.error ? "-" : String(escs.data?.counts?.open ?? 0)} icon="AlertTriangle" color={escs.error ? C.orange : escList.length ? C.orange : C.gray} sub={escs.error ? "escalation API unreachable" : undefined} />
       </div>
 
       {/* An escalations outage previously rendered NOTHING (the panel is conditional on a non-empty
@@ -6634,7 +6634,7 @@ function DepartmentsPage() {
                 <Tag text={e.reason} color={C.orange} />
                 <Tag text={e.severity} color={SEV_COLOR[e.severity] ?? C.gray} />
                 <span style={{ fontSize: 12, flex: 1, minWidth: 240 }}>{e.requiredDecision}</span>
-                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "resume", resolution: "resolved from Command Centre — resume" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>resume</button>
+                <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "resume", resolution: "resolved from Command Centre, resume" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.lime, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>resume</button>
                 <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "resolve", resolutionAction: "terminate", resolution: "terminated from Command Centre" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: C.orange, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>terminate</button>
                 <button disabled={busy === e.id} onClick={() => actEsc(e.id, { action: "dismiss", reason: "dismissed from Command Centre" }, e)} style={{ ...card, padding: "4px 9px", fontSize: 11.5, color: faint, cursor: busy === e.id ? "wait" : "pointer", background: "transparent", opacity: busy === e.id ? 0.55 : 1 }}>dismiss</button>
               </div>
@@ -6685,7 +6685,7 @@ function DepartmentsPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ width: 9, height: 9, borderRadius: "50%", background: HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray }} />
                 <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{d.name ?? d.department}</span>
-                <Tag text={d.status ?? "—"} color={d.status === "active" ? C.lime : C.gray} />
+                <Tag text={d.status ?? "-"} color={d.status === "active" ? C.lime : C.gray} />
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <Tag text={d.healthStatus ?? "unknown"} color={HEALTH_COLOR[d.healthStatus ?? "unknown"] ?? C.gray} />
@@ -6751,7 +6751,7 @@ function DepartmentsPage() {
                 <div key={h.id} style={{ ...card, padding: "8px 11px", display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATE_COLOR[h.deliveryState] ?? C.gray }} />
                   <Tag text={h.department} color={C.gray} />
-                  <span style={{ fontSize: 12, minWidth: 220 }}>{h.sourceAgent} → {h.destinationAgent ?? "—"}</span>
+                  <span style={{ fontSize: 12, minWidth: 220 }}>{h.sourceAgent} → {h.destinationAgent ?? "-"}</span>
                   <Tag text={h.deliveryState} color={STATE_COLOR[h.deliveryState] ?? C.gray} />
                   {h.retryCount > 0 ? <span style={{ fontSize: 11, color: faint }}>retries {h.retryCount}</span> : null}
                   {h.failureReason ? <span style={{ fontSize: 11, color: C.orange, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.failureReason}>{h.failureReason}</span> : null}
@@ -6812,7 +6812,7 @@ function CommsPage() {
       const r = await fetch("/api/comms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const j = await r.json();
       if (!r.ok || !j.ok) { setMsg("Prepare failed: " + String(j.error ?? r.status)); return; }
-      setMsg(j.released ? (channel === "internal_notification" ? "Released — delivered autonomously (an earned grant)." : "Released — staged ready (an earned grant).") : "Prepared — held for your send/confirm (no grant).");
+      setMsg(j.released ? (channel === "internal_notification" ? "Released, delivered autonomously (an earned grant)." : "Released, staged ready (an earned grant).") : "Prepared, held for your send/confirm (no grant).");
       setSubject(""); setBody("");
       c.reload();
     } finally { setBusy(false); }
@@ -6832,8 +6832,8 @@ function CommsPage() {
     setRowBusy(null);
     if (!res.ok) { setMsg((action === "send" ? "Send" : "Cancel") + " failed: " + String(res.error)); return; }
     const decision = res.data?.sendDecision as { capped?: boolean } | undefined;
-    if (action === "send") setMsg(decision?.capped ? "Sent — this send was confirm-capped (founder in the loop)." : "Sent.");
-    else setMsg("Cancelled — it will not be sent.");
+    if (action === "send") setMsg(decision?.capped ? "Sent, this send was confirm-capped (founder in the loop)." : "Sent.");
+    else setMsg("Cancelled, it will not be sent.");
     c.reload();
   }
   if (guard) return guard;
@@ -6927,7 +6927,7 @@ function OptimizerPage() {
       const r = await fetch("/api/optimizer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const j = await r.json();
       if (!r.ok || !j.ok) { setMsg("Cycle failed: " + String(j.error ?? r.status)); return; }
-      setMsg(`Cycle complete — ${j.observations} observations, ${j.opportunities} opportunit${j.opportunities === 1 ? "y" : "ies"} proposed.`);
+      setMsg(`Cycle complete, ${j.observations} observations, ${j.opportunities} opportunit${j.opportunities === 1 ? "y" : "ies"} proposed.`);
       o.reload();
     } finally { setBusy(false); }
   }
@@ -6952,7 +6952,7 @@ function OptimizerPage() {
       </div>
       <ActionMsg msg={msg} />
       <div style={labelStyle}>IMPROVEMENT PROPOSALS</div>
-      {proposals.length === 0 ? <StateBlock kind="empty" message="No proposals yet. Run a cycle — if the OS is healthy across the tracked signals, it honestly proposes nothing." /> : (
+      {proposals.length === 0 ? <StateBlock kind="empty" message="No proposals yet. Run a cycle, if the OS is healthy across the tracked signals, it honestly proposes nothing." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {proposals.map((p, i) => {
             const st = String(p.status ?? "proposed");
@@ -6976,7 +6976,7 @@ function OptimizerPage() {
                 <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{String(p.pattern ?? "")}</div>
                 <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, marginTop: 5 }}>{String(p.hypothesis ?? "")}</div>
                 <div style={{ fontSize: 10.5, color: faint, marginTop: 6 }}>
-                  evidence: health {base.toFixed(2)} → projected target {target.toFixed(2)} (estimate) · {evalReason || "—"} · est. value {String(p.estimatedValue ?? 0)} · {fmtTime(p.createdAt)}
+                  evidence: health {base.toFixed(2)} → projected target {target.toFixed(2)} (estimate) · {evalReason || "-"} · est. value {String(p.estimatedValue ?? 0)} · {fmtTime(p.createdAt)}
                 </div>
               </div>
             );
@@ -6998,7 +6998,7 @@ function CockpitPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
         {/* Read-only aggregation, but each number has a home — link to it rather than leave the founder
             to guess which module owns it. */}
-        <Kpi label={`Revenue · ${d?.revenue.periodMonths ?? 1}mo`} value={rev !== null && rev !== undefined ? `$${(rev / 100).toLocaleString()}` : "—"} icon="DollarSign" color={C.lime} sub={d?.revenue.evidenceTier ?? "no financial actual yet"} href="/invoices" />
+        <Kpi label={`Revenue · ${d?.revenue.periodMonths ?? 1}mo`} value={rev !== null && rev !== undefined ? `$${(rev / 100).toLocaleString()}` : "-"} icon="DollarSign" color={C.lime} sub={d?.revenue.evidenceTier ?? "no financial actual yet"} href="/invoices" />
         <Kpi label="Needs attention" value={String(d?.attention.total ?? 0)} icon="AlertTriangle" color={(d?.attention.total ?? 0) > 0 ? C.orange : C.lime} sub={`${d?.attention.openEscalations ?? 0} escalations · ${d?.attention.pendingApprovals ?? 0} approvals`} href="/approvals" />
         <Kpi label="Optimizer proposals" value={String(d?.optimizer.proposed ?? 0)} icon="Gauge" color={C.blue} sub={`${d?.optimizer.active ?? 0} active · ${d?.optimizer.total ?? 0} total`} href="/optimizer" />
         <Kpi label="Autonomy grants" value={String(d?.autonomy.activeGrants ?? 0)} icon="ShieldCheck" color={C.blue} sub="in force" href="/security" />
@@ -7127,7 +7127,7 @@ function SecurityPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Risk register ({(d?.risks ?? []).length})</div>
         <div style={{ fontSize: 12, color: muted, marginBottom: 10 }}>Risks WOBBLE is carrying deliberately, each with a severity, a likelihood and a named owner.</div>
         {(d?.risks ?? []).length === 0 ? (
-          <StateBlock kind="empty" message="No risks on the register. Risks are recorded deliberately — an empty register means none have been accepted, not that none exist." />
+          <StateBlock kind="empty" message="No risks on the register. Risks are recorded deliberately, an empty register means none have been accepted, not that none exist." />
         ) : (
           <div style={{ ...glass, padding: "8px 10px" }}>
             {(d?.risks ?? []).map((rk, i) => (
@@ -7456,12 +7456,12 @@ function TranscriptPanel({ companyId, onChanged }: { companyId: string; onChange
   const [msg, setMsg] = useState<string | null>(null);
 
   async function submit() {
-    if (text.trim().length < 40) { setMsg("Error: paste the actual transcript — that is too short to extract anything from."); return; }
+    if (text.trim().length < 40) { setMsg("Error: paste the actual transcript, that is too short to extract anything from."); return; }
     setBusy(true); setMsg("Reading the call and pulling out discovery facts…");
     try {
       const r = await fetch(`/api/org/${companyId}/transcript`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: text, title: title.trim() || undefined }) });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; extracted?: number; error?: string };
-      if (r.ok && j.ok) { setMsg(`Saved — ${j.extracted ?? 0} discovery fact(s) extracted. Approve the ones that are right; the audit only uses approved facts.`); setText(""); setTitle(""); facts.reload(); onChanged(); }
+      if (r.ok && j.ok) { setMsg(`Saved, ${j.extracted ?? 0} discovery fact(s) extracted. Approve the ones that are right; the audit only uses approved facts.`); setText(""); setTitle(""); facts.reload(); onChanged(); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
   }
@@ -7663,7 +7663,7 @@ function OrgWorkspacePage() {
       if (r.ok && j.ok !== false) {
         const c = (j.inheritedContext ?? {}) as { discoveryFacts?: number; services?: number; qualification?: boolean; readinessSubmissions?: number };
         const rep = (j.report ?? {}) as { opportunities?: number; serviceCount?: number };
-        setActionMsg(`Audit complete — inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} approved discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities found. Read it under Artifacts.`);
+        setActionMsg(`Audit complete, inherited ${c.readinessSubmissions ?? 0} form submission(s) + ${c.discoveryFacts ?? 0} approved discovery facts + ${c.services ?? 0} services${c.qualification ? " + qualification" : ""}. ${Number(rep.opportunities ?? 0)} opportunities found. Read it under Artifacts.`);
         org.reload();
       } else setActionMsg("Error: " + String(j.error ?? r.status));
     } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
@@ -7689,14 +7689,14 @@ function OrgWorkspacePage() {
         }),
       });
       const jj = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (r.ok && jj.ok !== false) { setActionMsg("Quick pitch created from this client's form answers — open it in Quick Pitch."); org.reload(); }
+      if (r.ok && jj.ok !== false) { setActionMsg("Quick pitch created from this client's form answers, open it in Quick Pitch."); org.reload(); }
       else setActionMsg("Error: " + String(jj.error ?? r.status));
     } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
   }
 
   async function buildProposalFromLatestAudit() {
     const audit = (org.data?.audits ?? []).find((a) => a.status === "complete");
-    if (!audit) { setActionMsg("Error: run a paid audit first — the proposal is built from its findings."); return; }
+    if (!audit) { setActionMsg("Error: run a paid audit first, the proposal is built from its findings."); return; }
     setBusyKey("proposal"); setActionMsg("Building the proposal from this client's audit…");
     try {
       const r = await fetch("/api/proposals/from-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auditId: audit.id }) });
@@ -7708,7 +7708,7 @@ function OrgWorkspacePage() {
 
   if (companiesApi.loading) return <StateBlock kind="loading" message="Loading clients…" />;
   if (companiesApi.error) return <StateBlock kind="error" message={companiesApi.error} />;
-  if (!companies.length) return <StateBlock kind="empty" message="No clients yet — they arrive automatically from the website readiness form, or add one in Pipeline / CRM." />;
+  if (!companies.length) return <StateBlock kind="empty" message="No clients yet, they arrive automatically from the website readiness form, or add one in Pipeline / CRM." />;
 
   const j = org.data?.journey;
   const l = org.data?.lineage;
@@ -7763,7 +7763,7 @@ function OrgWorkspacePage() {
               <OrgSection title="CONTACTS" />
               <ContactsPanel contacts={contacts} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "—"} tone={j.qualification ? C.lime : undefined} />
+                <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "-"} tone={j.qualification ? C.lime : undefined} />
                 <OrgMetric label="calls given back" value={j.meetings.length} />
                 <OrgMetric label="approved findings" value={j.discoveryFactCount} />
                 <OrgMetric label="open deals" value={j.opportunities.length} />
@@ -7795,7 +7795,7 @@ function OrgWorkspacePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <OrgSection title="QUESTIONS FOR THE FIRST CALL" />
               <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} />
-              <OrgSection title="AFTER THE CALL — GIVE IT BACK" />
+              <OrgSection title="AFTER THE CALL, GIVE IT BACK" />
               <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
             </div>
           ) : (
@@ -7892,7 +7892,7 @@ function TopicBankPage() {
     try {
       const r = await fetch(`/api/content/topics/${id}/lead-magnet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { const m = (j.magnet ?? {}) as { magnetType?: string; title?: string }; setMsg(`Lead magnet ready ✓ — "${m.title ?? ""}" (${String(m.magnetType ?? "").replace(/_/g, " ")}). Pending your review.`); }
+      if (r.ok && j.ok !== false) { const m = (j.magnet ?? {}) as { magnetType?: string; title?: string }; setMsg(`Lead magnet ready ✓, "${m.title ?? ""}" (${String(m.magnetType ?? "").replace(/_/g, " ")}). Pending your review.`); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
@@ -7904,7 +7904,7 @@ function TopicBankPage() {
       if (r.ok && j.ok !== false) {
         const n = Number(j.images ?? 1);
         setProducedSlides((s) => ({ ...s, [id]: n }));
-        setMsg(`Produced ✓ — ${n > 1 ? `a ${n}-slide carousel` : "the on-brand asset"} is rendered and saved to your Library.`);
+        setMsg(`Produced ✓, ${n > 1 ? `a ${n}-slide carousel` : "the on-brand asset"} is rendered and saved to your Library.`);
         topicsApi.reload();
       } else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
@@ -7914,7 +7914,7 @@ function TopicBankPage() {
     try {
       const r = await fetch(`/api/content/topics/${id}/reel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: reelVoice }) });
       const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-      if (r.ok && j.ok !== false) { setMsg(`Reel ready ✓ — a ${Number(j.durationSec ?? 0)}s vertical reel (${j.voice} voice, ${Number(j.scenes ?? 0)} scenes) is saved to your Library.`); topicsApi.reload(); }
+      if (r.ok && j.ok !== false) { setMsg(`Reel ready ✓, a ${Number(j.durationSec ?? 0)}s vertical reel (${j.voice} voice, ${Number(j.scenes ?? 0)} scenes) is saved to your Library.`); topicsApi.reload(); }
       else setMsg("Error: " + String(j.error ?? r.status));
     } finally { setBusy(null); }
   }
@@ -7925,7 +7925,7 @@ function TopicBankPage() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Run content intelligence</div>
         <div style={{ fontSize: 11.5, color: faint, marginBottom: 10 }}>The strategist team reads your <b>active sources</b> + knowledge and proposes a fresh topic bank with real decision stats. It runs on a daily cadence too — this is the manual trigger. Nothing posts blindly; you pick what is worth making.</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Objective (optional) — e.g. push lead-gen this week" style={{ ...inputStyle, width: 320 }} />
+          <input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Objective (optional), e.g. push lead-gen this week" style={{ ...inputStyle, width: 320 }} />
           <input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Math.max(1, Math.min(20, Number(e.target.value) || 8)))} style={{ ...inputStyle, width: 64 }} />
           <button onClick={runIntelligence} disabled={busy === "run"} style={busy === "run" ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy === "run" ? "Running the team…" : "⚡ Run intelligence"}</button>
         </div>
@@ -8042,7 +8042,7 @@ function DailyBriefPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>What needs you today</div>
-            <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{api.data?.generatedAt ? `Assembled ${new Date(api.data.generatedAt).toLocaleString()} — ranked, evidence-linked.` : "The OS assembles this every morning from live signals; refresh to re-scan now."}</div>
+            <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{api.data?.generatedAt ? `Assembled ${new Date(api.data.generatedAt).toLocaleString()}, ranked, evidence-linked.` : "The OS assembles this every morning from live signals; refresh to re-scan now."}</div>
           </div>
           <button onClick={regenerate} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Refreshing…" : "↻ Refresh now"}</button>
         </div>
@@ -8051,7 +8051,7 @@ function DailyBriefPage() {
 
       {api.loading ? <StateBlock kind="loading" message="Assembling your brief…" /> :
         api.error ? (api.status === 503 ? <StateBlock kind="offline" /> : <StateBlock kind="error" message={api.error} />) :
-        !brief || brief.isEmpty ? <StateBlock kind="empty" message="Nothing needs you right now — no open escalations, approvals due, or risks. The brief regenerates every morning; refresh to re-scan." /> :
+        !brief || brief.isEmpty ? <StateBlock kind="empty" message="Nothing needs you right now, no open escalations, approvals due, or risks. The brief regenerates every morning; refresh to re-scan." /> :
         <>
           <Panel>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.lime, marginBottom: 12 }}>TOP {brief.headline.length} · {brief.totalSignals} signal{brief.totalSignals === 1 ? "" : "s"} total</div>

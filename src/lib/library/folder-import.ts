@@ -338,9 +338,9 @@ export async function scanContentFolder(
         // copy with nothing to post, or media in a format the allowlist refuses. A directory of
         // documents is silently not-a-post, so 20 doc folders do not drown the real problems.
         if (rejected.length) {
-          warnings.push({ path: rel, code: "unsupported_media", reason: `no supported media — found ${rejected.join(", ")}, not on the upload allowlist` });
+          warnings.push({ path: rel, code: "unsupported_media", reason: `no supported media, found ${rejected.join(", ")}, not on the upload allowlist` });
         } else if (captionFile) {
-          warnings.push({ path: rel, code: "missing_media", reason: `has ${captionFile} but no media file — nothing to post` });
+          warnings.push({ path: rel, code: "missing_media", reason: `has ${captionFile} but no media file, nothing to post` });
         }
         continue;
       }
@@ -350,7 +350,7 @@ export async function scanContentFolder(
         warnings.push({
           path: rel,
           code: "multiple_media",
-          reason: `${mediaFiles.length} media files found — importing '${mediaFiles[0]}', ignoring ${mediaFiles.slice(1).join(", ")}`,
+          reason: `${mediaFiles.length} media files found, importing '${mediaFiles[0]}', ignoring ${mediaFiles.slice(1).join(", ")}`,
         });
       }
       if (rejected.length) {
@@ -379,7 +379,7 @@ export async function scanContentFolder(
         warnings.push({
           path: rel,
           code: "missing_caption",
-          reason: `no caption file (looked for ${CAPTION_FILENAMES.join(", ")}) — importing the media with no caption`,
+          reason: `no caption file (looked for ${CAPTION_FILENAMES.join(", ")}), importing the media with no caption`,
         });
       }
 

@@ -93,9 +93,9 @@ export function createOpenRouterMediaProvider(opts: OpenRouterMediaOptions = {})
     configured: () => Boolean(resolveKey(opts)),
     async generate({ kind, prompt, params }): Promise<MediaGenerationResult> {
       const key = resolveKey(opts);
-      if (!key) throw new Error("OpenRouter is not configured (OPENROUTER_API_KEY missing) — generation blocked");
+      if (!key) throw new Error("OpenRouter is not configured (OPENROUTER_API_KEY missing), generation blocked");
       if (!OPENROUTER_MEDIA_KINDS.includes(kind)) {
-        throw new Error(`OpenRouter media adapter does not support kind '${kind}' yet (image only) — use the fal provider`);
+        throw new Error(`OpenRouter media adapter does not support kind '${kind}' yet (image only), use the fal provider`);
       }
       const model = (typeof params.model === "string" && params.model) || modelForKind(kind);
       const headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };

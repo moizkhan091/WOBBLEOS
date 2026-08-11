@@ -66,7 +66,7 @@ async function main() {
     assert(afterReal.status === "completed", "the CURRENT lease owner completes it exactly once");
     assert((afterReal.result as { by?: string })?.by === "real", "the completion result is the real owner's, never the ghost's");
 
-    console.log("✅ worker-lease DB proof passed — no double execution under multi-worker + crash reclaim");
+    console.log("✅ worker-lease DB proof passed, no double execution under multi-worker + crash reclaim");
   } finally {
     await db.delete(jobs).where(eq(jobs.queue, queue)).catch(() => {});
   }

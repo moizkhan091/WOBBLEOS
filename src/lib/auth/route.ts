@@ -15,7 +15,7 @@ import { getActingFounder, getSessionFromRequest, type AuthDeps, type SessionCla
  */
 export async function requireFounder(request: Request, deps?: AuthDeps): Promise<string | NextResponse> {
   const founder = await getActingFounder(request, deps);
-  if (!founder) return NextResponse.json({ ok: false, error: "unauthenticated — please log in" }, { status: 401 });
+  if (!founder) return NextResponse.json({ ok: false, error: "unauthenticated, please log in" }, { status: 401 });
   return founder;
 }
 
@@ -30,7 +30,7 @@ export function isAuthError(value: string | NextResponse): value is NextResponse
  */
 export async function requireSession(request: Request, deps?: AuthDeps): Promise<SessionClaims | NextResponse> {
   const claims = await getSessionFromRequest(request, deps);
-  if (!claims) return NextResponse.json({ ok: false, error: "unauthenticated — please log in" }, { status: 401 });
+  if (!claims) return NextResponse.json({ ok: false, error: "unauthenticated, please log in" }, { status: 401 });
   return claims;
 }
 
@@ -45,7 +45,7 @@ export async function requireSession(request: Request, deps?: AuthDeps): Promise
 export async function requireSuperAdmin(request: Request, deps?: AuthDeps): Promise<SessionClaims | NextResponse> {
   const claims = await requireSession(request, deps);
   if (isSessionError(claims)) return claims;
-  if (!claims.sa) return NextResponse.json({ ok: false, error: "forbidden — super-admin only" }, { status: 403 });
+  if (!claims.sa) return NextResponse.json({ ok: false, error: "forbidden, super-admin only" }, { status: 403 });
   return claims;
 }
 

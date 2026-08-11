@@ -15,7 +15,7 @@ export const CONTENT_INTELLIGENCE_AGENT = "content_orchestrator";
 
 /** A sensible standing objective when a run is fired on cadence (no explicit objective supplied). */
 export const DEFAULT_INTELLIGENCE_OBJECTIVE =
-  "Propose the strongest, freshest WOBBLE content topics for Pakistan-first SMB owners — teach real automation mechanisms that generate qualified leads, never agency filler.";
+  "Propose the strongest, freshest WOBBLE content topics for Pakistan-first SMB owners, teach real automation mechanisms that generate qualified leads, never agency filler.";
 
 export type IntelligenceRunTrigger = "manual" | "scheduled";
 export type IntelligenceRunStatus = "running" | "completed" | "failed";

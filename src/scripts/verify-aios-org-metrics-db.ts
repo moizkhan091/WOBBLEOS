@@ -52,15 +52,15 @@ async function main() {
 
     const kX = revPerEmp(await getAiosValueSnapshot({ type: "client", id: clientX }, { orgMetrics }));
     // Non-void, in-period payments for X: 100k (A) + 50k (B) = 150k. C is out-of-period; D is against a CANCELLED invoice.
-    assert(kX.value === Math.round(150_000 / 1 / 4), "HIGH fix: revenue = non-void payments received IN PERIOD (100k + 50k = 150k) ÷ 4 = 37,500¢ — the CANCELLED invoice's payment + the out-of-period payment are EXCLUDED");
-    assert(kX.evidenceTier === "verified-financial" && kX.isEstimate === false, "the revenue KPI is `verified-financial` (real received payments) — a MEASURED actual, not an estimate");
+    assert(kX.value === Math.round(150_000 / 1 / 4), "HIGH fix: revenue = non-void payments received IN PERIOD (100k + 50k = 150k) ÷ 4 = 37,500¢, the CANCELLED invoice's payment + the out-of-period payment are EXCLUDED");
+    assert(kX.evidenceTier === "verified-financial" && kX.isEstimate === false, "the revenue KPI is `verified-financial` (real received payments), a MEASURED actual, not an estimate");
 
     const kZ = revPerEmp(await getAiosValueSnapshot({ type: "client", id: clientZ }, { orgMetrics }));
     // Installment invoice G: only the in-period payment (60k) counts — NOT the cumulative 100k.
-    assert(kZ.value === Math.round(60_000 / 1 / 4), "MEDIUM fix: an installment counts only the IN-PERIOD payment (60k) — NOT the cumulative amountPaidCents (100k)");
+    assert(kZ.value === Math.round(60_000 / 1 / 4), "MEDIUM fix: an installment counts only the IN-PERIOD payment (60k), NOT the cumulative amountPaidCents (100k)");
 
     const kY = revPerEmp(await getAiosValueSnapshot({ type: "client", id: clientY } as AiosValueScope, { orgMetrics }));
-    assert(kY.value === null, "a client with NO non-void payment ever → revenue/employee is NULL (no financial actual yet — never a fabricated 0)");
+    assert(kY.value === null, "a client with NO non-void payment ever → revenue/employee is NULL (no financial actual yet, never a fabricated 0)");
 
     console.log("\n✅ aios-org-metrics DB proof passed");
   } finally {

@@ -879,9 +879,9 @@ export async function correctFounderMemory(input: CorrectFounderMemoryInput, dep
   // The record MUST live in a founder PERSONAL bank, and that owner MUST equal the path target. This is what
   // makes the target authoritative — we correct exactly the named founder's memory or nothing.
   const owner = record.bankSlugs.map((b) => personalBankOwner(b)).find((o): o is string => Boolean(o)) ?? null;
-  if (!owner) throw new Error(`record '${input.recordId}' is not a founder personal memory — governed correction does not apply`);
+  if (!owner) throw new Error(`record '${input.recordId}' is not a founder personal memory, governed correction does not apply`);
   if (normalizeFounderKey(owner) !== normalizeFounderKey(input.targetFounder)) {
-    throw new Error(`record '${input.recordId}' belongs to '${owner}', not '${input.targetFounder}' — refusing to correct a different founder's memory`);
+    throw new Error(`record '${input.recordId}' belongs to '${owner}', not '${input.targetFounder}', refusing to correct a different founder's memory`);
   }
 
   const before = { title: record.title, content: record.content };

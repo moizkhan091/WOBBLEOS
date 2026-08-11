@@ -82,7 +82,7 @@ export class QaBoardUnknownError extends Error {
 export class QaBoardNotImplementedError extends Error {
   readonly boardSlug: string;
   constructor(slug: string) {
-    super(`QA board '${slug}' is declared but has no evaluator — it cannot render a verdict`);
+    super(`QA board '${slug}' is declared but has no evaluator, it cannot render a verdict`);
     this.name = "QaBoardNotImplementedError";
     this.boardSlug = slug;
   }
@@ -100,10 +100,10 @@ export function createQaBoardRegistry(boards: QaBoard[]): QaBoardRegistry {
   for (const board of boards) {
     if (bySlug.has(board.boardSlug)) throw new QaBoardDefinitionError(`duplicate QA board slug '${board.boardSlug}'`);
     if (reviewers.has(board.reviewerAgentSlug)) {
-      throw new QaBoardDefinitionError(`reviewer '${board.reviewerAgentSlug}' is shared by boards '${reviewers.get(board.reviewerAgentSlug)}' and '${board.boardSlug}' — each board needs its OWN evaluator identity`);
+      throw new QaBoardDefinitionError(`reviewer '${board.reviewerAgentSlug}' is shared by boards '${reviewers.get(board.reviewerAgentSlug)}' and '${board.boardSlug}', each board needs its OWN evaluator identity`);
     }
     if (board.status === "implemented" && !board.evaluate) throw new QaBoardDefinitionError(`board '${board.boardSlug}' is marked implemented but has no evaluator`);
-    if (board.status === "declared" && board.evaluate) throw new QaBoardDefinitionError(`board '${board.boardSlug}' is marked declared but carries an evaluator — mark it implemented`);
+    if (board.status === "declared" && board.evaluate) throw new QaBoardDefinitionError(`board '${board.boardSlug}' is marked declared but carries an evaluator, mark it implemented`);
     bySlug.set(board.boardSlug, board);
     reviewers.set(board.reviewerAgentSlug, board.boardSlug);
   }

@@ -167,16 +167,16 @@ export interface TopicBankPromptInput {
  *  anti-filler: every topic must teach a real mechanism, not "3 steps: list, spot, automate" agency filler. */
 export function buildTopicBankPrompt(input: TopicBankPromptInput): { system: string; user: string } {
   const banned = input.bannedPhrases?.length ? ` NEVER use these empty phrases: ${input.bannedPhrases.join(", ")}.` : "";
-  const system = `You are the Content STRATEGIST (creative director) for ${input.personaName}. Propose a BANK of ${input.count} distinct content topics a founder will choose from — you do NOT decide what gets posted, you give the founder DATA to decide. WOBBLE actually TEACHES the real mechanism (never empty agency filler like "3 steps: list, spot, automate").${banned}
+  const system = `You are the Content STRATEGIST (creative director) for ${input.personaName}. Propose a BANK of ${input.count} distinct content topics a founder will choose from, you do NOT decide what gets posted, you give the founder DATA to decide. WOBBLE actually TEACHES the real mechanism (never empty agency filler like "3 steps: list, spot, automate").${banned}
 
 Each topic MUST belong to exactly one pillar ∈ ${JSON.stringify(CONTENT_TOPIC_PILLARS)} and carry HONEST self-assessed signals (0-100):
-- founderJobValue: how much building/knowing this advances a REAL founder's job (the north star — weight it above popularity).
+- founderJobValue: how much building/knowing this advances a REAL founder's job (the north star, weight it above popularity).
 - noveltyScore: how distinct it is from the RECENT topics listed below (penalise anything close to a rehash).
 - competitorGap: how poorly competitors currently teach this (higher = more white-space to own).
 - proofAvailable: true only if we can back the teaching with real evidence/proof.
 - freshness ∈ ["breaking","fresh","evergreen","stale"]; funnelStage ∈ ${JSON.stringify(CONTENT_TOPIC_FUNNEL_STAGES)}.
 - demandKeyword: the single real search phrase a buyer would type for this topic (used to measure live demand).
-- teachingJob: the concrete MECHANISM this teaches (tool, nodes, inputs/outputs, decisions, failure routes) — not a vague benefit.
+- teachingJob: the concrete MECHANISM this teaches (tool, nodes, inputs/outputs, decisions, failure routes), not a vague benefit.
 
 Respond with STRICT JSON only:
 {"topics":[{"pillar":"...","title":"...","angle":"...","teachingJob":"...","targetAudience":"...","rationale":"...","funnelStage":"awareness|trust|lead_gen","suggestedPlatform":"instagram|linkedin|x|youtube|multi","suggestedFormat":"static|carousel|text|thread|reel_script|youtube_script","freshness":"breaking|fresh|evergreen|stale","demandKeyword":"...","founderJobValue":0,"noveltyScore":0,"competitorGap":0,"proofAvailable":false}]}`;
@@ -184,7 +184,7 @@ Respond with STRICT JSON only:
     `OBJECTIVE: ${input.objective}`,
     input.knowledgeTopics.length ? `KNOWLEDGE WE HAVE (topics): ${input.knowledgeTopics.slice(0, 40).join(", ")}` : null,
     input.brain.length ? `BRAND BRAIN:\n${input.brain.slice(0, 8).map((b) => `- ${b.title}: ${b.content}`).join("\n")}` : null,
-    input.recentTopicTitles.length ? `RECENT TOPICS (do NOT rehash — score novelty against these):\n${input.recentTopicTitles.slice(0, 30).map((t) => `- ${t}`).join("\n")}` : `RECENT TOPICS: (none yet)`,
+    input.recentTopicTitles.length ? `RECENT TOPICS (do NOT rehash, score novelty against these):\n${input.recentTopicTitles.slice(0, 30).map((t) => `- ${t}`).join("\n")}` : `RECENT TOPICS: (none yet)`,
     `Propose ${input.count} topics. Return STRICT JSON only.`,
   ]
     .filter(Boolean)

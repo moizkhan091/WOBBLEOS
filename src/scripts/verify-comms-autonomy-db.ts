@@ -46,7 +46,7 @@ async function main() {
     // ACTIVE grant (client A) → RELEASED: delivered autonomously (status sent).
     await grant("notification.internal", clientA);
     const n2 = track(await prepareCommunication({ channel: "internal_notification", kind: "alert", subject: `n2 ${uniq}`, body: "b", scopeType: "client", clientId: clientA, preparedBy: "Moiz" }, { enforceAutonomy: true }));
-    assert(n2.released && n2.communication.status === "sent" && n2.communication.actedAutonomously && n2.communication.autonomyLevel === "autonomous", "internal notification, ACTIVE grant → RELEASED (delivered autonomously, status `sent`) — a policy changes production behaviour");
+    assert(n2.released && n2.communication.status === "sent" && n2.communication.actedAutonomously && n2.communication.autonomyLevel === "autonomous", "internal notification, ACTIVE grant → RELEASED (delivered autonomously, status `sent`), a policy changes production behaviour");
     assert(await auditCount(n2.communication.id, "communication.delivered_autonomously") === 1, "autonomous delivery is AUDITED (communication.delivered_autonomously)");
 
     // WRONG TENANT: client A's grant does NOT release client B's notification.
@@ -59,7 +59,7 @@ async function main() {
     assert(!e1.released && e1.communication.status === "prepared", "external comm, NO grant → HELD prepared");
     await grant("comms.external.prepare", clientA);
     const e2 = track(await prepareCommunication({ channel: "external_email", kind: "outreach", subject: `e2 ${uniq}`, body: "b", scopeType: "client", clientId: clientA, preparedBy: "Moiz" }, { enforceAutonomy: true }));
-    assert(e2.released && e2.communication.status === "ready", "external comm PREPARATION, grant → RELEASED to `ready` (staged) — but NOT auto-SENT (preparation is reversible; the send is not)");
+    assert(e2.released && e2.communication.status === "ready", "external comm PREPARATION, grant → RELEASED to `ready` (staged), but NOT auto-SENT (preparation is reversible; the send is not)");
 
     // The external SEND is CONFIRM-CAPPED — even an `autonomous` grant for the send category resolves to confirm.
     await grant("comms.external.send", clientA);

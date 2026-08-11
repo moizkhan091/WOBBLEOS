@@ -22,13 +22,13 @@ export function normalizePlausibleHost(raw: string | undefined): string {
   try {
     url = new URL(trimmed);
   } catch {
-    console.error(`PLAUSIBLE_HOST is not a valid URL ('${trimmed}') — falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
+    console.error(`PLAUSIBLE_HOST is not a valid URL ('${trimmed}'), falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
     return DEFAULT_PLAUSIBLE_HOST;
   }
   const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
   const schemeOk = url.protocol === "https:" || (url.protocol === "http:" && isLocalhost);
   if (!schemeOk) {
-    console.error(`PLAUSIBLE_HOST must be https (http only for localhost); got '${url.protocol}' — falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
+    console.error(`PLAUSIBLE_HOST must be https (http only for localhost); got '${url.protocol}', falling back to ${DEFAULT_PLAUSIBLE_HOST}`);
     return DEFAULT_PLAUSIBLE_HOST;
   }
   return url.origin; // scheme + host(+port) only — drops any path/query/fragment
@@ -135,7 +135,7 @@ export async function snapshotWebstats(period = "30d"): Promise<{ recorded: bool
     await recordIntelligenceItem({
       itemType: "website_traffic",
       scope: "wobble",
-      title: `Website traffic — ${a.visitors ?? 0} visitors, ${a.pageviews ?? 0} pageviews (${stats.period})`,
+      title: `Website traffic, ${a.visitors ?? 0} visitors, ${a.pageviews ?? 0} pageviews (${stats.period})`,
       summary: `Plausible ${stats.period}: ${a.visitors ?? 0} visitors, ${a.pageviews ?? 0} pageviews, bounce ${a.bounceRate ?? "?"}%, avg visit ${a.visitDuration ?? "?"}s.${top ? ` Top pages: ${top}.` : ""}`,
       approvalStatus: "approved",
       observedAt: new Date(),

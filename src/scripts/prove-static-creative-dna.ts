@@ -21,13 +21,13 @@ const SL = "C:/Users/moizk/OneDrive/Documents/Claude/Projects/Marketing campaign
 const STRUCTURAL_FACTS = [
   {
     area: "static_creative_dna_library",
-    title: "WOBBLE Static Creative DNA — library & format",
+    title: "WOBBLE Static Creative DNA, library & format",
     content:
-      "WOBBLE's static creative library = 196 feed-native assets, ALL uniform 880x1168 portrait (aspect 0.753, ~3:4), zero exact duplicates (sha256-verified), across 35 campaigns that map 1:1 to the service portfolio. Highest-volume campaigns: AI Receptionist System (12), Brand/Whole-Offer (12), AI Ads Management & Optimization (10), AI Ads Strategy & Launch (10), AI Ads Tracking Intelligence (9). A single portrait ratio is house discipline — format consistency is part of the WOBBLE brand system.",
+      "WOBBLE's static creative library = 196 feed-native assets, ALL uniform 880x1168 portrait (aspect 0.753, ~3:4), zero exact duplicates (sha256-verified), across 35 campaigns that map 1:1 to the service portfolio. Highest-volume campaigns: AI Receptionist System (12), Brand/Whole-Offer (12), AI Ads Management & Optimization (10), AI Ads Strategy & Launch (10), AI Ads Tracking Intelligence (9). A single portrait ratio is house discipline, format consistency is part of the WOBBLE brand system.",
   },
   {
     area: "static_creative_dna_angles",
-    title: "WOBBLE Static Creative DNA — angle system",
+    title: "WOBBLE Static Creative DNA, angle system",
     content:
       "WOBBLE static ads run on a Pain -> Outcome -> System angle triad as the strategic spine (~66 of 196 ads: 28 pain, 20 outcome, 18 system cuts), then diversify hard: 129 DISTINCT angles across 196 ads. Secondary layers: format cuts (infographic, checklist, comparison, audit, myth-bust, mistake ~16) and niche cuts (home-services, ecom, beauty, law ~14). A long tail of named visual-metaphor concepts (vs-old-way, tools-vs-system, tug-of-war, sunk-cost-pit, time-gremlins, war-map, wall-of-stars, switchboard-midnight) turns the rebellious 'make the old way wobble' idea into single-image metaphors.",
   },
@@ -83,9 +83,9 @@ async function main() {
   }
 
   const visualContent =
-    `WOBBLE Static Creative DNA — OBSERVED visual execution (gpt-4o-mini vision over a 3-static ai-receptionist sample): ${observations.join(" | ")}`.slice(0, 1900);
+    `WOBBLE Static Creative DNA, OBSERVED visual execution (gpt-4o-mini vision over a 3-static ai-receptionist sample): ${observations.join(" | ")}`.slice(0, 1900);
   await createMemoryRecord({
-    title: "WOBBLE Static Creative DNA — observed visual execution",
+    title: "WOBBLE Static Creative DNA, observed visual execution",
     content: visualContent, area: "static_creative_dna_visual",
     memoryTier: "working", trustLevel: "approved_expert", bankSlugs: ["design"], createdBy: FOUNDER,
   });

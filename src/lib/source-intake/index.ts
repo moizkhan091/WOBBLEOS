@@ -32,7 +32,7 @@ export async function runSourceIntake(sourceId: string, deps: SourceIntakeDeps =
   // can never trigger an outbound ingestion request, even via a direct reingest API call).
   if (source.status !== "active" || source.approvalStatus !== "approved") {
     const { run } = await createSourceIntakeRun({ sourceId, trigger: "agent", tool: "ingestion" });
-    await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "cancelled", logs: [{ note: `source is not active+approved (status: ${source.status}, approval: ${source.approvalStatus}) — no collection` }] }).catch(() => {});
+    await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "cancelled", logs: [{ note: `source is not active+approved (status: ${source.status}, approval: ${source.approvalStatus}), no collection` }] }).catch(() => {});
     return { ok: true, chunks: 0, note: "source not active" };
   }
 
@@ -46,7 +46,7 @@ export async function runSourceIntake(sourceId: string, deps: SourceIntakeDeps =
 
   const adapter = selectIngestionAdapter(source as SourceLike, ctx);
   if (!adapter) {
-    await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "cancelled", logs: [{ note: "no ingestion adapter applies (no URL and no inline content) — attach chunks via the API / n8n" }] }).catch(() => {});
+    await markSourceIntakeRunComplete({ intakeRunId: run.id, status: "cancelled", logs: [{ note: "no ingestion adapter applies (no URL and no inline content), attach chunks via the API / n8n" }] }).catch(() => {});
     return { ok: true, chunks: 0, note: "no adapter applies" };
   }
 

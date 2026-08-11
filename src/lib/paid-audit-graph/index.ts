@@ -201,7 +201,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       { now },
     );
     const entryCheck = validateHandoff(envelope, { clientWorkspaceId: input.companyId ?? null, grantedMemoryScopes: AUDIT_MEMORY_SCOPES });
-    if (!entryCheck.ok) throw new Error(`paid-audit: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
+    if (!entryCheck.ok) throw new Error(`paid-audit: invalid entry handoff, ${entryCheck.errors.join("; ")}`);
 
     const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
     const transportCtx: HandoffTransportContext | null = handoffStore

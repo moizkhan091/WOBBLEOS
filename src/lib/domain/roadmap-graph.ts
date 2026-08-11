@@ -43,15 +43,15 @@ export function parseRoadmapPlan(text: string): RoadmapPlan | null {
 }
 
 export function buildRoadmapPrompt(input: { businessName: string; industry?: string | null; pitchSummary: string; whatWeNoticed: string[]; stakeholders: Array<{ name?: string; role: string }>; freeCallNotes?: string }): ProviderMessage[] {
-  const system = `You are Wobble's audit engagement lead, planning an INTERNAL playbook for how OUR team will run a paid AI audit of ${input.businessName}${input.industry ? `, a ${input.industry} business` : ""}. This is for us only — it is NOT sent to the client.
-Use the proven AI-audit method: Week 1 = discovery — interview 3-5 key stakeholders (30-45 min each) about their day-to-day, pain points, repetitive tasks, decision bottlenecks; map their acquisition/delivery/support processes. Week 2 = opportunity identification + technical feasibility. Week 3 = validation with the client. Week 4 = roadmap + ROI presentation.
+  const system = `You are Wobble's audit engagement lead, planning an INTERNAL playbook for how OUR team will run a paid AI audit of ${input.businessName}${input.industry ? `, a ${input.industry} business` : ""}. This is for us only, it is NOT sent to the client.
+Use the proven AI-audit method: Week 1 = discovery, interview 3-5 key stakeholders (30-45 min each) about their day-to-day, pain points, repetitive tasks, decision bottlenecks; map their acquisition/delivery/support processes. Week 2 = opportunity identification + technical feasibility. Week 3 = validation with the client. Week 4 = roadmap + ROI presentation.
 For EACH stakeholder we should interview, give the role, why they matter, and 4-8 specific questions tailored to THIS business. List the data/numbers/docs we should gather. Respond with STRICT JSON only:
 {"overview":"how we'll run this audit","interviewPlan":[{"role":"...","name":"...","why":"...","questions":["..."]}],"sequence":[{"week":"Week 1","focus":"...","activities":["..."]}],"dataToGather":["..."],"prepNotes":"..."}`;
   const user = [
     `BUSINESS: ${input.businessName}`,
     `WHAT OUR PITCH FOUND: ${input.pitchSummary}`,
     input.whatWeNoticed.length ? `OBSERVATIONS: ${input.whatWeNoticed.join("; ")}` : null,
-    input.stakeholders.length ? `KNOWN STAKEHOLDERS: ${input.stakeholders.map((s) => `${s.name ? s.name + " — " : ""}${s.role}`).join("; ")}` : "STAKEHOLDERS: (unknown — recommend the roles we should ask to interview)",
+    input.stakeholders.length ? `KNOWN STAKEHOLDERS: ${input.stakeholders.map((s) => `${s.name ? s.name + ", " : ""}${s.role}`).join("; ")}` : "STAKEHOLDERS: (unknown, recommend the roles we should ask to interview)",
     input.freeCallNotes ? `FREE-CALL NOTES: ${input.freeCallNotes}` : null,
   ].filter(Boolean).join("\n\n");
   return [{ role: "system", content: system }, { role: "user", content: user }];
@@ -80,7 +80,7 @@ export function roadmapToReportShape(plan: RoadmapPlan, businessName: string): R
     businessName,
     executiveSummary: `INTERNAL audit playbook for ${businessName}. ${plan.overview}`,
     situationSummary: plan.overview,
-    summary: `Interview roadmap — ${plan.interviewPlan.length} stakeholders`,
+    summary: `Interview roadmap, ${plan.interviewPlan.length} stakeholders`,
     roadmap: plan.sequence.map((w) => ({ title: w.week, focus: w.focus, months: "", objectives: w.activities, deliverables: [], items: [] })),
     opportunities: plan.interviewPlan.map((s) => ({ name: `${s.role}${s.name ? ` (${s.name})` : ""}`, title: s.role, description: s.why, reason: s.why, expectedOutcome: s.questions.slice(0, 3).join(" · "), impact: "medium" })),
     nextSteps: plan.dataToGather,

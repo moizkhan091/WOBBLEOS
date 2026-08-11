@@ -255,7 +255,7 @@ export async function runContentGraph(input: RunContentGraphInput, deps: Content
       { now: deps.now ?? new Date() },
     );
     const entryCheck = validateHandoff(envelope, { grantedMemoryScopes: CONTENT_MEMORY_SCOPES });
-    if (!entryCheck.ok) throw new Error(`content-graph: invalid entry handoff — ${entryCheck.errors.join("; ")}`);
+    if (!entryCheck.ok) throw new Error(`content-graph: invalid entry handoff, ${entryCheck.errors.join("; ")}`);
     const handoffStore = deps.handoffStore ?? (process.env.DATABASE_URL ? (await import("@/lib/handoff")).defaultStore() : undefined);
     const transportCtx: HandoffTransportContext | null = handoffStore
       ? { store: handoffStore, clientWorkspaceId: envelope.clientWorkspaceId, grantedMemoryScopes: CONTENT_MEMORY_SCOPES, recordAudit: async (i: AuditEventInput) => { await recordAudit(i); }, now: deps.now, consumer: "content" }

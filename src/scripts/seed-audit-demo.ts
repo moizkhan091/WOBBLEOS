@@ -44,16 +44,16 @@ async function main() {
     const co = await addCompany({ name: c.name, industry: c.industry, createdBy: "Moiz" } as Parameters<typeof addCompany>[0], deps);
     await addContact({ companyId: co.id, fullName: `${c.name.split(" ")[0]} Owner`, email: `owner@${c.name.split(" ")[0].toLowerCase()}.com` } as Parameters<typeof addContact>[0], deps);
     const opp = await addOpportunity(
-      { name: `${c.name} — AI workforce build`, companyId: co.id, valueCents: c.value, createdBy: "Moiz" } as Parameters<typeof addOpportunity>[0],
+      { name: `${c.name}, AI workforce build`, companyId: co.id, valueCents: c.value, createdBy: "Moiz" } as Parameters<typeof addOpportunity>[0],
       deps,
     );
     opps += 1;
     if (c.stage !== "new_lead") {
       await moveOpportunityStage(opp.id, c.stage as never, { actor: "Moiz", reason: "demo seed" }).catch(() => {});
     }
-    await addMeeting({ title: `${c.name} — AI readiness call`, meetingType: "ai_readiness_call", companyId: co.id } as Parameters<typeof addMeeting>[0], deps).catch(() => {});
+    await addMeeting({ title: `${c.name}, AI readiness call`, meetingType: "ai_readiness_call", companyId: co.id } as Parameters<typeof addMeeting>[0], deps).catch(() => {});
     if (["proposal_sent", "negotiation", "won"].includes(c.stage)) {
-      await createProposal({ title: `${c.name} — Wobble AI OS Proposal`, companyId: co.id, opportunityId: opp.id, pricingCents: c.value, createdBy: "Moiz" } as Parameters<typeof createProposal>[0], deps).catch(() => {});
+      await createProposal({ title: `${c.name}, Wobble AI OS Proposal`, companyId: co.id, opportunityId: opp.id, pricingCents: c.value, createdBy: "Moiz" } as Parameters<typeof createProposal>[0], deps).catch(() => {});
     }
     if (c.stage === "won") {
       await createInvoice({ lineItems: [{ description: "AI OS implementation", quantity: 1, unitPriceCents: c.value }], dueDate: new Date(Date.now() + 14 * 86_400_000), createdBy: "Moiz" } as Parameters<typeof createInvoice>[0], deps).catch(() => {});

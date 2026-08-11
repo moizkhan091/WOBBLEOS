@@ -55,7 +55,7 @@ async function main() {
     assert(after.media.total === before.media.total + 1 && (after.media.byStatus.queued ?? 0) === (before.media.byStatus.queued ?? 0) + 1, "REAL: seeding a queued media job increments cockpit media.total + byStatus.queued by exactly 1");
     assert(after.autonomy.activeGrants === before.autonomy.activeGrants + 1, "REAL: seeding an active grant increments cockpit autonomy.activeGrants by exactly 1");
     assert(after.attention.openEscalations === before.attention.openEscalations + 1, "REAL: seeding an open escalation increments cockpit attention.openEscalations by exactly 1");
-    assert(after.revenue.evidenceTier === null || after.revenue.evidenceTier === "verified-financial", "revenue is reported honestly (a real verified-financial actual or null — never fabricated)");
+    assert(after.revenue.evidenceTier === null || after.revenue.evidenceTier === "verified-financial", "revenue is reported honestly (a real verified-financial actual or null, never fabricated)");
 
     console.log("\n✅ cockpit DB proof passed");
   } finally {

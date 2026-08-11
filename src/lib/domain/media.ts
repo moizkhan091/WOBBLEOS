@@ -78,7 +78,7 @@ export function dispatchDecision(
   registry: Record<string, MediaProviderAdapter>,
 ): { status: "generating" | "blocked"; reason: string } {
   const provider = resolveMediaProvider(request.provider, registry);
-  if (!provider) return { status: "blocked", reason: `media provider '${request.provider}' is not configured — generation blocked (no credentials)` };
+  if (!provider) return { status: "blocked", reason: `media provider '${request.provider}' is not configured, generation blocked (no credentials)` };
   return { status: "generating", reason: `dispatched to ${provider.slug}` };
 }
 

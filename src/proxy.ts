@@ -33,7 +33,7 @@ export async function proxy(req: NextRequest) {
   if (claims) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ ok: false, error: "unauthenticated — please log in" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "unauthenticated, please log in" }, { status: 401 });
   }
   const url = req.nextUrl.clone();
   url.pathname = "/login";

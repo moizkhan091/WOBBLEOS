@@ -13,7 +13,7 @@ import { runOfferValidation, getOfferValidationDetail, listOfferValidations } fr
 async function main() {
   const offers = await listOffers({ limit: 500 });
   const offer = offers.find((o) => /receptionist/i.test(o.name)) ?? offers[0];
-  if (!offer) throw new Error("no offers in the module to validate — run prove-offer-catalogue first");
+  if (!offer) throw new Error("no offers in the module to validate, run prove-offer-catalogue first");
   console.log(`  validating offer: ${offer.name} (${offer.id})`);
 
   const { run, dimensions } = await runOfferValidation(offer.id, { actor: "Moiz" });
@@ -21,7 +21,7 @@ async function main() {
   console.log(`  ${run.summary}`);
   console.log("  dimensions:");
   for (const d of dimensions.sort((a, b) => b.score - a.score)) {
-    console.log(`    ${String(d.score).padStart(3)}  ${d.dimension.padEnd(22)} — ${d.rationale.slice(0, 80)}`);
+    console.log(`    ${String(d.score).padStart(3)}  ${d.dimension.padEnd(22)}, ${d.rationale.slice(0, 80)}`);
   }
 
   // Prove persistence: reload the run list + the stored dimensions for this run.

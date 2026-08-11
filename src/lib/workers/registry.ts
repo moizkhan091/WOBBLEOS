@@ -184,7 +184,7 @@ export const generalRegistry: JobHandlerRegistry = {
   [CONTENT_INTELLIGENCE_JOB_TYPE]: runContentIntelligenceJobHandler,
   // WOB-UAT-024: governance survives restart + runs on a cadence. The handler DISPATCHES a typed handoff
   // to the department (it does not run the review itself), so governance work arrives through the same
-  // backbone as every other department's work — and the department's consumer has a real producer.
+  // backbone as every other department's work, and the department's consumer has a real producer.
   [GOVERNANCE_REVIEW_JOB_TYPE]: runGovernanceReviewJobHandler,
 };
 

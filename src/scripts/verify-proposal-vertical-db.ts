@@ -46,7 +46,7 @@ const AUDIT_REPORT = {
     { title: "Missed-call text-back", description: "Auto-text every missed call" },
     { title: "AI intake concierge", description: "Qualify + book 24/7" },
   ],
-  roadmap: [{ title: "Phase 1 — Recover missed calls", months: "0-3", focus: "Telephony + intake" }],
+  roadmap: [{ title: "Phase 1, Recover missed calls", months: "0-3", focus: "Telephony + intake" }],
   roi: { estimatedImplementationCents: 480000 },
 } as unknown as AuditReport;
 
@@ -67,7 +67,7 @@ async function main() {
     // ─────────────────────────────────────────────────────────────────────────────────────────────
     // PART A — routing + the department claim primitive.
     // ─────────────────────────────────────────────────────────────────────────────────────────────
-    console.log("\nPart A — Paid Audit routes a business_audit handoff to Proposal; Proposal claims it:");
+    console.log("\nPart A, Paid Audit routes a business_audit handoff to Proposal; Proposal claims it:");
     cleanup.push(() => db.delete(handoffs).where(inArray(handoffs.workflowId, [wfPaid])));
 
     const paid = await runPaidAuditDepartment(
@@ -92,12 +92,12 @@ async function main() {
     // ─────────────────────────────────────────────────────────────────────────────────────────────
     // PART B — the Proposal vertical + the deterministic commercial chain.
     // ─────────────────────────────────────────────────────────────────────────────────────────────
-    console.log("\nPart B — Proposal vertical → founder accept → invoice + opportunity-won + delivery project:");
+    console.log("\nPart B, Proposal vertical → founder accept → invoice + opportunity-won + delivery project:");
 
     // Real CRM company + opportunity (the audit's linked deal).
     const company = await addCompany({ name: `Acme Verify ${uniq}`, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmCompanies).where(eq(crmCompanies.id, company.id)));
-    const opp = await addOpportunity({ name: `Acme Verify ${uniq} — AI OS`, companyId: company.id, valueCents: 480000, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
+    const opp = await addOpportunity({ name: `Acme Verify ${uniq}, AI OS`, companyId: company.id, valueCents: 480000, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmStageHistory).where(eq(crmStageHistory.opportunityId, opp.id)));
     cleanup.push(() => db.delete(crmOpportunities).where(eq(crmOpportunities.id, opp.id)));
     cleanup.push(() => db.delete(tasks).where(eq(tasks.opportunityId, opp.id)));
@@ -147,7 +147,7 @@ async function main() {
 
     assert(accepted?.proposal.status === "accepted", "the proposal transitioned to accepted");
     assert(!!accepted?.handoffId, "accept emitted a Sales/CRM outbox handoff (not an inline invoice)");
-    assert(accepted?.invoiceId === undefined, "no inline invoice — the commercial chain owns it");
+    assert(accepted?.invoiceId === undefined, "no inline invoice, the commercial chain owns it");
     const emittedHandoffs = (await db.select().from(handoffs).where(eq(handoffs.workflowId, opp.id))).filter((h) => h.department === "sales_crm");
     assert(emittedHandoffs.length === 1 && emittedHandoffs[0].deliveryState === "delivered", "exactly one proposal_artifact handoff is delivered to Sales/CRM");
     assert(emittedHandoffs[0].clientWorkspaceId === company.id, "the outbox handoff carries the client workspace (tenant scope preserved)");

@@ -38,7 +38,7 @@ function groundingOf(report: AuditReport): string {
     const svc = SERVICE_BY_SLUG.get(o.service);
     return `- [${o.service}] ${svc?.name ?? o.name} (${o.category}${o.quickWin ? ", quick win" : ""}, ${o.impact} impact): ${o.reason}`;
   });
-  return `Business: ${report.businessName}${report.industry ? ` (${report.industry})` : ""}\nDiagnosis summary: ${report.summary}\nREAL opportunities (you may ONLY reference these — never invent a service):\n${lines.join("\n")}`;
+  return `Business: ${report.businessName}${report.industry ? ` (${report.industry})` : ""}\nDiagnosis summary: ${report.summary}\nREAL opportunities (you may ONLY reference these, never invent a service):\n${lines.join("\n")}`;
 }
 
 /** Default production provider — the real OpenRouter text model. Imported lazily so tests never load it. In the
@@ -53,7 +53,7 @@ async function defaultProvider(input: FreeAuditProviderInput): Promise<{ text: s
     role: "content_strategy",
     module: input.module,
     messages: [
-      { role: "system", content: `You are the WOBBLE ${input.role}. Use ONLY the grounded opportunities provided — never invent a service or a claim. Be concrete + concise.` },
+      { role: "system", content: `You are the WOBBLE ${input.role}. Use ONLY the grounded opportunities provided, never invent a service or a claim. Be concrete + concise.` },
       { role: "system", content: input.grounding },
       { role: "user", content: input.prompt },
     ],

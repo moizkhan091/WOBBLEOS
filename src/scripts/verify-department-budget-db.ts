@@ -40,7 +40,7 @@ async function main() {
     reserveBudget({ departmentSlug: slug, workflowId: "wf", taskId: "race_b", estimatedCents: 60 }, deps),
   ]);
   const succeeded = [a, b].filter((r) => r.ok).length;
-  assert(succeeded === 1, `exactly ONE concurrent 60¢ reservation succeeded (no double-spend) — got ${succeeded}`);
+  assert(succeeded === 1, `exactly ONE concurrent 60¢ reservation succeeded (no double-spend), got ${succeeded}`);
   assert([a, b].some((r) => !r.ok && r.evaluation.blockedBy === "daily_cents"), "the loser was blocked on daily_cents");
 
   // 4. Block before the provider call: a 200¢ request is refused with no row.

@@ -52,7 +52,7 @@ async function main() {
     const { buildEscalationRow } = await import("@/lib/domain/escalation");
     await escStore(db).insert(buildEscalationRow({ departmentSlug: "paid_audit", workflowId: wfTerm, taskId: `${tag}_task`, reason: "conflicting_conclusions", severity: "high", requiredDecision: "terminate", budgetReservationId: `${tag}_res` }, { now, id: `${tag}_esc_term` }));
     const tr = await terminateEscalation(`${tag}_esc_term`, "Moiz", deps);
-    assert(tr.ok && tr.cancelled === 2, `TERMINATE cancelled the 2 non-terminal handoffs (delivered+processing), left the completed one — got ${tr.cancelled}`);
+    assert(tr.ok && tr.cancelled === 2, `TERMINATE cancelled the 2 non-terminal handoffs (delivered+processing), left the completed one, got ${tr.cancelled}`);
     assert((await getHandoff(`${tag}_h1`))?.deliveryState === "cancelled" && (await getHandoff(`${tag}_h3`))?.deliveryState === "completed", "delivered handoff cancelled; completed handoff preserved");
     assert((await db.select().from(budgetReservations).where(eq(budgetReservations.id, `${tag}_res`)))[0].state === "released", "the held budget reservation was released");
 

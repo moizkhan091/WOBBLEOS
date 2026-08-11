@@ -65,7 +65,7 @@ export async function processIntelligenceWebhook(
     nowEpochSeconds: deps.nowEpochSeconds,
   });
   if (!verification.valid) {
-    return { status: 401, body: { ok: false, error: `invalid signature — ${verification.reason}` } };
+    return { status: 401, body: { ok: false, error: `invalid signature, ${verification.reason}` } };
   }
 
   let payload: unknown;
@@ -129,7 +129,7 @@ export async function processIntelligenceWebhook(
         recordsCreated: result.count,
       },
     });
-    return { status: 200, body: { ok: true, ...result, note: "ingested as pending — review in the Intelligence Inbox" } };
+    return { status: 200, body: { ok: true, ...result, note: "ingested as pending, review in the Intelligence Inbox" } };
   } catch (error) {
     await (deps.fail ?? failWebhookDelivery)(claim.claimId!, deps.replayStore, now);
     await auditSafely({

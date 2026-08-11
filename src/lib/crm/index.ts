@@ -219,7 +219,7 @@ export async function convertLead(
     : null;
 
   const opportunity = buildOpportunityRow(
-    { name: `${companyName} — ${(lead.serviceInterest[0] ?? "AI OS")}`, companyId: company.id, contactId: contact?.id, stage: input.stage ?? "qualified", valueCents: input.valueCents ?? 0, serviceInterest: lead.serviceInterest, painPoints: lead.problemStated ?? undefined, source: lead.source ?? undefined, createdBy: input.actor },
+    { name: `${companyName}, ${(lead.serviceInterest[0] ?? "AI OS")}`, companyId: company.id, contactId: contact?.id, stage: input.stage ?? "qualified", valueCents: input.valueCents ?? 0, serviceInterest: lead.serviceInterest, painPoints: lead.problemStated ?? undefined, source: lead.source ?? undefined, createdBy: input.actor },
     { now },
   );
 

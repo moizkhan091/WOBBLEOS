@@ -40,20 +40,20 @@ async function main() {
     cycleIds.push(cyc.cycleId);
     proposalIds.push(...cyc.proposalIds);
     assert(cyc.observations === 4, "the cycle recorded ALL 4 observations (real evidence, persisted)");
-    assert(cyc.opportunities === 2, "the two below-threshold, well-sampled signals became opportunities (the healthy + the under-sampled signals did NOT — never fabricated)");
+    assert(cyc.opportunities === 2, "the two below-threshold, well-sampled signals became opportunities (the healthy + the under-sampled signals did NOT, never fabricated)");
     const obs = await listObservations(cyc.cycleId, { store });
     assert(obs.length === 4, "observations are durably persisted + inspectable by the founder");
     const prop = await store.getProposal(cyc.proposalIds[0]);
-    assert(!!prop && prop.status === "proposed", "the opportunity is PROPOSED — the cycle NEVER auto-approves (no silent change)");
+    assert(!!prop && prop.status === "proposed", "the opportunity is PROPOSED, the cycle NEVER auto-approves (no silent change)");
     assert(Number(prop!.historicalBaselineMetric) === 0.5 && Number(prop!.historicalCandidateMetric) === 0.75, "the projected TARGET is recorded as an ESTIMATE: health 0.50 → projected target 0.75 (a projection for ranking, NOT a backtest)");
     assert((prop!.metadata as { evaluation?: { passed?: boolean } }).evaluation?.passed === true, "the strong-evidence opportunity (10 samples, health 0.50) PASSES the evidence evaluation → approvable");
-    assert(Array.isArray(prop!.evidence) && (prop!.evidence as string[]).length === 1, "the proposal cites its evidence (the observation id) — auditable basis");
+    assert(Array.isArray(prop!.evidence) && (prop!.evidence as string[]).length === 1, "the proposal cites its evidence (the observation id), auditable basis");
 
     // ---- The EVIDENCE gate is REAL (can fail): a MARGINAL opportunity is proposed but NOT approvable ----
     const marginal = await store.getProposal(cyc.proposalIds[1]);
     assert(!!marginal && marginal.status === "proposed" && (marginal.metadata as { evaluation?: { passed?: boolean } }).evaluation?.passed === false, "the MARGINAL opportunity (health 0.78, only just below threshold) is PROPOSED but its evidence evaluation does NOT pass");
     const marginalApprove = await approveProposal(cyc.proposalIds[1], { approvedBy: "Moiz" }, { store });
-    assert(!marginalApprove.ok && /marginal/.test(marginalApprove.error ?? ""), "GOVERNANCE: the marginal opportunity CANNOT be approved — the evidence gate is a REAL filter, not tautological");
+    assert(!marginalApprove.ok && /marginal/.test(marginalApprove.error ?? ""), "GOVERNANCE: the marginal opportunity CANNOT be approved, the evidence gate is a REAL filter, not tautological");
 
     // ---- GOVERNANCE: a thin-evidence proposal (too few samples) also cannot be approved ----
     const thinId = newId("optprop");
@@ -109,9 +109,9 @@ async function main() {
     proposalIds.push(...realCyc.proposalIds);
     const realObs = await listObservations(realCyc.cycleId, { store });
     const qaObs = realObs.find((o) => o.signalType === "qa_failure");
-    assert(!!qaObs && Number(qaObs.sampleSize) >= 1, "REAL collector: the qa_failure collector read the real qa_reviews table (sampleSize ≥ 1) — evidence is real, not fabricated");
+    assert(!!qaObs && Number(qaObs.sampleSize) >= 1, "REAL collector: the qa_failure collector read the real qa_reviews table (sampleSize ≥ 1), evidence is real, not fabricated");
     const realSignalTypes = new Set(realObs.map((o) => o.signalType));
-    assert(realSignalTypes.size >= 2, `the EXPANDED collector set observed multiple real signal types (${[...realSignalTypes].join(", ")}) — the optimizer reads the full production evidence surface, not one table`);
+    assert(realSignalTypes.size >= 2, `the EXPANDED collector set observed multiple real signal types (${[...realSignalTypes].join(", ")}), the optimizer reads the full production evidence surface, not one table`);
 
     console.log("\n✅ optimizer DB proof passed");
   } finally {

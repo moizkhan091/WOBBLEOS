@@ -206,7 +206,7 @@ export async function promoteTopicToProduction(input: PromoteTopicInput, deps: C
   const topic = await store.getTopic(input.topicId);
   if (!topic) return { topic: null, jobId: null };
   if (topic.status !== "approved") return { topic, jobId: null }; // only an approved topic produces
-  const objective = `${topic.title} — angle: ${topic.angle}. Teaching job (the real mechanism to show): ${topic.teachingJob}. Pillar: ${topic.pillar}. Audience: ${topic.targetAudience}. Funnel intent: ${topic.funnelStage}.`;
+  const objective = `${topic.title}, angle: ${topic.angle}. Teaching job (the real mechanism to show): ${topic.teachingJob}. Pillar: ${topic.pillar}. Audience: ${topic.targetAudience}. Funnel intent: ${topic.funnelStage}.`;
   const enqueue = deps.enqueueGraph ?? (async (i) => (await import("@/lib/content-graph")).enqueueContentGraphJob(i));
   const res = (await enqueue({ contentTrackId: input.contentTrackId, requestedBy: input.requestedBy, objective, platformFocus: [topic.suggestedPlatform], formatFocus: [topic.suggestedFormat] })) as { job?: { id?: string } } | undefined;
   const jobId = res?.job?.id ?? null;

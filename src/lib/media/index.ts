@@ -154,7 +154,7 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
 
   const provider = providers[job.provider];
   if (!provider || !provider.configured()) {
-    await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `media provider '${job.provider}' is not configured — generation blocked (no credentials)`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
+    await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `media provider '${job.provider}' is not configured, generation blocked (no credentials)`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
     await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider } });
     return { claimed: true, jobId: job.id, status: "blocked" };
   }
@@ -172,7 +172,7 @@ export async function dispatchOneMediaJob(deps: MediaDeps & { leaseOwner?: strin
       await assertProviderAllowance(budgetProvider, worstCents / 100);
     } catch (error) {
       if (error instanceof ProviderBudgetExceededError) {
-        await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `${budgetProvider} budget exhausted — top up and retry (${error.message})`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
+        await store.updateOwned(job.id, leaseOwner, { status: "blocked", error: `${budgetProvider} budget exhausted, top up and retry (${error.message})`, leaseOwner: null, leaseExpiresAt: null, updatedAt: now });
         await audit(deps, { eventType: "media.job_blocked", module: MEDIA_MODULE, entityType: "media_job", entityId: job.id, actor: "media_worker", metadata: { provider: job.provider, reason: "budget_exhausted", spent: error.spent, stop: error.stop } });
         return { claimed: true, jobId: job.id, status: "blocked" };
       }
@@ -288,11 +288,11 @@ export function mediaPipelineStatus(): {
   const parts = [
     "Durable pipeline (queue, worker, bounded retries, crash recovery, budget caps).",
     imageEnabled
-      ? "IMAGES: live on OpenRouter — the same OPENROUTER_API_KEY the OS already uses, no extra credential."
+      ? "IMAGES: live on OpenRouter, the same OPENROUTER_API_KEY the OS already uses, no extra credential."
       : "IMAGES: blocked until OPENROUTER_API_KEY is set (truthfully 'blocked', never faked).",
     videoAudio3dEnabled
       ? "VIDEO/AUDIO/3D: live on fal.ai."
-      : "VIDEO/AUDIO/3D: optional — blocked until FAL_KEY is set. Images are unaffected.",
+      : "VIDEO/AUDIO/3D: optional, blocked until FAL_KEY is set. Images are unaffected.",
   ];
   return {
     pipelineBuilt: true,

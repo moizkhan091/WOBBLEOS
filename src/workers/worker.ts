@@ -26,7 +26,7 @@ const requestStop = () => {
   if (stopping) return;
   stopping = true;
   const t = setTimeout(() => {
-    console.error(`[worker] shutdown deadline (${SHUTDOWN_DEADLINE_MS}ms) exceeded — forcing exit`);
+    console.error(`[worker] shutdown deadline (${SHUTDOWN_DEADLINE_MS}ms) exceeded, forcing exit`);
     process.exit(0);
   }, SHUTDOWN_DEADLINE_MS);
   t.unref?.();

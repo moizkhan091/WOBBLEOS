@@ -29,7 +29,7 @@ async function main() {
   const signals = await gatherSignals(paid!, db);
   assert(signals.orchestratorRegistered, "orchestrator is registered on paid_audit");
   assert(signals.orchestratorActive, "orchestrator agent is active in the registry (registered this batch)");
-  assert(signals.totalAgents === 6, `team size from department_members (6) — got ${signals.totalAgents}`);
+  assert(signals.totalAgents === 6, `team size from department_members (6), got ${signals.totalAgents}`);
   assert(signals.activeAgents === 6, "all 6 members active");
 
   // 2. With clean signals, paid_audit computes HEALTHY and persists it.

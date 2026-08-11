@@ -206,7 +206,7 @@ export const DEPARTMENT_CONSUMERS: Record<string, DepartmentConsumer> = {
     const asset = packetId ? await importFromContentPacket(packetId, { ...deps.library, recordAudit: deps.library?.recordAudit ?? recordAudit }) : null;
     if (!asset) {
       const reason = packetId
-        ? `content pack '${packetId}' is not approved — held for founder approval before publishing`
+        ? `content pack '${packetId}' is not approved, held for founder approval before publishing`
         : "publishing received a handoff with no packetId";
       // The tick does not surface a lightweight consumer's returned escalations, so record the HOLD here as
       // a founder-visible audit event. A held pack is a truthful non-success, never swallowed.

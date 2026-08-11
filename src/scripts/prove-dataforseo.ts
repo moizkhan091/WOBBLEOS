@@ -12,7 +12,7 @@ import { trendsExplore, searchVolume, DataForSeoAccountError, DATAFORSEO_PROVIDE
 import { getProviderSpend } from "@/lib/provider-budget";
 
 async function main() {
-  if (!process.env.DATAFORSEO_AUTH) throw new Error("DATAFORSEO_AUTH absent — cannot prove a governed provider without its credential");
+  if (!process.env.DATAFORSEO_AUTH) throw new Error("DATAFORSEO_AUTH absent, cannot prove a governed provider without its credential");
   const before = await getProviderSpend(DATAFORSEO_PROVIDER).catch(() => 0);
   console.log(`[dataforseo] ledger spend before: $${before.toFixed(4)}`);
 

@@ -76,7 +76,7 @@ export function stripExpressionTags(text: string): string {
 /** Narration guidance for the LLM per voice: whether it MAY use expressive tags, and which. */
 export function reelNarrationGuidance(voice: ReelVoice): string {
   if (!voice.allowsExpressiveTags) {
-    return `VOICE = ${voice.name} (eleven_multilingual_v2). Write natural, punchy spoken narration. DO NOT use any [expression tags] or [pause] — this voice's energy comes from the words and pacing, not tags.`;
+    return `VOICE = ${voice.name} (eleven_multilingual_v2). Write natural, punchy spoken narration. DO NOT use any [expression tags] or [pause], this voice's energy comes from the words and pacing, not tags.`;
   }
   return `VOICE = ${voice.name} (eleven_v3, expressive). Write natural, conversational narration. You MAY place 2-4 inline [expression tags] right before the phrase they affect (each affects ~4-5 words). Allowed tags: ${REEL_EXPRESSION_TAGS.map((t) => `[${t}]`).join(" ")}. Lean on emotion + pacing ([confident] [excited] [sarcastic] [thoughtful] [short pause] [slow]); use SFX-style tags rarely. NEVER use a plain [pause] (it makes it boring). Do not stack conflicting tags.`;
 }

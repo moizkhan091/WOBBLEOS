@@ -22,7 +22,7 @@ async function main() {
   });
   if (!created.ok || !created.job) throw new Error(`createMediaJob failed: ${created.error} ${JSON.stringify(created.errors)}`);
   const id = created.job.id;
-  console.log(`  queued media job ${id} (provider=openrouter) — waiting for the LIVE worker to process it…`);
+  console.log(`  queued media job ${id} (provider=openrouter), waiting for the LIVE worker to process it…`);
 
   const store = defaultStore();
   let job = created.job;

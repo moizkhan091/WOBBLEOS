@@ -81,7 +81,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 export const defaultHealthProbe: HealthProbe = async (row, credential) => {
   const classify = (res: Response): HealthProbeResult =>
     res.status === 401 || res.status === 403
-      ? { status: "failed", detail: `auth rejected (HTTP ${res.status}) — key revoked or invalid` }
+      ? { status: "failed", detail: `auth rejected (HTTP ${res.status}), key revoked or invalid` }
       : res.ok
         ? { status: "healthy" }
         : { status: "unavailable", detail: `HTTP ${res.status}` };
@@ -94,7 +94,7 @@ export const defaultHealthProbe: HealthProbe = async (row, credential) => {
       const res = await fetchWithTimeout("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: credential, query: "ping", max_results: 1 }) }, 8000);
       return classify(res);
     }
-    return { status: "unverified", detail: "no health probe wired for this provider — credential present but unconfirmed" };
+    return { status: "unverified", detail: "no health probe wired for this provider, credential present but unconfirmed" };
   } catch {
     return { status: "unavailable", detail: "network error or timeout" };
   }

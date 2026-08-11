@@ -26,7 +26,7 @@ function sectionChunks(md: string): string[] {
 
 function titleFor(file: string, md: string): string {
   const h1 = md.match(/^#\s+(.+)$/m)?.[1]?.trim();
-  return `WOBBLE Offer Sheet — ${h1 ?? file.replace(/\.md$/, "")}`;
+  return `WOBBLE Offer Sheet, ${h1 ?? file.replace(/\.md$/, "")}`;
 }
 
 async function main() {
@@ -59,7 +59,7 @@ async function main() {
     totalNotes += compiled.notesCreated;
     totalReinforced += compiled.notesReinforced;
     ingested += 1;
-    console.log(`  [${ingested}] ${title} — ${chunks.length} raw chunks, ${compiled.notesCreated} notes (+${compiled.notesReinforced} reinforced)`);
+    console.log(`  [${ingested}] ${title}, ${chunks.length} raw chunks, ${compiled.notesCreated} notes (+${compiled.notesReinforced} reinforced)`);
   }
 
   console.log(`\n  DONE: ${ingested} sheets ingested (${skipped} already present), ${totalChunks} raw chunks, ${totalNotes} compiled notes (+${totalReinforced} reinforced).`);

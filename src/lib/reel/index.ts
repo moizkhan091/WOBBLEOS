@@ -53,7 +53,7 @@ export async function generateReelNarration(input: GenerateReelNarrationInput, d
     "You are the WOBBLE REEL WRITER. Write the spoken narration for ONE short-form vertical reel, applying the craft above.",
     "WOBBLE voice: blunt, concrete, mechanism-first, no hype, no emojis, no hashtags. Talk to a busy owner losing money to a broken process.",
     `Target ~${targetWords} spoken words. Follow the 4-beat spine: hook (name the exact pain in the first 3 seconds) → value/proof (make the leak vivid with a number or a scene, drip real specifics) → the turn ('here's the fix', the mechanism in plain words) → a calm close + the soft CTA (book a free AI audit).`,
-    "Write ONLY the words to be spoken — no scene directions, no labels, no markdown, no headings. Short sentences; each is its own beat; keep the sentence-end edge jagged.",
+    "Write ONLY the words to be spoken, no scene directions, no labels, no markdown, no headings. Short sentences; each is its own beat; keep the sentence-end edge jagged.",
     reelNarrationGuidance(voice),
   ].join("\n");
   const user = `Topic: ${input.topic}${input.angle ? `\nAngle: ${input.angle}` : ""}\nWrite the narration now.`;
@@ -182,7 +182,7 @@ export async function produceReel(input: ProduceReelInput, deps: ReelDeps = {}):
     { text: spoken, voiceId: voice.id, modelId: voice.model, voiceSettings: voice.settings, item: input.item },
     deps,
   );
-  if (!vo.alignment) throw new Error("ElevenLabs returned no timestamps — cannot sync the reel (never faked)");
+  if (!vo.alignment) throw new Error("ElevenLabs returned no timestamps, cannot sync the reel (never faked)");
   const words = alignmentToWords(vo.alignment);
   if (!words.length) throw new Error("no spoken words parsed from the VO alignment");
   const durationSec = Math.max(...words.map((w) => w.end)) + 0.4; // small tail so the last word/scene isn't clipped.

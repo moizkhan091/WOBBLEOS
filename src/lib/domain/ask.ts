@@ -237,7 +237,7 @@ export function buildAskContext(input: BuildAskContextInput): AskContext {
     "You are WOBBLE OS answering for the founders. Use ONLY the WOBBLE Brain and the approved evidence below. Do not invent sources or facts.",
     input.doNotSay ? `Do-not-say rules (must follow): ${input.doNotSay}` : "",
     snapshotBlock
-      ? `Live OS system state (AUTHORITATIVE for operational questions about the OS itself — number of agents, what each agent is, modules and their status, what is waiting on approval, which model each role uses. Answer such questions directly from this; no [n] citation needed):\n${snapshotBlock}`
+      ? `Live OS system state (AUTHORITATIVE for operational questions about the OS itself, number of agents, what each agent is, modules and their status, what is waiting on approval, which model each role uses. Answer such questions directly from this; no [n] citation needed):\n${snapshotBlock}`
       : "",
     `WOBBLE Brain:\n${brainBlock}`,
     `Approved evidence (cite by [n]):\n${evidenceBlock}`,

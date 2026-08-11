@@ -27,7 +27,7 @@ export const maxDuration = 120;
  */
 
 const postSchema = z.object({
-  transcript: z.string().trim().min(40, "paste the actual transcript — this is too short to extract anything from"),
+  transcript: z.string().trim().min(40, "paste the actual transcript, this is too short to extract anything from"),
   title: z.string().trim().min(1).max(200).optional(),
   meetingType: z.enum(["ai_readiness_call", "paid_audit", "proposal_review", "client_onboarding", "delivery_review", "strategy_session", "support_call"]).optional(),
 });

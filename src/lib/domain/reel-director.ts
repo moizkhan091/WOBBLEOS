@@ -149,12 +149,12 @@ export function buildReelDirectorPrompt(input: { topic: string; angle?: string; 
     reelDirectorKnowledge(),
     "# YOUR TASK",
     "You are the WOBBLE REEL DIRECTOR. Turn this chosen topic + its already-recorded voiceover into a per-beat visual plan, applying the craft above. Pick the format + style lane that fit THIS topic; open on a pattern-interrupt; keep the 3-colour narrative (dark PROBLEM → cream EXPLAIN → blue FIX/CTA); accent ONE word per line (orange = pain, blue = fix/brand, lime = highlight).",
-    "MOCKUPS ARE MANDATORY. They are our single biggest retention weapon — a reel that is only text is a FAILURE. Include 1–2 mockups, on explain/proof beats (NEVER the hook or the final CTA), each filled with THIS topic's REAL content (never generic placeholder). Choose the kind that fits the topic:",
-    "  • kanban — CRM pipeline. columns[].title + cards[].{name,meta,chip}. chips: hot|stuck|late|new|won|ok. For database/pipeline/lead-rot topics (show cold, STUCK, LATE leads).",
-    "  • metrics — 1–3 KPI tiles. tiles[].{value,label,countTo?,accent?}. countTo (a number) makes the figure count up — USE IT for any dollar/percent/number the narration says (e.g. value:'$5,000' countTo:5000 label:'lost every month').",
-    "  • chat — SMS/WhatsApp thread. bubbles[].{from:'them'|'us',text}. For messaging/reminder/reactivation topics — show the AI's real replies.",
-    "  • notification — a win toast. {title, body?}. For a booking/won moment (title:'New booking', body:'Sat 2:00 PM — confirmed').",
-    "Anchor every scene to the SPOKEN WORDS by index (fromWord/toWord, referencing the numbered list). Do NOT set times — indices only; the system maps them to the real beats. Cover ALL the words in order with no gaps. Break on sentence boundaries; keep 2–6 words per scene.",
+    "MOCKUPS ARE MANDATORY. They are our single biggest retention weapon, a reel that is only text is a FAILURE. Include 1-2 mockups, on explain/proof beats (NEVER the hook or the final CTA), each filled with THIS topic's REAL content (never generic placeholder). Choose the kind that fits the topic:",
+    "  • kanban, CRM pipeline. columns[].title + cards[].{name,meta,chip}. chips: hot|stuck|late|new|won|ok. For database/pipeline/lead-rot topics (show cold, STUCK, LATE leads).",
+    "  • metrics, 1-3 KPI tiles. tiles[].{value,label,countTo? accent?}. countTo (a number) makes the figure count up, USE IT for any dollar/percent/number the narration says (e.g. value:'$5,000' countTo:5000 label:'lost every month').",
+    "  • chat, SMS/WhatsApp thread. bubbles[].{from:'them'|'us',text}. For messaging/reminder/reactivation topics, show the AI's real replies.",
+    "  • notification, a win toast. {title, body?}. For a booking/won moment (title:'New booking', body:'Sat 2:00 PM, confirmed').",
+    "Anchor every scene to the SPOKEN WORDS by index (fromWord/toWord, referencing the numbered list). Do NOT set times, indices only; the system maps them to the real beats. Cover ALL the words in order with no gaps. Break on sentence boundaries; keep 2-6 words per scene.",
     "Return ONLY strict JSON: {\"scenes\":[...]}, no prose, no markdown. WORKED EXAMPLE (topic: dead CRM database → note the two mockups):",
     '{"scenes":[' +
       '{"fromWord":0,"toWord":5,"bg":"dark","accents":[{"word":"graveyard","color":"orange"}]},' +
@@ -163,7 +163,7 @@ export function buildReelDirectorPrompt(input: { topic: string; angle?: string; 
       '{"fromWord":17,"toWord":23,"bg":"blue","accents":[{"word":"AI","color":"lime"}]}' +
       "]}",
   ].join("\n");
-  const user = `Topic: ${input.topic}${input.angle ? `\nAngle: ${input.angle}` : ""}\n\nNarration (already voiced): ${input.narration}\n\nSpoken words (index:word) — reference these indices:\n${numbered}\n\nReturn the scene plan JSON now.`;
+  const user = `Topic: ${input.topic}${input.angle ? `\nAngle: ${input.angle}` : ""}\n\nNarration (already voiced): ${input.narration}\n\nSpoken words (index:word), reference these indices:\n${numbered}\n\nReturn the scene plan JSON now.`;
   return { system, user };
 }
 

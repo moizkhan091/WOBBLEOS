@@ -18,7 +18,7 @@ async function main() {
 
     // Injected DB fault → degraded/down (the endpoint would return 503 so the orchestrator de-rotates it).
     const down = await getHealthStatus({ pingDb: async () => { throw new Error("connection refused"); } });
-    assert(down.ok === false && down.status === "degraded" && down.db === "down" && down.dbLatencyMs === null, "a DB fault → DEGRADED (db down, ok=false) — the probe never fakes healthy");
+    assert(down.ok === false && down.status === "degraded" && down.db === "down" && down.dbLatencyMs === null, "a DB fault → DEGRADED (db down, ok=false), the probe never fakes healthy");
 
     console.log("\n✅ health DB proof passed");
   } finally {

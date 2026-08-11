@@ -249,7 +249,7 @@ export async function processNextJob(
   const raced = blockedJobType(switches, job.type);
   if (raced) {
     stopRenew();
-    await store.requeue(job.id, new Date(now.getTime() + 60_000), now, `deferred: ${raced.targetType}:${raced.targetRef} kill switch — ${raced.reason}`, leaseOwner);
+    await store.requeue(job.id, new Date(now.getTime() + 60_000), now, `deferred: ${raced.targetType}:${raced.targetRef} kill switch, ${raced.reason}`, leaseOwner);
     await recordAudit({
       eventType: "job.deferred_by_kill_switch",
       module: "jobs",

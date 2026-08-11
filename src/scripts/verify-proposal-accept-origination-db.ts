@@ -72,7 +72,7 @@ async function main() {
     // chain's workflow id, so all downstream rows + handoffs share it (and the cleanup scope).
     const company = await addCompany({ name: `Acme AO ${uniq}`, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmCompanies).where(eq(crmCompanies.id, company.id)));
-    const opp = await addOpportunity({ name: `Acme AO ${uniq} — AI OS`, companyId: company.id, valueCents: 480000, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
+    const opp = await addOpportunity({ name: `Acme AO ${uniq}, AI OS`, companyId: company.id, valueCents: 480000, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     const wf = opp.id; // the chain workflow id
     cleanup.push(() => db.delete(handoffs).where(inArray(handoffs.workflowId, [wf])));
     cleanup.push(() => db.delete(tasks).where(eq(tasks.opportunityId, opp.id)));
@@ -89,14 +89,14 @@ async function main() {
     cleanup.push(() => db.delete(invoices).where(eq(invoices.proposalId, proposalId)));
     cleanup.push(() => db.delete(proposals).where(eq(proposals.id, proposalId)));
 
-    console.log("\nStep 1 — founder accepts → ATOMIC accept + Sales/CRM outbox emit (exactly-once):");
+    console.log("\nStep 1, founder accepts → ATOMIC accept + Sales/CRM outbox emit (exactly-once):");
     await proposalAction(proposalId, "approve", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     await proposalAction(proposalId, "send", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     const accepted = await proposalAction(proposalId, "accept", { actor: "Moiz" }, { recordAudit: async () => {}, now });
 
     assert(accepted?.proposal.status === "accepted", "the proposal is accepted");
     assert(!!accepted?.handoffId, "accept emitted a Sales/CRM outbox handoff (not an inline invoice)");
-    assert(accepted?.invoiceId === undefined, "no inline invoice/won/project — the department chain owns them");
+    assert(accepted?.invoiceId === undefined, "no inline invoice/won/project, the department chain owns them");
     const emit1 = (await db.select().from(handoffs).where(eq(handoffs.workflowId, wf))).filter((h) => h.department === "sales_crm");
     assert(emit1.length === 1 && emit1[0].deliveryState === "delivered", "ATOMICITY: exactly one proposal_artifact handoff was committed with the acceptance");
     assert(emit1[0].clientWorkspaceId === company.id, "CLIENT SCOPE: the outbox handoff carries the client workspace");
@@ -108,7 +108,7 @@ async function main() {
     const emit2 = (await db.select().from(handoffs).where(eq(handoffs.workflowId, wf))).filter((h) => h.department === "sales_crm");
     assert(emit2.length === 1, "EXACTLY-ONCE: still exactly one Sales/CRM handoff after a duplicate acceptance");
 
-    console.log("\nStep 2 — the autonomous consumer chain drives won → invoice → delivery:");
+    console.log("\nStep 2, the autonomous consumer chain drives won → invoice → delivery:");
     // Sales/CRM claims the proposal_artifact → advances the deal to won → routes won_deal to Finance + Delivery.
     const scRes = await drive("sales_crm");
     assert(scRes.completed === 1, "Sales/CRM autonomously consumed the proposal_artifact handoff");
@@ -125,13 +125,13 @@ async function main() {
     const projs = await listProjects({ opportunityId: opp.id, limit: 5 });
     assert(projs.length === 1, "exactly one delivery project was created by Delivery");
 
-    console.log("\nStep 3 — idempotency: re-driving the consumer creates NO duplicates:");
+    console.log("\nStep 3, idempotency: re-driving the consumer creates NO duplicates:");
     await drive("sales_crm"); await drive("finance"); await drive("delivery");
     assert((await db.select().from(invoices).where(eq(invoices.proposalId, proposalId))).length === 1, "still exactly one invoice (no duplicate on re-drive)");
     assert((await listProjects({ opportunityId: opp.id, limit: 5 })).length === 1, "still exactly one project (no duplicate on re-drive)");
     assert((await getOpportunity(opp.id))?.stage === "won", "the opportunity is still won (idempotent)");
 
-    console.log("\nStep 4 — RECLAIM idempotency: directly re-running Finance + Delivery on the same deal (simulating a lease-expiry reclaim / retry-after-partial-write) creates NO duplicate:");
+    console.log("\nStep 4, RECLAIM idempotency: directly re-running Finance + Delivery on the same deal (simulating a lease-expiry reclaim / retry-after-partial-write) creates NO duplicate:");
     const hs = handoffStore(db);
     await runFinanceDepartment(
       { opportunityId: opp.id, companyId: company.id, proposalId, businessName: "Acme (accept-origination)", amountCents: 480000, requestedBy: "Moiz", workflowId: wf },

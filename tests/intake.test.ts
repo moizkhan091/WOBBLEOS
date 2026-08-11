@@ -415,7 +415,7 @@ describe("intake read-back (what the audit + question engine consume)", () => {
   it("renders an audit block that frames answers as CLAIMS, not findings", () => {
     const block = formatIntakeForAudit([snapshotFromLead(storedLead(), company)]);
     // The framing is the point: an audit that parrots the form back adds nothing.
-    expect(block).toMatch(/their own words — treat as claims to verify, not findings/);
+    expect(block).toMatch(/their own words, treat as claims to verify, not findings/);
     expect(block).toContain("MOST RECENT SUBMISSION");
     expect(block).toContain("no-shows");
     expect(block).toContain("WhatsApp, Excel");

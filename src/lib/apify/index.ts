@@ -43,7 +43,7 @@ export interface ApifyDeps extends ProviderBudgetDeps {
 export class ApifyNotConfiguredError extends Error {
   readonly name = "ApifyNotConfiguredError";
   constructor() {
-    super("Apify is not configured (APIFY_API_TOKEN absent) — the run is blocked, never faked");
+    super("Apify is not configured (APIFY_API_TOKEN absent), the run is blocked, never faked");
   }
 }
 

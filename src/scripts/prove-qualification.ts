@@ -29,7 +29,7 @@ async function main() {
   console.log(`  ${assessment.recommendation}`);
   console.log("  roles:");
   for (const r of roles.sort((a, b) => b.score - a.score)) {
-    console.log(`    ${String(r.score).padStart(3)}  ${r.role.padEnd(24)} ${r.policyNote ? "[policy] " : "         "}— ${r.rationale.slice(0, 60)}`);
+    console.log(`    ${String(r.score).padStart(3)}  ${r.role.padEnd(24)} ${r.policyNote ? "[policy] " : "         "}, ${r.rationale.slice(0, 60)}`);
   }
 
   const runs = await listQualifications(company.id, 10);

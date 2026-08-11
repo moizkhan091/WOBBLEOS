@@ -363,7 +363,7 @@ export function planFeed(assets: PlannableAsset[], opts: FeedPlanOptions): { ite
   });
 
   const reelCount = merged.filter(isReel).length;
-  const summary = `${items.length} posts sequenced — ${reelCount} reels interleaved for variety, angles + products spread so the grid never repeats. ${perDay}/day at ${hours.map((h) => `${h}:00`).join(", ")} starting ${opts.startAt.toDateString()}.`;
+  const summary = `${items.length} posts sequenced, ${reelCount} reels interleaved for variety, angles + products spread so the grid never repeats. ${perDay}/day at ${hours.map((h) => `${h}:00`).join(", ")} starting ${opts.startAt.toDateString()}.`;
   return { items, summary };
 }
 

@@ -307,7 +307,7 @@ describe("legacy wrappers", () => {
 describe("money + pdf page setup", () => {
   it("formats cents", () => {
     expect(formatMoney(1500000)).toBe("$15,000");
-    expect(formatMoney(undefined)).toBe("—");
+    expect(formatMoney(undefined)).toBe("-");
     expect(formatMoney(0)).toBe("$0");
   });
 

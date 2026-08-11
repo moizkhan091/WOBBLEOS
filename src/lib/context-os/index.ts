@@ -126,7 +126,7 @@ export async function retrieveTrustedContextBlock(
     const { assertions } = await retrieveTrustedContext(scope, task, { agentSlug: opts.agentSlug, limit: opts.limit }, deps);
     if (!assertions.length) return null;
     const label = opts.label ?? `APPROVED ${scope.type.toUpperCase()} CONTEXT`;
-    return `${label} (trusted, founder-approved facts — treat as ground truth, never contradict):\n` + assertions.map((a) => `- ${a.statement}`).join("\n");
+    return `${label} (trusted, founder-approved facts, treat as ground truth, never contradict):\n` + assertions.map((a) => `- ${a.statement}`).join("\n");
   } catch (error) {
     // FAIL-OPEN, BUT NEVER SILENT: the generator proceeds WITHOUT grounding (never fabricated), and the failure is
     // recorded EXPLICITLY so a sustained Context OS fault is founder-visible (Command Centre health), not invisible.

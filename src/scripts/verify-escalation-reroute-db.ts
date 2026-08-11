@@ -71,7 +71,7 @@ async function main() {
     );
     assert(esc.handoffId === oldId, "escalation is linked to the blocked handoff");
 
-    console.log("\nStep 1 — REJECTIONS (no state change, old work preserved):");
+    console.log("\nStep 1, REJECTIONS (no state change, old work preserved):");
     // Content does not accept won_deal → rejected.
     const rBad = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "content", reason: "wrong" }, { ...deps, handoffStore: handoffStore(db) });
     assert(!rBad.ok && /is not accepted/.test(rBad.error ?? ""), "reroute to a dept that does not accept won_deal is rejected");
@@ -81,8 +81,8 @@ async function main() {
     assert((await getHandoff(oldId, { store: handoffStore(db) }))?.deliveryState === "dead_lettered", "the old handoff is untouched after rejected reroutes");
     assert((await listEscalations({ departmentSlug: "finance", reason: "dead_lettered" }, deps)).find((e) => e.id === esc.id)?.status === "open", "the escalation is still open after rejected reroutes");
 
-    console.log("\nStep 2 — VALID reroute → Delivery (accepts won_deal, permits client_confidential):");
-    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "finance backlog — deliver first" }, { ...deps, handoffStore: handoffStore(db) });
+    console.log("\nStep 2, VALID reroute → Delivery (accepts won_deal, permits client_confidential):");
+    const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "finance backlog, deliver first" }, { ...deps, handoffStore: handoffStore(db) });
     assert(r.ok && !!r.newHandoffId, "reroute succeeded and returned a new handoff id");
 
     const newRow = await getHandoff(r.newHandoffId!, { store: handoffStore(db) });
@@ -93,16 +93,16 @@ async function main() {
     assert((newRow!.envelope as { previousAgentOutputs?: Record<string, unknown> }).previousAgentOutputs?.opportunityId === "opp_rr", "completed work / evidence preserved (previousAgentOutputs)");
     assert((newRow!.envelope as { correlationId?: string }).correlationId === env.correlationId, "correlation id preserved");
 
-    assert((await getHandoff(oldId, { store: handoffStore(db) }))?.deliveryState === "cancelled", "the OLD route was superseded (cancelled) — no double execution");
+    assert((await getHandoff(oldId, { store: handoffStore(db) }))?.deliveryState === "cancelled", "the OLD route was superseded (cancelled), no double execution");
     const resolved = (await listEscalations({ departmentSlug: "finance", reason: "dead_lettered" }, deps)).find((e) => e.id === esc.id)!;
     assert(resolved.status === "resolved" && resolved.resolutionAction === "reroute", "the escalation resolved with action=reroute");
     assert(resolved.handoffId === r.newHandoffId, "the escalation is now linked to the NEW alternate handoff");
 
-    console.log("\nStep 3 — idempotency:");
+    console.log("\nStep 3, idempotency:");
     const again = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, { ...deps, handoffStore: handoffStore(db) });
     assert(again.ok, "a second reroute of an already-rerouted escalation is a no-op success");
     const delHandoffs = (await db.select().from(handoffs).where(eq(handoffs.workflowId, wf))).filter((h) => h.department === "delivery");
-    assert(delHandoffs.length === 1, "still exactly one alternate handoff to Delivery (idempotent — no churn)");
+    assert(delHandoffs.length === 1, "still exactly one alternate handoff to Delivery (idempotent, no churn)");
 
     console.log("\nALL REAL-DB ESCALATION REROUTE CHECKS PASSED ✅");
   } finally {

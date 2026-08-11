@@ -68,7 +68,7 @@ async function main() {
     assetIds.push(asset!.id);
 
     // ---- UNAPPROVED / QA-failed → refused promotion ----
-    assert((await importFromContentPacket(pkPending, { store: lStore, recordAudit })) === null, "a PENDING (unapproved) packet is refused promotion — unapproved content cannot publish");
+    assert((await importFromContentPacket(pkPending, { store: lStore, recordAudit })) === null, "a PENDING (unapproved) packet is refused promotion, unapproved content cannot publish");
     assert((await importFromContentPacket(pkDraft, { store: lStore, recordAudit })) === null, "a DRAFT (QA-failed, never approved) packet is refused promotion");
     assert((await db.select().from(contentAssets).where(inArray(contentAssets.sourcePacketId, [pkPending, pkDraft]))).length === 0, "no Library asset exists for any unapproved packet");
 
@@ -93,7 +93,7 @@ async function main() {
     // ---- MISSING CREDENTIALS → manual publisher DEFERS (truthful, not a fake publish) ----
     const deferred = await dispatchDuePosts({ store: lStore, now: new Date(now.getTime() + 1000), publishers: { manual: (await import("@/lib/library")).manualPublisher }, recordAudit });
     assert(deferred.deferred === 1 && deferred.dispatched === 0, "with no provider credentials the manual publisher DEFERS the due post (truthful blocked state)");
-    assert((await lStore.getScheduledPostById(post1.id))?.status === "scheduled", "the deferred post stays scheduled — never falsely marked published");
+    assert((await lStore.getScheduledPostById(post1.id))?.status === "scheduled", "the deferred post stays scheduled, never falsely marked published");
 
     // ---- CONFIGURED PROVIDER → the REAL adapter publishes ----
     let adapterCalled = false;

@@ -91,7 +91,7 @@ export function parseSourceCandidates(text: string): SourceCandidate[] {
 }
 
 const SCOUT_SYSTEM = [
-  "You are the WOBBLE research SOURCE SCOUT. From recent intelligence observations, propose NEW information sources worth tracking that we do NOT already track — competitor accounts, creator accounts, review sources, industry blogs/sites, ad libraries, keyword sets, trend topics.",
+  "You are the WOBBLE research SOURCE SCOUT. From recent intelligence observations, propose NEW information sources worth tracking that we do NOT already track, competitor accounts, creator accounts, review sources, industry blogs/sites, ad libraries, keyword sets, trend topics.",
   "Only propose a source that is clearly IMPLIED by the observations (a rival named repeatedly, a site cited often, a recurring theme with an obvious feed). Never invent sources with no basis. Each proposal MUST cite the observation indices that justify it.",
   `Valid targetType values: ${RESEARCH_TARGET_TYPES.join(", ")}.`,
   'Return ONLY a JSON array: [{"name":"...","handleOrUrl":"https://... or @handle","targetType":"competitor_account","reason":"why it is worth tracking","evidenceIdx":[0,3],"expectedValue":"what it will tell us","collectionMethod":"web_scrape","risk":"low","confidence":0.6}]. No prose.',
@@ -126,7 +126,7 @@ export async function discoverAndProposeSources(
     const tracked = new Set(targets.map((t) => normRef(t.handleOrUrl)).filter(Boolean));
 
     const obsLines = observations
-      .map((it, i) => `${i}: [${it.itemType}] ${it.title} — ${it.summary}${it.sourceUrl ? ` (src: ${it.sourceUrl})` : ""}${it.actorName ? ` (by: ${it.actorName})` : ""}`)
+      .map((it, i) => `${i}: [${it.itemType}] ${it.title}, ${it.summary}${it.sourceUrl ? ` (src: ${it.sourceUrl})` : ""}${it.actorName ? ` (by: ${it.actorName})` : ""}`)
       .join("\n");
     const trackedLines = targets.slice(0, 60).map((t) => `- ${t.name}${t.handleOrUrl ? ` (${t.handleOrUrl})` : ""}`).join("\n") || "(none yet)";
 
@@ -205,7 +205,7 @@ export async function flagStaleSources(
           sourceAgent: SOURCE_SCOUT_AGENT,
           reason: "stale_intelligence",
           severity: "medium",
-          requiredDecision: `Source "${target.name}" is stale (${overdueDays > 0 ? `${overdueDays}d overdue` : "overdue on its cadence"}) — refresh its cadence, re-scout it, or retire it.`,
+          requiredDecision: `Source "${target.name}" is stale (${overdueDays > 0 ? `${overdueDays}d overdue` : "overdue on its cadence"}), refresh its cadence, re-scout it, or retire it.`,
           evidence: { targetId: target.id, handleOrUrl: target.handleOrUrl, lastCheckedAt: target.lastCheckedAt, cadence: freshness.cadence, overdueBy: freshness.overdueBy },
         },
         { now: deps.now, recordAudit: deps.recordAudit },

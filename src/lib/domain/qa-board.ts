@@ -129,10 +129,10 @@ export function evaluateIndependence(
     violations.push("QA board has no reviewer identity");
   }
   if (reviewer && reviewer === submission.authorAgentSlug) {
-    violations.push(`reviewer '${reviewer}' is the artifact's author — a QA board cannot review its own output`);
+    violations.push(`reviewer '${reviewer}' is the artifact's author, a QA board cannot review its own output`);
   }
   if (reviewer && submission.contributingAgents.includes(reviewer)) {
-    violations.push(`reviewer '${reviewer}' contributed to the artifact — not an independent reviewer`);
+    violations.push(`reviewer '${reviewer}' contributed to the artifact, not an independent reviewer`);
   }
   return { independent: violations.length === 0, violations };
 }
@@ -272,10 +272,10 @@ function dedupeEvidence(items: QaEvidenceItem[]): QaEvidenceItem[] {
 }
 
 function summarize(verdict: QaVerdict, boardSlug: string, criteria: QaCriterionResult[], blockedReason: string | null): string {
-  if (verdict === "blocked") return `${boardSlug}: BLOCKED — ${blockedReason ?? "cannot assess"}`;
+  if (verdict === "blocked") return `${boardSlug}: BLOCKED, ${blockedReason ?? "cannot assess"}`;
   const failed = criteria.filter((c) => c.assessable && !c.passed).map((c) => c.key);
-  if (verdict === "pass") return `${boardSlug}: PASS — all ${criteria.length} criteria satisfied`;
-  return `${boardSlug}: ${verdict.toUpperCase()} — failed: ${failed.join(", ") || "none"}`;
+  if (verdict === "pass") return `${boardSlug}: PASS, all ${criteria.length} criteria satisfied`;
+  return `${boardSlug}: ${verdict.toUpperCase()}, failed: ${failed.join(", ") || "none"}`;
 }
 
 /**

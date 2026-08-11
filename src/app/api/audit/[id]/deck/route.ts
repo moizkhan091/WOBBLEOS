@@ -23,7 +23,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
 
   const { format, download, invalid } = resolveRequestedFormat(request.url, "deck16x9");
-  if (invalid) return NextResponse.json({ ok: false, error: `unknown format '${invalid}' — use deck16x9, deckA4 or document` }, { status: 400 });
+  if (invalid) return NextResponse.json({ ok: false, error: `unknown format '${invalid}', use deck16x9, deckA4 or document` }, { status: 400 });
 
   const audit = await getAudit(id);
   if (!audit) return NextResponse.json({ ok: false, error: "audit not found" }, { status: 404 });
@@ -48,7 +48,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   }
   // PDF path degrades HONESTLY: if Chromium isn't installed we say so rather than emitting a broken file.
   if (!isPdfRendererAvailable()) {
-    return NextResponse.json({ ok: false, error: "PDF rendering is unavailable on this host (Chromium not installed) — open the HTML view instead" }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "PDF rendering is unavailable on this host (Chromium not installed), open the HTML view instead" }, { status: 503 });
   }
   try {
     const pdf = await renderPdf(html, format);

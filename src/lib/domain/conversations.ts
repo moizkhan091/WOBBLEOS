@@ -186,9 +186,9 @@ export function buildHarvestPrompt(transcript: string, founderName?: string | nu
   const system = [
     "You extract DURABLE, reusable memory from a founder's conversation with WOBBLE OS. Return ONLY a JSON array.",
     "Each item: { \"content\": string, \"scope\": \"founder\"|\"company\"|\"brand\"|\"client\"|\"project\", \"area\": string, \"confidence\": 0..1 }.",
-    "Rules: capture stable facts, preferences, decisions, and constraints — NOT small talk, one-off task requests, or transient chatter.",
+    "Rules: capture stable facts, preferences, decisions, and constraints, NOT small talk, one-off task requests, or transient chatter.",
     `Scope: use "founder" for THIS person's personal preferences/working style${founderName ? ` (${founderName})` : ""}; "brand" for WOBBLE voice/positioning/do-not-say; "company" for WOBBLE facts/strategy/offers; "client"/"project" for client-specific facts.`,
-    "If nothing is worth remembering, return []. Be conservative — quality over quantity.",
+    "If nothing is worth remembering, return []. Be conservative, quality over quantity.",
   ].join("\n");
   return [
     { role: "system", content: system },

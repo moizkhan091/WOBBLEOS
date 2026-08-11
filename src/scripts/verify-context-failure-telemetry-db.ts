@@ -34,7 +34,7 @@ async function main() {
     // failure INSERT still lands (a real fault surfaces to the founder; grounding is never fabricated).
     const failingDb = { select: () => { throw new Error("connection terminated unexpectedly"); }, insert: (t: unknown) => db.insert(t as never) } as unknown as typeof db;
     const block = await retrieveTrustedContextBlock({ type: "client", id: scopeId }, "proposal_synthesis", { agentSlug: "proposal_solution_architect", correlationId: `corr2_${uniq}` }, { db: failingDb });
-    assert(block === null, "on a retrieval fault the block is null — the generator proceeds WITHOUT grounding (never fabricated)");
+    assert(block === null, "on a retrieval fault the block is null, the generator proceeds WITHOUT grounding (never fabricated)");
     const after2 = await listContextRetrievalFailures({ scopeType: "client", scopeId }, { db });
     assert(after2.failures.length === 2 && after2.failures.some((x) => x.task === "proposal_synthesis" && x.correlationId === `corr2_${uniq}`), "retrieveTrustedContextBlock recorded the fault explicitly (fail-open is NOT silent)");
 

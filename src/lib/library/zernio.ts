@@ -124,7 +124,7 @@ export function zernioMediaItems(asset: ContentAssetRow, baseUrl = publicBaseUrl
 /** Publish a post immediately via Zernio (used by the dispatch adapter). */
 export async function zernioPublish(args: { post: ScheduledPostRow; asset: ContentAssetRow }, c: ZernioConfig = {}): Promise<{ publisherRef?: string; result?: Record<string, unknown> }> {
   const baseUrl = publicBaseUrl();
-  if (!baseUrl) throw new Error("PUBLIC_BASE_URL not set — Zernio needs a public URL to fetch media");
+  if (!baseUrl) throw new Error("PUBLIC_BASE_URL not set, Zernio needs a public URL to fetch media");
   const accountId = await resolveAccountId(args.post.platform, c);
   if (!accountId) throw new Error(`no Zernio account configured for platform '${args.post.platform}'`);
   const created = await createZernioPost(
@@ -142,7 +142,7 @@ export async function zernioPublish(args: { post: ScheduledPostRow; asset: Conte
 /** Push a post to Zernio's native scheduler (Zernio holds it + posts at scheduledFor). */
 export async function zernioSchedule(args: { post: ScheduledPostRow; asset: ContentAssetRow }, c: ZernioConfig = {}): Promise<{ publisherRef?: string }> {
   const baseUrl = publicBaseUrl();
-  if (!baseUrl) throw new Error("PUBLIC_BASE_URL not set — Zernio needs a public URL to fetch media");
+  if (!baseUrl) throw new Error("PUBLIC_BASE_URL not set, Zernio needs a public URL to fetch media");
   const accountId = await resolveAccountId(args.post.platform, c);
   if (!accountId) throw new Error(`no Zernio account configured for platform '${args.post.platform}'`);
   const created = await createZernioPost(

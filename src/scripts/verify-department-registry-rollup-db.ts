@@ -24,7 +24,7 @@ async function main() {
   const pa = rollups.find((d) => d.department === "paid_audit");
   assert(!!pa, "paid_audit appears in the roll-up (from the registry)");
   assert(pa!.name === "Paid Audit" && pa!.status === "active", "roll-up carries registry identity + truthful status");
-  assert(pa!.members.total === 6, `roll-up member count comes from department_members (6) — got ${pa!.members.total}`);
+  assert(pa!.members.total === 6, `roll-up member count comes from department_members (6), got ${pa!.members.total}`);
 
   // Declared-but-draft departments also appear (registry-sourced), with zero activity.
   const proposal = rollups.find((d) => d.department === "proposal");
@@ -34,7 +34,7 @@ async function main() {
   const detail = await getDepartmentDetail("paid_audit");
   assert(detail.registry?.name === "Paid Audit", "detail carries the registry record");
   assert(detail.registry?.downstreamConsumers.includes("proposal") ?? false, "detail shows downstream routing (paid_audit → proposal)");
-  assert(detail.members.length === 6, `detail lists the full team from memberships — got ${detail.members.length}`);
+  assert(detail.members.length === 6, `detail lists the full team from memberships, got ${detail.members.length}`);
   assert(detail.members.some((m) => m.memberType === "service"), "the deterministic service member is listed");
   assert(detail.members[0].role.length > 0 && detail.members[0].responsibility.length > 0, "each member carries role + responsibility (membership facts)");
 

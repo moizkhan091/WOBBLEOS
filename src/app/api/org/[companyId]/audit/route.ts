@@ -59,7 +59,7 @@ export async function POST(request: Request, context: { params: Promise<{ compan
     const result = await runPaidAuditGraph({
       businessName: journey.company.name,
       industry: journey.company.industry ?? "general business",
-      intakeNotes: intakeNotes || `Client ${journey.company.name} — no stored context yet.`,
+      intakeNotes: intakeNotes || `Client ${journey.company.name}, no stored context yet.`,
       requestedBy: auth,
       companyId,
       opportunityId: liveDeal?.id,

@@ -6,7 +6,7 @@ import { runPaidAuditGraph, type PaidAuditDeps, type RunPaidAuditInput } from "@
  * this client's own Doc 1 (pitch) + Doc 2 (roadmap) + the per-interview findings WE recorded, assembles
  * them into the intake, and runs the deep 5-agent paid-audit graph → the full McKinsey report + deck.
  * Data isolation: reads only this client's own prior docs (companyId must match), and the graph only
- * grounds in Wobble's shared brand Brain — never another client's audit.
+ * grounds in Wobble's shared brand Brain, never another client's audit.
  */
 
 export interface InterviewFinding {
@@ -55,7 +55,7 @@ export async function runFinalAudit(input: RunFinalAuditInput, deps: FinalAuditD
 
   const pitchSummary = pitch ? String(pitch.report.executiveSummary ?? pitch.report.summary ?? "") : "";
   const roadmapOverview = roadmap ? String(roadmap.report.situationSummary ?? roadmap.report.summary ?? "") : "";
-  const findingsText = (input.findings ?? []).filter((f) => f.notes.trim()).map((f) => `INTERVIEW — ${f.stakeholder}:\n${f.notes}`).join("\n\n");
+  const findingsText = (input.findings ?? []).filter((f) => f.notes.trim()).map((f) => `INTERVIEW, ${f.stakeholder}:\n${f.notes}`).join("\n\n");
 
   const intakeNotes = [
     findingsText || "(no interview notes provided yet)",

@@ -223,7 +223,7 @@ async function main() {
     const reMarked = await markPostPublished(post.id, { actor: "n8n" }, { store: lStore, recordAudit: noAudit, now });
     assert(reMarked === false, "re-marking an already-published post is a safe no-op (idempotent return-leg)");
 
-    console.log("\n✅ maintenance-acceptance DB proof passed — all four batch effects fire end-to-end against live Postgres");
+    console.log("\n✅ maintenance-acceptance DB proof passed, all four batch effects fire end-to-end against live Postgres");
   } finally {
     // Cleanup — best-effort, order respects FKs (posts/assets before packets/tracks).
     await db.delete(scheduledPosts).where(inArray(scheduledPosts.assetId, assetIds.length ? assetIds : ["_"])).catch(() => {});

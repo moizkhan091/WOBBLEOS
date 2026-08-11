@@ -131,7 +131,7 @@ function buildMediaPrompt(direction: string, selection: ReferenceSelection, avoi
   const ref = selection.reference;
   const parts = [direction.trim()];
   if (ref) parts.push(`Style reference: ${ref.id} (${ref.styleTags.join(", ")}). Match this ONE reference; do not blend others.`);
-  else parts.push("No approved style reference was eligible for this asset — do not invent one.");
+  else parts.push("No approved style reference was eligible for this asset, do not invent one.");
   if (avoid.length) parts.push(`Avoid: ${avoid.join(", ")}.`);
   return parts.join(" ");
 }
@@ -196,14 +196,14 @@ export async function runDesignIntelligenceDepartment(
 
     // No eligible reference is a REAL state that must be said out loud, not hidden behind a brief that
     // reads complete. The founder decides whether to approve unreferenced work.
-    if (referenceless) api.escalate(`design_intelligence found no eligible approved reference for packet ${input.packetId} — the brief is referenceless`);
+    if (referenceless) api.escalate(`design_intelligence found no eligible approved reference for packet ${input.packetId}, the brief is referenceless`);
 
     // Structured direction, upgraded from free text. The layout rules are derived from what was actually
     // selected, so they never describe a reference that was not chosen.
     const visualDirection = [input.designDirection.trim(), ...descriptors].join(" ").trim();
     const layoutRules = selections
       .filter((s) => s.reference)
-      .map((s) => `Asset ${s.assetIndex} (${s.assetType}): follow ${s.reference!.id} — ${s.rationale}`);
+      .map((s) => `Asset ${s.assetIndex} (${s.assetType}): follow ${s.reference!.id}, ${s.rationale}`);
 
     // ADVISORY brand critique. Annotates; never rewrites.
     let brandCritique: DesignBrief["brandCritique"] = null;

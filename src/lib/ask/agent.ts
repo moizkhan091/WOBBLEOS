@@ -75,21 +75,21 @@ const HARD_MAX_ITERATIONS = 24;
 function buildSystemPrompt(snapshot: string | undefined, confirmActions: boolean): string {
   return [
     "You are WOBBLE OS's command surface for the founders. You can inspect and operate the OS using the provided tools.",
-    "Use read tools to answer operational questions and to gather facts BEFORE proposing any change. Never invent counts, names, models, or statuses — get them from a tool.",
+    "Use read tools to answer operational questions and to gather facts BEFORE proposing any change. Never invent counts, names, models, or statuses, get them from a tool.",
     "OS tools: list_agents, list_pending_approvals, get_model_config, list_models.",
     // The agent used to have OS tools only, so business questions got "check with your sales team" —
     // telling the founder to ask the humans this OS replaces. Point it at the business tools explicitly.
     "BUSINESS READ tools: get_business_overview (start here for any 'how are we doing' / 'what should I focus on'), list_deals (pipeline, closest to closing, forecast, deal values), list_leads (follow-ups, best leads), get_finance_summary (overdue, outstanding, cash), list_proposals (what's out with clients), list_sources (what accounts/sources we track, what's pending), get_website_stats.",
-    "ACTION tools (these CREATE things): create_lead, run_free_audit, build_proposal_from_audit, create_invoice_draft, generate_content, propose_source, create_task. Every one produces a DRAFT or a PENDING record inside the OS's existing approval + audit guardrails — none of them sends, publishes, or deletes anything. So you may run them when the founder asks, then tell them plainly what was created and where to review it.",
-    "You have DIRECT access to the company's live data and to these actions. NEVER tell the founder to contact a sales team, check the CRM, open another tool, or ask a colleague for something you can do or look up yourself — call the tool. If a tool genuinely returns nothing, say the record set is empty rather than deferring to a human.",
+    "ACTION tools (these CREATE things): create_lead, run_free_audit, build_proposal_from_audit, create_invoice_draft, generate_content, propose_source, create_task. Every one produces a DRAFT or a PENDING record inside the OS's existing approval + audit guardrails, none of them sends, publishes, or deletes anything. So you may run them when the founder asks, then tell them plainly what was created and where to review it.",
+    "You have DIRECT access to the company's live data and to these actions. NEVER tell the founder to contact a sales team, check the CRM, open another tool, or ask a colleague for something you can do or look up yourself, call the tool. If a tool genuinely returns nothing, say the record set is empty rather than deferring to a human.",
     "Chain tools when a request needs it (e.g. 'audit Acme and build a proposal' = run_free_audit then build_proposal_from_audit). Prefer one broad read (get_business_overview) over several narrow ones.",
     // House answer format — the raw model markdown was rendering as literal ** characters in the chat UI.
-    "FORMAT your answer for a busy founder: lead with the direct answer in one or two sentences, then at most 5 short bullets starting with '- ', then a single 'Next:' line if action is needed. Use plain sentences. Do NOT use markdown headings (#), tables, bold (**), or italics — the chat renders limited formatting. Never show raw ids unless asked; use names.",
+    "FORMAT your answer for a busy founder: lead with the direct answer in one or two sentences, then at most 5 short bullets starting with '- ', then a single 'Next:' line if action is needed. Use plain sentences. Do NOT use markdown headings (#), tables, bold (**), or italics, the chat renders limited formatting. Never show raw ids unless asked; use names.",
     "To change a model, use propose_model_swap: it creates an APPROVAL for the founder and does not apply anything. Present compatible options and cost before proposing. If the founder's request is ambiguous (which role? which model?), ASK a short clarifying question instead of guessing.",
     "Only use apply_model_upgrade when the founder has explicitly confirmed. Never claim you applied or changed something unless a tool result confirms it.",
     confirmActions
       ? "The founder has authorised applying confirmed actions this turn."
-      : "The founder has NOT authorised applying actions this turn; do not attempt irreversible changes — propose them instead.",
+      : "The founder has NOT authorised applying actions this turn; do not attempt irreversible changes, propose them instead.",
     snapshot ? `Current live OS state:\n${snapshot}` : "",
     "When you have enough information, give a concise, direct answer for the founder. Flag anything that needs their decision.",
   ]
@@ -215,7 +215,7 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
       // risky call is recorded and SKIPPED while the loop carries on, so every safe step still lands and
       // the founder gets ONE consolidated list of what needs their go-ahead instead of a popup per item.
       if (tool?.requiresConfirmation && !input.confirmActions) {
-        const message = `Needs your go-ahead: ${call.name}(${JSON.stringify(call.arguments)}) — NOT applied.`;
+        const message = `Needs your go-ahead: ${call.name}(${JSON.stringify(call.arguments)}), NOT applied.`;
         pendingConfirmations.push({ tool: call.name, args: call.arguments, message });
         toolTrace.push({ tool: call.name, args: call.arguments, ok: false, mutated: false, error: "awaiting_founder_confirmation" });
         messages.push({

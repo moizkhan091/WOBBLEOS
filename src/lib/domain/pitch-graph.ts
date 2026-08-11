@@ -47,8 +47,8 @@ export function parsePitch(text: string): Pitch | null {
 const SERVICE_MENU = WOBBLE_SERVICES.map((s) => `${s.slug} (${s.name})`).join(", ");
 
 export function buildPitchPrompt(input: { businessName: string; industry?: string | null; signalsText?: string; diagnosis: AuditReport }): ProviderMessage[] {
-  const gaps = input.diagnosis.opportunities.map((o) => `${o.name} — ${o.reason}`).join("; ");
-  const system = `You are Wobble's PITCH strategist. Write a customized "what Wobble can do for you" pitch for ${input.businessName}${input.industry ? `, a ${input.industry} business` : ""}. Lead with what we NOTICED about their business (gaps/opportunities), then present the relevant Wobble services — and REWRITE each service's description and outcome specifically for THIS niche (not generic). Pick 6-12 of the most relevant services. Be concrete, confident, and specific to their world. Respond with STRICT JSON only:
+  const gaps = input.diagnosis.opportunities.map((o) => `${o.name}, ${o.reason}`).join("; ");
+  const system = `You are Wobble's PITCH strategist. Write a customized "what Wobble can do for you" pitch for ${input.businessName}${input.industry ? `, a ${input.industry} business` : ""}. Lead with what we NOTICED about their business (gaps/opportunities), then present the relevant Wobble services, and REWRITE each service's description and outcome specifically for THIS niche (not generic). Pick 6-12 of the most relevant services. Be concrete, confident, and specific to their world. Respond with STRICT JSON only:
 {"headline":"...","situation":"2-3 sentences on their market/niche","whatWeNoticed":["..."],"services":[{"name":"...","whatItDoes":"niche-specific","outcomeForYou":"the result for a ${input.industry ?? "business like theirs"}"}],"whyWobble":"...","cta":"..."}
 WOBBLE SERVICE MENU: ${SERVICE_MENU}`;
   const user = [`BUSINESS: ${input.businessName}`, `WHAT OUR SCAN FOUND (gaps): ${gaps || "(run a call to learn more)"}`, input.signalsText ? `SCRAPED SIGNALS:\n${input.signalsText.slice(0, 5000)}` : null].filter(Boolean).join("\n\n");
@@ -62,7 +62,7 @@ export function deterministicPitch(input: RunAuditInput, diagnosis: AuditReport)
     situation: diagnosis.summary,
     whatWeNoticed: diagnosis.opportunities.map((o) => o.reason),
     services: diagnosis.opportunities.map((o) => ({ name: o.name, whatItDoes: o.reason, outcomeForYou: o.quickWin ? "A fast win with quick ROI." : "A durable improvement to how you operate." })),
-    whyWobble: "One team, one operating system — we build, run, and improve the AI that drives your growth.",
+    whyWobble: "One team, one operating system, we build, run, and improve the AI that drives your growth.",
     cta: "Book your free AI Readiness Call to see the numbers on your business.",
   };
 }

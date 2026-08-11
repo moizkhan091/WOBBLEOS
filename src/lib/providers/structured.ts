@@ -23,7 +23,7 @@ import type { z } from "zod";
  */
 export function extractJson(text: string): string {
   const noFences = text.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "").trim();
-  // Prefer whichever of { or [ appears first — a response may be an object or an array.
+  // Prefer whichever of { or [ appears first, a response may be an object or an array.
   const firstObj = noFences.indexOf("{");
   const firstArr = noFences.indexOf("[");
   const candidates = [firstObj, firstArr].filter((i) => i >= 0);
@@ -38,13 +38,13 @@ export function extractJson(text: string): string {
 export interface ParseResult<T> {
   ok: boolean;
   data?: T;
-  /** A human/model-readable reason — safe to feed straight back into a repair prompt. */
+  /** A human/model-readable reason, safe to feed straight back into a repair prompt. */
   error?: string;
 }
 
 /**
  * PURE parse+validate: extract the JSON span, JSON.parse it, then validate against a Zod schema. Never
- * throws — returns `{ok:false, error}` so the caller decides whether to repair, default, or fail. This
+ * throws, returns `{ok:false, error}` so the caller decides whether to repair, default, or fail. This
  * is the free, unit-testable core; no LLM involved.
  */
 export function parseStructured<T>(text: string, schema: z.ZodType<T>): ParseResult<T> {
@@ -66,7 +66,7 @@ export function parseStructured<T>(text: string, schema: z.ZodType<T>): ParseRes
 /**
  * parseStructured + ONE opt-in repair round. If the first parse fails and a `repair` function is given,
  * it is called once with the offending text + the validation error, and its output is re-parsed. A
- * single retry is deliberate — it clears the large majority of failures without turning one bad response
+ * single retry is deliberate, it clears the large majority of failures without turning one bad response
  * into an unbounded (and unbounded-cost) loop. With no `repair`, this is exactly `parseStructured`.
  */
 export async function parseStructuredWithRepair<T>(
@@ -83,7 +83,7 @@ export async function parseStructuredWithRepair<T>(
     return { ok: false, error: `repair attempt failed: ${e instanceof Error ? e.message : String(e)}` };
   }
   const second = parseStructured(repaired, schema);
-  // If the repair also failed, surface the ORIGINAL error — it's the more informative one.
+  // If the repair also failed, surface the ORIGINAL error, it's the more informative one.
   return second.ok ? second : { ok: false, error: first.error };
 }
 

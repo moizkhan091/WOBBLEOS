@@ -24,13 +24,13 @@ const P9 = "C:/Users/moizk/OneDrive/Documents/Claude/Projects/Marketing campaign
 const STRUCTURAL_FACTS = [
   {
     area: "motion_dna_reel_system",
-    title: "WOBBLE Motion DNA — reel system & spine",
+    title: "WOBBLE Motion DNA, reel system & spine",
     content:
-      "WOBBLE's reel library = 140 rendered reels + 600 voice clips + 103 TTS/voice configs + 34 HTML & 31 JS HyperFrames compositions + 61 reference stills. Universal reel spine: Hook (1.5s) → Value/Proof → mechanism reveal → soft CTA. DR reels 9-30s, teaching reels 45-60s. Value model: front-load real value (first ~70%), reveal the MECHANISM not the tedium ('we install it in 48h, you never touch it'), 80-90% education + last 10-20% 'why us', proof mid-roll (flash one number / 1s dashboard). ONE soft CTA = 'Book a free AI audit — link in bio' (NO comment-bait, per client rule).",
+      "WOBBLE's reel library = 140 rendered reels + 600 voice clips + 103 TTS/voice configs + 34 HTML & 31 JS HyperFrames compositions + 61 reference stills. Universal reel spine: Hook (1.5s) → Value/Proof → mechanism reveal → soft CTA. DR reels 9-30s, teaching reels 45-60s. Value model: front-load real value (first ~70%), reveal the MECHANISM not the tedium ('we install it in 48h, you never touch it'), 80-90% education + last 10-20% 'why us', proof mid-roll (flash one number / 1s dashboard). ONE soft CTA = 'Book a free AI audit, link in bio' (NO comment-bait, per client rule).",
   },
   {
     area: "motion_dna_formats",
-    title: "WOBBLE Motion DNA — 16 format archetypes & variety engine",
+    title: "WOBBLE Motion DNA, 16 format archetypes & variety engine",
     content:
       "WOBBLE reels rotate 16 format archetypes: Myth-Bust, Objection Killer, 5 Things (checklist, most-saved), Mistake, Cost-of-Inaction Math, Before/After, Nobody Tells You, Comparison/Vs, Teardown, Steal-This/Template, Contrarian Take, Day-in-the-Life (of the system), Question-Hook, Case-Study/Proof, Confession, Data-Shock. Variety engine = 16 formats × 6 angles (fear-of-loss/greed/status/curiosity/relief/contrarian) × 6 hook-triggers (stat/question/bold-claim/story/you-callout/visual-interrupt) = 576 distinct reels. Guardrails: no format twice in a row, cap any format ≤15-20% of the slate, vary the FIRST FRAME visually, re-skin winners across services, rotate the proof number.",
   },
@@ -62,8 +62,8 @@ async function main() {
   let ingested = 0, skipped = 0, totalChunks = 0, totalNotes = 0;
   for (const name of PLAYBOOKS) {
     const path = `${P9}/${name}.md`;
-    if (!existsSync(path)) { console.log(`  (missing ${name}.md — skipped)`); continue; }
-    const title = `WOBBLE Motion Playbook — ${name}`;
+    if (!existsSync(path)) { console.log(`  (missing ${name}.md, skipped)`); continue; }
+    const title = `WOBBLE Motion Playbook, ${name}`;
     if (existingTitles.has(title)) { skipped += 1; continue; }
     const md = readFileSync(path, "utf8");
     const chunks = sectionChunks(md);
@@ -81,7 +81,7 @@ async function main() {
     const compiled = await compileSource({ sourceId: created.source.id, triggeredBy: FOUNDER });
     totalNotes += compiled.notesCreated;
     ingested += 1;
-    console.log(`  [${ingested}] ${name} — ${chunks.length} chunks, ${compiled.notesCreated} notes`);
+    console.log(`  [${ingested}] ${name}, ${chunks.length} chunks, ${compiled.notesCreated} notes`);
   }
   console.log(`\n  DONE: 2 structural Motion DNA facts + ${ingested} playbooks (${skipped} present), ${totalChunks} chunks, ${totalNotes} notes.`);
 }

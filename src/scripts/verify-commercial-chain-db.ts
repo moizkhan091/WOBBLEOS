@@ -66,7 +66,7 @@ async function main() {
     // Real CRM company + opportunity — the accepted proposal's linked deal (ready to be won).
     const company = await addCompany({ name: `Acme Commercial ${uniq}`, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmCompanies).where(eq(crmCompanies.id, company.id)));
-    const opp = await addOpportunity({ name: `Acme Commercial ${uniq} — AI OS`, companyId: company.id, stage: "negotiation", valueCents: 480000, serviceInterest: ["Missed-call text-back"], assignedOwner: "Ali", createdBy: "Moiz" }, { recordAudit: async () => {}, now });
+    const opp = await addOpportunity({ name: `Acme Commercial ${uniq}, AI OS`, companyId: company.id, stage: "negotiation", valueCents: 480000, serviceInterest: ["Missed-call text-back"], assignedOwner: "Ali", createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmStageHistory).where(eq(crmStageHistory.opportunityId, opp.id)));
     cleanup.push(() => db.delete(crmOpportunities).where(eq(crmOpportunities.id, opp.id)));
     cleanup.push(() => db.delete(tasks).where(eq(tasks.opportunityId, opp.id)));
@@ -76,7 +76,7 @@ async function main() {
     cleanup.push(() => db.delete(handoffs).where(inArray(handoffs.workflowId, [wfSc, wfFin, wfDel])));
 
     // ── STEP 1 — Sales & CRM: accepted proposal → advance the deal to WON (deterministic), route on. ──
-    console.log("\nStep 1 — Sales & CRM advances the accepted deal to won and routes to Delivery + Finance:");
+    console.log("\nStep 1, Sales & CRM advances the accepted deal to won and routes to Delivery + Finance:");
     const sc = await runSalesCrmDepartment(
       { opportunityId: opp.id, proposalId, businessName: "Acme (verify)", companyId: company.id, requestedBy: "Moiz", workflowId: wfSc },
       { handoffStore: handoffStore(db), escalationStore: escalationStore(db), assessDeal: async () => ({ lossRisk: "low", riskFactors: [], nextBestAction: "Book kickoff within 48h", rationale: "Clear scope" }), crmDeps: { recordAudit: async () => {} }, recordAudit: async () => {}, now },
@@ -84,10 +84,10 @@ async function main() {
     assert(sc.accepted, "Sales & CRM accepted the proposal_artifact handoff");
     assert((await getOpportunity(opp.id))?.stage === "won", "the opportunity was advanced to won (deterministic crm write)");
     assert(sc.routedTo.map((r) => r.department).sort().join(",") === "delivery,finance", "the won_deal was routed to Delivery + Finance");
-    assert((await listProjects({ opportunityId: opp.id, limit: 1 })).length === 0, "no delivery project yet — Sales & CRM suppresses the auto-hook (Delivery owns creation)");
+    assert((await listProjects({ opportunityId: opp.id, limit: 1 })).length === 0, "no delivery project yet, Sales & CRM suppresses the auto-hook (Delivery owns creation)");
 
     // ── STEP 2 — Finance: won deal → draft the invoice (deterministic), revenue intelligence, route on. ──
-    console.log("\nStep 2 — Finance drafts the invoice for the won deal and routes revenue intelligence to the founder:");
+    console.log("\nStep 2, Finance drafts the invoice for the won deal and routes revenue intelligence to the founder:");
     const fin = await runFinanceDepartment(
       { opportunityId: opp.id, companyId: company.id, proposalId, businessName: "Acme (verify)", amountCents: 480000, description: "Acme AI OS engagement", requestedBy: "Moiz", workflowId: wfFin },
       { handoffStore: handoffStore(db), assessMargin: async () => ({ marginRisk: "low", overdueRisk: "low", notes: ["Healthy"] }), financeDeps: { recordAudit: async () => {} }, recordAudit: async () => {}, now },
@@ -100,7 +100,7 @@ async function main() {
     assert(fin.routedTo.map((r) => r.department).join(",") === "founder_command_centre", "Finance routed revenue intelligence to the Founder Command Centre");
 
     // ── STEP 3 — Delivery: won deal → project + milestones + tasks + owner; health; escalate a real risk. ──
-    console.log("\nStep 3 — Delivery stands up the project (milestones + tasks + owner), computes health, escalates a real risk:");
+    console.log("\nStep 3, Delivery stands up the project (milestones + tasks + owner), computes health, escalates a real risk:");
     const del = await runDeliveryDepartment(
       { opportunityId: opp.id, companyId: company.id, proposalId, projectName: `Acme Commercial ${uniq} delivery`, servicesIncluded: ["Missed-call text-back"], owner: "Ali", teamMembers: ["Ali", "Haad"], requestedBy: "Moiz", workflowId: wfDel },
       { handoffStore: handoffStore(db), escalationStore: escalationStore(db), assessFeasibility: async () => ({ feasibility: "blocked", risks: ["Client has no telephony access yet"], dependencies: [] }), projectDeps: { recordAudit: async () => {} }, taskDeps: { recordAudit: async () => {} }, recordAudit: async () => {}, now },

@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
   // Fail CLOSED: a public route that creates CRM records must never accept unsigned traffic.
   const secret = (process.env.N8N_WEBHOOK_SECRET ?? "").trim();
-  if (!secret) return NextResponse.json({ ok: false, error: "intake disabled — set N8N_WEBHOOK_SECRET" }, { status: 503 });
+  if (!secret) return NextResponse.json({ ok: false, error: "intake disabled, set N8N_WEBHOOK_SECRET" }, { status: 503 });
 
   const timestamp = request.headers.get(N8N_TIMESTAMP_HEADER);
   const signature = request.headers.get(N8N_SIGNATURE_HEADER);

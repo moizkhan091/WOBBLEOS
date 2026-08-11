@@ -15,7 +15,7 @@ async function main() {
   console.log("\n[enricher] free demand signal fills in even while DataForSEO is unverified:");
   const { volumes, signals } = await defaultTopicEnricher().enrich(seeds, "prove-free-keyword", "United States");
   for (const s of seeds) console.log(`  ${s}: paidVolume=${volumes.get(s) ?? "n/a"} freeSignal=${signals?.get(s) ?? "n/a"}`);
-  console.log("\n[free-kw] PROVEN LIVE — keyword research works with NO paid provider. ✓");
+  console.log("\n[free-kw] PROVEN LIVE, keyword research works with NO paid provider. ✓");
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

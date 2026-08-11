@@ -29,7 +29,7 @@ const schema = z.discriminatedUnion("action", [
   }),
   // Every advance requires a note: the timeline IS the incident record, and a lifecycle step with no
   // detail leaves a post-incident review with nothing to review.
-  z.object({ action: z.enum(INCIDENT_ACTIONS), id: z.string().trim().min(1), note: z.string().trim().min(1, "every incident step needs a note — the timeline is the record") }),
+  z.object({ action: z.enum(INCIDENT_ACTIONS), id: z.string().trim().min(1), note: z.string().trim().min(1, "every incident step needs a note, the timeline is the record") }),
 ]);
 
 /** POST /api/security/incidents — open an incident, or advance one through its lifecycle. */

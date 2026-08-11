@@ -34,26 +34,26 @@ export function validateRuntimeConfig(
 
   // --- Critical (hard errors in production) ---
   if (!env.DATABASE_URL || !env.DATABASE_URL.trim()) {
-    (production ? errors : warnings).push("DATABASE_URL is not set — the app cannot reach Postgres.");
+    (production ? errors : warnings).push("DATABASE_URL is not set, the app cannot reach Postgres.");
   }
 
   // A session secret is required for the web app to sign/verify any session at all.
   if (opts.context === "web" && !isAuthConfigured(env)) {
-    (production ? errors : warnings).push("auth is not configured (SESSION_SECRET is missing or shorter than 16 chars) — login will fail.");
+    (production ? errors : warnings).push("auth is not configured (SESSION_SECRET is missing or shorter than 16 chars), login will fail.");
   }
 
   // --- Soft (warnings; features degrade) ---
   if (production && (!env.STORAGE_ROOT || !env.STORAGE_ROOT.trim())) {
-    warnings.push("STORAGE_ROOT is not set — media/storage falls back to an EPHEMERAL in-container path (lost on container replacement). Mount a durable volume and set STORAGE_ROOT.");
+    warnings.push("STORAGE_ROOT is not set, media/storage falls back to an EPHEMERAL in-container path (lost on container replacement). Mount a durable volume and set STORAGE_ROOT.");
   }
   if (production && (!env.PUBLIC_BASE_URL || !env.PUBLIC_BASE_URL.trim())) {
-    warnings.push("PUBLIC_BASE_URL is not set — external media publishing + outbound webhook callbacks are inert until it is configured.");
+    warnings.push("PUBLIC_BASE_URL is not set, external media publishing + outbound webhook callbacks are inert until it is configured.");
   }
   // The LLM provider key powers EVERY AI feature (ask, content graph, reels, embeddings, audits). Without it
   // the app comes up green but the core product is inert — the governed-provider layer blocks each call
   // honestly (never fakes), so this is a loud warning (deploy signal), not a hard stop (audit VPS MED-2).
   if (production && (!env.OPENROUTER_API_KEY || !env.OPENROUTER_API_KEY.trim())) {
-    warnings.push("OPENROUTER_API_KEY is not set — every AI feature is BLOCKED at call time until it is configured. The app serves, but the core product is inert.");
+    warnings.push("OPENROUTER_API_KEY is not set, every AI feature is BLOCKED at call time until it is configured. The app serves, but the core product is inert.");
   }
 
   return { ok: errors.length === 0, errors, warnings };

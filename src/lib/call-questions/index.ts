@@ -129,7 +129,7 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
       return r.text;
     },
   });
-  if (!parsed.ok || !parsed.data) throw new Error(`question engine returned unusable output — ${parsed.error}`);
+  if (!parsed.ok || !parsed.data) throw new Error(`question engine returned unusable output, ${parsed.error}`);
 
   // Coverage repair: the spine is the whole reason this beats a bank, so enforce it rather than hope.
   let set = parsed.data;

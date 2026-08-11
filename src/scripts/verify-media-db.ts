@@ -45,7 +45,7 @@ async function main() {
     const blk = track(await createMediaJob({ kind: "video", prompt: `reel ${uniq}`, provider: "fal", estimatedCostCents: 0, budgetCapCents: 100, requestedBy: "Moiz" }, { store }));
     assert(!falMediaProvider.configured(), "precondition: no FAL key configured in this environment");
     const d2 = await dispatchOneMediaJob({ store, leaseOwner: "w1" }); // default registry → fal unconfigured
-    assert(d2.status === "blocked", "an UNCONFIGURED provider yields a BLOCKED job — never a fabricated success");
+    assert(d2.status === "blocked", "an UNCONFIGURED provider yields a BLOCKED job, never a fabricated success");
     const blocked = await store.getById(blk.job!.id);
     assert(blocked!.status === "blocked" && /not configured/.test(blocked!.error ?? "") && blocked!.outputRefs.length === 0, "the blocked job carries an honest reason + NO outputs");
 
@@ -54,7 +54,7 @@ async function main() {
     const r1 = await dispatchOneMediaJob({ store, providers: { boom: boomProvider }, leaseOwner: "w1" });
     assert(r1.status === "queued", "a provider error RETRIES (attempt 1 → back to queued, under the cap)");
     const r2 = await dispatchOneMediaJob({ store, providers: { boom: boomProvider }, leaseOwner: "w1" });
-    assert(r2.status === "failed", "at the attempt cap the job DEAD-LETTERS (failed) — bounded retries");
+    assert(r2.status === "failed", "at the attempt cap the job DEAD-LETTERS (failed), bounded retries");
     const failed = await store.getById(fj.job!.id);
     assert(failed!.status === "failed" && failed!.attempts === 2 && /exploded/.test(failed!.error ?? ""), "the failed job records the attempts + the provider error");
 

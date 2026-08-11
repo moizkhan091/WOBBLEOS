@@ -11,10 +11,10 @@ import { getCommercialJourney } from "@/lib/commercial-journey";
 
 async function main() {
   const company = (await listCompanies({ includeArchived: true, limit: 500 })).find((c) => /Nova Dental/i.test(c.name));
-  if (!company) throw new Error("Nova Dental prospect not found — run prove-qualification first");
+  if (!company) throw new Error("Nova Dental prospect not found, run prove-qualification first");
 
   const j = await getCommercialJourney(company.id);
-  console.log(`  COMPANY: ${j.company.name} (${j.company.industry}) — status ${j.company.status}`);
+  console.log(`  COMPANY: ${j.company.name} (${j.company.industry}), status ${j.company.status}`);
   console.log(`  JOURNEY STAGE (furthest reached): ${j.stage.toUpperCase()}`);
   console.log(`  qualification: ${j.qualification ? `Grade ${j.qualification.grade} (${j.qualification.overallScore}/100) — ${j.qualification.recommendation}` : "none"}`);
   console.log(`  opportunities (Opportunity Snapshots): ${j.opportunities.length}`);

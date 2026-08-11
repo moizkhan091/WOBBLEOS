@@ -30,35 +30,35 @@ const FACTS: TwinFact[] = [
     bank: "company", area: "company_identity", tier: "core", trust: "founder_core",
     title: "WOBBLE identity & category",
     content:
-      "WOBBLE is an AI-first transformation company for Pakistani businesses. It installs custom AI Operating Systems — AI employees, automations, dashboards, workflows, knowledge bases, SOPs, tool connections, and team training — inside businesses. It does NOT sell random AI tools, one-off automations, or hidden agency output. Core line: 'They sell you outputs. We build your operating system.' Category phrase: AI Workforce Company. Primary offer: Wobble AI OS.",
+      "WOBBLE is an AI-first transformation company for Pakistani businesses. It installs custom AI Operating Systems, AI employees, automations, dashboards, workflows, knowledge bases, SOPs, tool connections, and team training, inside businesses. It does NOT sell random AI tools, one-off automations, or hidden agency output. Core line: 'They sell you outputs. We build your operating system.' Category phrase: AI Workforce Company. Primary offer: Wobble AI OS.",
   },
   {
     bank: "company", area: "company_mission", tier: "core", trust: "founder_core",
     title: "WOBBLE mission",
     content:
-      "Mission: bring Pakistani businesses into the AI race before the global market gap becomes impossible to close — by installing custom AI Operating Systems, training teams, and turning manual operations into intelligent systems. Belief: AI capability should live inside the business, not be gatekept by agencies. 'Replace repetitive work. Upgrade the people.' Team-safe: 'We do not replace your team. We upgrade them with AI employees.'",
+      "Mission: bring Pakistani businesses into the AI race before the global market gap becomes impossible to close, by installing custom AI Operating Systems, training teams, and turning manual operations into intelligent systems. Belief: AI capability should live inside the business, not be gatekept by agencies. 'Replace repetitive work. Upgrade the people.' Team-safe: 'We do not replace your team. We upgrade them with AI employees.'",
   },
   {
     bank: "company", area: "company_offer_process", tier: "core", trust: "founder_core",
-    title: "What WOBBLE sells — fixed process, custom scope",
+    title: "What WOBBLE sells, fixed process, custom scope",
     content:
-      "WOBBLE sells a fixed process with custom scope, in four steps: (1) AI Readiness Call — free qualifier ('The call is free. The diagnosis is not.'); (2) Wobble AI OS Audit — first paid product, a deep business + technical diagnosis; (3) Wobble AI OS Buildout — custom-priced implementation, all systems or one high-leverage workflow or phased; (4) AI Transformation Partnership — monthly ongoing optimization, new buildouts, training, reviews. The process is consistent; the scope is custom.",
+      "WOBBLE sells a fixed process with custom scope, in four steps: (1) AI Readiness Call, free qualifier ('The call is free. The diagnosis is not.'); (2) Wobble AI OS Audit, first paid product, a deep business + technical diagnosis; (3) Wobble AI OS Buildout, custom-priced implementation, all systems or one high-leverage workflow or phased; (4) AI Transformation Partnership, monthly ongoing optimization, new buildouts, training, reviews. The process is consistent; the scope is custom.",
   },
   {
     bank: "company", area: "company_pricing", tier: "core", trust: "founder_core",
     title: "WOBBLE pricing philosophy",
     content:
-      "Pricing: the deep audit is NEVER free — 'We do not do free audits. We do real audits.' Model: free AI Readiness Call, paid Wobble AI OS Audit, custom-priced buildout, monthly AI Transformation Partnership. Pricing varies by complexity, company stage, scope, number of departments, depth of audit, and first implementation phase.",
+      "Pricing: the deep audit is NEVER free, 'We do not do free audits. We do real audits.' Model: free AI Readiness Call, paid Wobble AI OS Audit, custom-priced buildout, monthly AI Transformation Partnership. Pricing varies by complexity, company stage, scope, number of departments, depth of audit, and first implementation phase.",
   },
   {
     bank: "company", area: "company_icp", tier: "core", trust: "founder_core",
-    title: "WOBBLE ICP — Pakistan-first, readiness-filtered",
+    title: "WOBBLE ICP, Pakistan-first, readiness-filtered",
     content:
-      "ICP is Pakistan-first, filtered by readiness / urgency / operational pain — NOT by industry. Core ICP: owner-led growth businesses in Pakistan with real operations, messy workflows, pressure to scale, and budget for serious transformation. Strongest first market: established SMBs. Wedges: ecommerce/retail, real estate, agencies, clinics/education/services, funded startups, and Pakistani businesses operating globally (global-facing AI workflows, not 'international clients').",
+      "ICP is Pakistan-first, filtered by readiness / urgency / operational pain, NOT by industry. Core ICP: owner-led growth businesses in Pakistan with real operations, messy workflows, pressure to scale, and budget for serious transformation. Strongest first market: established SMBs. Wedges: ecommerce/retail, real estate, agencies, clinics/education/services, funded startups, and Pakistani businesses operating globally (global-facing AI workflows, not 'international clients').",
   },
   {
     bank: "company", area: "company_enemy", tier: "core", trust: "founder_core",
-    title: "WOBBLE's enemy — agency dependency",
+    title: "WOBBLE's enemy, agency dependency",
     content:
       "WOBBLE is anti-agency-DEPENDENCY, not anti-AI. Enemy = the outdated agency model that keeps businesses dependent while hiding the process, owning the system, and selling outputs. Public contrast: 'Most agencies are becoming AI middlemen. Wobble installs the capability inside your business.' Attack the MODEL, never named companies or people without evidence and legal clearance.",
   },
@@ -66,7 +66,7 @@ const FACTS: TwinFact[] = [
     bank: "company", area: "company_payment_boundary", tier: "core", trust: "founder_core",
     title: "WOBBLE payment boundary",
     content:
-      "Payment boundary: 'AI can prepare the paperwork. Humans approve the money.' WOBBLE can draft invoices, prepare payment reminders, organize receivables/payables, summarize outstanding invoices, and prepare reconciliation reports — but NEVER promises AI sending, approving, or moving money, or making final financial decisions, as a default part of the AI OS.",
+      "Payment boundary: 'AI can prepare the paperwork. Humans approve the money.' WOBBLE can draft invoices, prepare payment reminders, organize receivables/payables, summarize outstanding invoices, and prepare reconciliation reports, but NEVER promises AI sending, approving, or moving money, or making final financial decisions, as a default part of the AI OS.",
   },
   {
     bank: "company", area: "company_data_moat", tier: "core", trust: "founder_core",
@@ -97,7 +97,7 @@ const FACTS: TwinFact[] = [
     bank: "brand", area: "brand_language_system", tier: "core", trust: "founder_core",
     title: "WOBBLE language system",
     content:
-      "Language system — use with intention: 'AI Employees' = main public phrase (website, social, brand, client-facing). 'AI Agents' = technical/architecture phrase (docs, build specs, implementation plans). 'AI Teammates' = employee-safe adoption phrase (workshops, training, change management). 'Automations' = repeated workflows, data movement, reports, pipelines. Recommended public phrase: 'AI employees and automations inside your business.'",
+      "Language system, use with intention: 'AI Employees' = main public phrase (website, social, brand, client-facing). 'AI Agents' = technical/architecture phrase (docs, build specs, implementation plans). 'AI Teammates' = employee-safe adoption phrase (workshops, training, change management). 'Automations' = repeated workflows, data movement, reports, pipelines. Recommended public phrase: 'AI employees and automations inside your business.'",
   },
   {
     bank: "brand", area: "brand_positioning", tier: "core", trust: "founder_core",
@@ -108,20 +108,20 @@ const FACTS: TwinFact[] = [
   // ---- design bank: WOBBLE Design DNA (working / founder_core) ----
   {
     bank: "design", area: "design_dna_palette", tier: "working", trust: "founder_core",
-    title: "WOBBLE Design DNA — palette & feel",
+    title: "WOBBLE Design DNA, palette & feel",
     content:
       "WOBBLE Design DNA (color): primary electric lime #B8FF2C. Core palette: black / near-black, white, electric lime. Accent palette: deep blue and orange ONLY when needed, never as the core mood. Visual feel: dark interface, electric intelligence, movement, future-work energy.",
   },
   {
     bank: "design", area: "design_dna_motifs", tier: "working", trust: "founder_core",
-    title: "WOBBLE Design DNA — motifs & promise",
+    title: "WOBBLE Design DNA, motifs & promise",
     content:
-      "WOBBLE Design DNA (form): graphic motifs are orb/sphere, distorted W, motion trail, dot fields, line waves, and a consistent icon system. Logo direction: minimal wordmark or iconic wobble dot/orb. Personality: bold, fast, unpredictable, intelligent, rebellious. Visual promise: NOT corporate SaaS beige, NOT generic AI blue, NOT agency pastel — WOBBLE should look like a system from the future entering Pakistani business.",
+      "WOBBLE Design DNA (form): graphic motifs are orb/sphere, distorted W, motion trail, dot fields, line waves, and a consistent icon system. Logo direction: minimal wordmark or iconic wobble dot/orb. Personality: bold, fast, unpredictable, intelligent, rebellious. Visual promise: NOT corporate SaaS beige, NOT generic AI blue, NOT agency pastel, WOBBLE should look like a system from the future entering Pakistani business.",
   },
   // ---- offer bank: the first paid offer in detail (working / approved_expert) ----
   {
     bank: "offer", area: "offer_ai_os_audit", tier: "working", trust: "approved_expert",
-    title: "Wobble AI OS Audit — the first paid offer",
+    title: "Wobble AI OS Audit, the first paid offer",
     content:
       "Wobble AI OS Audit (first paid offer): a deep business + technical diagnosis mapping where AI creates the most leverage across the company, turned into a clear implementation roadmap. Outputs: current-state business map, workflow bottleneck map, AI opportunity map, priority chart (automate 1st / 2nd / 3rd), recommended AI OS architecture, dashboard + AI-employee + automation + tool recommendations, data/SOP/knowledge needs, training needs, implementation timeline and phases, safety and human-review requirements, and a final report the client can use internally or with any builder. Promise: 'The audit alone should make your business smarter.'",
   },
@@ -144,7 +144,7 @@ async function upsertSelfCompany() {
     status: "internal",
     clientType: "self",
     companySize: "startup",
-    notes: "WOBBLE itself — the Company Twin. AI-first transformation company installing custom AI Operating Systems inside Pakistani businesses.",
+    notes: "WOBBLE itself, the Company Twin. AI-first transformation company installing custom AI Operating Systems inside Pakistani businesses.",
     tags: ["company-twin", "internal", "wobble"],
     metadata: { isCompanyTwin: true, source: "docs/WOBBLE_COMPANY_OS.md" },
     createdBy: FOUNDER,
@@ -188,7 +188,7 @@ async function main() {
   console.log("  retrieval 'what does WOBBLE sell' ->", preview(q1));
   console.log("  retrieval 'brand voice / do-not-say' ->", preview(q2));
   console.log("  retrieval 'brand color / design' ->", preview(q3));
-  console.log(`  company twin id=${twin.id} — WOBBLE onboarded as the canonical Company Twin.`);
+  console.log(`  company twin id=${twin.id}, WOBBLE onboarded as the canonical Company Twin.`);
 }
 
 main().then(() => closeDb()).catch(async (e) => { console.error(e); await closeDb(); process.exit(1); });

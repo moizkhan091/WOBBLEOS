@@ -92,7 +92,7 @@ export async function runHandoffHop<T>(
   const check = validateHandoff(claimed.envelope, receiverCtx);
   if (!check.ok) {
     await failHandoff(claimed.id, `claimed handoff failed re-validation: ${check.errors.join("; ")}`, deps);
-    throw new Error(`handoff transport: claimed handoff ${claimed.id} invalid — ${check.errors.join("; ")}`);
+    throw new Error(`handoff transport: claimed handoff ${claimed.id} invalid, ${check.errors.join("; ")}`);
   }
 
   // 5. Execute the destination node — gated behind the valid claim.

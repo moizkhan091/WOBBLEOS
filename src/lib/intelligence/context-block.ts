@@ -32,14 +32,14 @@ export async function getIntelligenceContextBlock(
 
   const lines: string[] = [];
   if (ctx.insights.length) {
-    lines.push("APPROVED INSIGHTS (act on these — they are current, founder-approved conclusions):");
+    lines.push("APPROVED INSIGHTS (act on these, they are current, founder-approved conclusions):");
     for (const i of ctx.insights) {
       lines.push(`- [${i.insightType}] ${i.title}: ${i.summary}${i.recommendation ? ` → ${i.recommendation}` : ""}${typeof i.impactScore === "number" ? ` (impact ${i.impactScore})` : ""}`);
     }
   }
   if (ctx.items.length) {
     lines.push("");
-    lines.push("APPROVED OBSERVATIONS (recent facts — competitor moves, performance, market signals):");
+    lines.push("APPROVED OBSERVATIONS (recent facts, competitor moves, performance, market signals):");
     for (const it of ctx.items) {
       const extra = it.extracted && Object.keys(it.extracted).length ? ` {${Object.entries(it.extracted).slice(0, 4).map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`).join("; ")}}` : "";
       lines.push(`- [${it.itemType}${it.freshnessStatus && it.freshnessStatus !== "current" ? "/" + it.freshnessStatus : ""}] ${it.title}: ${it.summary}${extra}`);
@@ -48,7 +48,7 @@ export async function getIntelligenceContextBlock(
 
   const hasIntelligence = ctx.items.length > 0 || ctx.insights.length > 0;
   const header = hasIntelligence
-    ? "== CURRENT WOBBLE INTELLIGENCE (ground your output in this live, approved knowledge — do not contradict it or fall back to stale assumptions) ==\n"
+    ? "== CURRENT WOBBLE INTELLIGENCE (ground your output in this live, approved knowledge, do not contradict it or fall back to stale assumptions) ==\n"
     : "";
   const gapNote = ctx.gaps.length ? `\n(Intelligence gaps for this task: ${ctx.gaps.join(", ")}. Use brand truth + first principles for those; do not invent specifics.)` : "";
 

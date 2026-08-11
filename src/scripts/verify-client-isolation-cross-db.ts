@@ -244,7 +244,7 @@ async function main() {
     const businessCanariesInAsk = CLIENTS.filter((c) => askPrompt.includes(c.canary)).length;
     assert(
       businessCanariesInAsk === 0 || businessCanariesInAsk === CLIENTS.length,
-      `Ask's business snapshot is founder-scoped — it shows ALL clients' records or none, never a partial subset (saw ${businessCanariesInAsk}/${CLIENTS.length})`,
+      `Ask's business snapshot is founder-scoped, it shows ALL clients' records or none, never a partial subset (saw ${businessCanariesInAsk}/${CLIENTS.length})`,
     );
 
     // ═══ 6. MEDIA JOBS — client-scoped rows ══════════════════════════════════════════════════════
@@ -305,7 +305,7 @@ async function main() {
     const auditText = JSON.stringify(capturedAudits);
     assert(foreignOf("alpha").every((f) => !auditText.includes(f)), "the callback's audit trail carries NO foreign client canary");
 
-    console.log("\n✅ cross-system client-isolation sweep passed — no foreign canary on any high-risk path (memory, scoped reads, ownership, content, prompts, media, jobs under concurrency+retry, n8n)");
+    console.log("\n✅ cross-system client-isolation sweep passed, no foreign canary on any high-risk path (memory, scoped reads, ownership, content, prompts, media, jobs under concurrency+retry, n8n)");
   } finally {
     // Cleanup (FK order: posts/assets → packets/tracks; chunks/links → records → banks; jobs; etc.)
     await db.delete(scheduledPosts).where(inArray(scheduledPosts.assetId, assetIds.length ? assetIds : ["_"])).catch(() => {});

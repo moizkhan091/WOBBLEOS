@@ -294,10 +294,10 @@ export function buildDeliveryCompletion(input: BuildDeliveryCompletionInput, opt
 
   // ---- reusable lessons: qualitative + de-identified (safe for internal Research), input merged first ----
   const derivedLessons: string[] = [];
-  if (!onBudget) derivedLessons.push("Engagement exceeded its approved budget — revisit scoping and estimation.");
-  if (incompleteTasks.length > 0) derivedLessons.push("Delivery closed with unfinished tasks — tighten milestone planning and scope control.");
-  if (outstandingCents > 0) derivedLessons.push("Payment still outstanding at completion — tie invoicing to delivery milestones.");
-  if (qualityIsFail(input.qualityStatus)) derivedLessons.push("Quality review did not pass at close-out — strengthen the QA gate before delivery.");
+  if (!onBudget) derivedLessons.push("Engagement exceeded its approved budget, revisit scoping and estimation.");
+  if (incompleteTasks.length > 0) derivedLessons.push("Delivery closed with unfinished tasks, tighten milestone planning and scope control.");
+  if (outstandingCents > 0) derivedLessons.push("Payment still outstanding at completion, tie invoicing to delivery milestones.");
+  if (qualityIsFail(input.qualityStatus)) derivedLessons.push("Quality review did not pass at close-out, strengthen the QA gate before delivery.");
   const reusableLessons = dedupe([...(input.reusableLessons ?? []), ...derivedLessons]);
 
   // ---- evidence: real provenance backing every claim above ----

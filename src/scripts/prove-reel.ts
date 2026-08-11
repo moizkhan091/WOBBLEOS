@@ -31,7 +31,7 @@ const liveProvider: ReelTextProvider = async ({ messages, temperature, maxTokens
 
 const MOIZ_GRAVEYARD = [
   "Your CRM is a graveyard.",
-  "Hundreds of leads in there, stone cold — and you paid for every one.",
+  "Hundreds of leads in there, stone cold, and you paid for every one.",
   "Here's the fix.",
   "An AI system texts your whole dead list, and books the ones who reply straight into your calendar.",
   "No new ad spend. Just money you already paid for, coming back.",
@@ -69,9 +69,9 @@ const scriptedDirector: ReelTextProvider = async ({ messages }) => {
         ],
       };
     } else if (/texts|books|calendar|reply/i.test(words.join(" "))) {
-      scene.mockup = { kind: "chat", header: "AI · reactivation", bubbles: [{ from: "us", text: "Hi Sara — still looking to get that roof quote?" }, { from: "them", text: "Yes! This week works." }, { from: "us", text: "Booked you Sat 2:00 PM ✓" }] };
+      scene.mockup = { kind: "chat", header: "AI · reactivation", bubbles: [{ from: "us", text: "Hi Sara, still looking to get that roof quote?" }, { from: "them", text: "Yes! This week works." }, { from: "us", text: "Booked you Sat 2:00 PM ✓" }] };
     } else if (isLast) {
-      scene.mockup = { kind: "notification", title: "New booking", body: "Sat 2:00 PM — from a dead lead" };
+      scene.mockup = { kind: "notification", title: "New booking", body: "Sat 2:00 PM, from a dead lead" };
     }
     scenes.push(scene);
     idx = to;

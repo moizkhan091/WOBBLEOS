@@ -95,7 +95,7 @@ export const DEFAULT_MODEL_CATALOG: ModelCatalog = [
     costTier: "cheap",
     status: "active",
     goodFor: ["semantic-memory", "retrieval"],
-    notes: "1536 dims — matches the memory_chunks / intelligence embedding columns.",
+    notes: "1536 dims, matches the memory_chunks / intelligence embedding columns.",
   },
   {
     id: "openai/text-embedding-3-large",
@@ -105,7 +105,7 @@ export const DEFAULT_MODEL_CATALOG: ModelCatalog = [
     costTier: "mid",
     status: "experimental",
     goodFor: ["semantic-memory", "retrieval"],
-    notes: "3072 dims — higher recall but would require a schema/dimension change before use.",
+    notes: "3072 dims, higher recall but would require a schema/dimension change before use.",
   },
   {
     id: "fal-ai/seedance",

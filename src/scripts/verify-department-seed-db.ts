@@ -24,7 +24,7 @@ async function main() {
   const pa = await getDepartment("paid_audit", deps);
   assert(pa?.status === "active" && pa?.orchestratorAgentSlug === "paid_audit_orchestrator", "paid_audit is active with its orchestrator");
   const paMembers = await listMembers("paid_audit", deps);
-  assert(paMembers.length === 6, `paid_audit has its full team (5 specialists + 1 service) — got ${paMembers.length}`);
+  assert(paMembers.length === 6, `paid_audit has its full team (5 specialists + 1 service), got ${paMembers.length}`);
   assert(paMembers.some((m) => m.memberType === "service" && m.memberRef === "assemblePaidAuditReport"), "the deterministic assembler service is a member");
 
   const content = await getDepartment("content", deps);

@@ -54,9 +54,9 @@ export function resolveRequestedFormat(url: string, fallback: DocumentFormat): R
 export function formatChoices(): Array<{ id: DocumentFormat; label: string; hint: string }> {
   const size = (f: DocumentFormat) => `${FORMATS[f].pageWidth}×${FORMATS[f].pageHeight}${FORMATS[f].pageUnit}`;
   return [
-    { id: "deck16x9", label: "Slides (16:9)", hint: `${size("deck16x9")} — present on screen` },
-    { id: "deckA4", label: "A4 deck", hint: `${size("deckA4")} — print / leave-behind` },
-    { id: "document", label: "Document", hint: `${size("document")} — prose report to read and annotate` },
+    { id: "deck16x9", label: "Slides (16:9)", hint: `${size("deck16x9")}, present on screen` },
+    { id: "deckA4", label: "A4 deck", hint: `${size("deckA4")}, print / leave-behind` },
+    { id: "document", label: "Document", hint: `${size("document")}, prose report to read and annotate` },
   ];
 }
 

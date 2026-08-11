@@ -53,7 +53,7 @@ async function main() {
   assert(env.expectedOutputSchema === "business_audit", "routed handoff carries the product schema");
   // Narrowed to inbound ∩ proposal's grant: inbound [company,research,brand] ∩ proposal [company,offer,research]
   // → [company,research]. The inbound 'brand' scope is DROPPED (routing never widens, and here it narrows).
-  assert(JSON.stringify(env.authorizedMemoryScopes) === JSON.stringify(["company", "research"]), "routed memory scope narrowed to inbound ∩ proposal's grant — inbound 'brand' dropped");
+  assert(JSON.stringify(env.authorizedMemoryScopes) === JSON.stringify(["company", "research"]), "routed memory scope narrowed to inbound ∩ proposal's grant, inbound 'brand' dropped");
   assert(env.causationId === envelope.taskId, "lineage intact (causation = the inbound task)");
 
   await db.delete(handoffs).where(eq(handoffs.workflowId, wf));

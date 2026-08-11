@@ -55,7 +55,7 @@ async function main() {
   try {
     await seedDepartments({ store: registryStore(db), recordAudit: async () => {} });
 
-    console.log("\nAutonomous consumer loop — origination → autonomous claim → Proposal runs → handoff completed:");
+    console.log("\nAutonomous consumer loop, origination → autonomous claim → Proposal runs → handoff completed:");
 
     // A real audit row (the Paid Audit product) the Proposal service maps deterministically.
     const auditRow = buildAuditRow({ businessName: "Acme (consumer verify)", companyId, createdBy: "Moiz", signals: [], problems: [] }, AUDIT_REPORT, { now, kind: "paid" });
@@ -109,7 +109,7 @@ async function main() {
     const again = await runDepartmentConsumerTick({ onlyDepartments: ["proposal"], handoffStore: handoffStore(db), proposal: { synthesize: async () => CANNED_SYNTHESIS }, recordAudit: async () => {}, now });
     void again; // a completed handoff is terminal — it is never re-run
     const finalRows = await db.select().from(proposals).where(eq(proposals.auditId, auditRow.id));
-    assert(finalRows.length === 1, "the completed handoff is terminal — the proposal was not created twice");
+    assert(finalRows.length === 1, "the completed handoff is terminal, the proposal was not created twice");
 
     console.log("\nALL REAL-DB DEPARTMENT CONSUMER LOOP CHECKS PASSED ✅");
   } finally {

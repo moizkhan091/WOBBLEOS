@@ -126,7 +126,7 @@ export const providerHealthProvider: SignalFetcher = async (scope, ctx) => {
     .map((w): BriefSignalDraft => ({
       category: "provider_health",
       title: `Worker offline: ${w.workerName}`,
-      summary: `The ${w.workerType} worker "${w.workerName}" has not reported in ${w.lastSeenSecondsAgo}s — background processing may be stalled.`,
+      summary: `The ${w.workerType} worker "${w.workerName}" has not reported in ${w.lastSeenSecondsAgo}s, background processing may be stalled.`,
       severity: (w.lastSeenSecondsAgo > 300 ? "high" : "medium") as SignalSeverity,
       confidence: conf("high", 0.9),
       freshnessAt: w.heartbeatAt,
@@ -147,7 +147,7 @@ export const kpiProvider: SignalFetcher = async (scope, ctx) => {
   return [{
     category: "kpi",
     title: `${overdue.length} task${overdue.length === 1 ? "" : "s"} overdue`,
-    summary: `${overdue.length} task${overdue.length === 1 ? " is" : "s are"} past due — work is slipping. Top: ${overdue.slice(0, 3).map((t) => t.title).join("; ")}`,
+    summary: `${overdue.length} task${overdue.length === 1 ? " is" : "s are"} past due, work is slipping. Top: ${overdue.slice(0, 3).map((t) => t.title).join("; ")}`,
     severity: (overdue.length >= 5 ? "high" : "medium") as SignalSeverity,
     confidence: conf("high", 0.9),
     freshnessAt: ctx.now,
@@ -169,7 +169,7 @@ export const crmMovementProvider: SignalFetcher = async (scope, ctx) => {
       return {
         category: "crm_movement",
         title: `Deal stalling: ${o.name}`,
-        summary: `"${o.name}" (${o.stage}, ${(o.valueCents / 100).toFixed(0)} ${o.currency}) has an overdue next action — ${daysStalled} day(s) stalled.`,
+        summary: `"${o.name}" (${o.stage}, ${(o.valueCents / 100).toFixed(0)} ${o.currency}) has an overdue next action, ${daysStalled} day(s) stalled.`,
         severity: (daysStalled > 7 ? "high" : "medium") as SignalSeverity,
         confidence: conf("high", 0.85),
         freshnessAt: o.nextActionAt,

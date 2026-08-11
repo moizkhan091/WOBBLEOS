@@ -202,7 +202,7 @@ export function buildStrategyPrompt(input: {
   brain: Array<{ title: string; content: string }>;
   knowledgeTopics: string[];
 }): ProviderMessage[] {
-  const system = `You are the Content STRATEGIST (creative director) for ${input.track.personaName}. Decide the single best thing to post now: the TOPIC, the ANGLE (fresh — avoid the obvious), the FORMAT, the PLATFORM, the target audience, and the concrete objective. Ground your choice in what we actually know. Respond with STRICT JSON only:
+  const system = `You are the Content STRATEGIST (creative director) for ${input.track.personaName}. Decide the single best thing to post now: the TOPIC, the ANGLE (fresh, avoid the obvious), the FORMAT, the PLATFORM, the target audience, and the concrete objective. Ground your choice in what we actually know. Respond with STRICT JSON only:
 {"topic":"...","angle":"...","platform":"instagram|linkedin|x|youtube|multi","format":"static|carousel|text|thread|reel_script|youtube_script","targetAudience":"...","objective":"...","rationale":"..."}`;
   const context = [
     `OBJECTIVE: ${input.objective}`,
@@ -220,11 +220,11 @@ export function buildStrategyPrompt(input: {
 }
 
 export function buildEvidencePrompt(input: { brief: CreativeBrief; notes: GraphKnowledgeNote[]; chunks: GraphSourceChunk[] }): ProviderMessage[] {
-  const system = `You are the Content RESEARCHER. For the given brief, assemble the EVIDENCE from ONLY the numbered knowledge notes and source chunks below — never invent. Cite the indexes you used. If evidence is thin, say so and keep claimRiskLevel low. Respond with STRICT JSON only:
+  const system = `You are the Content RESEARCHER. For the given brief, assemble the EVIDENCE from ONLY the numbered knowledge notes and source chunks below, never invent. Cite the indexes you used. If evidence is thin, say so and keep claimRiskLevel low. Respond with STRICT JSON only:
 {"supportingPoints":[{"point":"...","noteIndexes":[0],"chunkIndexes":[0]}],"evidenceSummary":"...","claimRiskLevel":"low|medium|high","proofRequired":false}`;
   const notes = input.notes.map((n, i) => `NOTE[${i}] (${n.noteType}) ${n.title}: ${n.content}`).join("\n");
   const chunks = input.chunks.map((c, i) => `CHUNK[${i}] ${c.content}`).join("\n");
-  const user = `BRIEF: ${input.brief.topic} — angle: ${input.brief.angle}\n\nKNOWLEDGE NOTES:\n${notes || "(none)"}\n\nSOURCE CHUNKS:\n${chunks || "(none)"}`;
+  const user = `BRIEF: ${input.brief.topic}, angle: ${input.brief.angle}\n\nKNOWLEDGE NOTES:\n${notes || "(none)"}\n\nSOURCE CHUNKS:\n${chunks || "(none)"}`;
   return [
     { role: "system", content: system },
     { role: "user", content: user },
@@ -237,7 +237,7 @@ export function buildCopyDraftPrompt(input: { brief: CreativeBrief; evidence: Ev
 Respond with STRICT JSON only:
 {"hook":"...","mainCopy":"...","caption":"...","cta":"...","carouselSlides":[{"heading":"...","body":"..."}],"designDirection":"..."}`;
   const evidence = input.evidence.supportingPoints.map((p, i) => `- ${p.point}`).join("\n");
-  const user = `TOPIC: ${input.brief.topic}\nANGLE: ${input.brief.angle}\nPLATFORM: ${input.brief.platform}\nFORMAT: ${input.brief.format}\nAUDIENCE: ${input.brief.targetAudience}\n\nEVIDENCE:\n${evidence || "(thin — keep claims soft)"}`;
+  const user = `TOPIC: ${input.brief.topic}\nANGLE: ${input.brief.angle}\nPLATFORM: ${input.brief.platform}\nFORMAT: ${input.brief.format}\nAUDIENCE: ${input.brief.targetAudience}\n\nEVIDENCE:\n${evidence || "(thin, keep claims soft)"}`;
   return [
     { role: "system", content: system },
     { role: "user", content: user },

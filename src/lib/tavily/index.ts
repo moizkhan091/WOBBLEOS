@@ -47,7 +47,7 @@ export interface TavilyDeps extends ProviderBudgetDeps {
 export class TavilyNotConfiguredError extends Error {
   readonly name = "TavilyNotConfiguredError";
   constructor() {
-    super("Tavily is not configured (TAVILY_API_KEY absent) — search is blocked, never faked");
+    super("Tavily is not configured (TAVILY_API_KEY absent), search is blocked, never faked");
   }
 }
 

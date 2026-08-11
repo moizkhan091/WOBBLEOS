@@ -125,7 +125,7 @@ export async function resumeEscalation(id: string, actor: string, deps: Escalati
   if (!row.handoffId) return { ok: false, error: "escalation has no linked handoff to resume" };
   const rt = await handoffRuntime(deps);
   const state = await rt.getState(row.handoffId);
-  if (state === "completed" || state === "cancelled") return { ok: false, error: `handoff is ${state} — not resumable` };
+  if (state === "completed" || state === "cancelled") return { ok: false, error: `handoff is ${state}, not resumable` };
   const redriven = await rt.redrive(row.handoffId, actor);
   if (!redriven) return { ok: false, error: "handoff could not be redriven (not in a resumable state)" };
   await resolveEscalation(id, { action: "resume", resolution: `Resumed by ${actor}: handoff ${row.handoffId} redriven`, resolvedBy: actor }, deps);
@@ -209,7 +209,7 @@ export async function rerouteEscalation(id: string, actor: string, input: Rerout
   // 1-2. Load the blocked handoff + reject terminal work.
   const blocked = await getHandoff(row.handoffId);
   if (!blocked) return { ok: false, error: "linked handoff not found" };
-  if (["completed", "cancelled"].includes(blocked.deliveryState)) return { ok: false, error: `handoff is ${blocked.deliveryState} — cannot reroute terminal work` };
+  if (["completed", "cancelled"].includes(blocked.deliveryState)) return { ok: false, error: `handoff is ${blocked.deliveryState}, cannot reroute terminal work` };
 
   // 3. Load + verify the alternate destination.
   const to = await loadDepartment(input.destinationDepartment);

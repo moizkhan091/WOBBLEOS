@@ -51,7 +51,7 @@ async function main() {
     const rerun = new Set(cycle.plan.rerun);
     assert(rerun.has("c2") && rerun.has("c5") && rerun.has("c8"), "the 3 failed components (c2, c5, c8) are in the rerun set");
     assert(rerun.has("c3") && rerun.has("c4") && rerun.has("c6") && rerun.has("c7"), "the transitive DEPENDENTS of the failed components are pulled into the rerun (consistency)");
-    assert(cycle.plan.preserved.length === 1 && cycle.plan.preserved[0] === "c1", "ONLY the upstream approved component (c1) is preserved — its evidence + version untouched");
+    assert(cycle.plan.preserved.length === 1 && cycle.plan.preserved[0] === "c1", "ONLY the upstream approved component (c1) is preserved, its evidence + version untouched");
     assert(!cycle.plan.specialists.includes("specialist_c1"), "the preserved component's specialist is NOT re-invoked (no full-team regeneration)");
     const c1 = cycle.components.find((c) => c.key === "c1")!;
     assert(c1.status === "approved" && c1.version === 1, "the preserved component stays approved at version 1");
@@ -62,11 +62,11 @@ async function main() {
     const rr = await driveSelectiveGraphRerun(cycle.id, { ...deps, checkpointStore: store });
     assert(rr.cleared === 7, "exactly the 7 rerun nodes' checkpoints were cleared");
     const remaining = await store.listCheckpoints(graphRunId);
-    assert(remaining.length === 1 && remaining[0].nodeSlug === "c1", "ONLY the preserved node's (c1) checkpoint survives — a re-run reuses it and regenerates exactly the rerun nodes");
+    assert(remaining.length === 1 && remaining[0].nodeSlug === "c1", "ONLY the preserved node's (c1) checkpoint survives, a re-run reuses it and regenerates exactly the rerun nodes");
     // THE PAYOFF: a re-run bound to the SAME graphRunId reuses the preserved node's cached output and regenerates
     // the rest — i.e. loadCheckpointContext offers exactly c1 for reuse (the reran nodes are absent → regenerated).
     const resumeCtx = await loadCheckpointContext({ graph: "content_graph", graphRunId, schemaVersion: 1 }, { store });
-    assert(resumeCtx.cached.size === 1 && resumeCtx.cached.has("c1"), "a re-run under the PRESERVED graphRunId reuses exactly the preserved node (c1) — the reuse loop actually closes, not just the delete");
+    assert(resumeCtx.cached.size === 1 && resumeCtx.cached.has("c1"), "a re-run under the PRESERVED graphRunId reuses exactly the preserved node (c1), the reuse loop actually closes, not just the delete");
 
     // STATE MACHINE: the rerun is dispatched → planned → reran (so a subsequent revise opens a fresh cycle).
     assert(await markRevisionReran(cycle.id, deps), "the cycle transitions planned → reran once the rerun is dispatched");
@@ -84,7 +84,7 @@ async function main() {
     const rolled = (await getRevisionCycle(cycle.id, deps))!;
     assert(rolled.status === "rolled_back", "the cycle status is rolled_back");
     assert(rolled.components.every((c) => c.version === 1), "every component is restored to version 1 (the pre-revision snapshot)");
-    assert(rolled.components.filter((c) => failed.includes(c.key)).every((c) => c.status === "failed"), "the originally-FAILED components are restored to `failed` — rollback undoes the revision, it does not launder a QA failure");
+    assert(rolled.components.filter((c) => failed.includes(c.key)).every((c) => c.status === "failed"), "the originally-FAILED components are restored to `failed`, rollback undoes the revision, it does not launder a QA failure");
     assert(rolled.components.filter((c) => !failed.includes(c.key)).every((c) => c.status === "approved"), "the originally-approved components are restored to `approved`");
 
     // ---- AUDIT-REPORT artifact: the same durable model bound to the paid_audit graph (5 linear nodes) --------

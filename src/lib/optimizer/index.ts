@@ -285,7 +285,7 @@ export async function runOptimizerCycle(opts: { trigger?: "scheduled" | "manual"
       evidence: [o.id], estimatedValue: String(estimatedValue), estimatedCostCents: spec.costCents, riskLevel: spec.risk, score: String(score),
       historicalBaselineMetric: String(baseline), historicalCandidateMetric: String(projectedTarget), historicalSampleSize: o.sampleSize,
       // Persist the signal + metricKey so the auto-monitor can re-measure THIS activation's target metric later.
-      metadata: { evaluation, projectedTarget, signalType: o.signalType, metricKey: o.metricKey, estimateNote: "projectedTarget is an estimate of the gap worth closing — NOT a backtest of the change" },
+      metadata: { evaluation, projectedTarget, signalType: o.signalType, metricKey: o.metricKey, estimateNote: "projectedTarget is an estimate of the gap worth closing, NOT a backtest of the change" },
       status: "proposed", version: 1, createdAt: now, updatedAt: now,
     });
     await audit(deps, { eventType: "optimizer.opportunity_proposed", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: proposalId, actor: "optimizer", metadata: { signalType: o.signalType, targetType: spec.targetType, estimatedValue, score, baseline, projectedTarget, evaluationPassed: evaluation.passed } });
@@ -373,7 +373,7 @@ export async function approveProposal(id: string, opts: { approvedBy: string }, 
   if (row.status !== "proposed") return { ok: false, error: `cannot approve a '${row.status}' proposal (must be proposed)` };
   // Re-evaluate the evidence from the persisted metrics (don't trust a possibly-stale stored flag).
   const evaluation = evaluateEvidence({ baseline: num(row.historicalBaselineMetric), sampleSize: Number(row.historicalSampleSize ?? 0) });
-  if (!evaluation.passed) return { ok: false, error: `cannot approve — ${evaluation.reason}` };
+  if (!evaluation.passed) return { ok: false, error: `cannot approve, ${evaluation.reason}` };
   await store.updateProposal(id, { status: "approved", approvedBy: opts.approvedBy, approvedAt: now, updatedAt: now });
   await audit(deps, { eventType: "optimizer.proposal_approved", module: OPTIMIZER_MODULE, entityType: "improvement_proposal", entityId: id, actor: opts.approvedBy, metadata: { evaluation: evaluation.reason } });
   return { ok: true };

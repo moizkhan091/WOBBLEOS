@@ -64,7 +64,7 @@ export async function runAuditRoadmap(input: RunRoadmapInput, deps: RoadmapDeps 
   const entityId = input.companyId ?? input.businessName;
   const stakeholders = input.stakeholders ?? [];
 
-  // Read the client's own pitch (Doc 1) — DATA ISOLATION: only this client's document.
+  // Read the client's own pitch (Doc 1), DATA ISOLATION: only this client's document.
   let pitchSummary = "";
   let whatWeNoticed: string[] = [];
   if (input.pitchAuditId) {

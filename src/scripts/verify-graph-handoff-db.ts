@@ -51,12 +51,12 @@ async function main() {
   // 2. Lineage: one correlation across the run, and a causation chain linking the hops.
   assert(new Set(rows.map((r) => r.correlationId)).size === 1, "one correlationId across the whole workflow");
   const withCausation = rows.filter((r) => r.causationId !== null);
-  assert(withCausation.length === 4, "4 of 5 handoffs carry a causationId (the entry hop has none) — lineage intact");
+  assert(withCausation.length === 4, "4 of 5 handoffs carry a causationId (the entry hop has none), lineage intact");
 
   // 3. Retry idempotency: re-running with the SAME graphRunId dedups to the existing handoffs (no churn).
   await runPaidAuditGraph({ businessName: "Acme", intakeNotes: "x", requestedBy: "Moiz", companyId: "clientVDB", graphRunId }, deps);
   const afterRetry = await db.select().from(handoffsTable).where(eq(handoffsTable.workflowId, graphRunId));
-  assert(afterRetry.length === 5, `still exactly 5 handoffs after a retry (deduped, no churn) — got ${afterRetry.length}`);
+  assert(afterRetry.length === 5, `still exactly 5 handoffs after a retry (deduped, no churn), got ${afterRetry.length}`);
 
   // Cleanup.
   await db.delete(handoffsTable).where(eq(handoffsTable.workflowId, graphRunId));

@@ -59,7 +59,7 @@ export interface ElevenLabsDeps extends ProviderBudgetDeps {
 export class ElevenLabsNotConfiguredError extends Error {
   readonly name = "ElevenLabsNotConfiguredError";
   constructor() {
-    super("ElevenLabs is not configured (ELEVENLABS_API_KEY absent) — voiceover is blocked, never faked");
+    super("ElevenLabs is not configured (ELEVENLABS_API_KEY absent), voiceover is blocked, never faked");
   }
 }
 
@@ -83,7 +83,7 @@ export async function elevenLabsVoiceoverWithTimestamps(input: ElevenLabsVoiceov
   if (!input.voiceId?.trim()) throw new Error("voiceId is required for ElevenLabs voiceover");
   const text = input.text?.trim() ?? "";
   if (!text) throw new Error("text is required for ElevenLabs voiceover");
-  if (text.length > ELEVENLABS_MAX_CHARS) throw new Error(`text exceeds ${ELEVENLABS_MAX_CHARS} chars (${text.length}) — split it`);
+  if (text.length > ELEVENLABS_MAX_CHARS) throw new Error(`text exceeds ${ELEVENLABS_MAX_CHARS} chars (${text.length}), split it`);
 
   const fetchImpl = deps.fetchImpl ?? fetch;
   const modelId = input.modelId ?? ELEVENLABS_DEFAULT_MODEL;
@@ -130,7 +130,7 @@ export async function elevenLabsVoiceover(input: ElevenLabsVoiceoverInput, deps:
   if (!input.voiceId?.trim()) throw new Error("voiceId is required for ElevenLabs voiceover");
   const text = input.text?.trim() ?? "";
   if (!text) throw new Error("text is required for ElevenLabs voiceover");
-  if (text.length > ELEVENLABS_MAX_CHARS) throw new Error(`text exceeds ${ELEVENLABS_MAX_CHARS} chars (${text.length}) — split it`);
+  if (text.length > ELEVENLABS_MAX_CHARS) throw new Error(`text exceeds ${ELEVENLABS_MAX_CHARS} chars (${text.length}), split it`);
 
   const fetchImpl = deps.fetchImpl ?? fetch;
   const modelId = input.modelId ?? ELEVENLABS_DEFAULT_MODEL;

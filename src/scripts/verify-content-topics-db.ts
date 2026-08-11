@@ -73,7 +73,7 @@ async function main() {
 
     // idempotent: a second decision is a no-op
     const again = await reviewTopic({ topicId: target.id, decision: "rejected", reviewedBy: "moiz" }, deps);
-    assert(again?.status === "approved", "review is idempotent — a re-decide does not flip an already-decided topic");
+    assert(again?.status === "approved", "review is idempotent, a re-decide does not flip an already-decided topic");
 
     const promoted = await markTopicPromoted(target.id, { actor: "moiz", graphRunId: "g1", packetId: "p1" }, deps);
     assert(promoted?.status === "promoted" && promoted?.promotedPacketId === "p1", "an approved topic promotes and records its packet");

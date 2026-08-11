@@ -35,7 +35,7 @@ export async function runCompetitorScout(input: ScoutInput, deps: IntelligenceDe
   }
   if (platform !== "instagram") {
     // Only the Instagram actor is wired today; other platforms use the /api/webhooks/intelligence pipe.
-    return { configured: true, found: 0, created: [], note: `No scraper wired for ${platform} yet — push via /api/webhooks/intelligence.` };
+    return { configured: true, found: 0, created: [], note: `No scraper wired for ${platform} yet, push via /api/webhooks/intelligence.` };
   }
 
   const signals = await scrapeInstagram(input.handleOrUrl, input.limit ?? 12);
@@ -57,5 +57,5 @@ export async function runCompetitorScout(input: ScoutInput, deps: IntelligenceDe
   if (!records.length) return { configured: true, handle: signals.handle, found: 0, created: [], note: "No posts returned for this account." };
 
   const result = await ingestIntelligencePayload({ records }, deps);
-  return { configured: true, handle: signals.handle, found: records.length, created: result.created, note: "Ingested as pending — review in the Intelligence Inbox." };
+  return { configured: true, handle: signals.handle, found: records.length, created: result.created, note: "Ingested as pending, review in the Intelligence Inbox." };
 }

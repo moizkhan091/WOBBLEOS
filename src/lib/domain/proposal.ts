@@ -129,7 +129,7 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
     companyId: audit.companyId ?? undefined,
     opportunityId: audit.opportunityId ?? undefined,
     auditId: audit.id,
-    title: `${audit.businessName} — Wobble AI OS Proposal`,
+    title: `${audit.businessName}, Wobble AI OS Proposal`,
     services,
     scope: scope || undefined,
     timeline,

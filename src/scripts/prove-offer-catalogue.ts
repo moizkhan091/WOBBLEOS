@@ -21,7 +21,7 @@ async function main() {
         name: o.name,
         promise: o.promise,
         hypothesis: o.hypothesis || undefined,
-        audience: "WOBBLE ICP — local SMBs, home services, dental/med spa, agencies",
+        audience: "WOBBLE ICP, local SMBs, home services, dental/med spa, agencies",
         priceModel: "monthly retainer",
         createdBy: "Moiz",
       },

@@ -205,7 +205,7 @@ export function mapAiStage(answer?: string): Level {
   return "unknown";
 }
 
-/** Team size → rough company weight. Parses the leading number of "2–10", "11-25", "50+". */
+/** Team size → rough company weight. Parses the leading number of "2-10", "11-25", "50+". */
 export function mapTeamSize(answer?: string): Level {
   const v = (answer ?? "").replace(/[–—]/g, "-").toLowerCase();
   if (!v) return "unknown";
@@ -408,7 +408,7 @@ export function formatIntakeForAudit(snapshots: IntakeSnapshot[]): string {
       .join("\n");
 
   return [
-    "WHAT THE CLIENT TOLD US ON THE WEBSITE READINESS FORM (their own words — treat as claims to verify, not findings):",
+    "WHAT THE CLIENT TOLD US ON THE WEBSITE READINESS FORM (their own words, treat as claims to verify, not findings):",
     ...snapshots.slice(0, 3).map(render),
   ].join("\n\n");
 }
@@ -530,7 +530,7 @@ export function mapSubmissionToCrm(s: ReadinessSubmission, opts: { now?: Date } 
   };
 
   const opportunity: Omit<CreateOpportunityInput, "companyId"> = {
-    name: `${displayName} — AI Readiness`,
+    name: `${displayName}, AI Readiness`,
     stage,
     source: READINESS_FORM_SOURCE,
     // Where the decision-maker signal EARNS its keep: a merely-warm lead whose founder filled the form

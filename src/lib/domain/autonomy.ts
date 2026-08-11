@@ -87,10 +87,10 @@ export function policyApplies(policy: AutonomyPolicy, action: AutonomyAction): b
 
 /** The hard cap: a sensitive action can never exceed `confirm`, regardless of any policy. */
 function sensitivityCap(action: AutonomyAction): { capped: boolean; reason: string } {
-  if (action.reversible === false) return { capped: true, reason: "irreversible action — capped at confirm" };
-  if (action.riskLevel === "high" || action.riskLevel === "critical") return { capped: true, reason: `${action.riskLevel}-risk action — capped at confirm` };
-  if ((action.financialCents ?? 0) > 0) return { capped: true, reason: "financial action (moves money) — capped at confirm" };
-  if (action.qaPassed === false) return { capped: true, reason: "action has not passed QA — capped at confirm" };
+  if (action.reversible === false) return { capped: true, reason: "irreversible action, capped at confirm" };
+  if (action.riskLevel === "high" || action.riskLevel === "critical") return { capped: true, reason: `${action.riskLevel}-risk action, capped at confirm` };
+  if ((action.financialCents ?? 0) > 0) return { capped: true, reason: "financial action (moves money), capped at confirm" };
+  if (action.qaPassed === false) return { capped: true, reason: "action has not passed QA, capped at confirm" };
   return { capped: false, reason: "" };
 }
 
@@ -114,7 +114,7 @@ export function resolveAutonomyLevel(action: AutonomyAction, policies: AutonomyP
   if (cap.capped && LEVEL_RANK[best] > LEVEL_RANK[CONFIRM_CEILING]) {
     return { level: CONFIRM_CEILING, appliedPolicyId, capped: true, reason: cap.reason };
   }
-  return { level: best, appliedPolicyId, capped: false, reason: appliedPolicyId ? "granted by an earned, condition-matched policy" : "no policy — baseline recommend (never silent autonomy)" };
+  return { level: best, appliedPolicyId, capped: false, reason: appliedPolicyId ? "granted by an earned, condition-matched policy" : "no policy, baseline recommend (never silent autonomy)" };
 }
 
 /** Convenience: may this action run WITHOUT a founder in the loop (i.e. fully autonomous)? */

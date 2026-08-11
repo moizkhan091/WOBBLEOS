@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const raw = body.raw;
   const secret = process.env.ZERNIO_WEBHOOK_SECRET;
   // Fail CLOSED: public route — with no secret set, anyone could flip post status. Require it.
-  if (!secret) return NextResponse.json({ ok: false, error: "webhook disabled — set ZERNIO_WEBHOOK_SECRET" }, { status: 503 });
+  if (!secret) return NextResponse.json({ ok: false, error: "webhook disabled, set ZERNIO_WEBHOOK_SECRET" }, { status: 503 });
   if (!verifyRawBodySignature(raw, request.headers.get("X-Zernio-Signature"), secret)) {
     return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
   }

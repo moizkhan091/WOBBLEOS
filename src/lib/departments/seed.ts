@@ -100,7 +100,7 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
   {
     slug: "design_intelligence",
     name: "Design Intelligence",
-    purpose: "Turn approved content + brand truth into structured visual direction, layout rules and exactly ONE selected reference per asset — then hand a real, renderable design brief to Media Production.",
+    purpose: "Turn approved content + brand truth into structured visual direction, layout rules and exactly ONE selected reference per asset, then hand a real, renderable design brief to Media Production.",
     // ACTIVE agent_team (WOB-UAT-023). `enforcement.ts:120` rejects a route FROM a draft department, so
     // `draft` is what kept this unreachable regardless of anything else that existed.
     status: "active",
@@ -257,7 +257,7 @@ export const CANONICAL_DEPARTMENTS: DepartmentInput[] = [
   {
     slug: "quality_assurance",
     name: "Quality Assurance",
-    purpose: "Independent QA boards that gate other departments' artifacts before downstream emission — release on pass, block + escalate on fail/blocked, route revise to the exact failed stage. A reviewer never authors the work it judges.",
+    purpose: "Independent QA boards that gate other departments' artifacts before downstream emission, release on pass, block + escalate on fail/blocked, route revise to the exact failed stage. A reviewer never authors the work it judges.",
     status: "active", // the live QA gate (runQaGate) controls real downstream work (paid_audit→proposal, content, proposal)
     orchestratorAgentSlug: "quality_assurance_orchestrator",
     permissions: { authorizedMemoryScopes: ["qa_rubric", "brand", "offer", "company", "research", "competitor"], permittedDataClassifications: ["internal", "client_confidential"] },

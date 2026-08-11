@@ -34,7 +34,7 @@ export interface DataForSeoDeps extends ProviderBudgetDeps {
 export class DataForSeoNotConfiguredError extends Error {
   readonly name = "DataForSeoNotConfiguredError";
   constructor() {
-    super("DataForSEO is not configured (DATAFORSEO_AUTH absent) — keyword/trend data is blocked, never faked");
+    super("DataForSEO is not configured (DATAFORSEO_AUTH absent), keyword/trend data is blocked, never faked");
   }
 }
 

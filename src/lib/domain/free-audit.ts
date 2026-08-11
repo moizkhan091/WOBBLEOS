@@ -144,7 +144,7 @@ export function diagnose(input: RunAuditInput): AuditReport {
 
   const summary = all.length
     ? `${p.businessName} shows ${all.length} AI opportunit${all.length === 1 ? "y" : "ies"} across ${new Set(all.map((o) => o.category)).size} areas, with ${quickWins.length} quick win${quickWins.length === 1 ? "" : "s"} to start.`
-    : `No clear gaps detected from the signals given — a live call would surface more.`;
+    : `No clear gaps detected from the signals given, a live call would surface more.`;
 
   return { businessName: p.businessName, industry: p.industry ?? null, summary, quickWins, opportunities: all, serviceCount: all.length, estimatedMonthlyUpsideCents };
 }

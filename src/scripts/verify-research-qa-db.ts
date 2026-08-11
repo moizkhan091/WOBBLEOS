@@ -71,7 +71,7 @@ async function main() {
     const strong = await run(wfPass, strongAnalyst);
     suggestionIds.push(...(strong.product?.suggestions.suggestionIds ?? []));
     assert(strong.accepted && strong.product?.analysis.proposedInsights === 2, "STRONG: the department produced 2 insights");
-    assert(strong.routedTo.map((r) => r.department).includes("founder_command_centre"), "STRONG: the gate RELEASED — the validated intelligence propagated to the Founder Command Centre");
+    assert(strong.routedTo.map((r) => r.department).includes("founder_command_centre"), "STRONG: the gate RELEASED, the validated intelligence propagated to the Founder Command Centre");
     const passReviews = await db.select().from(qaReviews).where(eq(qaReviews.workflowId, wfPass));
     assert(passReviews.length === 1 && passReviews[0].verdict === "pass" && passReviews[0].reviewerAgentSlug === "research_validation_reviewer", "STRONG: one PASS qa_review by the INDEPENDENT research_validation_reviewer");
     assert(passReviews[0].independent === true, "STRONG: the review is structurally independent (reviewer ∉ authors)");
@@ -84,7 +84,7 @@ async function main() {
     ] }), run: { id: "canned_analyst_weak" } });
     const weak = await run(wfBlock, weakAnalyst);
     suggestionIds.push(...(weak.product?.suggestions.suggestionIds ?? []));
-    assert(!weak.routedTo.map((r) => r.department).includes("founder_command_centre"), "WEAK: the gate BLOCKED — the ungrounded intelligence did NOT propagate");
+    assert(!weak.routedTo.map((r) => r.department).includes("founder_command_centre"), "WEAK: the gate BLOCKED, the ungrounded intelligence did NOT propagate");
     assert((await db.select().from(handoffs).where(and(eq(handoffs.workflowId, wfBlock), eq(handoffs.department, "founder_command_centre")))).length === 0, "WEAK: no founder handoff exists for the blocked run");
     const weakReviews = await db.select().from(qaReviews).where(eq(qaReviews.workflowId, wfBlock));
     assert(weakReviews.length === 1 && weakReviews[0].verdict !== "pass", `WEAK: a non-pass qa_review was recorded (got ${weakReviews[0]?.verdict})`);

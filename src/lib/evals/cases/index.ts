@@ -253,7 +253,7 @@ const askInsufficient: GoldenRecording = {
   case: {
     id: "ask-answer-insufficient-evidence",
     description:
-      "Ask WOBBLE with no approved evidence must say what is missing and NOT invent numbers — the grounding rule.",
+      "Ask WOBBLE with no approved evidence must say what is missing and NOT invent numbers, the grounding rule.",
     input: { shape: "ask_answer", question: "What was our Q3 ad spend ROI?" },
     assertions: [
       { kind: "non_empty" },
@@ -276,7 +276,7 @@ const askInsufficient: GoldenRecording = {
     "",
     "What's missing: connected ad-account data and an approved performance source in the OS.",
     "",
-    "Suggested next step: add the Meta Ads export as a source, get it approved, then re-ask — I won't guess at numbers you'd act on.",
+    "Suggested next step: add the Meta Ads export as a source, get it approved, then re-ask, I won't guess at numbers you'd act on.",
   ].join("\n"),
 };
 

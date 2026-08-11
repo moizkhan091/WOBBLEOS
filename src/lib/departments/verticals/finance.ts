@@ -134,7 +134,7 @@ export async function runFinanceDepartment(input: RunFinanceDepartmentInput, dep
           companyId: input.companyId ?? undefined,
           opportunityId: input.opportunityId ?? undefined,
           proposalId: input.proposalId ?? undefined,
-          lineItems: [{ description: input.description ?? `${input.businessName} — engagement`, quantity: 1, unitPriceCents: Math.round(input.amountCents) }],
+          lineItems: [{ description: input.description ?? `${input.businessName}, engagement`, quantity: 1, unitPriceCents: Math.round(input.amountCents) }],
           createdBy: input.requestedBy,
         },
         financeDeps,

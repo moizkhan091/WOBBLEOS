@@ -23,7 +23,7 @@ export interface QualificationRoleDef {
 
 /** The 8 council roles = WOBBLE's qualification filters. */
 export const QUALIFICATION_ROLES: QualificationRoleDef[] = [
-  { slug: "real_problem", name: "Real Business Problem", agentSlug: "qual_real_problem_agent", weight: 1.3, question: "Is there a real, describable business problem (revenue/cost/speed/chaos) AI can attack — not just curiosity?", hasPolicySignal: false },
+  { slug: "real_problem", name: "Real Business Problem", agentSlug: "qual_real_problem_agent", weight: 1.3, question: "Is there a real, describable business problem (revenue/cost/speed/chaos) AI can attack, not just curiosity?", hasPolicySignal: false },
   { slug: "real_budget", name: "Real Budget", agentSlug: "qual_budget_agent", weight: 1.3, question: "Is there a real budget for a paid audit + likely implementation? (company size / stage / signals)", hasPolicySignal: true },
   { slug: "owner_urgency", name: "Owner Urgency", agentSlug: "qual_urgency_agent", weight: 1.1, question: "Is the owner serious and urgent, or just exploring?", hasPolicySignal: false },
   { slug: "access", name: "Access to Workflows/People/Tools/Data", agentSlug: "qual_access_agent", weight: 1.1, question: "Can WOBBLE access enough workflows, people, tools and data to audit and build properly?", hasPolicySignal: true },
@@ -37,11 +37,11 @@ export const QUALIFICATION_ROLE_SLUGS = QUALIFICATION_ROLES.map((r) => r.slug);
 
 /** Grade bands (A best). */
 export const GRADE_BANDS: Array<{ grade: QualificationGrade; min: number; recommendation: string }> = [
-  { grade: "A", min: 85, recommendation: "Prioritise now — book the paid AI OS Audit; strong fit across problem, budget, urgency and access." },
-  { grade: "B", min: 70, recommendation: "Pursue — qualify the one or two weaker filters on the readiness call, then book the audit." },
-  { grade: "C", min: 55, recommendation: "Nurture — real potential but a key filter is soft; educate and re-qualify before the paid audit." },
-  { grade: "D", min: 40, recommendation: "Low priority — multiple filters weak; keep warm with founder content, do not spend audit effort yet." },
-  { grade: "E", min: 0, recommendation: "Disqualify for now — not ready (no budget / no urgency / no access / no real problem)." },
+  { grade: "A", min: 85, recommendation: "Prioritise now, book the paid AI OS Audit; strong fit across problem, budget, urgency and access." },
+  { grade: "B", min: 70, recommendation: "Pursue, qualify the one or two weaker filters on the readiness call, then book the audit." },
+  { grade: "C", min: 55, recommendation: "Nurture, real potential but a key filter is soft; educate and re-qualify before the paid audit." },
+  { grade: "D", min: 40, recommendation: "Low priority, multiple filters weak; keep warm with founder content, do not spend audit effort yet." },
+  { grade: "E", min: 0, recommendation: "Disqualify for now, not ready (no budget / no urgency / no access / no real problem)." },
 ];
 
 export interface RoleScore {

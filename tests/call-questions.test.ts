@@ -99,7 +99,7 @@ describe("call questions — prompt construction", () => {
     expect(prompt).toContain("Competitor X");
     expect(prompt).toContain("DO NOT ASK");
     // The pain is restated as the call's job, so the model optimises for making it countable.
-    expect(prompt).toMatch(/turn their stated pain .* into countable reality/);
+    expect(prompt).toMatch(/turn their stated pain, ".*", into countable reality/);
   });
 
   it("tells the model to FIND a pain when the client described none", () => {

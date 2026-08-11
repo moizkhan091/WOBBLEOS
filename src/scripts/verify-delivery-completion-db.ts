@@ -64,7 +64,7 @@ async function main() {
     // ── Real data: a client + won opportunity + a COMPLETED project (milestones done) with kickoff tasks. ──
     const company = await addCompany({ name: `Acme Completion ${uniq}`, createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmCompanies).where(eq(crmCompanies.id, company.id)));
-    const opp = await addOpportunity({ name: `Acme Completion ${uniq} — AI OS`, companyId: company.id, stage: "won", valueCents: 480000, serviceInterest: ["Missed-call text-back"], assignedOwner: "Ali", createdBy: "Moiz" }, { recordAudit: async () => {}, now });
+    const opp = await addOpportunity({ name: `Acme Completion ${uniq}, AI OS`, companyId: company.id, stage: "won", valueCents: 480000, serviceInterest: ["Missed-call text-back"], assignedOwner: "Ali", createdBy: "Moiz" }, { recordAudit: async () => {}, now });
     cleanup.push(() => db.delete(crmStageHistory).where(eq(crmStageHistory.opportunityId, opp.id)));
     cleanup.push(() => db.delete(crmOpportunities).where(eq(crmOpportunities.id, opp.id)));
     cleanup.push(() => db.delete(tasks).where(eq(tasks.opportunityId, opp.id)));
@@ -93,12 +93,12 @@ async function main() {
     await invoiceAction(inv.id, "approve", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     await invoiceAction(inv.id, "send", { actor: "Moiz" }, { recordAudit: async () => {}, now });
     const paid = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 200000, paymentReference: `PAY-${uniq}` }, { recordAudit: async () => {}, now });
-    assert(paid?.status === "partially_paid" && paid.amountPaidCents === 200000, "the invoice is partially paid (200000¢ of 480000¢) — a real ledger payment");
+    assert(paid?.status === "partially_paid" && paid.amountPaidCents === 200000, "the invoice is partially paid (200000¢ of 480000¢), a real ledger payment");
 
     // ── Complete the delivery: build the versioned product + route to the three authorized consumers. ──
     console.log("\nComplete the delivery and route the versioned completion to Finance + Research + Founder:");
     const res = await completeDelivery(
-      { project, budgetCents: 480000, actualCostCents: 300000, reusableLessons: ["Client onboarding was slow — pre-stage telephony access."], requestedBy: "Moiz", workflowId: wf },
+      { project, budgetCents: 480000, actualCostCents: 300000, reusableLessons: ["Client onboarding was slow, pre-stage telephony access."], requestedBy: "Moiz", workflowId: wf },
       { handoffStore: handoffStore(db), recordAudit: async () => {}, now },
     );
     assert(res.produced, "a completed project produced a DeliveryCompletion");
@@ -129,7 +129,7 @@ async function main() {
     assert(finOut.grossMarginCents === proj.grossMarginCents && finOut.grossMarginPct === proj.grossMarginPct && finOut.collectedCents === proj.collectedCents && finOut.invoicedCents === proj.invoicedCents && finOut.overdueCents === proj.overdueCents && finOut.outcome === proj.outcome, "every Finance financial figure equals the deterministic ledger projection (no LLM on the financial path)");
 
     const resRow = routed.find((h) => h.department === "research_intelligence")!;
-    assert(resRow.dataClassification === "internal", "the Research handoff is INTERNAL (de-identified lessons — clears Research's internal-only grant)");
+    assert(resRow.dataClassification === "internal", "the Research handoff is INTERNAL (de-identified lessons, clears Research's internal-only grant)");
     const resOut = (resRow.envelope as { previousAgentOutputs?: Record<string, unknown> }).previousAgentOutputs ?? {};
     assert(Array.isArray(resOut.reusableLessons) && !JSON.stringify(resOut).includes(String(company.id)), "the Research handoff carries reusable lessons with no client identity / financial cents");
 

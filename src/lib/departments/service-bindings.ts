@@ -87,17 +87,17 @@ export async function resolveServiceBindings(bindings: ServiceBinding[], deps: S
           // down — "I don't know how to check this" and "this is broken" are different statements.
           if (!file) return { ...base, state: "unknown", detail: `no heartbeat file mapped for worker '${b.ref}'` };
           const beat = await readHeartbeat(file);
-          if (!beat) return { ...base, state: "missing", detail: "no heartbeat file — worker has never reported or storage is unreadable" };
+          if (!beat) return { ...base, state: "missing", detail: "no heartbeat file, worker has never reported or storage is unreadable" };
           const at = typeof beat.at === "string" ? Date.parse(beat.at) : NaN;
           if (!Number.isFinite(at)) return { ...base, state: "unknown", detail: "heartbeat has no readable timestamp" };
           const ageMs = nowMs - at;
-          if (ageMs > maxAgeMs) return { ...base, state: "missing", detail: `heartbeat is ${Math.round(ageMs / 1000)}s old (> ${Math.round(maxAgeMs / 1000)}s) — worker is not running` };
+          if (ageMs > maxAgeMs) return { ...base, state: "missing", detail: `heartbeat is ${Math.round(ageMs / 1000)}s old (> ${Math.round(maxAgeMs / 1000)}s), worker is not running` };
           return { ...base, state: "alive", detail: `heartbeat ${Math.round(ageMs / 1000)}s ago` };
         }
         case "job_type":
           return jobTypeKnown(b.ref)
             ? { ...base, state: "alive", detail: "handler registered" }
-            : { ...base, state: "missing", detail: `no handler registered for job type '${b.ref}' — work of this type can never be executed` };
+            : { ...base, state: "missing", detail: `no handler registered for job type '${b.ref}', work of this type can never be executed` };
         case "adapter": {
           const configured = adapterConfigured(b.ref);
           if (configured === null) return { ...base, state: "unknown", detail: `unrecognised adapter '${b.ref}'` };

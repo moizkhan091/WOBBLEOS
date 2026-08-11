@@ -250,7 +250,7 @@ describe("rerouteEscalation — REAL alternate-route execution (not a label)", (
     const esc = await rrEsc(store);
     const r = await rerouteEscalation(esc.id, "Moiz", { destinationDepartment: "delivery", reason: "x" }, rrDeps(store, { getHandoff: async () => blockedHandoff("completed") }));
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/completed — cannot reroute terminal/);
+    expect(r.error).toMatch(/completed, cannot reroute terminal/);
   });
 
   it("REJECTS an inactive destination", async () => {

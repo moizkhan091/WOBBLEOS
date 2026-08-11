@@ -34,7 +34,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!contentTrackId) {
       const tracks = await listContentTracks({ limit: 1 });
       contentTrackId = tracks[0]?.id;
-      if (!contentTrackId) return NextResponse.json({ ok: false, error: "no content track exists — create one in Content Command first" }, { status: 422 });
+      if (!contentTrackId) return NextResponse.json({ ok: false, error: "no content track exists, create one in Content Command first" }, { status: 422 });
     }
     const result = await promoteTopicToProduction({ topicId: id, contentTrackId, requestedBy: auth }, {});
     if (!result.topic) return NextResponse.json({ ok: false, error: "topic not found" }, { status: 404 });

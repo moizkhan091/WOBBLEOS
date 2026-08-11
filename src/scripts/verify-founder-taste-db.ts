@@ -37,7 +37,7 @@ async function main() {
     const a1 = await getTasteProfile(keyA, deps);
     const b1 = await getTasteProfile(keyB, deps);
     assert(a1?.negativeSignals === 1 && a1.positiveSignals === 0, "the correction incremented ONLY client A's negative signal");
-    assert(b1?.negativeSignals === 0 && b1.positiveSignals === 0, "client B is UNCHANGED — the correction did not leak to another scope (never a global preference)");
+    assert(b1?.negativeSignals === 0 && b1.positiveSignals === 0, "client B is UNCHANGED, the correction did not leak to another scope (never a global preference)");
     assert(Number(a1!.confidence) > 0, "client A's confidence grew from the real feedback");
 
     // A positive decision scoped to client A → moves the positive counter, still isolated from B.

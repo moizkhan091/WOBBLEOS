@@ -27,14 +27,14 @@ export type LeadMagnetSpec = z.infer<typeof leadMagnetSchema>;
 
 /** Build the generator prompt. Enforces the content-value bar: real mechanism, usable outcome, no fluff. */
 export function buildLeadMagnetPrompt(input: { topicTitle: string; teachingJob: string; pillar?: string; audience?: string }): { system: string; user: string } {
-  const system = `You are WOBBLE's LEAD-MAGNET builder. Create ONE deeply-educational, genuinely USABLE lead magnet for Pakistan-first SMB founders — the kind that makes the reader smarter and able to DO something, not a shallow PDF. WOBBLE teaches the real mechanism; no gatekeeping, no fluff.
+  const system = `You are WOBBLE's LEAD-MAGNET builder. Create ONE deeply-educational, genuinely USABLE lead magnet for Pakistan-first SMB founders, the kind that makes the reader smarter and able to DO something, not a shallow PDF. WOBBLE teaches the real mechanism; no gatekeeping, no fluff.
 
 Pick the best type for the topic ∈ ${JSON.stringify(LEAD_MAGNET_TYPES)}. If it teaches an automation, prefer workflow_pack and give the ACTUAL n8n/Make workflow (nodes, inputs, actions, outputs, decisions, failure routes) so a founder can rebuild it. If it's about prompting, give a real prompt_pack with the exact prompts + how to use them.
 
 The magnet MUST provide a usable outcome: complete content + a worked example, mechanism steps with inputs/actions/outputs, at least one failure check + human override, and a test to prove it works. Concrete, specific, correct.
 
 Respond with STRICT JSON only:
-{"title":"...","magnetType":"workflow_pack|prompt_pack|checklist|template|sop|scorecard|calculator","audience":"...","promise":"the concrete outcome the reader gets","sections":[{"heading":"...","body":"tight, concrete teaching (can be multi-line)"}],"deliverable":"the ACTUAL usable asset — the n8n node list / the exact prompts / the checklist items / the template — ready to copy and use"}`;
+{"title":"...","magnetType":"workflow_pack|prompt_pack|checklist|template|sop|scorecard|calculator","audience":"...","promise":"the concrete outcome the reader gets","sections":[{"heading":"...","body":"tight, concrete teaching (can be multi-line)"}],"deliverable":"the ACTUAL usable asset, the n8n node list / the exact prompts / the checklist items / the template, ready to copy and use"}`;
   const user = `TOPIC: ${input.topicTitle}\nTEACHING JOB (the real mechanism): ${input.teachingJob}\n${input.pillar ? `PILLAR: ${input.pillar}\n` : ""}${input.audience ? `AUDIENCE: ${input.audience}\n` : ""}Build the magnet. STRICT JSON only.`;
   return { system, user };
 }

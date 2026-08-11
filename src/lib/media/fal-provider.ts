@@ -102,7 +102,7 @@ export function createFalProvider(opts: FalProviderOptions = {}): MediaProvider 
     configured: () => Boolean(resolveKey(opts)) && falConfigured(),
     async generate({ kind, prompt, params }): Promise<MediaGenerationResult> {
       const key = resolveKey(opts);
-      if (!key) throw new Error("fal.ai is not configured (FAL_KEY missing) — generation blocked");
+      if (!key) throw new Error("fal.ai is not configured (FAL_KEY missing), generation blocked");
       const model = (typeof params.model === "string" && params.model) || modelForKind(kind);
       const headers = { Authorization: `Key ${key}`, "Content-Type": "application/json" };
       const input = { prompt, ...(params as Record<string, unknown>) };

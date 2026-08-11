@@ -42,7 +42,7 @@ const GREETINGS: Record<DayPart, string[]> = {
   ],
   afternoon: [
     "Good afternoon, {name}",
-    "Afternoon, {name} — how's it flowing?",
+    "Afternoon, {name}, how's it flowing?",
     "Midday momentum, {name}",
     "Hey {name}, powering through?",
     "Hola {name}",

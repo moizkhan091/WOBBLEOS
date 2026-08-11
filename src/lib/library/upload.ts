@@ -42,7 +42,7 @@ export class UnsupportedMediaTypeError extends Error {
   readonly name = "UnsupportedMediaTypeError";
   constructor(readonly mimeType: string) {
     super(
-      `unsupported media type '${mimeType}' — the Content Library accepts ${Object.keys(ALLOWED_MEDIA_TYPES).join(", ")} only`,
+      `unsupported media type '${mimeType}', the Content Library accepts ${Object.keys(ALLOWED_MEDIA_TYPES).join(", ")} only`,
     );
   }
 }

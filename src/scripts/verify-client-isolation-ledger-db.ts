@@ -126,7 +126,7 @@ async function main() {
     const untracked = await assertProviderAllowance(reconProvider, 999, { db });
     assert(untracked.tracked === false, "an untracked provider returns tracked:false (never silently unlimited-billed)");
 
-    console.log("\n✅ client-isolation + ledger-reconciliation DB proof passed — no cross-client leak; spend reconciles item-by-item");
+    console.log("\n✅ client-isolation + ledger-reconciliation DB proof passed, no cross-client leak; spend reconciles item-by-item");
   } finally {
     if (seededTaskIds.length) await db.delete(taskInventory).where(inArray(taskInventory.id, seededTaskIds)).catch(() => {});
     await db.delete(externalProviderSpend).where(eq(externalProviderSpend.provider, reconProvider)).catch(() => {});

@@ -74,7 +74,7 @@ export function computeVersionParity(appBuildId: string, services: ServiceVersio
       expectedBuildId: appBuildId,
       stale,
       unknown,
-      reason: "the app image carries no WOBBLE_BUILD_ID — build identity is unknown, so version parity cannot be proven",
+      reason: "the app image carries no WOBBLE_BUILD_ID, build identity is unknown, so version parity cannot be proven",
     };
   }
 
@@ -85,7 +85,7 @@ export function computeVersionParity(appBuildId: string, services: ServiceVersio
       expectedBuildId: appBuildId,
       stale,
       unknown,
-      reason: `version mismatch — app is running ${shortBuildId(appBuildId)} but ${detail}. Rebuild ALL services: docker compose up -d --build`,
+      reason: `version mismatch, app is running ${shortBuildId(appBuildId)} but ${detail}. Rebuild ALL services: docker compose up -d --build`,
     };
   }
 
@@ -95,7 +95,7 @@ export function computeVersionParity(appBuildId: string, services: ServiceVersio
       expectedBuildId: appBuildId,
       stale,
       unknown,
-      reason: `cannot verify version parity — no fresh report from: ${unknown.join(", ")}`,
+      reason: `cannot verify version parity, no fresh report from: ${unknown.join(", ")}`,
     };
   }
 
@@ -105,7 +105,7 @@ export function computeVersionParity(appBuildId: string, services: ServiceVersio
       expectedBuildId: appBuildId,
       stale,
       unknown,
-      reason: "no worker reported a build id — an empty fleet is not proof of version parity",
+      reason: "no worker reported a build id, an empty fleet is not proof of version parity",
     };
   }
 

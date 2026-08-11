@@ -20,7 +20,7 @@ async function main() {
     "no-show reduction",
   ];
   const brain = [
-    { title: "Positioning", content: "WOBBLE builds AI employees + automations INSIDE a business; anti-agency-dependency — we teach founders to own their systems." },
+    { title: "Positioning", content: "WOBBLE builds AI employees + automations INSIDE a business; anti-agency-dependency, we teach founders to own their systems." },
     { title: "Voice", content: "Lead with rebellion (stop renting your growth from agencies), close with trust. Mechanism-first. Never 'use AI to be productive'." },
   ];
 
@@ -47,7 +47,7 @@ async function main() {
 
   const pending = await listTopics({ status: "pending_review" }, {});
   const approvedList = await listTopics({ status: "approved" }, {});
-  console.log(`\n[topic-bank] bank state — pending_review: ${pending.length}, approved: ${approvedList.length}`);
+  console.log(`\n[topic-bank] bank state, pending_review: ${pending.length}, approved: ${approvedList.length}`);
   console.log("[topic-bank] PROVEN LIVE ✓ (topics carry real stats; nothing promoted without founder approval)");
 }
 
