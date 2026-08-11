@@ -790,8 +790,8 @@ export interface RunToolResult {
 }
 
 /** Validate args and dispatch a tool. Never throws — returns a structured result the loop can feed back to the model. */
-export async function runTool(name: string, rawArgs: unknown, ctx: ToolContext = {}): Promise<RunToolResult> {
-  const tool = ASK_TOOLS_BY_NAME[name];
+export async function runTool(name: string, rawArgs: unknown, ctx: ToolContext = {}, registry?: Record<string, ToolDefinition>): Promise<RunToolResult> {
+  const tool = (registry ?? ASK_TOOLS_BY_NAME)[name];
   if (!tool) return { ok: false, tool: name, mutated: false, error: `Unknown tool '${name}'.` };
   const parsed = tool.argsSchema.safeParse(rawArgs ?? {});
   if (!parsed.success) {

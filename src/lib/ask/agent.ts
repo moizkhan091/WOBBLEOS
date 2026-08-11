@@ -245,7 +245,7 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
         continue;
       }
 
-      const res = await runTool(call.name, call.arguments, toolCtx);
+      const res = await runTool(call.name, call.arguments, toolCtx, toolsByName);
       executedThisIteration += 1;
       toolTrace.push({ tool: call.name, args: call.arguments, ok: res.ok, mutated: res.mutated, result: res.result, error: res.error });
 

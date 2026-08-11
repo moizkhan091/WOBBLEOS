@@ -45,3 +45,26 @@ describe("revenue head — a narrow, deliberate tool set", () => {
     }
   });
 });
+
+describe("revenue head — every offered tool must actually execute", () => {
+  it("dispatches head-only tools instead of rejecting them as unknown", async () => {
+    // This is the bug this test exists for: the model was OFFERED read_client, called it, and the
+    // executor looked it up in the global registry and answered "Unknown tool 'read_client'". A tool
+    // advertised to a model and then refused at execution is worse than not having it.
+    const { runTool } = await import("@/lib/ask-tools");
+    const registry = Object.fromEntries(REVENUE_HEAD_TOOLS.map((t) => [t.name, t]));
+    for (const name of ["read_client", "qualify_client", "generate_call_questions", "list_stalled_deals"]) {
+      const res = await runTool(name, { companyId: "co_does_not_exist", daysStalled: 7 }, {}, registry);
+      // It may fail for lack of a database, but it must never fail because the tool is unknown.
+      expect(res.error ?? "", name).not.toMatch(/Unknown tool/);
+    }
+  });
+
+  it("still reports a genuinely unknown tool", async () => {
+    const { runTool } = await import("@/lib/ask-tools");
+    const registry = Object.fromEntries(REVENUE_HEAD_TOOLS.map((t) => [t.name, t]));
+    const res = await runTool("delete_everything", {}, {}, registry);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/Unknown tool/);
+  });
+});
