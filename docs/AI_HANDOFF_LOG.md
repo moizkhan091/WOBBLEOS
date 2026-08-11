@@ -7299,3 +7299,48 @@ and to find out who else has to agree. The panel says which round it wrote.
 Command-palette hits on a company (or a lead that has one) now open that client's CONTAINER with the
 client already selected, via /org?client=<id>. They used to open the pipeline board, which is a list of
 deals rather than the thing the founder searched for.
+
+## 2026-08-11 - The ten scenarios that broke (Claude)
+
+Built the rest of the Revenue/CRM list, all deterministic where a rule beats a model.
+
+**One proposal, one price.** `buildVariants` derives Essential / Recommended / Complete from the services
+already on the proposal. Essential keeps the highest-priced line (in a WOBBLE proposal that is the build,
+so a cheap tier made of the cheapest items would be an offer to do nothing) and NAMES what it drops.
+Recommended is never re-priced, because the audit produced it. Complete only exists once a continuation
+has actually been priced: two honest options beat three where one is padding.
+
+**Objections never reached the proposal.** `objectionOpening` assembles the opening paragraph from the
+objection brief a founder already approved. Deterministic assembly, not regeneration, so the document
+cannot drift from what was approved. Three at most; a proposal opening with eight rebuttals sounds
+defensive.
+
+**Pricing had no memory / negotiation was invisible.** Every move (asked, countered, conceded, agreed,
+walked away) is recorded with the number on the table, who moved, and why. A reason is required. There is
+a walk-away number, and the panel shouts when the table is under it. Recording a negotiated number moves
+the DEAL's value, not the quoted price: the forecast should read what is being discussed, and erasing
+what was originally asked would destroy the only anchor.
+
+**Deal value could never be set.** PATCH /api/crm/opportunities/[id]. The pipeline read USD 0 on every
+client because value was written once at creation and never again.
+
+**A client returns months later.** `assessReactivation` decides whether a dead client is worth waking
+from facts the OS holds: a loss on timing reopens, a loss on fit does not, a delivered client quiet for
+four months is the cheapest next deal there is. It surfaces in the worklist as its own next action.
+
+**Referrals and multi-site clients.** Both were unrecordable. A container that has sent us three clients
+now says so on its own page, and a three-clinic business can describe its sites, which the audit reads.
+
+**Competitors and objections from calls reach Intelligence.** Approving a discovery finding of kind
+objection, current_stack or budget now files it in the intelligence inbox at tier_2_verified (heard
+first-hand and founder-approved beats anything scraped). Filing can never fail the founder's approval.
+
+**Transcripts route themselves.** POST /api/webhooks/transcript, HMAC-gated like the form. The rule is
+match an attendee to a contact, a client address, or a client's own web domain, or REFUSE: two clients
+on one call refuses, a free mailbox domain never routes, and WOBBLE's own attendance never decides. A
+misfiled transcript puts one client's private call in another's container and builds the audit from it.
+
+**The form card collapses** to the one quote that matters, since fully expanded it pushed every action
+below the fold.
+
+Gate: typecheck clean, 1710 tests pass, build clean.

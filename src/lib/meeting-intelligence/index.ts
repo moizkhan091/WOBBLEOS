@@ -4,6 +4,7 @@ import { meetings as meetingsTable, meetingIntelligence } from "@/db/schema";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { routeApprovedFinding } from "@/lib/discovery-intel";
 import { HOUSE_STYLE_PROMPT, sanitizeHouseStyle } from "@/lib/domain/house-style";
 import {
   MEETING_INTELLIGENCE_KINDS,
@@ -40,6 +41,8 @@ export interface MeetingIntelligenceStore {
 export type ExtractProvider = (input: { role: string; module: string; model?: string; messages: ProviderChatMessage[]; maxTokens?: number; temperature?: number }) => Promise<{ text: string }>;
 
 export interface MeetingIntelligenceDeps {
+  /** Injectable so a unit test can approve a fact without an intelligence inbox behind it. */
+  routeToIntelligence?: (fact: MeetingIntelligenceRow) => Promise<{ routed: boolean; itemType?: string; reason?: string }>;
   store?: MeetingIntelligenceStore;
   runProvider?: ExtractProvider;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
@@ -114,8 +117,18 @@ export async function reviewMeetingFact(input: ReviewFactInput, deps: MeetingInt
   if (fact.status !== "pending_review") return fact; // idempotent — already decided
   const fields: Partial<MeetingIntelligenceRow> = { status: input.decision, reviewedBy: input.reviewedBy, reviewedAt: now };
   await store.updateFact(input.factId, fields);
-  await audit(deps, { eventType: `meeting_intelligence.${input.decision}`, module: MEETING_INTELLIGENCE_MODULE, entityType: "meeting_intelligence", entityId: input.factId, actor: input.reviewedBy, metadata: { meetingId: fact.meetingId, kind: fact.kind } });
-  return { ...fact, ...fields };
+  const updated: MeetingIntelligenceRow = { ...fact, ...fields };
+
+  // An approved objection or stack observation is market intelligence, not just a note on one client.
+  // It lands `pending` in the review inbox like every other source. Filing it must never be able to
+  // fail the founder's approval of the fact itself.
+  let routed: Awaited<ReturnType<typeof routeApprovedFinding>> = { routed: false };
+  if (input.decision === "approved" && process.env.DATABASE_URL) {
+    routed = await (deps.routeToIntelligence ?? routeApprovedFinding)(updated).catch(() => ({ routed: false, reason: "routing threw" }));
+  }
+
+  await audit(deps, { eventType: `meeting_intelligence.${input.decision}`, module: MEETING_INTELLIGENCE_MODULE, entityType: "meeting_intelligence", entityId: input.factId, actor: input.reviewedBy, metadata: { meetingId: fact.meetingId, kind: fact.kind, filedAsIntelligence: routed.routed, itemType: routed.itemType ?? null } });
+  return updated;
 }
 
 export async function listMeetingFacts(meetingId: string, status?: MeetingIntelligenceStatus, deps: MeetingIntelligenceDeps = {}): Promise<MeetingIntelligenceRow[]> {

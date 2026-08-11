@@ -10,6 +10,8 @@
  * under 40 means a founder should look today.
  */
 
+import { assessReactivation } from "@/lib/domain/client-relationships";
+
 export type HealthBand = "healthy" | "slipping" | "at_risk" | "cold";
 
 export interface HealthSignal {
@@ -159,6 +161,7 @@ export type NextActionKind =
   | "build_proposal"
   | "chase_proposal"
   | "run_audit"
+  | "reactivate"
   | "close"
   | "none";
 
@@ -176,6 +179,9 @@ export interface NextActionInput extends ClientHealthInput {
   hasQuestionSet: boolean;
   hasAudit: boolean;
   auditIsPaid: boolean;
+  /** Why we lost, when we did. Decides whether a dead client is worth waking. */
+  lostReason?: string | null;
+  hasProposal?: boolean;
 }
 
 /**
@@ -186,10 +192,25 @@ export interface NextActionInput extends ClientHealthInput {
  * sequence, checked from the most blocking condition down.
  */
 export function suggestNextAction(input: NextActionInput): NextActionSuggestion {
-  const closed = input.dealStatus === "won" || input.dealStatus === "lost";
-  if (closed) return { kind: "none", label: "Nothing pending", because: `Deal is ${input.dealStatus}.`, urgency: 0 };
-
   const silent = daysBetween(input.lastTouchAt, input.now);
+  const closed = input.dealStatus === "won" || input.dealStatus === "lost";
+
+  // A closed deal is not necessarily a finished relationship. A loss on timing, or a delivered client
+  // who has gone quiet, is the cheapest next deal there is, and nothing was surfacing either.
+  if (closed) {
+    const reactivation = assessReactivation({
+      daysSinceTouch: silent,
+      dealStatus: input.dealStatus,
+      lostReason: input.lostReason ?? null,
+      approvedFindingCount: input.approvedFindingCount,
+      hadAudit: input.hasAudit,
+      hadProposal: (input.hasProposal ?? input.proposalCount > 0),
+    });
+    if (reactivation.verdict === "worth_waking") {
+      return { kind: "reactivate", label: "Go back to them", because: reactivation.because, urgency: 45 };
+    }
+    return { kind: "none", label: "Nothing pending", because: reactivation.because, urgency: 0 };
+  }
 
   if (input.nextActionAt && input.nextActionAt.getTime() < input.now.getTime()) {
     return { kind: "contact", label: input.nextAction ?? "Do the overdue next action", because: "It was due and has not happened.", urgency: 100 };

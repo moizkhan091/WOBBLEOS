@@ -183,6 +183,8 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
         hasQuestionSet: questionCompanies.has(c.id),
         hasAudit: companyAudits.length > 0,
         auditIsPaid: companyAudits.some((a) => a.kind === "paid"),
+        lostReason: deal?.lostReason ?? null,
+        hasProposal: companyProposals.length > 0,
       }),
       deal: deal ? { id: deal.id, name: deal.name, stage: deal.stage, status: deal.status, valueCents: deal.valueCents, currency: deal.currency } : null,
       lastTouchAt: lastTouchAt ? lastTouchAt.toISOString() : null,

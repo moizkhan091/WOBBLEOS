@@ -7296,8 +7296,13 @@ function IntakeFact({ label, value }: { label: string; value: string | null }) {
  * because it is what they will open the readiness call with. The pain field is given its own block: it
  * is the single most useful thing on the form and it reads as a quote, not a table row.
  */
+/**
+ * What they told us on the form. Collapsed to the one quote that matters, because fully expanded it
+ * pushed the deals, the timeline and every action below the fold on a laptop.
+ */
 function IntakeCard({ snaps }: { snaps: IntakeSnap[] }) {
   const s = snaps[0];
+  const [open, setOpen] = useState(false);
   if (!s) return null;
   return (
     <div style={{ borderRadius: 14, border: "1px solid rgba(184,255,44,0.22)", background: "rgba(184,255,44,0.04)", padding: "16px 18px" }}>
@@ -7305,7 +7310,10 @@ function IntakeCard({ snaps }: { snaps: IntakeSnap[] }) {
         <span style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.lime }}>What they told us on the form</span>
         {s.score !== null ? <Tag text={`${s.tier ?? ""} · ${s.score}/100`} color={C.lime} /> : null}
         {snaps.length > 1 ? <span style={{ fontSize: 11, color: faint }}>{snaps.length} submissions</span> : null}
-        {s.submittedAt ? <span style={{ fontSize: 11, color: faint, marginLeft: "auto" }}>{new Date(s.submittedAt).toLocaleDateString()}</span> : null}
+        <button onClick={() => setOpen(!open)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11.5, marginLeft: "auto" }}>
+          {open ? "show less" : "everything they said"}
+        </button>
+        {s.submittedAt ? <span style={{ fontSize: 11, color: faint }}>{new Date(s.submittedAt).toLocaleDateString()}</span> : null}
       </div>
       {s.painPoints ? (
         <div style={{ borderRadius: 10, background: "rgba(0,0,0,0.28)", padding: "12px 14px", marginBottom: 10 }}>
@@ -7313,16 +7321,24 @@ function IntakeCard({ snaps }: { snaps: IntakeSnap[] }) {
           <div style={{ fontSize: 14.5, color: C.white, lineHeight: 1.55 }}>{s.painPoints}</div>
         </div>
       ) : null}
-      <IntakeFact label="Who filled it in" value={[s.contactName, s.role].filter(Boolean).join(" · ") || null} />
-      <IntakeFact label="What the business does" value={s.businessDescription} />
-      <IntakeFact label="Look here first" value={s.focusAreas.length ? s.focusAreas.join(" · ") : null} />
-      <IntakeFact label="Where they are with AI" value={s.aiWorkflowStage} />
-      <IntakeFact label="Tools they use now" value={s.currentTools} />
-      <IntakeFact label="How soon" value={s.urgency} />
-      <IntakeFact label="Open to a paid audit" value={s.openToPaidAudit} />
-      <IntakeFact label="Can share workflow context" value={s.canShareWorkflowContext} />
-      <IntakeFact label="Wants from the call" value={s.whatMakesCallUseful} />
-      <IntakeFact label="Team / market" value={[s.teamSize, s.cityMarket].filter(Boolean).join(" · ") || null} />
+      {open ? (
+        <>
+          <IntakeFact label="Who filled it in" value={[s.contactName, s.role].filter(Boolean).join(" · ") || null} />
+          <IntakeFact label="What the business does" value={s.businessDescription} />
+          <IntakeFact label="Look here first" value={s.focusAreas.length ? s.focusAreas.join(" · ") : null} />
+          <IntakeFact label="Where they are with AI" value={s.aiWorkflowStage} />
+          <IntakeFact label="Tools they use now" value={s.currentTools} />
+          <IntakeFact label="How soon" value={s.urgency} />
+          <IntakeFact label="Open to a paid audit" value={s.openToPaidAudit} />
+          <IntakeFact label="Can share workflow context" value={s.canShareWorkflowContext} />
+          <IntakeFact label="Wants from the call" value={s.whatMakesCallUseful} />
+          <IntakeFact label="Team / market" value={[s.teamSize, s.cityMarket].filter(Boolean).join(" · ") || null} />
+        </>
+      ) : (
+        <div style={{ fontSize: 11.5, color: faint }}>
+          {[s.contactName, s.role, s.teamSize, s.urgency].filter(Boolean).join(" · ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -8434,6 +8450,238 @@ function DuplicatesPanel({ onMerged }: { onMerged: () => void }) {
   );
 }
 
+
+type VariantRow = { tier: string; label: string; intent: string; services: Array<{ name: string; priceCents?: number }>; totalCents: number; tradeoff: string };
+type NegotiationEventRow = { kind: string; amountCents: number; currency: string; by: string; note: string; at?: string; actor?: string };
+type CommercialsView = {
+  variants: VariantRow[];
+  negotiation: { walkAwayCents?: number; events: NegotiationEventRow[] };
+  summary: { opened: number | null; current: number | null; movedPct: number | null; belowWalkAway: boolean; headline: string };
+  objectionOpening: string;
+};
+
+const NEGOTIATION_COLOR: Record<string, string> = { asked: C.lime, countered: C.orange, conceded: C.orange, agreed: C.lime, walked_away: C.gray };
+
+/**
+ * The commercial side of a proposal: the cheaper and fuller options, what the client already objected
+ * to, and every move in the negotiation with the number that was on the table.
+ */
+function ProposalCommercialsPanel({ proposalId, currency }: { proposalId: string; currency: string }) {
+  const state = useApi<CommercialsView>(`/api/proposals/${proposalId}/commercials`);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [form, setForm] = useState({ kind: "countered", by: "client", amount: "", note: "" });
+  const [walkAway, setWalkAway] = useState("");
+  const [continuation, setContinuation] = useState("");
+
+  const v = state.data;
+
+  async function post(body: Record<string, unknown>) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/proposals/${proposalId}/commercials`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setMsg(null); setForm({ ...form, amount: "", note: "" }); state.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={() => setOpen(!open)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
+          {open ? "hide options and negotiation" : "options and negotiation"}
+        </button>
+        {v && v.summary.current !== null ? (
+          <span style={{ fontSize: 11.5, color: v.summary.belowWalkAway ? C.orange : faint }}>{v.summary.headline}</span>
+        ) : null}
+      </div>
+
+      {open && v ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 11, padding: "12px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+          {v.objectionOpening ? (
+            <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(184,255,44,0.22)", background: "rgba(184,255,44,0.04)" }}>
+              <div style={{ fontSize: 10.5, color: C.lime, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>The proposal should open with this</div>
+              <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{v.objectionOpening}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: faint }}>No objections recorded yet. Run the objection handler on the Deal team tab and they will appear here as the opening.</div>
+          )}
+
+          <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Options you can put in front of them</div>
+          {v.variants.map((t) => (
+            <div key={t.tier} style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: "2px solid " + (t.tier === "recommended" ? C.lime : "rgba(255,255,255,0.15)") }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, color: C.white }}>{t.label}</span>
+                <span style={{ fontSize: 12.5, color: C.lime }}>{orgMoney(t.totalCents, currency)}</span>
+                <span style={{ fontSize: 11, color: faint }}>{t.services.map((x) => x.name).join(", ")}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{t.intent}</div>
+              <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>{t.tradeoff}</div>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={continuation} onChange={(e) => setContinuation(e.target.value)} placeholder="Retainer / phase two price" aria-label="Continuation price" style={{ ...inputStyle, width: "auto", minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <button onClick={() => post({ action: "continuation", continuationCents: Math.round(Number(continuation || 0) * 100) })} disabled={busy || !continuation.trim()} style={busy || !continuation.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Set</button>
+            <span style={{ fontSize: 11, color: faint }}>Pricing a continuation is what makes a Complete option exist. Leave it at zero and there are two honest options instead of three.</span>
+          </div>
+
+          <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 4 }}>Negotiation</div>
+          {v.negotiation.events.length ? v.negotiation.events.map((e, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <Tag text={e.kind.replace(/_/g, " ")} color={NEGOTIATION_COLOR[e.kind] ?? C.gray} />
+              <span style={{ fontSize: 12.5, color: C.lime }}>{orgMoney(e.amountCents, e.currency)}</span>
+              <span style={{ fontSize: 11.5, color: faint }}>{e.by === "wobble" ? "we moved" : "they moved"}</span>
+              <span style={{ fontSize: 12, color: muted, flex: 1, minWidth: 180 }}>{e.note}</span>
+              {e.at ? <span style={{ fontSize: 11, color: faint }}>{new Date(e.at).toLocaleDateString()}</span> : null}
+            </div>
+          )) : <div style={{ fontSize: 11.5, color: faint }}>Nothing recorded. Every number that gets said out loud should land here, or in six months nobody will remember what was actually agreed.</div>}
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} aria-label="What happened" style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 9px" }}>
+              {["asked", "countered", "conceded", "agreed", "walked_away"].map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
+            </select>
+            <select value={form.by} onChange={(e) => setForm({ ...form, by: e.target.value })} aria-label="Who moved" style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 9px" }}>
+              <option value="client">they moved</option>
+              <option value="wobble">we moved</option>
+            </select>
+            <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="Number on the table" aria-label="Amount" style={{ ...inputStyle, width: "auto", minWidth: 150, fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Why" aria-label="Why" style={{ ...inputStyle, flex: 1, minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <button
+              onClick={() => post({ action: "negotiate", event: { kind: form.kind, by: form.by, amountCents: Math.round(Number(form.amount || 0) * 100), currency, note: form.note.trim() } })}
+              disabled={busy || !form.amount.trim() || form.note.trim().length < 3}
+              style={busy || !form.amount.trim() || form.note.trim().length < 3 ? disabledBtn : { ...primaryBtn, padding: "5px 12px", fontSize: 11.5 }}
+            >Record</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={walkAway} onChange={(e) => setWalkAway(e.target.value)} placeholder="Walk-away number" aria-label="Walk away" style={{ ...inputStyle, width: "auto", minWidth: 150, fontSize: 11.5, padding: "5px 9px" }} />
+            <button onClick={() => post({ action: "walk_away", walkAwayCents: Math.round(Number(walkAway || 0) * 100) })} disabled={busy || !walkAway.trim()} style={busy || !walkAway.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Set</button>
+            <span style={{ fontSize: 11, color: faint }}>Recording a negotiated number also updates the deal value, so the pipeline forecasts what is actually being discussed.</span>
+          </div>
+          {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The deal's own numbers, editable where you are looking at them. The pipeline read USD 0 on every
+ * client because a value could only ever be set when the deal was created.
+ */
+function DealValueEditor({ opportunityId, valueCents, currency, onSaved }: { opportunityId: string; valueCents: number; currency: string; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(valueCents ? valueCents / 100 : ""));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/crm/opportunities/${opportunityId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valueCents: Math.round(Number(value || 0) * 100) }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setEditing(false); onSaved(); } else setErr(String(j.error ?? r.status));
+    } catch (e) { setErr(e instanceof Error ? e.message : "failed"); } finally { setBusy(false); }
+  }
+
+  if (!editing) {
+    return (
+      <button onClick={() => setEditing(true)} title="Set what this deal is worth" style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: valueCents ? C.lime : faint, padding: 0 }}>
+        {valueCents ? orgMoney(valueCents, currency) : "set value"}
+      </button>
+    );
+  }
+  return (
+    <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+      <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" aria-label="Deal value" autoFocus style={{ ...inputStyle, width: 110, fontSize: 11.5, padding: "4px 8px" }} />
+      <button onClick={save} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "4px 10px", fontSize: 11 }}>{busy ? "…" : "save"}</button>
+      <button onClick={() => setEditing(false)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11 }}>cancel</button>
+      {err ? <span style={{ fontSize: 11, color: C.orange }}>{err}</span> : null}
+    </span>
+  );
+}
+
+
+type RelationshipsView = {
+  referral: { referredByCompanyId?: string; referredByName: string; note?: string; at?: string } | null;
+  referredHere: Array<{ id: string; name: string }>;
+  locations: Array<{ name: string; city?: string; note?: string; headcount?: number }>;
+  locationSummary: string;
+};
+
+/**
+ * Who sent this client to us, who they have sent us in turn, and the sites the business actually runs.
+ *
+ * A container assumed one business at one address and had nowhere to record a referral, so the client
+ * who brought you three others looked identical to a cold inbound.
+ */
+function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onChanged: () => void }) {
+  const state = useApi<RelationshipsView>(`/api/org/${companyId || "__none__"}/relationships`);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [referrer, setReferrer] = useState("");
+  const [refNote, setRefNote] = useState("");
+  const [site, setSite] = useState({ name: "", city: "", note: "" });
+
+  const v = state.data;
+
+  async function post(body: Record<string, unknown>) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/org/${companyId}/relationships`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setReferrer(""); setRefNote(""); setSite({ name: "", city: "", note: "" }); state.reload(); onChanged(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {v?.referral ? (
+          <>
+            <Tag text="referred by" color={C.lime} />
+            <span style={{ fontSize: 12.5, color: C.white }}>{v.referral.referredByName}</span>
+            {v.referral.note ? <span style={{ fontSize: 11.5, color: faint }}>{v.referral.note}</span> : null}
+          </>
+        ) : (
+          <>
+            <input value={referrer} onChange={(e) => setReferrer(e.target.value)} placeholder="Who sent them to us?" aria-label="Referred by" style={{ ...inputStyle, width: "auto", minWidth: 190, fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={refNote} onChange={(e) => setRefNote(e.target.value)} placeholder="What was said (optional)" aria-label="Referral note" style={{ ...inputStyle, flex: 1, minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <button onClick={() => post({ action: "referral", referral: { referredByName: referrer.trim(), note: refNote.trim() || undefined } })} disabled={busy || !referrer.trim()} style={busy || !referrer.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Record</button>
+          </>
+        )}
+      </div>
+
+      {v?.referredHere.length ? (
+        <div style={{ fontSize: 11.5, color: C.lime }}>
+          Has sent us {v.referredHere.length} client{v.referredHere.length === 1 ? "" : "s"}: {v.referredHere.map((r) => r.name).join(", ")}. Worth protecting.
+        </div>
+      ) : null}
+
+      {v?.locations.length ? (
+        <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{v.locationSummary}</div>
+      ) : null}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={site.name} onChange={(e) => setSite({ ...site, name: e.target.value })} placeholder="Add a site or brand" aria-label="Site name" style={{ ...inputStyle, width: "auto", minWidth: 160, fontSize: 11.5, padding: "5px 9px" }} />
+        <input value={site.city} onChange={(e) => setSite({ ...site, city: e.target.value })} placeholder="City" aria-label="City" style={{ ...inputStyle, width: "auto", minWidth: 110, fontSize: 11.5, padding: "5px 9px" }} />
+        <input value={site.note} onChange={(e) => setSite({ ...site, note: e.target.value })} placeholder="What is different here" aria-label="Site note" style={{ ...inputStyle, flex: 1, minWidth: 170, fontSize: 11.5, padding: "5px 9px" }} />
+        <button
+          onClick={() => post({ action: "locations", locations: [...(v?.locations ?? []), { name: site.name.trim(), city: site.city.trim() || undefined, note: site.note.trim() || undefined }] })}
+          disabled={busy || !site.name.trim()}
+          style={busy || !site.name.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}
+        >Add</button>
+        <span style={{ fontSize: 11, color: faint }}>Three clinics sharing one front desk is a different job from three independent branches, and the audit reads this.</span>
+      </div>
+      {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -8570,6 +8818,8 @@ function OrgWorkspacePage() {
               <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
               <OrgSection title="CONTACTS" />
               <ContactsPanel contacts={contacts} onChanged={org.reload} />
+              <OrgSection title="WHO SENT THEM, AND WHERE THEY OPERATE" />
+              <RelationshipsPanel companyId={selectedId} onChanged={org.reload} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "-"} tone={j.qualification ? C.lime : undefined} />
                 <OrgMetric label="calls given back" value={j.meetings.length} />
@@ -8585,7 +8835,7 @@ function OrgWorkspacePage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
                     <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
-                    {o.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.valueCents, "USD")}</span> : null}
+                    <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={org.reload} />
                     {o.nextAction ? <span style={{ fontSize: 11.5, color: faint }}>next: {o.nextAction}</span> : null}
                     <a href="/crm" style={{ fontSize: 11, color: faint, textDecoration: "none" }}>open in pipeline →</a>
                   </div>
@@ -8642,6 +8892,8 @@ function OrgWorkspacePage() {
                   </div>
                   {/* Two agents argue with it before a client ever sees it. */}
                   <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
+                  {/* A cheaper option, a fuller one, and every number that has been said out loud. */}
+                  <ProposalCommercialsPanel proposalId={p.id} currency={p.currency} />
                 </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No proposals yet — build one from a completed audit on the Overview tab.</div>}
               <OrgSection title="INVOICES" />
