@@ -85,7 +85,11 @@ export async function GET(request: Request, context: { params: Promise<{ company
         id: p.id, title: p.title, status: p.status, version: p.version, totalCents: p.pricingCents ?? 0, currency: p.currency ?? "USD",
         preSendReview: ((p.metadata ?? {}) as Record<string, unknown>).preSendReview ?? null,
       })),
-      invoices: invoiceRows.map((i) => ({ id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate })),
+      invoices: invoiceRows.map((i) => ({
+        id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate,
+        // The recurring schedule, so a retainer reads as a retainer rather than as one of many one-offs.
+        retainer: ((i.metadata ?? {}) as Record<string, unknown>).retainer ?? null,
+      })),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

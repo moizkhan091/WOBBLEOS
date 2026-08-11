@@ -4581,7 +4581,7 @@ function ClientPrefill({ onPick, label = "Run this for an existing client" }: { 
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.2)", background: "rgba(184,255,44,0.04)", marginBottom: 10 }}>
       <span style={{ fontSize: 12, color: C.lime, fontWeight: 600 }}>{label}</span>
-      <select value={picking} onChange={(e) => pick(e.target.value)} disabled={busy} aria-label="Pick a client" style={{ ...inputStyle, width: "auto", minWidth: 220, fontSize: 12.5, padding: "8px 11px" }}>
+      <select value={picking} onChange={(e) => pick(e.target.value)} disabled={busy} aria-label="Pick a client" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 200px)", fontSize: 12.5, padding: "8px 11px" }}>
         <option value="">{busy ? "Loading…" : "Pick a client…"}</option>
         {list.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
@@ -7358,7 +7358,7 @@ function stageColor(s: string) { return s === "project" || s === "won" ? C.lime 
 type OrgContact = { id: string; fullName: string; role: string | null; email: string | null; phone: string | null; whatsapp: string | null; linkedin: string | null; relationshipType: string; isDecisionMaker: boolean };
 type OrgAudit = { id: string; kind: string; status: string; businessName: string | null; createdAt: string; executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean };
 type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
-type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null };
+type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
 type MeetingFactRow = { id: string; kind: string; content: string; confidence: number; sourceSnippet: string | null; status: string };
@@ -7933,7 +7933,7 @@ function ModelControlPage() {
                   onChange={(e) => apply({ role: r.role, model: e.target.value }, `r:${r.role}`)}
                   disabled={busy !== null}
                   aria-label={`Model for ${r.label}`}
-                  style={{ ...inputStyle, width: "auto", minWidth: 210, fontSize: 12, padding: "7px 10px" }}
+                  style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 200px)", fontSize: 12, padding: "7px 10px" }}
                 >
                   {(v.catalog.length ? v.catalog : [{ id: r.model, label: r.model, costTier: "mid", provider: "openrouter", usdPerMillionInput: null, usdPerMillionOutput: null }]).map((m) => (
                     <option key={m.id} value={m.id}>{m.label}{priceLabel(m)}</option>
@@ -7990,6 +7990,7 @@ function agoLabel(iso: string | null): string {
  */
 function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (companyId: string) => void; selectedId: string; refreshToken?: number }) {
   const state = useApi<WorklistView>("/api/crm/worklist");
+  const narrow = useIsNarrow(700);
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
@@ -8009,6 +8010,9 @@ function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (comp
 
   const attention = v.entries.filter((e) => e.next.urgency >= 50);
   const shown = showAll ? v.entries : attention.length ? attention.slice(0, 6) : v.entries.slice(0, 3);
+  // On a phone the row's eight items squeezed the client name to two words per line. Below this width
+  // the row becomes a stack: score and name first, then the state, then the action.
+  const stacked = narrow;
 
   async function commit(opportunityId: string) {
     if (!draft.text.trim()) return;
@@ -8038,16 +8042,16 @@ function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (comp
         const open = expanded === e.companyId;
         return (
           <div key={e.companyId} style={{ borderRadius: 12, border: "1px solid " + (e.companyId === selectedId ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.07)"), background: e.companyId === selectedId ? "rgba(184,255,44,0.05)" : "rgba(255,255,255,0.02)", overflow: "hidden" }}>
-            <div style={{ display: "flex", gap: 11, alignItems: "center", flexWrap: "wrap", padding: "11px 13px" }}>
+            <div style={{ display: "flex", gap: stacked ? 8 : 11, alignItems: stacked ? "flex-start" : "center", flexWrap: "wrap", padding: "11px 13px" }}>
               <span title={e.health.score + "/100"} style={{ minWidth: 42, textAlign: "center", fontSize: 13, fontWeight: 600, color: BAND_COLOR[e.health.band] ?? C.gray }}>{e.health.score}</span>
-              <button onClick={() => onPick(e.companyId)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", flex: 1, minWidth: 180 }}>
+              <button onClick={() => onPick(e.companyId)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", flex: 1, minWidth: stacked ? "60%" : 180 }}>
                 <div style={{ fontSize: 13.5, color: C.white }}>{e.name}</div>
                 <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{e.next.because}</div>
               </button>
               <Tag text={BAND_LABEL[e.health.band] ?? e.health.band} color={BAND_COLOR[e.health.band] ?? C.gray} />
               {e.deal ? <Tag text={e.deal.stage.replace(/_/g, " ")} color={C.blue} /> : null}
               {e.deal && e.deal.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(e.deal.valueCents, e.deal.currency)}</span> : null}
-              <span style={{ fontSize: 11, color: faint, minWidth: 66, textAlign: "right" }}>{agoLabel(e.lastTouchAt)}</span>
+              <span style={{ fontSize: 11, color: faint, minWidth: 66, textAlign: stacked ? "left" : "right" }}>{agoLabel(e.lastTouchAt)}</span>
               <span style={{ fontSize: 12, color: e.next.urgency >= 100 ? C.orange : C.white, padding: "5px 10px", borderRadius: 8, border: "1px solid " + (e.next.urgency >= 100 ? "rgba(255,107,0,0.35)" : "rgba(255,255,255,0.1)") }}>{e.next.label}</span>
               <button onClick={() => { setExpanded(open ? null : e.companyId); setDraft({ text: e.next.label, date: "" }); }} aria-label={"Why " + e.name + " is ranked here"} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 12 }}>{open ? "hide" : "why"}</button>
             </div>
@@ -8067,7 +8071,7 @@ function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (comp
                 </div>
                 {e.deal ? (
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-                    <input value={draft.text} onChange={(ev) => setDraft({ ...draft, text: ev.target.value })} placeholder="Commit the next action…" aria-label="Next action" style={{ ...inputStyle, flex: 1, minWidth: 220, fontSize: 12, padding: "7px 10px" }} />
+                    <input value={draft.text} onChange={(ev) => setDraft({ ...draft, text: ev.target.value })} placeholder="Commit the next action…" aria-label="Next action" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 12, padding: "7px 10px" }} />
                     <input type="date" value={draft.date} onChange={(ev) => setDraft({ ...draft, date: ev.target.value })} aria-label="Next action date" style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "7px 10px" }} />
                     <button onClick={() => commit(e.deal!.id)} disabled={committing !== null || !draft.text.trim()} style={committing || !draft.text.trim() ? disabledBtn : { ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>{committing === e.deal.id ? "Saving…" : "Commit"}</button>
                   </div>
@@ -8150,7 +8154,7 @@ function DealTeamPanel({ companyId }: { companyId: string }) {
           <option value="email">Email</option>
           <option value="linkedin">LinkedIn DM</option>
         </select>
-        <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="What is this message for? (optional)" aria-label="Purpose" style={{ ...inputStyle, flex: 1, minWidth: 220, fontSize: 12, padding: "7px 10px" }} />
+        <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="What is this message for? (optional)" aria-label="Purpose" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 12, padding: "7px 10px" }} />
         <button onClick={() => run({ agent: "follow_up_writer", channel, purpose: purpose.trim() || undefined }, "fu")} disabled={busy !== null || !companyId} style={busy || !companyId ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
           {busy === "fu" ? "Writing…" : "Draft it"}
         </button>
@@ -8292,7 +8296,7 @@ function DealStageControl({ opportunityId, stage, onMoved }: { opportunityId: st
         {PIPELINE_STAGE_LIST.map((st) => <option key={st} value={st}>{st.replace(/_/g, " ")}</option>)}
       </select>
       {needsReason && target !== stage ? (
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target === "lost" ? "Why did we lose it?" : "What actually closed it?"} aria-label="Reason" style={{ ...inputStyle, flex: 1, minWidth: 200, fontSize: 11.5, padding: "5px 9px" }} />
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target === "lost" ? "Why did we lose it?" : "What actually closed it?"} aria-label="Reason" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 11.5, padding: "5px 9px" }} />
       ) : null}
       <button onClick={move} disabled={busy || target === stage} style={busy || target === stage ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
         {busy ? "Moving…" : "Move"}
@@ -8534,7 +8538,7 @@ function ProposalCommercialsPanel({ proposalId, currency }: { proposalId: string
             </div>
           ))}
           <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-            <input value={continuation} onChange={(e) => setContinuation(e.target.value)} placeholder="Retainer / phase two price" aria-label="Continuation price" style={{ ...inputStyle, width: "auto", minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={continuation} onChange={(e) => setContinuation(e.target.value)} placeholder="Retainer / phase two price" aria-label="Continuation price" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 200px)", fontSize: 11.5, padding: "5px 9px" }} />
             <button onClick={() => post({ action: "continuation", continuationCents: Math.round(Number(continuation || 0) * 100) })} disabled={busy || !continuation.trim()} style={busy || !continuation.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Set</button>
             <span style={{ fontSize: 11, color: faint }}>Pricing a continuation is what makes a Complete option exist. Leave it at zero and there are two honest options instead of three.</span>
           </div>
@@ -8559,7 +8563,7 @@ function ProposalCommercialsPanel({ proposalId, currency }: { proposalId: string
               <option value="wobble">we moved</option>
             </select>
             <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="Number on the table" aria-label="Amount" style={{ ...inputStyle, width: "auto", minWidth: 150, fontSize: 11.5, padding: "5px 9px" }} />
-            <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Why" aria-label="Why" style={{ ...inputStyle, flex: 1, minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Why" aria-label="Why" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 11.5, padding: "5px 9px" }} />
             <button
               onClick={() => post({ action: "negotiate", event: { kind: form.kind, by: form.by, amountCents: Math.round(Number(form.amount || 0) * 100), currency, note: form.note.trim() } })}
               disabled={busy || !form.amount.trim() || form.note.trim().length < 3}
@@ -8662,8 +8666,8 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
           </>
         ) : (
           <>
-            <input value={referrer} onChange={(e) => setReferrer(e.target.value)} placeholder="Who sent them to us?" aria-label="Referred by" style={{ ...inputStyle, width: "auto", minWidth: 190, fontSize: 11.5, padding: "5px 9px" }} />
-            <input value={refNote} onChange={(e) => setRefNote(e.target.value)} placeholder="What was said (optional)" aria-label="Referral note" style={{ ...inputStyle, flex: 1, minWidth: 180, fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={referrer} onChange={(e) => setReferrer(e.target.value)} placeholder="Who sent them to us?" aria-label="Referred by" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 200px)", fontSize: 11.5, padding: "5px 9px" }} />
+            <input value={refNote} onChange={(e) => setRefNote(e.target.value)} placeholder="What was said (optional)" aria-label="Referral note" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 11.5, padding: "5px 9px" }} />
             <button onClick={() => post({ action: "referral", referral: { referredByName: referrer.trim(), note: refNote.trim() || undefined } })} disabled={busy || !referrer.trim()} style={busy || !referrer.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Record</button>
           </>
         )}
@@ -8681,7 +8685,7 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         <input value={site.name} onChange={(e) => setSite({ ...site, name: e.target.value })} placeholder="Add a site or brand" aria-label="Site name" style={{ ...inputStyle, width: "auto", minWidth: 160, fontSize: 11.5, padding: "5px 9px" }} />
         <input value={site.city} onChange={(e) => setSite({ ...site, city: e.target.value })} placeholder="City" aria-label="City" style={{ ...inputStyle, width: "auto", minWidth: 110, fontSize: 11.5, padding: "5px 9px" }} />
-        <input value={site.note} onChange={(e) => setSite({ ...site, note: e.target.value })} placeholder="What is different here" aria-label="Site note" style={{ ...inputStyle, flex: 1, minWidth: 170, fontSize: 11.5, padding: "5px 9px" }} />
+        <input value={site.note} onChange={(e) => setSite({ ...site, note: e.target.value })} placeholder="What is different here" aria-label="Site note" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 11.5, padding: "5px 9px" }} />
         <button
           onClick={() => post({ action: "locations", locations: [...(v?.locations ?? []), { name: site.name.trim(), city: site.city.trim() || undefined, note: site.note.trim() || undefined }] })}
           disabled={busy || !site.name.trim()}
@@ -8691,6 +8695,65 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
       </div>
       {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
     </div>
+  );
+}
+
+
+/**
+ * Turn an invoice into a standing retainer.
+ *
+ * Setting a schedule raises nothing. The daily sweep does that, every invoice it raises is a draft, and
+ * a period that has already been billed can never be billed again.
+ */
+function RetainerControl({ invoiceId, retainer, onChanged }: { invoiceId: string; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [cadence, setCadence] = useState(retainer?.cadence ?? "monthly");
+  const [nextDate, setNextDate] = useState(retainer?.nextIssueAt ? retainer.nextIssueAt.slice(0, 10) : "");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function post(body: Record<string, unknown>) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/invoices/${invoiceId}/retainer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setOpen(false); onChanged(); } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  return (
+    <span style={{ display: "inline-flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+      {retainer ? (
+        <>
+          <Tag text={retainer.active ? `${retainer.cadence} retainer` : "retainer paused"} color={retainer.active ? C.lime : C.gray} />
+          <span style={{ fontSize: 11, color: faint }}>
+            next {retainer.nextIssueAt.slice(0, 10)}{retainer.issued.length ? `, ${retainer.issued.length} raised` : ""}
+          </span>
+          {retainer.active ? (
+            <button onClick={() => post({ action: "pause" })} disabled={busy} style={busy ? disabledBtn : { background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11 }}>pause</button>
+          ) : null}
+        </>
+      ) : null}
+      <button onClick={() => setOpen(!open)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11 }}>
+        {open ? "cancel" : retainer ? "reschedule" : "make it recurring"}
+      </button>
+      {open ? (
+        <>
+          <select value={cadence} onChange={(e) => setCadence(e.target.value)} aria-label="Cadence" style={{ ...inputStyle, width: "auto", fontSize: 11, padding: "4px 8px" }}>
+            <option value="monthly">monthly</option>
+            <option value="quarterly">quarterly</option>
+            <option value="annual">annual</option>
+          </select>
+          <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} aria-label="Next invoice date" style={{ ...inputStyle, width: "auto", fontSize: 11, padding: "4px 8px" }} />
+          <button
+            onClick={() => post({ action: "set", cadence, nextIssueAt: new Date(nextDate + "T09:00:00.000Z").toISOString() })}
+            disabled={busy || !nextDate}
+            style={busy || !nextDate ? disabledBtn : { ...primaryBtn, padding: "4px 10px", fontSize: 11 }}
+          >{busy ? "…" : "save"}</button>
+        </>
+      ) : null}
+      {msg ? <span style={{ fontSize: 11, color: C.orange }}>{msg}</span> : null}
+    </span>
   );
 }
 
@@ -8914,11 +8977,15 @@ function OrgWorkspacePage() {
               )) : <div style={{ fontSize: 12.5, color: faint }}>No proposals yet — build one from a completed audit on the Overview tab.</div>}
               <OrgSection title="INVOICES" />
               {invoiceItems.length ? invoiceItems.map((i) => (
-                <a key={i.id} href="/invoices" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", textDecoration: "none" }}>
-                  <Tag text={i.status} color={i.status === "paid" ? C.lime : C.orange} />
-                  <span style={{ fontSize: 12.5, color: C.white, flex: 1 }}>{i.number}</span>
-                  <span style={{ fontSize: 12, color: muted }}>{orgMoney(i.amountPaidCents, i.currency)} / {orgMoney(i.totalCents, i.currency)}</span>
-                </a>
+                <div key={i.id} style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Tag text={i.status} color={i.status === "paid" ? C.lime : C.orange} />
+                    <a href="/invoices" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{i.number}</a>
+                    <span style={{ fontSize: 12, color: muted }}>{orgMoney(i.amountPaidCents, i.currency)} / {orgMoney(i.totalCents, i.currency)}</span>
+                  </div>
+                  {/* Retainer vs one-off: the same invoice, raised again on a schedule, always as a draft. */}
+                  <RetainerControl invoiceId={i.id} retainer={i.retainer ?? null} onChanged={refreshAll} />
+                </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No invoices yet.</div>}
               <OrgSection title={`PROVENANCE (${l?.edges.length ?? 0} derivation edges)`} />
               {l && l.edges.length ? l.edges.map((e, i) => {

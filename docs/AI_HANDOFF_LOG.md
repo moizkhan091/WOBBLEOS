@@ -7372,3 +7372,25 @@ The objection handler, by contrast, was excellent: it caught that a 1.4M quote i
 group's likely annual revenue, and answered with their own no-show arithmetic.
 
 Gate: typecheck clean, 1716 tests pass, build clean.
+
+## 2026-08-11 - Retainers, and a phone that is not a horizontal scroll (Claude)
+
+**Retainers.** Invoices existed and recurring did not, so a retainer client was billed whenever a
+founder happened to remember. A retainer is not a new record: it is an invoice that knows how to
+produce the next one, with the schedule on its metadata. `sweepRetainers` runs in daily maintenance.
+
+Two rules are non-negotiable and are why this is not a two-line feature:
+- every raised invoice is a DRAFT. Nothing is sent, no money moves, the governance boundary is untouched.
+- a period is issued exactly once. `periodKey` names the month/quarter/year, the sweep refuses a period
+  already in `issued`, and the period is recorded BEFORE the invoice is created. If the create then
+  fails we have under-billed by one month, which a founder can raise by hand; the other ordering would
+  double-bill a client, which costs a relationship. The safe failure is the one that under-bills.
+- `addCadence` carries an anchor day, so a retainer starting on the 31st clamps to the 28th in February
+  and returns to the 31st in March instead of drifting down forever.
+
+**Phone.** The shell already turned the sidebar into a drawer. What still broke was inside: the worklist
+row's eight items squeezed a client name to two words per line, and several inputs had a fixed minimum
+wider than a 375px content column, which forced a horizontal scroll on the page body. The worklist now
+stacks below 700px and every wide input is capped to `min(100%, …)`.
+
+Gate: typecheck clean, 1734 tests pass, build clean.

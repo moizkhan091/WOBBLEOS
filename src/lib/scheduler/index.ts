@@ -20,6 +20,7 @@ import { APPROVAL_EFFECT_APPLIERS } from "@/lib/approval-effects/appliers";
 import { enqueueJob, jobExistsForIdempotencyKey, reclaimStalledJobs, purgeTerminalJobs, JOBS_RETENTION_MS } from "@/lib/jobs";
 import { discoverAndProposeSources, flagStaleSources } from "@/lib/source-discovery";
 import { sweepOverdueInvoices } from "@/lib/finance";
+import { sweepRetainers } from "@/lib/retainers";
 import { sweepExpiredProposals } from "@/lib/proposals";
 import { enqueueContentIntelligenceJob } from "@/lib/content-intelligence";
 import { intelligenceCadenceKey } from "@/lib/domain/content-intelligence";
@@ -90,6 +91,8 @@ export interface SchedulerResult {
   optimizerRolledBack?: number;
   invoicesMarkedOverdue?: number;
   proposalsExpired?: number;
+  /** Retainer invoices raised this tick. Always drafts. */
+  retainerInvoicesRaised?: number;
   webstatsSnapshotted?: boolean;
   errors: string[];
 }
@@ -270,6 +273,10 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       await sweepOverdueInvoices({ now }).then((r) => { result.invoicesMarkedOverdue = r.marked; }).catch((e) => result.errors.push(`invoice-overdue: ${e?.message ?? e}`));
       // Proposal lifecycle: expire sent proposals the client never actioned within the validity window.
       await sweepExpiredProposals({ now }).then((r) => { result.proposalsExpired = r.expired; }).catch((e) => result.errors.push(`proposal-expiry: ${e?.message ?? e}`));
+      // Retainers: raise the next invoice for any recurring schedule that has come due. Every one is a
+      // DRAFT, so nothing is sent and no money moves without a founder. Idempotent by period key, which
+      // matters because this tick can run more than once in a day and a client must never be billed twice.
+      await sweepRetainers({ now }).then((r) => { result.retainerInvoicesRaised = r.issued.length; if (r.errors.length) result.errors.push(...r.errors.map((x) => `retainer: ${x}`)); }).catch((e) => result.errors.push(`retainers: ${e?.message ?? e}`));
       // Decision Learning: derive scoped policy PROPOSALS from committed Decision Room decisions. Never
       // auto-applied — every result is a `proposed` row awaiting explicit founder approval. Idempotent by
       // natural key (a direction already tracked is not re-proposed), so running daily never duplicates.
