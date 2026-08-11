@@ -7148,3 +7148,49 @@ CRM, invoices, proposals, audits, memory and the daily brief until the 30-day to
 Gated all 45. `tests/route-auth-coverage.test.ts` missed it because it asked whether a gate appears
 anywhere in the FILE — a gated POST vouched for an ungated GET; added a scan that parses each
 handler's OWN body. Verified live: those endpoints now 401 for the same revoked cookie.
+
+---
+
+## 2026-08-11 — Revenue/CRM section audit, call-informed audit proven, em dash banned (Claude)
+
+**Proved the loop end to end on real data.** Approved the 27 discovery findings extracted from a
+45-minute call and re-ran the client-centric audit. The call-informed audit is materially better than
+the form-only one:
+- form only: "hemorrhaging approximately PKR 2.5M monthly due to 30% no-shows and after-hours inquiry
+  abandonment"
+- call informed: "losing PKR 1.5M monthly ... failing to convert 70% of new patient enquiries ... **the
+  previous PKR 400k system failure demonstrates that any solution must integrate seamlessly into
+  existing WhatsApp workflows to achieve staff adoption** ... with a 10-week Ramadan deadline and
+  cautious stakeholders"
+It now knows the real conversion gap, the failed system AND why it failed, and the deadline.
+
+**Two extraction bugs found by running it for real** (both fixed, see commits):
+1. The extractor echoed quotes instead of writing findings, and dropped every money number. Rewrote the
+   prompt to demand self-contained findings with the arithmetic shown, and raised the model to
+   claude-sonnet-4.5. Result on the same call: 6 quote-echoes became 21 findings including
+   "Loses ~70 slots/week (30% of ~240) of which only ~23 refill, leaving ~47 empty worth ~PKR
+   376,000/week (47 x PKR 8,000)".
+2. A truncated response threw the WHOLE call away. parseExtraction now salvages complete fact objects
+   when the JSON never closes; maxTokens 1800 -> 4000; transcript window 8k -> 24k chars.
+
+**Em dash banned system-wide** (`src/lib/domain/house-style.ts`). Root cause was not the instruction,
+it was that the prompts themselves are written with em dashes and a model mirrors the punctuation it is
+shown. Three layers: HOUSE_STYLE_PROMPT injected into generator prompts, withHouseStyle() which also
+strips dashes from the prompt itself, and sanitizeDeep() over generated text before storage. Wired into
+all 5 audit prompts + the assembled report, the pitch graph, the question engine and meeting findings.
+
+**Section audit result** (every Revenue/CRM page checked for the same dead end):
+| module | client aware | made you retype |
+|---|---|---|
+| Pipeline / CRM | yes | no |
+| Quick Pitch | NO | YES, fixed |
+| Paid Audit | NO | YES, fixed |
+| Audit Workspace | yes | no |
+| Proposals | yes | no (builds from an audit) |
+| Invoices | reached from its proposal | no |
+| Clients | the container | no |
+
+New `ClientPrefill` on Quick Pitch and Paid Audit: pick a client and every field fills from their form
+answers plus approved call findings, assembled in the shape a founder would have typed. The audit is
+linked via companyId so it lands in the container and creates a provenance edge. Free-text stays for
+cold prospects who are not in the CRM yet.

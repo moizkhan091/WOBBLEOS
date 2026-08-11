@@ -881,3 +881,33 @@ The callback is best-effort by design (its effects must never fail an accepted d
 never be silently swallowed, so the intake route needs the opposite semantics — 500 to force a retry.
 It reuses every security helper (`readCappedRawBody`, `verifyWebhookSignature`, `buildWebhookEventRow`),
 so nothing is duplicated except the failure policy, which is the point.
+
+---
+
+## 2026-08-11 — House style is enforced in code, not left to the prompt (Claude)
+
+**Decision**: ban the em dash in everything WOBBLE OS writes, and enforce it deterministically rather
+than by instruction alone.
+
+**Why it matters commercially**: WOBBLE sells AI services to real businesses. Output that reads as
+machine-written undercuts the pitch, and the em dash is the loudest tell. This is brand credibility,
+not typography taste.
+
+**Why instruction alone failed**: the generator prompts are themselves written with em dashes, and a
+model mirrors the punctuation it is shown. Adding "do not use em dashes" while showing it dozens does
+not work. `withHouseStyle()` therefore sanitises the prompt as well as appending the rule, and
+`sanitizeDeep()` is a final net over stored output.
+
+**Substitution rules chosen**: an em dash becomes a comma (its usual job), a line-leading dash becomes a
+hyphen bullet, and a numeric range becomes a hyphen so "45,000-50,000" does not read as two figures.
+Compound hyphens are untouched.
+
+## 2026-08-11 — Module pages keep free-text entry alongside the client picker (Claude)
+
+**Decision**: Quick Pitch and Paid Audit get a client picker that prefills every field, but the
+free-text business name stays.
+
+**Why**: the retyping complaint is about clients the OS already knows. A genuinely cold prospect, one
+found at an event or referred that morning, is not in the CRM yet, and forcing a CRM record first would
+add friction to the exact moment a founder wants to move fast. The picker removes the retyping without
+removing the cold path.
