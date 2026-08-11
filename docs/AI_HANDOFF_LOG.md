@@ -7344,3 +7344,31 @@ misfiled transcript puts one client's private call in another's container and bu
 below the fold.
 
 Gate: typecheck clean, 1710 tests pass, build clean.
+
+## 2026-08-11 - Verified in the browser on the live VPS, and the defect it found (Claude)
+
+Clicked through os.wobblepk.com in Chrome as Moiz. Worklist, health scores, timeline, deal team, and
+Model Control all render live. Two things proved by doing rather than by reading code:
+
+- Set a deal's value to 12,000 in the container: the pipeline header went from USD 0 to USD 12,000.
+  It took a second attempt, because the worklist and the container each reloaded alone; one refresh
+  signal now drives both, so the header cannot disagree with the deal underneath it.
+- Switched the objection handler from Sonnet to Gemini 2.5 Flash IN THE UI: "Changed 1 role(s). Live on
+  the next call, nothing to restart", the price line moved to $0.3/$2.5 per M, the preset flipped to
+  custom, and the database agreed. Switched it back the same way.
+
+**The defect.** The follow-up writer, run on a real client, produced: "We built an AI receptionist for a
+dental group in Karachi that cut no-shows by 64% in the first six weeks." None of that happened. There is
+no such client and no such number, and a founder skimming a draft before pasting it into WhatsApp would
+not catch it. The prompt already said not to claim a result WOBBLE has not delivered; that was not enough.
+
+Two fixes: the prompt now states plainly that the writer HAS no case studies, that the context is this
+client's own words and nothing else, and quotes the exact fabrication as the thing not to do. And
+`unverifiableClaims` checks the finished draft against the only material the writer was given: any
+percentage not in the context, any claim that WOBBLE has done this before, any third party named or
+merely described. What it finds is shown in orange ON the draft, headed "Do not send this as written".
+
+The objection handler, by contrast, was excellent: it caught that a 1.4M quote is 3-5x this clinic
+group's likely annual revenue, and answered with their own no-show arithmetic.
+
+Gate: typecheck clean, 1716 tests pass, build clean.

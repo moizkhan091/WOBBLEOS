@@ -93,12 +93,26 @@ export function followUpSystemPrompt(channel: FollowUpChannel, tone: string): st
     channelRules[channel],
     `Tone: ${tone}.`,
     "",
+    "THE ONE RULE THAT MATTERS MOST:",
+    "You have NO case studies. The context below contains this client's own words and nothing else. There",
+    "is no list of past WOBBLE clients, no percentage any previous build achieved, and no named reference",
+    "you may cite. If you write a sentence like \"we built this for a dental group in Karachi and cut",
+    "no-shows by 64%\", you have invented a client, invented a number, and put a lie in a founder's",
+    "outbox. A message grounded only in what THIS client told you is stronger anyway, because they",
+    "cannot argue with their own numbers.",
+    "",
+    "Concretely, you may NOT write:",
+    "- any past result, percentage, timeframe or outcome attributed to WOBBLE or to another client",
+    "- any other client, named or described (\"a dental group in Lahore\" is still a claim)",
+    "- any price, unless it appears in the context",
+    "- any date or availability, unless it appears in the context",
+    "",
     "Rules:",
     "- Reference something specific from THEIR context in the first sentence. If you cannot, the message",
     "  is generic and should not be sent, so say so in `groundedIn`.",
+    "- Their own arithmetic is your strongest material. 70 slots a week is 3,640 a year, and that is a",
+    "  fact they gave you, not a claim you made.",
     "- One ask. A message with two asks gets neither.",
-    "- Never claim a result WOBBLE has not delivered, never quote a price that is not in the context, and",
-    "  never invent a date.",
     "- Do not write a subject line for WhatsApp or LinkedIn. Leave it empty.",
     "",
     'Return STRICT JSON only: {"channel","subject","body","asksFor","groundedIn"}',
@@ -234,4 +248,48 @@ export function renderContext(ctx: DealTeamContext): string {
 /** True when there is genuinely nothing to reason from, so the caller can refuse rather than hallucinate. */
 export function contextIsEmpty(ctx: DealTeamContext): boolean {
   return !ctx.intake.trim() && !ctx.approvedFindings.length && !ctx.proposal && !ctx.qualification;
+}
+
+
+// -------------------------------------------------------------------------- unverifiable claims
+
+/**
+ * Claims a draft is not entitled to make.
+ *
+ * The prompt forbids inventing a case study, and on a live client it invented one anyway ("a dental
+ * group in Karachi that cut no-shows by 64% in the first six weeks"). A founder skimming a draft before
+ * pasting it into WhatsApp will not catch that, so this catches the shapes such a claim takes and the
+ * UI shows them next to the draft. Any number in the draft that does not appear in the context is
+ * suspect by definition, because the context is the only thing the writer was given.
+ */
+export function unverifiableClaims(body: string, context: string): string[] {
+  const found: string[] = [];
+  const haystack = context.toLowerCase();
+
+  // A percentage that is nowhere in what we know about this client. The context is the only thing the
+  // writer was given, so a number that is not in it did not come from anywhere.
+  for (const m of body.matchAll(/(\d{1,3}(?:\.\d+)?)\s?%/g)) {
+    if (!haystack.includes(`${m[1]}%`) && !haystack.includes(`${m[1]} percent`)) {
+      found.push(`"${m[0]}" appears in the message but nowhere in what this client told us.`);
+    }
+  }
+
+  // A claim that WOBBLE has done this before. There are no case studies in the context, ever.
+  if (/\b(we|wobble)\s+(?:have\s+|has\s+|had\s+|already\s+)?(built|ran|run|delivered|shipped|helped|implemented|rolled out|set up|did)\b/i.test(body)) {
+    found.push("The message claims WOBBLE has done this before. There are no case studies in the context, so whatever it describes was invented.");
+  }
+
+  // Another business, named or merely described. "A dental group in Karachi" is still a claim.
+  const thirdParty = [
+    /\b(another|other)\s+(client|clinic|business|company|group|practice|customer)/i,
+    /\b(a|one)\s+(similar|comparable)\s+\w+/i,
+    /\bone of our\b/i,
+    /\bfor (a|an|another)\s+\w+(\s+\w+)?\s+(group|clinic|practice|chain|business|company|brand)\b/i,
+    /\bother (clients|businesses|clinics|companies)\b/i,
+  ];
+  if (thirdParty.some((r) => r.test(body))) {
+    found.push("The message refers to another client. Nothing in the context names one.");
+  }
+
+  return [...new Set(found)];
 }

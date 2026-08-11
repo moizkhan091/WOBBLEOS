@@ -11,6 +11,7 @@ import {
   pricingSystemPrompt,
   renderContext,
   centsToMoney,
+  unverifiableClaims,
   type DealTeamContext,
 } from "@/lib/domain/deal-team";
 import { DEFAULT_AGENTS } from "@/lib/domain/agents";
@@ -171,5 +172,41 @@ describe("the free audit is a lead magnet, so it must land in the pipeline", () 
 
   it("stamps a source a founder can filter on", () => {
     expect(FREE_AUDIT_SOURCE).toBe("free_audit");
+  });
+});
+
+describe("a follow-up may not invent a case study", () => {
+  const context = "CLIENT: Zamzam Dental\n\nLoses ~70 appointment slots a week to no-shows (30% of ~240 weekly appointments).";
+
+  it("catches the exact fabrication it produced on a live client", () => {
+    // Verbatim from a real draft: no such client, no such number, nothing in the context supports it.
+    const body = "We built an AI receptionist for a dental group in Karachi that cut no-shows by 64% in the first six weeks.";
+    const claims = unverifiableClaims(body, context);
+    expect(claims.length).toBeGreaterThanOrEqual(2);
+    expect(claims.join(" ")).toContain("64%");
+    expect(claims.join(" ")).toContain("done this before");
+  });
+
+  it("says nothing about a message built only from their own numbers", () => {
+    const body = "You said you lose 70 slots a week to no-shows across the three clinics. Worth 20 minutes this week to see what that is costing you a year?";
+    expect(unverifiableClaims(body, context)).toEqual([]);
+  });
+
+  it("allows a percentage the client themselves gave us", () => {
+    expect(unverifiableClaims("You mentioned a 30% no-show rate.", context)).toEqual([]);
+  });
+
+  it("flags a percentage that appears nowhere in what they told us", () => {
+    expect(unverifiableClaims("This usually improves things by 45%.", context)[0]).toContain("45%");
+  });
+
+  it("flags a described third party even when it is not named", () => {
+    expect(unverifiableClaims("A similar clinic group had the same problem.", context).join(" ")).toContain("another client");
+  });
+
+  it("tells the writer, in the prompt, that it has no case studies at all", () => {
+    const p = followUpSystemPrompt("whatsapp", "direct");
+    expect(p).toContain("You have NO case studies");
+    expect(p).toContain("put a lie in a founder's");
   });
 });

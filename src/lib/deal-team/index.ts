@@ -24,6 +24,7 @@ import {
   pricingOpinionSchema,
   pricingSystemPrompt,
   renderContext,
+  unverifiableClaims,
   type DealCritique,
   type DealTeamContext,
   type FollowUpChannel,
@@ -209,9 +210,15 @@ export async function draftFollowUp(companyId: string, opts: { channel: FollowUp
     temperature: 0.6,
   });
 
-  await storeOnCompany(companyId, "followUpDraft", draft, now);
-  await audit(deps, { eventType: "deal_team.follow_up.drafted", module: DEAL_TEAM_MODULE, entityType: "crm_company", entityId: companyId, actor: deps.actor ?? FOLLOW_UP_WRITER_AGENT, metadata: { channel: opts.channel } });
-  return draft;
+  // The prompt forbids inventing a case study and it invented one anyway on a live client, so the draft
+  // is checked against the only thing the writer was given. A founder about to paste this into WhatsApp
+  // needs the warning ON the draft, not in a log.
+  const claims = unverifiableClaims(draft.body, renderContext(ctx));
+  const checked: FollowUpDraft & { unverifiedClaims?: string[] } = claims.length ? { ...draft, unverifiedClaims: claims } : draft;
+
+  await storeOnCompany(companyId, "followUpDraft", checked, now);
+  await audit(deps, { eventType: "deal_team.follow_up.drafted", module: DEAL_TEAM_MODULE, entityType: "crm_company", entityId: companyId, actor: deps.actor ?? FOLLOW_UP_WRITER_AGENT, metadata: { channel: opts.channel, unverifiedClaims: claims.length } });
+  return checked;
 }
 
 export interface ProposalReview {

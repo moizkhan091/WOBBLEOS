@@ -8089,7 +8089,7 @@ function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (comp
 
 
 type ObjectionRow = { objection: string; rootedIn: string; likelihood: string; answer: string; proof?: string };
-type FollowUpRow = { channel: string; subject: string; body: string; asksFor: string; groundedIn: string; generatedAt?: string };
+type FollowUpRow = { channel: string; subject: string; body: string; asksFor: string; groundedIn: string; generatedAt?: string; unverifiedClaims?: string[] };
 type DealTeamView = { objections: { objections: ObjectionRow[]; generatedAt?: string } | null; followUp: FollowUpRow | null };
 
 const LIKELIHOOD_COLOR: Record<string, string> = { high: C.orange, medium: C.blue, low: C.gray };
@@ -8168,6 +8168,12 @@ function DealTeamPanel({ companyId }: { companyId: string }) {
           {followUp.subject ? <div style={{ fontSize: 13, color: C.white }}>{followUp.subject}</div> : null}
           <div style={{ fontSize: 13, color: C.white, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{followUp.body}</div>
           <div style={{ fontSize: 11.5, color: faint }}>grounded in: {followUp.groundedIn}</div>
+          {followUp.unverifiedClaims?.length ? (
+            <div style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.07)" }}>
+              <div style={{ fontSize: 11.5, color: C.orange, marginBottom: 4 }}>Do not send this as written. It claims things we cannot back:</div>
+              {followUp.unverifiedClaims.map((c, i) => <div key={i} style={{ fontSize: 12, color: C.white, lineHeight: 1.5 }}>{c}</div>)}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {msg ? <div style={{ fontSize: 12.5, color: C.orange, lineHeight: 1.5 }}>{msg}</div> : null}
