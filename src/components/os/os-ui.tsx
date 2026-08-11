@@ -7368,7 +7368,7 @@ type OrgAudit = {
   executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean;
   situationSummary?: string | null; currentState?: string | null;
   opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
-  risks?: string[]; nextSteps?: string[]; successMetrics?: string[]; recommendedTechStack?: string[];
+  risks?: Array<string | { risk?: string; mitigation?: string }>; nextSteps?: unknown[]; successMetrics?: unknown[]; recommendedTechStack?: unknown[];
 };
 type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
@@ -7549,6 +7549,28 @@ function TranscriptPanel({ companyId, onChanged }: { companyId: string; onChange
 }
 
 /** A completed audit you can actually read — it used to be an unclickable status pill. */
+/**
+ * Anything from a stored report, as text that React can render.
+ *
+ * A paid audit's `risks` turned out to be objects ({risk, mitigation}) where every neighbouring array
+ * was strings, and rendering one directly took the whole page down with "Objects are not valid as a
+ * React child". These reports are model-generated and their shape will keep surprising us, so nothing
+ * from one is rendered raw again.
+ */
+function reportText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(reportText).filter(Boolean).join(" · ");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+      .map(([k, v]) => `${k.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}: ${reportText(v)}`)
+      .join(" — ");
+  }
+  return "";
+}
+
 function AuditsPanel({ items }: { items: OrgAudit[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
   if (!items.length) return <div style={{ fontSize: 12.5, color: faint }}>No audits yet.</div>;
@@ -7570,7 +7592,7 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
                 {a.executiveSummary ? (
                   <div style={{ fontSize: 13.5, color: C.white, lineHeight: 1.6, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.28)" }}>{a.executiveSummary}</div>
                 ) : <div style={{ fontSize: 12.5, color: faint }}>This audit has no executive summary stored.</div>}
-                {a.situationSummary ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.6 }}>{a.situationSummary}</div> : null}
+                {a.situationSummary ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.6 }}>{reportText(a.situationSummary)}</div> : null}
 
                 {/* The money. It was a trip to another page to see whether the audit was worth anything. */}
                 {a.roi ? (
@@ -7584,7 +7606,7 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     {a.roi.breakdown.map((b, i) => (
                       <div key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: muted }}>
-                        <span style={{ flex: 1 }}>{b.area}</span>
+                        <span style={{ flex: 1 }}>{reportText(b.area)}</span>
                         <span style={{ color: C.lime }}>{orgMoney(b.monthlyValueCents, "PKR")}/mo</span>
                       </div>
                     ))}
@@ -7597,16 +7619,16 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
                     {a.opportunities.map((o, i) => (
                       <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: "2px solid " + (o.impact === "high" ? C.lime : "rgba(255,255,255,0.15)") }}>
                         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 13, color: C.white }}>{o.title}</span>
+                          <span style={{ fontSize: 13, color: C.white }}>{reportText(o.title)}</span>
                           {o.impact ? <Tag text={o.impact + " impact"} color={o.impact === "high" ? C.lime : C.gray} /> : null}
                           {o.difficulty ? <Tag text={o.difficulty} color={C.gray} /> : null}
                           {o.estimatedMonthlyValueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.estimatedMonthlyValueCents, "PKR")}/mo</span> : null}
                           {o.monthlyHoursSaved ? <span style={{ fontSize: 11.5, color: faint }}>{o.monthlyHoursSaved}h/mo saved</span> : null}
                         </div>
-                        {o.description ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{o.description}</div> : null}
-                        {o.howItWorks ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>How: {o.howItWorks}</div> : null}
-                        {o.expectedOutcome ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>Outcome: {o.expectedOutcome}</div> : null}
-                        {o.kpis?.length ? <div style={{ fontSize: 11.5, color: faint }}>Measured by: {o.kpis.join(" · ")}</div> : null}
+                        {o.description ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{reportText(o.description)}</div> : null}
+                        {o.howItWorks ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>How: {reportText(o.howItWorks)}</div> : null}
+                        {o.expectedOutcome ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>Outcome: {reportText(o.expectedOutcome)}</div> : null}
+                        {o.kpis?.length ? <div style={{ fontSize: 11.5, color: faint }}>Measured by: {o.kpis.map(reportText).filter(Boolean).join(" · ")}</div> : null}
                       </div>
                     ))}
                   </>
@@ -7618,12 +7640,12 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
                     {a.roadmap.map((ph, i) => (
                       <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: "2px solid rgba(93,169,255,0.4)" }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 13, color: C.white }}>{ph.title}</span>
+                          <span style={{ fontSize: 13, color: C.white }}>{reportText(ph.title)}</span>
                           {ph.months ? <span style={{ fontSize: 11.5, color: faint }}>{ph.months}</span> : null}
                         </div>
-                        {ph.focus ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{ph.focus}</div> : null}
-                        {(ph.deliverables ?? ph.items ?? []).map((d, k) => <div key={k} style={{ fontSize: 12, color: faint, lineHeight: 1.5 }}>- {d}</div>)}
-                        {ph.expectedOutcome ? <div style={{ fontSize: 12, color: C.lime, lineHeight: 1.5 }}>{ph.expectedOutcome}</div> : null}
+                        {ph.focus ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{reportText(ph.focus)}</div> : null}
+                        {(ph.deliverables ?? ph.items ?? []).map((d, k) => <div key={k} style={{ fontSize: 12, color: faint, lineHeight: 1.5 }}>- {reportText(d)}</div>)}
+                        {ph.expectedOutcome ? <div style={{ fontSize: 12, color: C.lime, lineHeight: 1.5 }}>{reportText(ph.expectedOutcome)}</div> : null}
                       </div>
                     ))}
                   </>
@@ -7631,18 +7653,34 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
 
                 {a.risks?.length ? (
                   <div>
-                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Risks</div>
-                    {a.risks.map((r, i) => <div key={i} style={{ fontSize: 12, color: C.orange, lineHeight: 1.5 }}>- {r}</div>)}
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Risks and how we handle them</div>
+                    {a.risks.map((r, i) => {
+                      // A risk arrives as {risk, mitigation} here and as a plain string elsewhere.
+                      const risk = typeof r === "string" ? r : reportText((r as { risk?: unknown }).risk) || reportText(r);
+                      const mitigation = typeof r === "string" ? "" : reportText((r as { mitigation?: unknown }).mitigation);
+                      return (
+                        <div key={i} style={{ marginBottom: 5 }}>
+                          <div style={{ fontSize: 12, color: C.orange, lineHeight: 1.5 }}>- {risk}</div>
+                          {mitigation ? <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5, paddingLeft: 10 }}>{mitigation}</div> : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
                 {a.nextSteps?.length ? (
                   <div>
                     <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Next steps</div>
-                    {a.nextSteps.map((r, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {r}</div>)}
+                    {a.nextSteps.map((r, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {reportText(r)}</div>)}
+                  </div>
+                ) : null}
+                {a.successMetrics?.length ? (
+                  <div>
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>How we know it worked</div>
+                    {a.successMetrics.map((r, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {reportText(r)}</div>)}
                   </div>
                 ) : null}
                 {a.recommendedTechStack?.length ? (
-                  <div style={{ fontSize: 11.5, color: faint }}>Stack: {a.recommendedTechStack.join(" · ")}</div>
+                  <div style={{ fontSize: 11.5, color: faint }}>Stack: {a.recommendedTechStack.map(reportText).filter(Boolean).join(" · ")}</div>
                 ) : null}
 
                 <a href="/audit_workspace" style={{ fontSize: 11.5, color: C.lime, textDecoration: "none" }}>Open it in Audit Workspace to edit or export</a>
