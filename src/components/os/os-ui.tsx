@@ -5,7 +5,7 @@
 // (black / electric-lime Liquid Glass). Live pages read real APIs and show
 // honest loading / empty / error / 503 states. No fake data, no fake buttons.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as Lucide from "lucide-react";
@@ -7988,13 +7988,19 @@ function agoLabel(iso: string | null): string {
  * the one thing to do about it. Ranked server-side by the same rules that produce the reason text, so
  * the order is always arguable rather than mysterious.
  */
-function WorklistPanel({ onPick, selectedId }: { onPick: (companyId: string) => void; selectedId: string }) {
+function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (companyId: string) => void; selectedId: string; refreshToken?: number }) {
   const state = useApi<WorklistView>("/api/crm/worklist");
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ text: string; date: string }>({ text: "", date: "" });
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Anything that changes a client (setting a deal's value, moving a stage, logging a call) changes the
+  // ranking and the pipeline total, so the worklist has to re-read. Without this the header kept
+  // reporting USD 0 after a value had just been typed into the deal below it.
+  const reload = state.reload;
+  useEffect(() => { if (refreshToken > 0) reload(); }, [refreshToken, reload]);
 
   if (state.loading) return <StateBlock kind="loading" message="Working out who needs you today…" />;
   if (state.error) return <StateBlock kind="error" message={state.error} />;
@@ -8702,6 +8708,10 @@ function OrgWorkspacePage() {
   }>(`/api/org/${selectedId || "__none__"}`);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  // One signal every panel can bump so the whole page agrees after a change, rather than the container
+  // updating while the worklist above it still shows the old numbers.
+  const [changed, setChanged] = useState(0);
+  const refreshAll = useCallback(() => { setChanged((n) => n + 1); org.reload(); }, [org]);
 
   async function runClientAudit() {
     if (!selectedId) return;
@@ -8772,7 +8782,7 @@ function OrgWorkspacePage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Before any tool: who needs you, and the one thing to do about them. */}
       <OrgSection title="WHO NEEDS YOU TODAY" right={<span style={{ fontSize: 11, color: faint }}>ranked by what is blocking, not by name</span>} />
-      <WorklistPanel selectedId={selectedId} onPick={setSelectedId} />
+      <WorklistPanel selectedId={selectedId} onPick={setSelectedId} refreshToken={changed} />
 
       {/* Only renders when there is genuinely something to merge. */}
       <DuplicatesPanel onMerged={() => { companiesApi.reload(); org.reload(); }} />
@@ -8817,7 +8827,7 @@ function OrgWorkspacePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
               <OrgSection title="CONTACTS" />
-              <ContactsPanel contacts={contacts} onChanged={org.reload} />
+              <ContactsPanel contacts={contacts} onChanged={refreshAll} />
               <OrgSection title="WHO SENT THEM, AND WHERE THEY OPERATE" />
               <RelationshipsPanel companyId={selectedId} onChanged={org.reload} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -8827,7 +8837,7 @@ function OrgWorkspacePage() {
                 <OrgMetric label="open deals" value={j.opportunities.length} />
               </div>
               <OrgSection title="QUALIFICATION COUNCIL" />
-              <QualificationPanel companyId={selectedId} onScored={org.reload} />
+              <QualificationPanel companyId={selectedId} onScored={refreshAll} />
 
               <OrgSection title="DEALS" />
               {j.opportunities.length ? j.opportunities.map((o) => (
@@ -8835,12 +8845,12 @@ function OrgWorkspacePage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
                     <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
-                    <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={org.reload} />
+                    <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={refreshAll} />
                     {o.nextAction ? <span style={{ fontSize: 11.5, color: faint }}>next: {o.nextAction}</span> : null}
                     <a href="/crm" style={{ fontSize: 11, color: faint, textDecoration: "none" }}>open in pipeline →</a>
                   </div>
                   {/* Move it here rather than in another tab; closing it demands a reason. */}
-                  <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={org.reload} />
+                  <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={refreshAll} />
                 </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
 
