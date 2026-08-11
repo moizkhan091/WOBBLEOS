@@ -288,10 +288,7 @@ export async function askRevenueHead(input: RevenueHeadInput): Promise<AskAgentR
       // Offer only this department's tools to the model, so the narrow set is real and not cosmetic.
       runProvider: async ({ messages, maxTokens }) => {
         const r = await runTextProvider({
-          // The generalist router runs on a mini model. A head weighing a real deal needs the strong
-          // one; `content_strategy` is the seeded role already pointing at it. Cost still attributes to
-          // this department through the module and usageContext below.
-          role: "content_strategy",
+          role: "revenue_head",
           module: REVENUE_HEAD_MODULE,
           messages,
           maxTokens,

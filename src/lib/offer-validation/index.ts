@@ -80,7 +80,7 @@ async function scoreDimension(
     { role: "system", content: "You are a rigorous WOBBLE offer-validation analyst. Score ONE dimension of an offer 0-100 (100 = excellent) and justify it in 1-2 sentences grounded in the offer and any evidence. Be skeptical; do not inflate. Respond with STRICT JSON only: {\"score\": <0-100>, \"rationale\": \"...\", \"evidenceRefs\": [\"url-or-note\"]}." },
     { role: "user", content: `${offerContext(offer)}\n\n${evidenceBlock}\n\nDimension: ${dim.name}\nQuestion: ${dim.question}\n\nReturn STRICT JSON only.` },
   ];
-  const r = await runProvider({ role: "default", module: OFFER_VALIDATION_MODULE, model: deps.model ?? "openai/gpt-4o-mini", messages, maxTokens: 220, temperature: 0.2 });
+  const r = await runProvider({ role: "offer_validation", module: OFFER_VALIDATION_MODULE, model: deps.model, messages, maxTokens: 220, temperature: 0.2 });
   return parseDimensionResult(dim.slug, r.text);
 }
 
@@ -126,7 +126,7 @@ export async function runOfferValidation(offerId: string, deps: OfferValidationD
   const strongest = [...scores].sort((a, b) => b.score - a.score)[0];
   const summary = `Verdict ${verdict.toUpperCase()} at ${overallScore}/100. Strongest: ${strongest?.slug} (${strongest?.score}). Weakest: ${weakest?.slug} (${weakest?.score}).`;
 
-  const run = buildValidationRunRow({ offerId, version, verdict, overallScore, summary, evidenceCount, model: deps.model ?? "openai/gpt-4o-mini", createdBy: actor }, { now });
+  const run = buildValidationRunRow({ offerId, version, verdict, overallScore, summary, evidenceCount, model: deps.model ?? "role:offer_validation", createdBy: actor }, { now });
   const weightBySlug = OFFER_VALIDATION_DIMENSIONS.reduce<Record<string, number>>((acc, d) => ((acc[d.slug] = d.weight), acc), {});
   const agentBySlug = OFFER_VALIDATION_DIMENSIONS.reduce<Record<string, string>>((acc, d) => ((acc[d.slug] = d.agentSlug), acc), {});
   const dimensionRows = scores.map((s) => buildValidationDimensionRow({ runId: run.id, dimension: s.slug, agentSlug: agentBySlug[s.slug], score: s.score, weight: weightBySlug[s.slug], rationale: s.rationale, evidenceRefs: s.evidenceRefs }, { now }));

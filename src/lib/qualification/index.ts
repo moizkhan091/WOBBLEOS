@@ -78,7 +78,7 @@ async function scoreRole(subject: QualificationSubject, role: (typeof QUALIFICAT
   let llmScore: number | null = null;
   let rationale = policy ? `Policy: ${policy.note}` : "no signal";
   try {
-    const r = await runProvider({ role: "default", module: QUALIFICATION_MODULE, model: deps.model ?? "openai/gpt-4o-mini", messages, maxTokens: 200, temperature: 0.2 });
+    const r = await runProvider({ role: "qualification", module: QUALIFICATION_MODULE, model: deps.model, messages, maxTokens: 200, temperature: 0.2 });
     const parsed = parseRoleResult(role.slug, r.text);
     llmScore = parsed.score;
     rationale = parsed.rationale;
@@ -107,7 +107,7 @@ export async function runQualification(subjectId: string, deps: QualificationDep
   const weakest = [...scores].sort((a, b) => a.score - b.score)[0];
   const summary = `Grade ${grade} (${overallScore}/100). Weakest filter: ${weakest?.slug} (${weakest?.score}). ${recommendation}`;
 
-  const assessment = buildAssessmentRow({ subjectType: "company", subjectId, version, grade, overallScore, recommendation, summary, model: deps.model ?? "openai/gpt-4o-mini", createdBy: actor }, { now });
+  const assessment = buildAssessmentRow({ subjectType: "company", subjectId, version, grade, overallScore, recommendation, summary, model: deps.model ?? "role:qualification", createdBy: actor }, { now });
   const weightBySlug = QUALIFICATION_ROLES.reduce<Record<string, number>>((acc, r) => ((acc[r.slug] = r.weight), acc), {});
   const agentBySlug = QUALIFICATION_ROLES.reduce<Record<string, string>>((acc, r) => ((acc[r.slug] = r.agentSlug), acc), {});
   const roleRows = scores.map((s) => buildRoleRow({ assessmentId: assessment.id, role: s.slug, agentSlug: agentBySlug[s.slug], score: s.score, weight: weightBySlug[s.slug], rationale: s.rationale, policyNote: s.policyNote ?? null }, { now }));

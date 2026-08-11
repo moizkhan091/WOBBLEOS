@@ -58,6 +58,15 @@ function modelRoles() {
     audit_report: or(process.env.AUDIT_REPORT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     pitch_writer: or(process.env.PITCH_WRITER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
     audit_interview_planner: or(process.env.AUDIT_INTERVIEW_PLANNER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    // Roles that used to be hardcoded at their call sites, which made Model Control unable to change
+    // them. Every model decision in the OS is now a role, and every role is listed here.
+    revenue_head: or(process.env.REVENUE_HEAD_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    call_questions: or(process.env.CALL_QUESTIONS_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    meeting_intelligence: or(process.env.MEETING_INTELLIGENCE_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    qualification: or(process.env.QUALIFICATION_MODEL?.trim() || "openai/gpt-4o-mini"),
+    proposal_architect: or(process.env.PROPOSAL_ARCHITECT_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    content_render: or(process.env.CONTENT_RENDER_MODEL?.trim() || "anthropic/claude-sonnet-4.5"),
+    offer_validation: or(process.env.OFFER_VALIDATION_MODEL?.trim() || "openai/gpt-4o-mini"),
   };
 }
 
@@ -263,7 +272,13 @@ export async function seedDatabase() {
       description: "Model-role routing for provider adapter calls. Editable in Settings later.",
     })
     // Do NOT clobber runtime model swaps on re-seed — user/model-registry changes are sovereign.
-    .onConflictDoNothing();
+    // But DO add roles that did not exist when this database was first seeded: in jsonb `a || b` lets
+    // b's keys win, so putting the stored value on the right keeps every existing choice untouched and
+    // only fills in genuinely missing roles. Without this, a new role silently resolves to 'default'.
+    .onConflictDoUpdate({
+      target: schema.settings.id,
+      set: { value: sql`excluded.value || ${schema.settings.value}`, updatedAt: now },
+    });
 
   await db
     .insert(schema.settings)

@@ -911,3 +911,20 @@ free-text business name stays.
 found at an event or referred that morning, is not in the CRM yet, and forcing a CRM record first would
 add friction to the exact moment a founder wants to move fast. The picker removes the retyping without
 removing the cold path.
+
+## 2026-08-11 - Model choice is a role, never a literal
+
+Context: the founder has a small OpenRouter balance and asked for one place to see and change what every
+part of the OS runs. Auditing for that surfaced six call sites that hardcoded a model id.
+
+Decision: no code path may name a model. Every model decision is a named role in the map, and the map is
+the single source of truth. A hardcoded id is now treated as a bug, because it makes the control page lie.
+
+Decision: presets are opinionated, not uniform. `balanced` spends on the roles where a cheap model
+measurably failed in this codebase (transcript extraction dropped every money figure on gpt-4o-mini) and
+stays cheap where the work is classification or sorting. `economy` warns, by name, about the roles it is
+degrading rather than quietly making the audits worse.
+
+Decision: re-seeding must never overwrite a founder's model switch, but must add roles that did not exist
+when the database was seeded. jsonb `new || existing` gives exactly that, in both the migration and the
+seeder.

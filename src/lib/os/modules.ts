@@ -50,6 +50,7 @@ export const MODULES: Record<string, ModuleDef> = {
   offers: { id: "offers", label: "Offer Lab", title: "Offer Lab", icon: "Tag", status: "wired", api: "/api/offers", tagline: "Design, test and iterate offers. Run experiments, score what works, promote the winner, low-confidence bets never reach a founder cold." },
 
   // REVENUE (Wobble ERP Control Layer)
+  model_control: { id: "model_control", label: "Model Control", title: "Model Control", icon: "SlidersHorizontal", status: "wired", api: "/api/model-control", tagline: "Every model decision in the OS on one page: what each part is running, what it has cost, how busy it is, and today's spend against the cap. Switch one role, a whole department, or everything with a preset. A change is live on the next call, nothing restarts." },
   org: { id: "org", label: "Clients", title: "Client Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "Start here. One client, everything about them, in one place, what they told us on the website form, their qualification, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a client; the rest assembles itself." },
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone, companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
   audit_workspace: { id: "audit_workspace", label: "Audit Workspace", title: "Audit Workspace", icon: "FolderKanban", status: "wired", api: "/api/audit/workspace", tagline: "Run a client through the whole audit in one place, Doc 1 pitch → Doc 2 internal interview roadmap → record findings → Doc 3 final McKinsey deck. Each client's data stays isolated." },
@@ -97,7 +98,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "REVENUE / CRM", items: ["org", "crm", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
   { label: "DELIVERY & OPS", items: ["projects", "meetings", "tasks", "automations", "comms"] },
   { label: "WOBBLE HQ", items: ["decision", "offers", "taste", "optimizer"] },
-  { label: "SYSTEM", items: ["approvals", "security", "connections", "skills", "workers", "handoff", "costs", "audit", "backup", "settings"] },
+  { label: "SYSTEM", items: ["model_control","approvals", "security", "connections", "skills", "workers", "handoff", "costs", "audit", "backup", "settings"] },
 ];
 
 // (The sidebar opens only the active group by default, so SYSTEM and other non-active groups render as

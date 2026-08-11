@@ -166,7 +166,7 @@ export async function designRenderConcept(
   const r = await runProvider({
     role: "content_copywriting",
     module: CONTENT_RENDER_MODULE,
-    model: deps.model ?? "anthropic/claude-sonnet-4.5",
+    model: deps.model,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
@@ -206,7 +206,7 @@ export async function designCarouselDeck(
   const r = await runProvider({
     role: "content_copywriting",
     module: CONTENT_RENDER_MODULE,
-    model: deps.model ?? "anthropic/claude-sonnet-4.5",
+    model: deps.model,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },

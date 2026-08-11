@@ -7194,3 +7194,37 @@ New `ClientPrefill` on Quick Pitch and Paid Audit: pick a client and every field
 answers plus approved call findings, assembled in the shape a founder would have typed. The audit is
 linked via companyId so it lands in the container and creates a provenance edge. Free-text stays for
 cold prospects who are not in the CRM yet.
+
+## 2026-08-11 - Model Control (Claude)
+
+Every model decision in the OS is now one page, and a switch there takes effect on the next provider call.
+
+What was actually wrong before this:
+- Six call sites picked their model in code, bypassing the role map entirely: qualification and
+  offer-validation pinned `openai/gpt-4o-mini`, meeting-intelligence and content-render (x2) pinned
+  `anthropic/claude-sonnet-4.5`. No amount of switching in the UI could have changed them.
+- Three more (revenue head, call questions, proposal architect) borrowed `content_strategy`, so changing
+  the content model silently changed the sales models too.
+- The role map is a single settings row inserted ON CONFLICT DO NOTHING, so a database seeded before a
+  role existed would never receive it. Every such role resolved to `default` (gpt-4o-mini) while any UI
+  reading the catalog default would have claimed otherwise.
+
+Built:
+- `src/lib/domain/model-control.ts` - 22 roles across 6 departments with a `needsJudgment` flag,
+  economy/balanced/premium presets, `detectPreset`, `resolveChanges`, `downgradeWarnings`.
+- `src/lib/model-control/index.ts` - the view (live model, runs, failures, cost, avg latency, last run
+  per role; today's OpenRouter spend against the cap) and `applyModelChange`, which writes through the
+  existing `setModelForRole` so catalog validation and the audit trail still apply. Each role is applied
+  independently: one rejected model does not abandon the rest of a preset.
+- `src/app/api/model-control/route.ts`, founder-gated, returns the fresh view after every change so the
+  page cannot drift from what is stored.
+- Model Control page, first item under SYSTEM.
+- Migration `0064_model_role_backfill.sql` - jsonb merge (`new || existing`) that adds the seven missing
+  roles without touching a single existing choice. Re-running it is a no-op.
+- Seeder now merges on conflict for the same reason, instead of skipping the whole row.
+
+Why a switch cannot silently fail: `runTextProvider` reads the role map live on every call, so there is
+no cache and no restart. An unset role now displays what it actually resolves to (the `default` role),
+not the catalog default.
+
+Gate: typecheck clean, 1606 tests pass, build clean.

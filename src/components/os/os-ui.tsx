@@ -7753,6 +7753,176 @@ function RevenueHeadPanel({ companyId, companyName, onActed }: { companyId: stri
   );
 }
 
+type MCRole = {
+  role: string; label: string; department: string; purpose: string; defaultModel: string; needsJudgment: boolean; agents: string[];
+  model: string; provider: string; usingDefault: boolean;
+  runs: number; failures: number; costUsd: number; avgLatencyMs: number | null; lastRunAt: string | null;
+};
+type MCView = {
+  roles: MCRole[]; preset: string;
+  catalog: Array<{ id: string; label: string; costTier: string; provider: string }>;
+  spend: { todayUsd: number; totalUsd: number; dailyCapUsd: number | null; capEnabled: boolean; capUsed: number };
+  totals: { runs: number; failures: number; costUsd: number };
+};
+
+const DEPT_LABELS: Record<string, string> = {
+  revenue_crm: "Revenue and CRM",
+  audit: "Audit team",
+  proposal: "Proposals",
+  content: "Content studio",
+  intelligence: "Intelligence and memory",
+  workspace: "Workspace",
+};
+
+const usd = (n: number) => (n >= 1 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(4)}` : "$0");
+const tierColor = (t: string) => (t === "cheap" ? C.lime : t === "premium" ? C.orange : t === "strong" ? C.blue : C.gray);
+
+/**
+ * Model Control.
+ *
+ * Every model decision in the OS on one page, with what it costs and how busy it is, and a switch that
+ * takes effect on the very next call because the provider reads the role map live.
+ */
+function ModelControlPage() {
+  const state = useApi<MCView>("/api/model-control");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+
+  const guard = offlineIf(state);
+  if (guard) return guard;
+  const v = state.data;
+  if (!v) return <StateBlock kind="loading" message="Reading what every agent is running…" />;
+
+  async function apply(body: Record<string, unknown>, key: string) {
+    setBusy(key); setMsg(null); setWarnings([]);
+    try {
+      const r = await fetch("/api/model-control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; applied?: Array<{ role: string }>; failed?: Array<{ role: string; error: string }>; warnings?: string[]; error?: string };
+      if (r.ok && j.ok) {
+        const failed = j.failed ?? [];
+        setMsg(`Changed ${j.applied?.length ?? 0} role(s). Live on the next call, nothing to restart.${failed.length ? ` ${failed.length} rejected: ${failed.map((f) => `${f.role} (${f.error})`).join(", ")}` : ""}`);
+        setWarnings(j.warnings ?? []);
+        state.reload();
+      } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(null); }
+  }
+
+  const byDept = v.roles.reduce<Record<string, MCRole[]>>((acc, r) => { (acc[r.department] ||= []).push(r); return acc; }, {});
+  const capPct = Math.round(v.spend.capUsed * 100);
+  const capColor = capPct >= 80 ? C.orange : capPct >= 50 ? C.blue : C.lime;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Spend first: this is the number that decides whether a switch is urgent. */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <OrgMetric label="spent today" value={usd(v.spend.todayUsd)} tone={capColor} />
+        <OrgMetric label={`daily cap${v.spend.capEnabled ? "" : " (off)"}`} value={v.spend.dailyCapUsd !== null ? `$${v.spend.dailyCapUsd}` : "none"} tone={v.spend.capEnabled ? undefined : C.orange} />
+        <OrgMetric label="spent all time" value={usd(v.spend.totalUsd)} />
+        <OrgMetric label="model runs" value={v.totals.runs} />
+        <OrgMetric label="failures" value={v.totals.failures} tone={v.totals.failures ? C.orange : undefined} />
+      </div>
+      {v.spend.dailyCapUsd !== null ? (
+        <div>
+          <div style={{ height: 6, borderRadius: 4, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+            <div style={{ width: `${capPct}%`, height: "100%", background: capColor }} />
+          </div>
+          <div style={{ fontSize: 11, color: faint, marginTop: 5 }}>
+            {capPct}% of today&apos;s ${v.spend.dailyCapUsd} cap used. The cap is enforced in code: once it is hit, paid calls are blocked rather than queued.
+          </div>
+        </div>
+      ) : null}
+
+      {/* Presets */}
+      <OrgSection title="PRESETS" right={<span style={{ fontSize: 11, color: faint }}>currently: {v.preset}</span>} />
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+        {([
+          ["economy", "Economy", "Everything cheap. Audits and transcript extraction get noticeably worse."],
+          ["balanced", "Balanced", "Strong only where a cheap model measurably fails. Recommended."],
+          ["premium", "Premium", "Strong everywhere. Several times the cost."],
+        ] as const).map(([p, label, desc]) => (
+          <button key={p} onClick={() => apply({ preset: p }, `preset:${p}`)} disabled={busy !== null} title={desc}
+            style={busy ? disabledBtn : v.preset === p ? { ...primaryBtn, padding: "9px 15px" } : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "9px 15px" }}>
+            {busy === `preset:${p}` ? "Applying…" : label}
+          </button>
+        ))}
+      </div>
+      {msg ? <div style={{ fontSize: 12.5, color: msg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+      {warnings.length ? (
+        <div style={{ padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,107,0,0.35)", background: "rgba(255,107,0,0.07)" }}>
+          <div style={{ fontSize: 11.5, color: C.orange, marginBottom: 6 }}>You put a cheap model on work that needs reasoning:</div>
+          {warnings.map((w, i) => <div key={i} style={{ fontSize: 12.5, color: C.white, lineHeight: 1.5 }}>{w}</div>)}
+        </div>
+      ) : null}
+
+      {/* Per department */}
+      {Object.entries(byDept).map(([dept, roles]) => {
+        const deptCost = roles.reduce((a, r) => a + r.costUsd, 0);
+        const deptRuns = roles.reduce((a, r) => a + r.runs, 0);
+        return (
+          <div key={dept} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <OrgSection
+              title={(DEPT_LABELS[dept] ?? dept).toUpperCase()}
+              right={
+                <span style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: faint }}>{deptRuns} runs · {usd(deptCost)}</span>
+                  <button onClick={() => apply({ department: dept, preset: "economy" }, `d:${dept}:economy`)} disabled={busy !== null}
+                    style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 10px", fontSize: 11 }}>
+                    {busy === `d:${dept}:economy` ? "…" : "all cheap"}
+                  </button>
+                  <button onClick={() => apply({ department: dept, preset: "balanced" }, `d:${dept}:balanced`)} disabled={busy !== null}
+                    style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 10px", fontSize: 11 }}>
+                    {busy === `d:${dept}:balanced` ? "…" : "balanced"}
+                  </button>
+                </span>
+              }
+            />
+            {roles.map((r) => (
+              <div key={r.role} style={{ display: "flex", gap: 11, alignItems: "flex-start", flexWrap: "wrap", padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13.5, color: C.white }}>{r.label}</span>
+                    {r.needsJudgment ? <Tag text="needs judgment" color={C.blue} /> : null}
+                    {r.usingDefault ? <Tag text="default" color={C.gray} /> : null}
+                    {r.failures > 0 ? <Tag text={`${r.failures} failed`} color={C.orange} /> : null}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: faint, marginTop: 3, lineHeight: 1.45 }}>{r.purpose}</div>
+                  {r.agents.length ? <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>runs: {r.agents.join(", ")}</div> : null}
+                </div>
+                <div style={{ minWidth: 130, textAlign: "right" }}>
+                  <div style={{ fontSize: 12.5, color: r.runs ? C.white : faint }}>{r.runs} runs</div>
+                  <div style={{ fontSize: 11.5, color: r.costUsd > 0 ? C.lime : faint }}>{usd(r.costUsd)}</div>
+                  <div style={{ fontSize: 10.5, color: faint }}>
+                    {r.avgLatencyMs ? `${(r.avgLatencyMs / 1000).toFixed(1)}s avg` : "not run yet"}
+                  </div>
+                </div>
+                <select
+                  value={r.model}
+                  onChange={(e) => apply({ role: r.role, model: e.target.value }, `r:${r.role}`)}
+                  disabled={busy !== null}
+                  aria-label={`Model for ${r.label}`}
+                  style={{ ...inputStyle, width: "auto", minWidth: 210, fontSize: 12, padding: "7px 10px" }}
+                >
+                  {(v.catalog.length ? v.catalog : [{ id: r.model, label: r.model, costTier: "mid", provider: "openrouter" }]).map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}{m.costTier ? ` (${m.costTier})` : ""}</option>
+                  ))}
+                  {v.catalog.some((m) => m.id === r.model) ? null : <option value={r.model}>{r.model} (current)</option>}
+                </select>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5, marginTop: 4 }}>
+        A change here is read by the provider on its next call, so nothing needs restarting and a switch cannot
+        quietly fail to apply. Every model decision in the OS is one of the roles above: no code path picks a model
+        on its own.
+      </div>
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -8227,6 +8397,7 @@ const WIRED: Record<string, React.ComponentType> = {
   meetings: MeetingsPage,
   projects: ProjectsPage,
   audit_workspace: AuditWorkspacePage,
+  model_control: ModelControlPage,
   free_audit: FreeAuditPage,
   paid_audit: PaidAuditPage,
   docs: ProposalsPage,

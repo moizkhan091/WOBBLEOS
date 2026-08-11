@@ -52,14 +52,6 @@ async function audit(deps: MeetingIntelligenceDeps, input: AuditEventInput): Pro
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
 }
 
-/**
- * A discovery call is where the money numbers are said out loud, and this extraction feeds the audit,
- * which feeds the proposal, which sets the price. A mini model reliably drops figures and fumbles the
- * arithmetic that turns "30% of 240 a week" into "~70 slots", so this one task pays for a strong model.
- * Override per-call via deps.model.
- */
-const EXTRACTION_MODEL = "anthropic/claude-sonnet-4.5";
-
 export async function extractMeetingIntelligence(meetingId: string, deps: MeetingIntelligenceDeps = {}): Promise<MeetingIntelligenceRow[]> {
   const store = deps.store ?? defaultStore();
   const now = deps.now ?? new Date();
@@ -101,8 +93,9 @@ export async function extractMeetingIntelligence(meetingId: string, deps: Meetin
     },
     { role: "user", content: `Meeting: ${meeting.title}\n\nTranscript / notes:\n${meeting.transcript.slice(0, 24000)}\n\nReturn STRICT JSON only.` },
   ];
-  const model = deps.model ?? EXTRACTION_MODEL;
-  const r = await runProvider({ role: "default", module: MEETING_INTELLIGENCE_MODULE, model, messages, maxTokens: 4000, temperature: 0.1 });
+  // Resolved through the role map, never pinned here: a hardcoded model id makes Model Control lie.
+  const r = await runProvider({ role: "meeting_intelligence", module: MEETING_INTELLIGENCE_MODULE, model: deps.model, messages, maxTokens: 4000, temperature: 0.1 });
+  const model = deps.model ?? "role:meeting_intelligence";
   const facts = parseExtraction(r.text);
 
   const rows = facts.map((f) => buildMeetingIntelligenceRow({ meetingId, companyId: meeting.companyId, kind: f.kind, content: sanitizeHouseStyle(f.content), confidence: f.confidence, sourceSnippet: f.sourceSnippet, model, createdBy: actor }, { now }));

@@ -116,11 +116,11 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
       return { text: r.text, run: { id: r.run.id } };
     });
 
-  const first = await runProvider({ role: "content_strategy", module: CALL_QUESTIONS_MODULE, messages, maxTokens: 2600, temperature: 0.5 });
+  const first = await runProvider({ role: "call_questions", module: CALL_QUESTIONS_MODULE, messages, maxTokens: 2600, temperature: 0.5 });
   const parsed = await parseStructuredWithRepair(first.text, callQuestionSetSchema, {
     repair: async (bad, error) => {
       const r = await runProvider({
-        role: "content_strategy",
+        role: "call_questions",
         module: CALL_QUESTIONS_MODULE,
         messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: repairInstruction(error) }],
         maxTokens: 2600,
@@ -137,7 +137,7 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
   let modelRunId = first.run.id;
   if (gaps.length) {
     const fix = await runProvider({
-      role: "content_strategy",
+      role: "call_questions",
       module: CALL_QUESTIONS_MODULE,
       messages: [...messages, { role: "assistant", content: JSON.stringify(set) }, { role: "user", content: coverageRepairInstruction(gaps) }],
       maxTokens: 2600,
