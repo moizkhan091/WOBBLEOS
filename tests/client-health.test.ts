@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bandFor, daysBetween, scoreClientHealth, suggestNextAction, type ClientHealthInput, type NextActionInput } from "@/lib/domain/client-health";
+import { contactCanSayYes } from "@/lib/domain/crm";
 
 const NOW = new Date("2026-08-11T12:00:00.000Z");
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
@@ -169,5 +170,39 @@ describe("next action — the sales sequence, in order", () => {
   it("always explains itself, so the ranking is arguable", () => {
     const n = suggestNextAction(nextBase);
     expect(n.because.length).toBeGreaterThan(10);
+  });
+});
+
+describe("who counts as able to say yes", () => {
+  it("counts the founder, the CEO, a partner, and an explicit decision maker", () => {
+    for (const relationshipType of ["founder", "ceo", "partner", "decision_maker"]) {
+      expect(contactCanSayYes({ relationshipType }), relationshipType).toBe(true);
+    }
+  });
+
+  it("does not count someone who cannot sign", () => {
+    for (const relationshipType of ["influencer", "client_team_member", "vendor", "other"]) {
+      expect(contactCanSayYes({ relationshipType }), relationshipType).toBe(false);
+    }
+  });
+
+  it("trusts what the website form recorded about their role", () => {
+    // The form asks for their role and stores the answer; the enum alone missed founders.
+    expect(contactCanSayYes({ relationshipType: "other", metadata: { isDecisionMaker: true } })).toBe(true);
+    expect(contactCanSayYes({ relationshipType: "other", metadata: { isDecisionMaker: false } })).toBe(false);
+    expect(contactCanSayYes({ relationshipType: null, metadata: null })).toBe(false);
+  });
+});
+
+describe("the health score does not overstate how recent contact was", () => {
+  it("says within the last day, not today, for contact 23 hours ago", () => {
+    const h = scoreClientHealth({ ...base, lastTouchAt: new Date(NOW.getTime() - 23 * 3_600_000) });
+    const recent = h.signals.find((s) => s.label === "recent contact");
+    expect(recent?.detail).toContain("within the last day");
+  });
+
+  it("says a day ago at one day, in the singular", () => {
+    const h = scoreClientHealth({ ...base, lastTouchAt: daysAgo(1) });
+    expect(h.signals.find((s) => s.label === "recent contact")?.detail).toContain("a day ago");
   });
 });

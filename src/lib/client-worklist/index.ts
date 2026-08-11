@@ -12,6 +12,7 @@ import {
   proposals,
   qualificationAssessments,
 } from "@/db/schema";
+import { contactCanSayYes } from "@/lib/domain/crm";
 import { READINESS_FORM_SOURCE } from "@/lib/domain/intake";
 import {
   scoreClientHealth,
@@ -167,7 +168,7 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
       proposalCount: companyProposals.length,
       proposalAwaitingReply: companyProposals.some((p) => p.status === "sent" || p.status === "viewed"),
       hasIntake: intakeAt.has(c.id),
-      hasDecisionMaker: companyContacts.some((x) => x.relationshipType === "decision_maker"),
+      hasDecisionMaker: companyContacts.some((x) => contactCanSayYes({ relationshipType: x.relationshipType, metadata: x.metadata as Record<string, unknown> | null })),
       now,
     };
 

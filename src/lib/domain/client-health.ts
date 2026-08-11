@@ -104,7 +104,7 @@ export function scoreClientHealth(input: ClientHealthInput): ClientHealth {
     if (daysSinceTouch >= 30) add("silent 30d+", -30, `No contact for ${daysSinceTouch} days.`);
     else if (daysSinceTouch >= 14) add("silent 14d+", -18, `No contact for ${daysSinceTouch} days.`);
     else if (daysSinceTouch >= 7) add("silent 7d+", -8, `No contact for ${daysSinceTouch} days.`);
-    else add("recent contact", 6, `Last contact ${daysSinceTouch === 0 ? "today" : `${daysSinceTouch} days ago`}.`);
+    else add("recent contact", 6, `Last contact ${daysSinceTouch === 0 ? "within the last day" : daysSinceTouch === 1 ? "a day ago" : `${daysSinceTouch} days ago`}.`);
   }
 
   // A deal parked in a stage that is ours to move.

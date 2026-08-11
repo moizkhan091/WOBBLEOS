@@ -7262,3 +7262,28 @@ the row rather than only into stage history, and refuses to close without one. D
 inside the client container instead of in another tab.
 
 Gate: typecheck clean, 1656 tests pass, build clean.
+
+## 2026-08-11 - End-to-end proof, and the duplicates a careful dedupe leaves behind (Claude)
+
+**Proved the whole intake chain on production.** Filled the real AI readiness form on wobblepk.com and
+watched it land: n8n forwarded it, the webhook created the company, the lead, the contact and a deal at
+`qualified`, all within the same second. The worklist then ranked the client with "Qualify them" as the
+next action; running the qualification council moved that to "Book the first call"; the question engine
+produced 12 questions specific to this client (their 70 no-show slots, their three locations, their
+paper diary) with a do-not-ask list covering everything the form already answered. Timeline showed the
+sequence. The chain works.
+
+Two real defects it exposed, both fixed:
+- The health score tested `relationshipType === "decision_maker"` alone, so a container holding the
+  FOUNDER of the business reported "no decision maker, nobody can say yes". `contactCanSayYes` now
+  covers founder/ceo/partner/decision_maker and trusts what the form recorded about their role.
+- It claimed "last contact today" for a contact 23 hours old. Now "within the last day".
+
+**Merging duplicates.** The intake deliberately refuses to merge on a fuzzy name match, because joining
+the wrong two clients destroys history that cannot be regenerated. The cost is the occasional genuine
+twin. `src/lib/domain/client-merge.ts` finds them and shows the evidence: a shared domain is near
+certain (95), a shared name alone is a suggestion (70). The merge moves every child row in one
+transaction, fills blanks on the survivor without overwriting anything, and ARCHIVES the loser with a
+pointer to the winner, so a regretted merge can be unpicked by hand. Nothing is ever deleted.
+
+Gate: typecheck clean, 1675 tests pass, build clean.

@@ -26,6 +26,21 @@ export const CONTACT_RELATIONSHIPS = [
 ] as const;
 export type ContactRelationship = (typeof CONTACT_RELATIONSHIPS)[number];
 
+/**
+ * Relationships where this person can actually say yes.
+ *
+ * The health score used to test `relationshipType === "decision_maker"` alone, so a container holding
+ * the founder of the business reported "no decision maker, nobody can say yes". The enum splits the
+ * decision maker into several titles; all of them close deals.
+ */
+export const DECIDING_RELATIONSHIPS = ["founder", "ceo", "decision_maker", "partner"] as const;
+
+export function contactCanSayYes(contact: { relationshipType?: string | null; metadata?: Record<string, unknown> | null }): boolean {
+  if ((DECIDING_RELATIONSHIPS as readonly string[]).includes(contact.relationshipType ?? "")) return true;
+  // The website form records this directly from the role they picked; trust it as a second source.
+  return contact.metadata?.isDecisionMaker === true;
+}
+
 export const LEAD_STATUSES = ["new", "contacted", "no_response", "qualified", "disqualified", "converted", "duplicate", "nurture", "lost"] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 

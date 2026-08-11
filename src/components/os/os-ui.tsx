@@ -8368,6 +8368,67 @@ function ContactEditor({ contact, onSaved }: { contact: OrgContact; onSaved: () 
   );
 }
 
+
+type DuplicateRow = {
+  keepId: string; mergeId: string; confidence: number; reasons: string[];
+  keep: { id: string; name: string; website: string | null; weight: number };
+  merge: { id: string; name: string; website: string | null; weight: number };
+};
+
+/**
+ * Likely twin containers, with the evidence, and a deliberate merge.
+ *
+ * The intake refuses to merge on a fuzzy name match, because joining the wrong two clients destroys a
+ * history that cannot be regenerated. This is the other half of that decision: a founder can see the
+ * twins and merge them on purpose. Nothing is deleted; the loser is archived pointing at the winner.
+ */
+function DuplicatesPanel({ onMerged }: { onMerged: () => void }) {
+  const state = useApi<{ duplicates: DuplicateRow[] }>("/api/crm/duplicates");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const dupes = state.data?.duplicates ?? [];
+  if (state.loading || state.error || !dupes.length) return null;
+
+  async function merge(d: DuplicateRow) {
+    setBusy(d.mergeId); setMsg(null);
+    try {
+      const r = await fetch("/api/crm/duplicates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keepId: d.keepId, mergeId: d.mergeId }) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; moved?: Record<string, number> };
+      if (r.ok && j.ok) {
+        const moved = Object.entries(j.moved ?? {}).map(([k, n]) => `${n} ${k}`).join(", ");
+        setMsg(`Merged into ${d.keep.name}${moved ? `, moved ${moved}` : ""}. The other container is archived, not deleted.`);
+        state.reload(); onMerged();
+      } else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(null); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <OrgSection title="POSSIBLE DUPLICATES" right={<span style={{ fontSize: 11, color: faint }}>{dupes.length} to look at</span>} />
+      {dupes.map((d) => (
+        <div key={d.mergeId} style={{ padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,107,0,0.25)", background: "rgba(255,107,0,0.04)", display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+            <Tag text={d.confidence + "% likely"} color={d.confidence >= 85 ? C.orange : C.gray} />
+            <span style={{ fontSize: 13, color: C.white }}>{d.merge.name}</span>
+            <span style={{ fontSize: 12, color: faint }}>into</span>
+            <span style={{ fontSize: 13, color: C.white }}>{d.keep.name}</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={() => merge(d)} disabled={busy !== null} style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
+              {busy === d.mergeId ? "Merging…" : "Merge"}
+            </button>
+          </div>
+          {d.reasons.map((r, i) => <div key={i} style={{ fontSize: 11.5, color: muted }}>{r}</div>)}
+          <div style={{ fontSize: 11, color: faint }}>
+            Keeping the one with more history ({d.keep.weight} records) and archiving the other ({d.merge.weight}).
+          </div>
+        </div>
+      ))}
+      {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{msg}</div> : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -8453,6 +8514,9 @@ function OrgWorkspacePage() {
       {/* Before any tool: who needs you, and the one thing to do about them. */}
       <OrgSection title="WHO NEEDS YOU TODAY" right={<span style={{ fontSize: 11, color: faint }}>ranked by what is blocking, not by name</span>} />
       <WorklistPanel selectedId={selectedId} onPick={setSelectedId} />
+
+      {/* Only renders when there is genuinely something to merge. */}
+      <DuplicatesPanel onMerged={() => { companiesApi.reload(); org.reload(); }} />
 
       {/* Searchable picker — a pill row is fine at two clients and unusable at thirty. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
