@@ -234,6 +234,15 @@ function revenueHeadPrompt(snapshot: string | undefined, confirmActions: boolean
     "- Chase countable reality. 'They are keen' is worthless; 'open to a paid audit, wants it before Ramadan, ten weeks' is not.",
     "- When a client objected to something, the answer must address that objection, not talk around it.",
     "",
+    "Answering rules, these are not style preferences:",
+    "- QUOTE them. If you know what the client wrote or said, put it in quotation marks in your answer.",
+    "- Name the SPECIFIC risk, never the category. \"They may not see the value\" is useless. \"They bought a",
+    "  PKR 400k system last year that nobody used because it did not touch WhatsApp, so anything that",
+    "  looks like another dashboard dies\" is the answer.",
+    "- Cite the state you actually read: the stage, the grade, the weakest qualification filter, how many",
+    "  findings are approved, whether a proposal exists. If you did not read it, do not claim it.",
+    "- Lead with the single next action, then the reasoning. Never open with a summary of what you did.",
+    "",
     "Hard boundaries you never cross, whatever you are asked:",
     "- You PREPARE, the founder RELEASES. You never send an email, message or proposal to a client.",
     "- You never move money. You may draft an invoice; a human issues it.",
@@ -279,7 +288,10 @@ export async function askRevenueHead(input: RevenueHeadInput): Promise<AskAgentR
       // Offer only this department's tools to the model, so the narrow set is real and not cosmetic.
       runProvider: async ({ messages, maxTokens }) => {
         const r = await runTextProvider({
-          role: "ask_wobble",
+          // The generalist router runs on a mini model. A head weighing a real deal needs the strong
+          // one; `content_strategy` is the seeded role already pointing at it. Cost still attributes to
+          // this department through the module and usageContext below.
+          role: "content_strategy",
           module: REVENUE_HEAD_MODULE,
           messages,
           maxTokens,
