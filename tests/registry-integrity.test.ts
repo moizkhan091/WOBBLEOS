@@ -74,6 +74,7 @@ const SYNC_OR_SUBROUTINE_AGENTS = [
   "content_excellence_gate", // deterministic quality gate inside the content worker
   "memory_router", // memory-bank routing role used by the memory harvester
   "meeting_intelligence_analyst", // runs synchronously inside extractMeetingIntelligence (transcript → facts)
+  "call_question_engine", // runs synchronously inside generateCallQuestions (POST /api/org/[companyId]/questions)
 ];
 
 // Offer Validation Lab — each dimension agent runs as a synchronous subroutine of runOfferValidation

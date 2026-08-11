@@ -7545,6 +7545,100 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
   );
 }
 
+type QualRole = { id: string; role: string; agentSlug: string; score: number; weight: number; rationale: string; policyNote: string | null };
+type QualAssessment = { id: string; version: number; grade: string; overallScore: number; recommendation: string; summary: string; createdAt: string };
+
+const QUAL_LABELS: Record<string, string> = {
+  real_problem: "Real business problem",
+  real_budget: "Real budget",
+  owner_urgency: "Owner urgency",
+  access: "Access to workflows and data",
+  willingness_learn: "Willingness to learn",
+  phased_implementation: "Will implement in phases",
+  high_value_workflow: "High value first workflow",
+  operational_complexity: "Operational complexity",
+};
+
+const gradeColor = (g: string) => (g === "A" ? C.lime : g === "B" ? C.blue : g === "C" ? C.orange : C.gray);
+
+/**
+ * The 8-agent qualification council.
+ *
+ * Each filter is scored by its own specialist agent, blending a deterministic policy signal from CRM
+ * data with an evidence-grounded LLM read, then weighted into one grade. The weakest filter is called
+ * out because that, not the average, is what actually kills a deal.
+ */
+function QualificationPanel({ companyId, onScored }: { companyId: string; onScored: () => void }) {
+  const state = useApi<{ latest: QualAssessment | null; roles: QualRole[]; assessments: QualAssessment[] }>(`/api/org/${companyId}/qualify`);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/org/${companyId}/qualify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { state.reload(); onScored(); } else setErr(String(j.error ?? r.status));
+    } catch (e) { setErr(e instanceof Error ? e.message : "failed"); } finally { setBusy(false); }
+  }
+
+  const latest = state.data?.latest ?? null;
+  const roles = state.data?.roles ?? [];
+  const weakest = roles.length ? [...roles].sort((a, b) => a.score - b.score)[0] : null;
+  const runs = state.data?.assessments?.length ?? 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+        <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
+          {busy ? "8 agents scoring…" : latest ? "Re-qualify" : "Qualify this client"}
+        </button>
+        <span style={{ fontSize: 11, color: faint }}>
+          8 specialists score budget, urgency, access, complexity, problem, learning, phasing and first workflow from their form answers and approved call findings
+        </span>
+      </div>
+      {err ? <div style={{ fontSize: 12, color: C.orange }}>Error: {err}</div> : null}
+
+      {!latest ? (
+        <div style={{ fontSize: 12.5, color: faint }}>Not qualified yet. Run the council before you decide whether this deal is worth an audit.</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "13px 15px", borderRadius: 12, border: "1px solid " + (latest.grade === "A" ? "rgba(184,255,44,0.28)" : "rgba(255,255,255,0.08)"), background: latest.grade === "A" ? "rgba(184,255,44,0.05)" : "rgba(255,255,255,0.02)" }}>
+            <span style={{ fontSize: 30, fontWeight: 700, color: gradeColor(latest.grade), letterSpacing: "-0.02em" }}>{latest.grade}</span>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 14, color: C.white, lineHeight: 1.5 }}>{latest.recommendation}</div>
+              {weakest ? (
+                <div style={{ fontSize: 11.5, color: C.orange, marginTop: 5 }}>
+                  Weakest filter: {QUAL_LABELS[weakest.role] ?? weakest.role} ({weakest.score}/100). That is what kills this deal if anything does.
+                </div>
+              ) : null}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: C.white }}>{latest.overallScore}<span style={{ fontSize: 12, color: faint }}>/100</span></div>
+              <div style={{ fontSize: 10.5, color: faint }}>v{latest.version}{runs > 1 ? ` of ${runs}` : ""}</div>
+            </div>
+          </div>
+
+          {roles.map((r) => (
+            <div key={r.id} style={{ display: "flex", gap: 11, alignItems: "flex-start", padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ minWidth: 52 }}>
+                <span style={{ fontSize: 15, fontWeight: 600, color: r.score >= 70 ? C.lime : r.score >= 45 ? C.blue : C.orange }}>{r.score}</span>
+                <span style={{ fontSize: 10, color: faint }}>/100</span>
+              </div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 13, color: C.white }}>{QUAL_LABELS[r.role] ?? r.role}</div>
+                <div style={{ fontSize: 11.5, color: muted, marginTop: 3, lineHeight: 1.45 }}>{r.rationale}</div>
+                {r.policyNote ? <div style={{ fontSize: 11, color: faint, marginTop: 3 }}>policy: {r.policyNote}</div> : null}
+              </div>
+              <span style={{ fontSize: 10.5, color: faint, whiteSpace: "nowrap" }}>weight {r.weight}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -7674,7 +7768,8 @@ function OrgWorkspacePage() {
                 <OrgMetric label="approved findings" value={j.discoveryFactCount} />
                 <OrgMetric label="open deals" value={j.opportunities.length} />
               </div>
-              {j.qualification ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5, padding: "11px 14px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.14)", background: "rgba(184,255,44,0.03)" }}><b style={{ color: C.lime }}>Qualification {j.qualification.grade}</b> — {j.qualification.recommendation}</div> : null}
+              <OrgSection title="QUALIFICATION COUNCIL" />
+              <QualificationPanel companyId={selectedId} onScored={org.reload} />
 
               <OrgSection title="DEALS" />
               {j.opportunities.length ? j.opportunities.map((o) => (

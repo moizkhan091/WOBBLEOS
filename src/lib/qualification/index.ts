@@ -1,9 +1,11 @@
 import { desc, eq, and } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
-import { crmCompanies, qualificationAssessments, qualificationRoles } from "@/db/schema";
+import { crmCompanies, meetingIntelligence, qualificationAssessments, qualificationRoles } from "@/db/schema";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { getClientIntakeContext } from "@/lib/intake/context";
+import type { IntakeSnapshot } from "@/lib/domain/intake";
 import {
   QUALIFICATION_ROLES,
   computeQualificationScore,
@@ -131,17 +133,59 @@ export function defaultStore(db: Db = getDb()): QualificationStore {
       const r = await db.select().from(crmCompanies).where(eq(crmCompanies.id, id)).limit(1);
       const c = r[0];
       if (!c) return null;
+
+      // The council was scoring eight filters ("is there a real budget?", "is the owner urgent?") from
+      // the company row alone: industry, size, website, notes. The answers to those questions are
+      // sitting in the client's own words on the readiness form and in the findings a founder approved
+      // off the call, so the whole council was guessing while the evidence went unread.
+      const [intake, facts] = await Promise.all([
+        getClientIntakeContext(id).catch(() => ({ snapshots: [] as IntakeSnapshot[] })),
+        db
+          .select({ kind: meetingIntelligence.kind, content: meetingIntelligence.content })
+          .from(meetingIntelligence)
+          .where(and(eq(meetingIntelligence.companyId, id), eq(meetingIntelligence.status, "approved")))
+          .limit(40)
+          .catch(() => [] as Array<{ kind: string; content: string }>),
+      ]);
+      const snap = intake.snapshots[0];
+
       const context = [
         c.industry ? `Industry: ${c.industry}` : null,
         c.companySize ? `Company size: ${c.companySize}` : null,
         c.country ? `Country: ${c.country}` : null,
         c.status ? `CRM status: ${c.status}` : null,
         c.website ? `Website: ${c.website}` : null,
-        c.notes ? `Notes: ${c.notes}` : null,
-      ].filter(Boolean).join("\n");
+        c.notes ? `What the business does: ${c.notes}` : null,
+        snap?.painPoints ? `WHAT THEY SAY IS SLOW OR MANUAL (their words): "${snap.painPoints}"` : null,
+        snap?.focusAreas?.length ? `Where they asked us to look first: ${snap.focusAreas.join(", ")}` : null,
+        snap?.currentTools ? `Tools they run on: ${snap.currentTools}` : null,
+        snap?.aiWorkflowStage ? `Where they are with AI: ${snap.aiWorkflowStage}` : null,
+        snap?.urgency ? `How soon they want to move: ${snap.urgency}` : null,
+        snap?.openToPaidAudit ? `Open to a paid audit: ${snap.openToPaidAudit}` : null,
+        snap?.canShareWorkflowContext ? `Willing to share workflow context: ${snap.canShareWorkflowContext}` : null,
+        snap?.whatMakesCallUseful ? `What they want from the call: "${snap.whatMakesCallUseful}"` : null,
+        snap?.cityMarket ? `Market: ${snap.cityMarket}` : null,
+        facts.length ? `FOUNDER-APPROVED FINDINGS FROM CALLS:\n${facts.map((f) => `- [${f.kind}] ${f.content}`).join("\n")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       return {
-        type: "company", id: c.id, name: c.name,
-        signals: { companySize: c.companySize, industry: c.industry, hasWebsite: Boolean(c.website), hasNotes: Boolean(c.notes), status: c.status },
+        type: "company",
+        id: c.id,
+        name: c.name,
+        signals: {
+          companySize: c.companySize,
+          industry: c.industry,
+          hasWebsite: Boolean(c.website),
+          hasNotes: Boolean(c.notes),
+          status: c.status,
+          // Real signals for the policy half of the score, rather than proxies.
+          openToPaidAudit: snap?.openToPaidAudit ?? null,
+          canShareContext: snap?.canShareWorkflowContext ?? null,
+          urgency: snap?.urgency ?? null,
+          approvedFindings: facts.length,
+        },
         context: context || "(no additional context on file)",
       };
     },
