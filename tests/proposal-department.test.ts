@@ -206,3 +206,37 @@ describe("Proposal department vertical", () => {
     ).rejects.toThrow(/audit 'missing' not found/);
   });
 });
+
+describe("defaultSynthesize — the architect's reply must actually be parsed", () => {
+  const call = async (text: string) => {
+    const { defaultSynthesize } = await import("@/lib/departments/verticals/proposal");
+    return defaultSynthesize({ auditId: "audit_1", businessName: "Bright Smile Dental" }, { provider: async () => ({ text }) });
+  };
+  const body = '{"technicalSolution":"WhatsApp-native intake","integrationDesign":"Meta Cloud API","roiAssumptions":"Recovers half the lost slots","risks":["Staff adoption"]}';
+
+  it("parses a bare JSON reply", async () => {
+    const s = await call(body);
+    expect(s.technicalSolution).toBe("WhatsApp-native intake");
+    expect(s.risks).toEqual(["Staff adoption"]);
+  });
+
+  it("parses a fenced reply", async () => {
+    const s = await call("```json\n" + body + "\n```");
+    expect(s.technicalSolution).toBe("WhatsApp-native intake");
+  });
+
+  it("parses a reply with a preamble before the fence", async () => {
+    // This is the case that silently broke: the old regex anchored to the whole string, so any
+    // preamble threw and the raw JSON blob was stuffed into technicalSolution as the proposal's text.
+    const s = await call("Sure, here is the design:\n\n```json\n" + body + "\n```\n\nLet me know.");
+    expect(s.technicalSolution).toBe("WhatsApp-native intake");
+    expect(s.technicalSolution).not.toContain("```");
+    expect(s.integrationDesign).toBe("Meta Cloud API");
+  });
+
+  it("still degrades to raw text when the reply is genuinely not JSON", async () => {
+    const s = await call("I cannot design this without more detail.");
+    expect(s.technicalSolution).toContain("cannot design this");
+    expect(s.risks).toEqual([]);
+  });
+});

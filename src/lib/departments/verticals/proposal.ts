@@ -1,6 +1,8 @@
 import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
 import { buildHandoffEnvelope, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
+import { parseStructured } from "@/lib/providers/structured";
+import { z } from "zod";
 import { createProposalFromAudit, type ProposalDeps } from "@/lib/proposals";
 import type { ProposalRow } from "@/lib/domain/proposal";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
@@ -17,6 +19,14 @@ import { runQaGate, QaGateBlockedError, PROPOSAL_QA_BOARDS, buildProposalQaSubmi
  */
 
 const PROPOSAL_MEMORY_SCOPES = ["company", "offer", "research"];
+
+/** Validated shape of the architect's reply. Defaulted so a partial answer still yields a usable design. */
+export const solutionSynthesisSchema = z.object({
+  technicalSolution: z.string().trim().default(""),
+  integrationDesign: z.string().trim().default(""),
+  roiAssumptions: z.string().trim().default(""),
+  risks: z.array(z.string().trim()).default([]),
+});
 
 export interface SolutionSynthesis {
   technicalSolution: string;
@@ -89,12 +99,13 @@ export async function defaultSynthesize(
     { role: "user", content: `Design the solution for ${input.businessName} (audit ${input.auditId}). Ground it in the audit's opportunities; be specific about the systems, integrations, sequencing, ROI assumptions and delivery risks.` },
   ];
   const r = await provider({ role: "content_strategy", module: "proposals", maxTokens: 1200, messages, usageContext: input.usageContext });
-  try {
-    const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as SolutionSynthesis;
-    return { technicalSolution: String(j.technicalSolution ?? ""), integrationDesign: String(j.integrationDesign ?? ""), roiAssumptions: String(j.roiAssumptions ?? ""), risks: Array.isArray(j.risks) ? j.risks.map(String) : [] };
-  } catch {
-    return { technicalSolution: r.text.slice(0, 2000), integrationDesign: "", roiAssumptions: "", risks: [] };
-  }
+  // The previous parse anchored a fence-stripping regex to the WHOLE string, so any preamble before the
+  // fence (models add one constantly) threw, and the catch silently stuffed the raw JSON blob into
+  // technicalSolution. Every proposal built that way carried a literal "```json {" as its solution.
+  // parseStructured finds the JSON wherever it sits and validates it, so a miss is visible, not silent.
+  const parsed = parseStructured(r.text, solutionSynthesisSchema);
+  if (parsed.ok && parsed.data) return parsed.data;
+  return { technicalSolution: r.text.slice(0, 2000), integrationDesign: "", roiAssumptions: "", risks: [] };
 }
 
 export interface ProposalProduct {
