@@ -7394,3 +7394,15 @@ wider than a 375px content column, which forced a horizontal scroll on the page 
 stacks below 700px and every wide input is capped to `min(100%, …)`.
 
 Gate: typecheck clean, 1734 tests pass, build clean.
+
+## 2026-08-11 - The audit reads inside the container (Claude)
+
+The container could show that an audit EXISTED, with its executive summary and a link to Audit
+Workspace. Everything that makes an audit worth 450,000 rupees, the opportunities with their expected
+value and hours saved, the phased roadmap, the ROI breakdown and payback, the risks and next steps, was
+one page away. A founder on a call does not go and find another page.
+
+It now renders in full: monthly upside, cost to build and payback as metrics, the ROI broken down by
+area, every opportunity with its impact, difficulty, monthly value, hours saved, how it works, expected
+outcome and KPIs, each roadmap phase with its deliverables and outcome, then risks, next steps and the
+recommended stack. The link out remains, for editing and export.

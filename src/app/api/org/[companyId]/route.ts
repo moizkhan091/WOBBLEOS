@@ -75,8 +75,19 @@ export async function GET(request: Request, context: { params: Promise<{ company
           createdAt: a.createdAt,
           executiveSummary: typeof report.executiveSummary === "string" ? report.executiveSummary : null,
           opportunityCount: Array.isArray(report.opportunities) ? report.opportunities.length : 0,
-          // The roadmap/ROI are large; the container links out to the full artifact rather than inlining them.
           hasRoadmap: Boolean(report.roadmap),
+          // The whole report, not a teaser. A founder on a call needs the opportunities, the roadmap and
+          // the ROI in front of them; sending them to another page for the part that matters meant the
+          // container could show that an audit EXISTED and never what it said.
+          situationSummary: typeof report.situationSummary === "string" ? report.situationSummary : null,
+          currentState: typeof report.currentState === "string" ? report.currentState : null,
+          opportunities: Array.isArray(report.opportunities) ? report.opportunities.slice(0, 20) : [],
+          roadmap: Array.isArray(report.roadmap) ? report.roadmap.slice(0, 8) : [],
+          roi: report.roi && typeof report.roi === "object" ? report.roi : null,
+          risks: Array.isArray(report.risks) ? report.risks.slice(0, 10) : [],
+          nextSteps: Array.isArray(report.nextSteps) ? report.nextSteps.slice(0, 10) : [],
+          successMetrics: Array.isArray(report.successMetrics) ? report.successMetrics.slice(0, 10) : [],
+          recommendedTechStack: Array.isArray(report.recommendedTechStack) ? report.recommendedTechStack.slice(0, 15) : [],
         };
       }),
       // preSendReview travels with the proposal so a founder returning tomorrow sees yesterday's verdict

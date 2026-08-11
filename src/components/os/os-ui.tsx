@@ -7356,7 +7356,20 @@ const ORG_STAGE_ORDER = ["org", "qualified", "opportunity", "discovery", "paid_a
 function stageColor(s: string) { return s === "project" || s === "won" ? C.lime : s === "org" ? C.gray : C.blue; }
 
 type OrgContact = { id: string; fullName: string; role: string | null; email: string | null; phone: string | null; whatsapp: string | null; linkedin: string | null; relationshipType: string; isDecisionMaker: boolean };
-type OrgAudit = { id: string; kind: string; status: string; businessName: string | null; createdAt: string; executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean };
+type AuditOpportunityRow = {
+  title: string; area?: string; service?: string; impact?: string; difficulty?: string;
+  description?: string; howItWorks?: string; expectedOutcome?: string;
+  kpis?: string[]; monthlyHoursSaved?: number; estimatedMonthlyValueCents?: number;
+};
+type AuditRoadmapPhase = { title: string; months?: string; focus?: string; objectives?: string[]; deliverables?: string[]; items?: string[]; expectedOutcome?: string };
+type AuditRoi = { estimatedMonthlyUpsideCents?: number; estimatedImplementationCents?: number; paybackMonths?: number; breakdown?: Array<{ area: string; monthlyValueCents: number }> };
+type OrgAudit = {
+  id: string; kind: string; status: string; businessName: string | null; createdAt: string;
+  executiveSummary: string | null; opportunityCount: number; hasRoadmap: boolean;
+  situationSummary?: string | null; currentState?: string | null;
+  opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
+  risks?: string[]; nextSteps?: string[]; successMetrics?: string[]; recommendedTechStack?: string[];
+};
 type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
@@ -7553,11 +7566,86 @@ function AuditsPanel({ items }: { items: OrgAudit[] }) {
               <span style={{ fontSize: 11, color: faint }}>{open ? "hide" : "read"}</span>
             </button>
             {open ? (
-              <div style={{ padding: "0 14px 14px" }}>
+              <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
                 {a.executiveSummary ? (
                   <div style={{ fontSize: 13.5, color: C.white, lineHeight: 1.6, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.28)" }}>{a.executiveSummary}</div>
                 ) : <div style={{ fontSize: 12.5, color: faint }}>This audit has no executive summary stored.</div>}
-                <a href="/audit_workspace" style={{ display: "inline-block", marginTop: 10, fontSize: 11.5, color: C.lime, textDecoration: "none" }}>Open the full report in Audit Workspace</a>
+                {a.situationSummary ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.6 }}>{a.situationSummary}</div> : null}
+
+                {/* The money. It was a trip to another page to see whether the audit was worth anything. */}
+                {a.roi ? (
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                    {a.roi.estimatedMonthlyUpsideCents ? <OrgMetric label="monthly upside" value={orgMoney(a.roi.estimatedMonthlyUpsideCents, "PKR")} tone={C.lime} /> : null}
+                    {a.roi.estimatedImplementationCents ? <OrgMetric label="to build" value={orgMoney(a.roi.estimatedImplementationCents, "PKR")} /> : null}
+                    {a.roi.paybackMonths ? <OrgMetric label="payback" value={`${a.roi.paybackMonths} mo`} /> : null}
+                  </div>
+                ) : null}
+                {a.roi?.breakdown?.length ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {a.roi.breakdown.map((b, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: muted }}>
+                        <span style={{ flex: 1 }}>{b.area}</span>
+                        <span style={{ color: C.lime }}>{orgMoney(b.monthlyValueCents, "PKR")}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {a.opportunities?.length ? (
+                  <>
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Opportunities ({a.opportunities.length})</div>
+                    {a.opportunities.map((o, i) => (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: "2px solid " + (o.impact === "high" ? C.lime : "rgba(255,255,255,0.15)") }}>
+                        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, color: C.white }}>{o.title}</span>
+                          {o.impact ? <Tag text={o.impact + " impact"} color={o.impact === "high" ? C.lime : C.gray} /> : null}
+                          {o.difficulty ? <Tag text={o.difficulty} color={C.gray} /> : null}
+                          {o.estimatedMonthlyValueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(o.estimatedMonthlyValueCents, "PKR")}/mo</span> : null}
+                          {o.monthlyHoursSaved ? <span style={{ fontSize: 11.5, color: faint }}>{o.monthlyHoursSaved}h/mo saved</span> : null}
+                        </div>
+                        {o.description ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{o.description}</div> : null}
+                        {o.howItWorks ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>How: {o.howItWorks}</div> : null}
+                        {o.expectedOutcome ? <div style={{ fontSize: 12, color: faint, lineHeight: 1.55 }}>Outcome: {o.expectedOutcome}</div> : null}
+                        {o.kpis?.length ? <div style={{ fontSize: 11.5, color: faint }}>Measured by: {o.kpis.join(" · ")}</div> : null}
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+
+                {a.roadmap?.length ? (
+                  <>
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Roadmap</div>
+                    {a.roadmap.map((ph, i) => (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10, borderLeft: "2px solid rgba(93,169,255,0.4)" }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, color: C.white }}>{ph.title}</span>
+                          {ph.months ? <span style={{ fontSize: 11.5, color: faint }}>{ph.months}</span> : null}
+                        </div>
+                        {ph.focus ? <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{ph.focus}</div> : null}
+                        {(ph.deliverables ?? ph.items ?? []).map((d, k) => <div key={k} style={{ fontSize: 12, color: faint, lineHeight: 1.5 }}>- {d}</div>)}
+                        {ph.expectedOutcome ? <div style={{ fontSize: 12, color: C.lime, lineHeight: 1.5 }}>{ph.expectedOutcome}</div> : null}
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+
+                {a.risks?.length ? (
+                  <div>
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Risks</div>
+                    {a.risks.map((r, i) => <div key={i} style={{ fontSize: 12, color: C.orange, lineHeight: 1.5 }}>- {r}</div>)}
+                  </div>
+                ) : null}
+                {a.nextSteps?.length ? (
+                  <div>
+                    <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Next steps</div>
+                    {a.nextSteps.map((r, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {r}</div>)}
+                  </div>
+                ) : null}
+                {a.recommendedTechStack?.length ? (
+                  <div style={{ fontSize: 11.5, color: faint }}>Stack: {a.recommendedTechStack.join(" · ")}</div>
+                ) : null}
+
+                <a href="/audit_workspace" style={{ fontSize: 11.5, color: C.lime, textDecoration: "none" }}>Open it in Audit Workspace to edit or export</a>
               </div>
             ) : null}
           </div>
