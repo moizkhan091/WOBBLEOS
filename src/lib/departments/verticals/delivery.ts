@@ -6,6 +6,7 @@ import { addProject, listProjects, type ProjectDeps } from "@/lib/projects";
 import { addTask, type TaskDeps } from "@/lib/tasks";
 import type { ProjectRow } from "@/lib/domain/project";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { extractJson } from "@/lib/providers/structured";
 
 /**
  * Delivery & Projects DEPARTMENT vertical (Phase 3, commercial chain). Consumes a WON deal (from Sales &
@@ -74,7 +75,7 @@ async function defaultAssessFeasibility(input: { projectName: string; services: 
     usageContext: input.usageContext,
   });
   try {
-    const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as DeliveryFeasibility;
+    const j = JSON.parse(extractJson(r.text)) as DeliveryFeasibility;
     const level = (v: unknown): DeliveryFeasibilityLevel => (v === "blocked" || v === "at_risk" || v === "clear" ? v : "at_risk");
     return { feasibility: level(j.feasibility), risks: Array.isArray(j.risks) ? j.risks.map(String) : [], dependencies: Array.isArray(j.dependencies) ? j.dependencies.map(String) : [] };
   } catch {

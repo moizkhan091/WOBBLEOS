@@ -98,7 +98,10 @@ export async function defaultSynthesize(
     ...(input.trustedContext ? [{ role: "system" as const, content: input.trustedContext }] : []),
     { role: "user", content: `Design the solution for ${input.businessName} (audit ${input.auditId}). Ground it in the audit's opportunities; be specific about the systems, integrations, sequencing, ROI assumptions and delivery risks.` },
   ];
-  const r = await provider({ role: "content_strategy", module: "proposals", maxTokens: 1200, messages, usageContext: input.usageContext });
+  // 1200 truncated a real solution design mid-JSON on every run (observed: output_tokens exactly 1200,
+  // twice), so the object never closed, the parse failed, and the fallback dumped the raw fenced text
+  // into technicalSolution while integrationDesign, roiAssumptions and risks stayed empty.
+  const r = await provider({ role: "content_strategy", module: "proposals", maxTokens: 4000, messages, usageContext: input.usageContext });
   // The previous parse anchored a fence-stripping regex to the WHOLE string, so any preamble before the
   // fence (models add one constantly) threw, and the catch silently stuffed the raw JSON blob into
   // technicalSolution. Every proposal built that way carried a literal "```json {" as its solution.

@@ -5,6 +5,7 @@ import { runTextProvider } from "@/lib/providers";
 import { getOpportunity, moveOpportunityStage, type CrmDeps } from "@/lib/crm";
 import type { OpportunityRow } from "@/lib/domain/crm";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
+import { extractJson } from "@/lib/providers/structured";
 
 /**
  * Sales & CRM DEPARTMENT vertical (Phase 3, commercial chain). Consumes the Proposal department's product
@@ -70,7 +71,7 @@ async function defaultAssessDeal(input: { opportunity: OpportunityRow; proposalI
     usageContext: input.usageContext,
   });
   try {
-    const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as DealRiskAssessment;
+    const j = JSON.parse(extractJson(r.text)) as DealRiskAssessment;
     const level = (v: unknown): RiskLevel => (v === "high" || v === "medium" || v === "low" ? v : "medium");
     return { lossRisk: level(j.lossRisk), riskFactors: Array.isArray(j.riskFactors) ? j.riskFactors.map(String) : [], nextBestAction: String(j.nextBestAction ?? ""), rationale: String(j.rationale ?? "") };
   } catch {

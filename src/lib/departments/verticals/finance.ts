@@ -6,6 +6,7 @@ import { createInvoice, getRevenueSummary, listInvoices, type FinanceDeps } from
 import type { InvoiceRow, RevenueSummary } from "@/lib/domain/finance";
 import { runDepartment, type DepartmentPolicy, type DepartmentRunResult, type RunDepartmentDeps } from "@/lib/departments/orchestrator";
 import type { RiskLevel } from "@/lib/departments/verticals/sales-crm";
+import { extractJson } from "@/lib/providers/structured";
 
 /**
  * Finance DEPARTMENT vertical (Phase 3, commercial chain). Consumes a WON deal (from Sales & CRM) and issues
@@ -66,7 +67,7 @@ async function defaultAssessMargin(input: { amountCents: number; revenue: Revenu
     usageContext: input.usageContext,
   });
   try {
-    const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as MarginAssessment;
+    const j = JSON.parse(extractJson(r.text)) as MarginAssessment;
     const level = (v: unknown): RiskLevel => (v === "high" || v === "medium" || v === "low" ? v : "medium");
     return { marginRisk: level(j.marginRisk), overdueRisk: level(j.overdueRisk), notes: Array.isArray(j.notes) ? j.notes.map(String) : [] };
   } catch {

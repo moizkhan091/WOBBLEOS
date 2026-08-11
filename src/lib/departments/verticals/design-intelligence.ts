@@ -11,6 +11,7 @@ import {
 import { runTextProvider } from "@/lib/providers";
 import type { ProviderUsageContext } from "@/lib/domain/provider-usage";
 import { useDeterministicJudgment } from "@/lib/departments/verticals/deterministic-judgment";
+import { extractJson } from "@/lib/providers/structured";
 
 /**
  * Design Intelligence department vertical (WOB-UAT-023).
@@ -93,7 +94,7 @@ async function defaultDescribeReferences(refs: CreativeReference[], usageContext
     usageContext,
   });
   try {
-    const parsed = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as unknown;
+    const parsed = JSON.parse(extractJson(r.text)) as unknown;
     return Array.isArray(parsed) ? parsed.map(String).slice(0, 3) : [];
   } catch {
     // A malformed advisory response degrades to no descriptors — never to a fabricated one.
@@ -115,7 +116,7 @@ async function defaultCritiqueBrand(direction: string, usageContext: ProviderUsa
     usageContext,
   });
   try {
-    const j = JSON.parse(r.text.replace(/^```json\s*|\s*```$/g, "")) as { passed?: unknown; notes?: unknown };
+    const j = JSON.parse(extractJson(r.text)) as { passed?: unknown; notes?: unknown };
     return { passed: j.passed !== false, notes: Array.isArray(j.notes) ? j.notes.map(String) : [] };
   } catch {
     // An unparseable critique must not read as a PASS — that would let a broken advisory silently bless
