@@ -76,6 +76,7 @@ const SYNC_OR_SUBROUTINE_AGENTS = [
   "meeting_intelligence_analyst", // runs synchronously inside extractMeetingIntelligence (transcript → facts)
   "call_question_engine", // runs synchronously inside generateCallQuestions (POST /api/org/[companyId]/questions)
   "revision_specialist", // drives the architect inside reviseProposalFromInstruction (POST /api/proposals/[id]/revise)
+  "revenue_head", // synchronous department-scoped agent loop (POST /api/revenue-head)
 ];
 
 // Offer Validation Lab — each dimension agent runs as a synchronous subroutine of runOfferValidation

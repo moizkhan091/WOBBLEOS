@@ -777,8 +777,8 @@ export const ASK_TOOLS: ToolDefinition[] = [
 export const ASK_TOOLS_BY_NAME: Record<string, ToolDefinition> = Object.fromEntries(ASK_TOOLS.map((t) => [t.name, t]));
 
 /** OpenAI-compatible tool specs to offer the model during tool-calling. */
-export function toolSpecs(): Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }> {
-  return ASK_TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.jsonSchema } }));
+export function toolSpecs(tools: ToolDefinition[] = ASK_TOOLS): Array<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }> {
+  return tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.jsonSchema } }));
 }
 
 export interface RunToolResult {

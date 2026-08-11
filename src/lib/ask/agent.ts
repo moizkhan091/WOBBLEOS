@@ -3,7 +3,7 @@ import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage, type ProviderToolCall } from "@/lib/providers";
 import { formatSystemSnapshot, getSystemSnapshot } from "@/lib/system-map";
-import { ASK_TOOLS_BY_NAME, runTool, toolSpecs, type ToolContext } from "@/lib/ask-tools";
+import { ASK_TOOLS, ASK_TOOLS_BY_NAME, runTool, toolSpecs, type ToolContext, type ToolDefinition } from "@/lib/ask-tools";
 import { appendMessage, startConversation } from "@/lib/conversations";
 
 /**
@@ -58,6 +58,16 @@ export interface AskAgentDeps {
   getSystemSnapshotText?: () => Promise<string | undefined>;
   toolContext?: ToolContext;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /**
+   * A NARROWER tool set than the full registry. A department head carries one department's tools and
+   * judgment, not all 45 modules': research shows tool-selection accuracy degrades as the count grows,
+   * and every unused tool's schema is re-billed on every call. Defaults to the whole registry.
+   */
+  tools?: ToolDefinition[];
+  /** Override the persona. A head speaks for its department; the default speaks for the whole OS. */
+  systemPrompt?: (snapshot: string | undefined, confirmActions: boolean) => string;
+  /** Audit module for this agent's events, so a head's activity is attributable to its department. */
+  auditModule?: string;
 }
 
 /**
@@ -148,11 +158,13 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const getSnapshot = deps.getSystemSnapshotText ?? defaultSnapshot;
   const toolCtx: ToolContext = { actor: input.founder ?? "founder", ...deps.toolContext };
+  const activeTools = deps.tools ?? ASK_TOOLS;
+  const toolsByName: Record<string, ToolDefinition> = deps.tools ? Object.fromEntries(deps.tools.map((t) => [t.name, t])) : ASK_TOOLS_BY_NAME;
   const maxIterations = Math.min(Math.max(input.maxIterations ?? DEFAULT_MAX_ITERATIONS, 1), HARD_MAX_ITERATIONS);
 
   const snapshot = await getSnapshot();
   const messages: ProviderChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(snapshot, input.confirmActions ?? false) },
+    { role: "system", content: (deps.systemPrompt ?? buildSystemPrompt)(snapshot, input.confirmActions ?? false) },
     { role: "user", content: input.question },
   ];
 
@@ -206,7 +218,7 @@ export async function askWobbleAgent(input: AskAgentInput, deps: AskAgentDeps = 
     let executedThisIteration = 0;
 
     for (const call of toolCalls) {
-      const tool = ASK_TOOLS_BY_NAME[call.name];
+      const tool = toolsByName[call.name];
 
       // Confirmation gate: never apply a destructive tool without explicit founder authorisation.
       //

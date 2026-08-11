@@ -7639,13 +7639,127 @@ function QualificationPanel({ companyId, onScored }: { companyId: string; onScor
   );
 }
 
+type HeadTurn = { role: "you" | "head"; text: string; tools?: Array<{ tool: string; ok: boolean; mutated: boolean }>; pending?: Array<{ tool: string; args: unknown; message: string }> };
+
+/**
+ * The Head of Revenue and CRM.
+ *
+ * Bound to the client currently open, so "this client" and "their proposal" resolve without the founder
+ * pasting ids. Gated actions come back as an approval list rather than executing: the head prepares,
+ * the founder releases.
+ */
+function RevenueHeadPanel({ companyId, companyName, onActed }: { companyId: string; companyName: string; onActed: () => void }) {
+  const [turns, setTurns] = useState<HeadTurn[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [convId, setConvId] = useState<string | undefined>(undefined);
+
+  async function send(question: string, confirmActions: boolean) {
+    if (!question.trim() || busy) return;
+    setTurns((t) => [...t, { role: "you", text: question }]);
+    setText("");
+    setBusy(true);
+    try {
+      const r = await fetch("/api/revenue-head", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, companyId, conversationId: convId, confirmActions }),
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        ok?: boolean; answer?: string; error?: string; conversationId?: string;
+        toolTrace?: Array<{ tool: string; ok: boolean; mutated: boolean }>;
+        pendingConfirmations?: Array<{ tool: string; args: unknown; message: string }>;
+      };
+      if (r.ok && j.ok) {
+        setConvId(j.conversationId ?? convId);
+        setTurns((t) => [...t, { role: "head", text: j.answer ?? "(no answer)", tools: j.toolTrace, pending: j.pendingConfirmations }]);
+        if ((j.toolTrace ?? []).some((x) => x.mutated)) onActed();
+      } else {
+        setTurns((t) => [...t, { role: "head", text: "Error: " + String(j.error ?? r.status) }]);
+      }
+    } catch (e) {
+      setTurns((t) => [...t, { role: "head", text: "Error: " + (e instanceof Error ? e.message : "failed") }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Approve a gated action by re-sending the instruction with confirmation on. */
+  async function approve(p: { tool: string; message: string }) {
+    await send(`Approved. Go ahead and ${p.message}`, true);
+  }
+
+  const suggestions = [
+    "What should I do about this client next?",
+    "Qualify them and tell me the weakest filter",
+    "Write the questions for the next call",
+    "Which deals have gone quiet?",
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ fontSize: 11.5, color: faint }}>
+        Runs the Revenue and CRM department. Knows {companyName} completely. It prepares, you release: it never sends
+        anything, never moves money, and a price is always yours to set.
+      </div>
+
+      {turns.length === 0 ? (
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          {suggestions.map((s) => (
+            <button key={s} onClick={() => send(s, false)} disabled={busy} style={{ padding: "6px 11px", borderRadius: 18, fontSize: 12, cursor: busy ? "default" : "pointer", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", color: muted }}>{s}</button>
+          ))}
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, maxHeight: 460, overflowY: "auto" }}>
+        {turns.map((t, i) => (
+          <div key={i} style={{ padding: "11px 13px", borderRadius: 11, border: "1px solid " + (t.role === "head" ? "rgba(184,255,44,0.2)" : "rgba(255,255,255,0.07)"), background: t.role === "head" ? "rgba(184,255,44,0.04)" : "rgba(255,255,255,0.02)" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: t.role === "head" ? C.lime : faint, marginBottom: 5 }}>{t.role === "head" ? "Head of Revenue" : "You"}</div>
+            <div style={{ fontSize: 13.5, color: C.white, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{t.text}</div>
+            {t.tools?.length ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {t.tools.map((x, k) => <Tag key={k} text={`${x.tool}${x.mutated ? " (changed)" : ""}`} color={x.ok ? (x.mutated ? C.lime : C.gray) : C.orange} />)}
+              </div>
+            ) : null}
+            {t.pending?.length ? (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ fontSize: 11, color: C.orange }}>Waiting on you before it does this:</div>
+                {t.pending.map((p, k) => (
+                  <div key={k} style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", padding: "8px 11px", borderRadius: 10, border: "1px solid rgba(255,107,0,0.3)", background: "rgba(255,107,0,0.06)" }}>
+                    <span style={{ fontSize: 12.5, color: C.white, flex: 1, minWidth: 200 }}>{p.message}</span>
+                    <button onClick={() => approve(p)} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "5px 11px", fontSize: 11 }}>Approve</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+        {busy ? <div style={{ fontSize: 12.5, color: faint }}>Thinking…</div> : null}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(text, false); } }}
+          rows={2}
+          placeholder={`Ask the head about ${companyName}, or tell it what to change…`}
+          aria-label="Ask the head of revenue"
+          style={{ ...inputStyle, flex: 1, fontFamily: "inherit", resize: "vertical", lineHeight: 1.5 }}
+        />
+        <button onClick={() => send(text, false)} disabled={busy || !text.trim()} style={busy || !text.trim() ? disabledBtn : primaryBtn}>Send</button>
+      </div>
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
   const [selectedId, setSelectedId] = useState<string>("");
   const [filter, setFilter] = useState("");
   useEffect(() => { if (!selectedId && companies.length) setSelectedId(companies[0].id); }, [companies, selectedId]);
-  const [tab, setTab] = useState<"overview" | "callprep" | "artifacts">("overview");
+  const [tab, setTab] = useState<"overview" | "callprep" | "artifacts" | "head">("overview");
   const org = useApi<{
     journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;
     contacts?: OrgContact[]; audits?: OrgAudit[]; proposals?: OrgProposalRow[]; invoices?: OrgInvoiceRow[];
@@ -7752,7 +7866,7 @@ function OrgWorkspacePage() {
           </div>
 
           <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap" }}>
-            {([["overview", "Overview"], ["callprep", "Call prep"], ["artifacts", "Artifacts & Lineage"]] as const).map(([t, label]) => (
+            {([["overview", "Overview"], ["callprep", "Call prep"], ["artifacts", "Artifacts & Lineage"], ["head", "Ask the Head"]] as const).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{label}</button>
             ))}
           </div>
@@ -7797,6 +7911,11 @@ function OrgWorkspacePage() {
               <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} />
               <OrgSection title="AFTER THE CALL, GIVE IT BACK" />
               <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
+            </div>
+          ) : tab === "head" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <OrgSection title="HEAD OF REVENUE AND CRM" />
+              <RevenueHeadPanel companyId={selectedId} companyName={j.company.name} onActed={org.reload} />
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
