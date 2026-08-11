@@ -4505,9 +4505,96 @@ const AUDIT_SIGNAL_OPTS: { key: string; label: string }[] = [
 interface AuditOpp { service: string; name: string; category: string; quickWin: boolean; reason: string; impact: string }
 interface FreeAuditRow { id: string; businessName: string; report: { summary: string; quickWins: AuditOpp[]; opportunities: AuditOpp[]; serviceCount: number; estimatedMonthlyUpsideCents: number | null }; createdAt: string }
 
+/** What a module page gets back when a founder picks an existing client instead of retyping one. */
+type PrefillPayload = {
+  companyId: string;
+  name: string;
+  industry: string;
+  website: string;
+  instagram: string;
+  /** Their form answers plus approved call findings, formatted as stakeholder notes. */
+  notes: string;
+  /** Their stated pain and focus areas, one per line, for pages that take a problem list. */
+  problems: string;
+};
+
+/**
+ * Pick an existing client instead of retyping a business the OS already knows.
+ *
+ * The audit and pitch pages predate the client container, so they open with an empty "Business name"
+ * box. That is the retyping the founder objected to: every field here is already stored against the
+ * client, including their own words from the website form and whatever was approved off the last call.
+ * The free-text fields stay, because a genuinely cold prospect will not be in the CRM yet.
+ */
+function ClientPrefill({ onPick, label = "Run this for an existing client" }: { onPick: (p: PrefillPayload) => void; label?: string }) {
+  const companies = useApi<{ companies: Array<{ id: string; name: string; industry: string | null }> }>("/api/crm/companies?limit=500");
+  const [picking, setPicking] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const list = companies.data?.companies ?? [];
+  if (!list.length) return null;
+
+  async function pick(companyId: string) {
+    setPicking(companyId);
+    if (!companyId) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/org/${companyId}`);
+      const j = (await r.json().catch(() => ({}))) as {
+        ok?: boolean; error?: string;
+        journey?: { company: { name: string; industry: string | null } };
+        company?: { website: string | null; socialLinks: Record<string, string>; notes: string | null };
+        intake?: { snapshots: IntakeSnap[] };
+      };
+      if (!r.ok || !j.ok || !j.journey) { setErr(String(j.error ?? r.status)); return; }
+      const snap = (j.intake?.snapshots ?? [])[0];
+      const facts = await fetch(`/api/org/${companyId}/transcript`).then((x) => x.json()).catch(() => null);
+      const approved: string[] = ((facts?.meetings ?? []) as MeetingWithFacts[])
+        .flatMap((m) => m.facts).filter((f) => f.status === "approved").map((f) => `- [${f.kind}] ${f.content}`);
+
+      // Assembled in the same shape a founder would have typed, so the downstream graph sees no difference.
+      const notes = [
+        snap?.businessDescription ? `WHAT THEY DO: ${snap.businessDescription}` : null,
+        snap?.painPoints ? `WHAT THEY SAY IS SLOW OR MANUAL (their words): "${snap.painPoints}"` : null,
+        snap?.focusAreas?.length ? `WHERE THEY ASKED US TO LOOK FIRST: ${snap.focusAreas.join(", ")}` : null,
+        snap?.currentTools ? `TOOLS THEY RUN ON: ${snap.currentTools}` : null,
+        snap?.aiWorkflowStage ? `WHERE THEY ARE WITH AI: ${snap.aiWorkflowStage}` : null,
+        snap?.urgency ? `TIMING: ${snap.urgency}` : null,
+        snap?.teamSize || snap?.cityMarket ? `TEAM / MARKET: ${[snap?.teamSize, snap?.cityMarket].filter(Boolean).join(", ")}` : null,
+        approved.length ? `APPROVED FINDINGS FROM CALLS:\n${approved.join("\n")}` : null,
+      ].filter(Boolean).join("\n\n");
+
+      onPick({
+        companyId,
+        name: j.journey.company.name,
+        industry: j.journey.company.industry ?? "",
+        website: j.company?.website ?? "",
+        instagram: j.company?.socialLinks?.instagram ?? "",
+        notes,
+        problems: [snap?.painPoints, ...(snap?.focusAreas ?? [])].filter(Boolean).join("\n"),
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "could not load that client");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(184,255,44,0.2)", background: "rgba(184,255,44,0.04)", marginBottom: 10 }}>
+      <span style={{ fontSize: 12, color: C.lime, fontWeight: 600 }}>{label}</span>
+      <select value={picking} onChange={(e) => pick(e.target.value)} disabled={busy} aria-label="Pick a client" style={{ ...inputStyle, width: "auto", minWidth: 220, fontSize: 12.5, padding: "8px 11px" }}>
+        <option value="">{busy ? "Loading…" : "Pick a client…"}</option>
+        {list.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <span style={{ fontSize: 11, color: faint }}>fills everything below from their form answers and approved call findings</span>
+      {err ? <span style={{ fontSize: 11.5, color: C.orange }}>{err}</span> : null}
+    </div>
+  );
+}
+
 function FreeAuditPage() {
   const listState = useApi<{ audits: FreeAuditRow[] }>("/api/audit/free");
   const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [problems, setProblems] = useState("");
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [website, setWebsite] = useState(""); const [instagram, setInstagram] = useState("");
   const [signals, setSignals] = useState<string[]>([]); const [leads, setLeads] = useState(""); const [deal, setDeal] = useState("");
   // Separate busy KEYS, not one shared boolean. With a single flag, clicking "Quick diagnosis" made the
@@ -4521,7 +4608,7 @@ function FreeAuditPage() {
   const audits = listState.data?.audits ?? [];
   function toggle(k: string) { setSignals((s) => s.includes(k) ? s.filter((x) => x !== k) : [...s, k]); }
   function auditBody() {
-    return { businessName: name, industry: industry || undefined, website: website || undefined, instagram: instagram || undefined, signals, problems: problems.split("\n").map((s) => s.trim()).filter(Boolean), monthlyLeads: leads ? Number(leads) : undefined, avgDealValueCents: deal ? Math.round(Number(deal) * 100) : undefined };
+    return { businessName: name, industry: industry || undefined, companyId: companyId || undefined, website: website || undefined, instagram: instagram || undefined, signals, problems: problems.split("\n").map((s) => s.trim()).filter(Boolean), monthlyLeads: leads ? Number(leads) : undefined, avgDealValueCents: deal ? Math.round(Number(deal) * 100) : undefined };
   }
   async function run() {
     if (!name.trim()) { setMsg("Enter the business name."); return; }
@@ -4578,6 +4665,7 @@ function FreeAuditPage() {
 
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Run an audit</div>
+        <ClientPrefill onPick={(pf) => { setCompanyId(pf.companyId); setName(pf.name); setIndustry(pf.industry); setWebsite(pf.website); setInstagram(pf.instagram); setProblems(pf.problems); }} label="Pitch an existing client" />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 200 }} />
           <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry / niche" style={{ ...inputStyle, width: 150 }} />
@@ -4689,6 +4777,7 @@ interface PaidAuditRowUI { id: string; businessName: string; report: PaidAuditRe
 function PaidAuditPage() {
   const listState = useApi<{ audits: PaidAuditRowUI[] }>("/api/audit/paid");
   const [name, setName] = useState(""); const [industry, setIndustry] = useState(""); const [notes, setNotes] = useState("");
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [report, setReport] = useState<PaidAuditReportUI | null>(null); const [msg, setMsg] = useState<string | null>(null);
   // The id behind whatever report is on screen. Needed so the live report can advance to a proposal
   // instead of dead-ending; set both by a fresh run and by opening a past audit from the list.
@@ -4700,7 +4789,7 @@ function PaidAuditPage() {
   async function run() {
     if (!name.trim() || !notes.trim()) { setMsg("Business name + stakeholder notes are required."); return; }
     setBusy(true); setMsg(null); setReport(null); setReportAuditId(null);
-    const res = await postJson("/api/audit/paid", { businessName: name, industry: industry || undefined, intakeNotes: notes });
+    const res = await postJson("/api/audit/paid", { businessName: name, industry: industry || undefined, intakeNotes: notes, companyId: companyId || undefined });
     setBusy(false);
     if (!res.ok) {
       setMsg(res.data?.needsModelKey ? "The audit team needs an LLM key — set OPENROUTER_API_KEY in .env to run it live." : "Error: " + String(res.error));
@@ -4736,6 +4825,7 @@ function PaidAuditPage() {
 
       <Panel>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Run a paid audit</div>
+        <ClientPrefill onPick={(pf) => { setCompanyId(pf.companyId); setName(pf.name); setIndustry(pf.industry); setNotes(pf.notes); }} label="Audit an existing client" />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business name" style={{ ...inputStyle, width: 220 }} />
           <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Industry (optional)" style={{ ...inputStyle, width: 160 }} />
