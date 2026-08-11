@@ -7362,7 +7362,7 @@ function OrgSection({ title, right }: { title: string; right?: React.ReactNode }
 }
 
 /** Contacts you can actually reach. The container stored these and displayed none of them. */
-function ContactsPanel({ contacts }: { contacts: OrgContact[] }) {
+function ContactsPanel({ contacts, onChanged }: { contacts: OrgContact[]; onChanged?: () => void }) {
   if (!contacts.length) return <div style={{ fontSize: 12.5, color: faint }}>No contacts on this client yet.</div>;
   const chip = (href: string, label: string) => (
     <a href={href} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: C.lime, textDecoration: "none", padding: "3px 9px", borderRadius: 8, border: "1px solid rgba(184,255,44,0.25)", background: "rgba(184,255,44,0.06)" }}>{label}</a>
@@ -7379,6 +7379,7 @@ function ContactsPanel({ contacts }: { contacts: OrgContact[] }) {
           {c.phone ? chip(`tel:${c.phone.replace(/[^0-9+]/g, "")}`, c.phone) : null}
           {c.whatsapp ? chip(`https://wa.me/${c.whatsapp.replace(/[^0-9]/g, "")}`, "WhatsApp") : null}
           {c.linkedin ? chip(c.linkedin, "LinkedIn") : null}
+          <ContactEditor contact={c} onSaved={onChanged ?? (() => {})} />
         </div>
       ))}
     </div>
@@ -8268,6 +8269,105 @@ function DealStageControl({ opportunityId, stage, onMoved }: { opportunityId: st
   );
 }
 
+
+type TimelineEventRow = { at: string; kind: string; title: string; detail?: string; href?: string; gapDays?: number };
+
+const TIMELINE_COLOR: Record<string, string> = {
+  form: C.lime, lead: C.lime, contact: C.blue, meeting: C.blue, finding: C.blue,
+  qualification: C.lime, stage: C.orange, audit: C.lime, proposal: C.lime, invoice: C.gray,
+};
+
+/**
+ * This client's history in order, with the silences visible.
+ *
+ * Counts told a founder that an audit existed. They never told them that nothing happened for three
+ * weeks after it, which is usually the thing worth knowing.
+ */
+function ClientTimeline({ companyId }: { companyId: string }) {
+  const state = useApi<{ events: TimelineEventRow[] }>(`/api/org/${companyId || "__none__"}/timeline`);
+  const [showAll, setShowAll] = useState(false);
+
+  if (state.loading) return <StateBlock kind="loading" message="Putting this client's history in order…" />;
+  if (state.error) return <StateBlock kind="error" message={state.error} />;
+  const events = state.data?.events ?? [];
+  if (!events.length) return <div style={{ fontSize: 12.5, color: faint }}>Nothing has happened with this client yet.</div>;
+  const shown = showAll ? events : events.slice(0, 12);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      {shown.map((e, i) => (
+        <div key={i} style={{ display: "flex", gap: 11 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 4, background: TIMELINE_COLOR[e.kind] ?? C.gray, flexShrink: 0 }} />
+            {i < shown.length - 1 ? <span style={{ width: 1, flex: 1, background: "rgba(255,255,255,0.08)", minHeight: 18 }} /> : null}
+          </div>
+          <div style={{ flex: 1, paddingBottom: 14 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.white }}>{e.title}</span>
+              <span style={{ fontSize: 11, color: faint }}>{new Date(e.at).toLocaleDateString()}</span>
+              {e.href ? <a href={e.href} style={{ fontSize: 11, color: faint, textDecoration: "none" }}>open →</a> : null}
+            </div>
+            {e.detail ? <div style={{ fontSize: 11.5, color: muted, marginTop: 2 }}>{e.detail}</div> : null}
+            {e.gapDays ? <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>{e.gapDays} days of silence before this</div> : null}
+          </div>
+        </div>
+      ))}
+      {events.length > 12 ? (
+        <button onClick={() => setShowAll(!showAll)} style={{ alignSelf: "flex-start", background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 12 }}>
+          {showAll ? "show less" : "show all " + events.length + " events"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Log that you spoke to a contact, and fix their details in place.
+ *
+ * Every silence signal in the OS is measured from lastContactedAt, and nothing could set it: a founder
+ * could speak to a client daily and still see them ranked as cold.
+ */
+function ContactEditor({ contact, onSaved }: { contact: OrgContact; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [form, setForm] = useState({ fullName: contact.fullName, role: contact.role ?? "", email: contact.email ?? "", phone: contact.phone ?? "", whatsapp: contact.whatsapp ?? "", linkedin: contact.linkedin ?? "" });
+
+  async function send(body: Record<string, unknown>, key: string) {
+    setBusy(key); setMsg(null);
+    try {
+      const r = await fetch(`/api/crm/contacts/${contact.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setMsg(key === "touch" ? "Logged." : "Saved."); setOpen(false); onSaved(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(null); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7, width: "100%" }}>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={() => send({ touched: true }, "touch")} disabled={busy !== null} title="Records that contact happened now, which is what every silence signal is measured from" style={busy ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "4px 10px", fontSize: 11 }}>
+          {busy === "touch" ? "…" : "I spoke to them"}
+        </button>
+        <button onClick={() => setOpen(!open)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11 }}>{open ? "cancel" : "edit"}</button>
+        {msg ? <span style={{ fontSize: 11, color: msg.startsWith("Error") ? C.orange : C.lime }}>{msg}</span> : null}
+      </div>
+      {open ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {([["fullName", "Name"], ["role", "Role"], ["email", "Email"], ["phone", "Phone"], ["whatsapp", "WhatsApp"], ["linkedin", "LinkedIn"]] as const).map(([k, label]) => (
+            <input key={k} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} placeholder={label} aria-label={label} style={{ ...inputStyle, width: "auto", minWidth: 130, fontSize: 11.5, padding: "5px 9px" }} />
+          ))}
+          <button
+            onClick={() => send({ fullName: form.fullName.trim(), role: form.role.trim() || null, email: form.email.trim() || null, phone: form.phone.trim() || null, whatsapp: form.whatsapp.trim() || null, linkedin: form.linkedin.trim() || null }, "save")}
+            disabled={busy !== null || !form.fullName.trim()}
+            style={busy || !form.fullName.trim() ? disabledBtn : { ...primaryBtn, padding: "5px 12px", fontSize: 11.5 }}
+          >{busy === "save" ? "Saving…" : "Save"}</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -8394,7 +8494,7 @@ function OrgWorkspacePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
               <OrgSection title="CONTACTS" />
-              <ContactsPanel contacts={contacts} />
+              <ContactsPanel contacts={contacts} onChanged={org.reload} />
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "-"} tone={j.qualification ? C.lime : undefined} />
                 <OrgMetric label="calls given back" value={j.meetings.length} />
@@ -8418,6 +8518,9 @@ function OrgWorkspacePage() {
                   <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={org.reload} />
                 </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
+
+              <OrgSection title="WHAT HAS ACTUALLY HAPPENED" right={<span style={{ fontSize: 11, color: faint }}>newest first, with the gaps</span>} />
+              <ClientTimeline companyId={selectedId} />
 
               <OrgSection title="DO SOMETHING FOR THIS CLIENT" />
               <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
