@@ -75,6 +75,7 @@ const SYNC_OR_SUBROUTINE_AGENTS = [
   "memory_router", // memory-bank routing role used by the memory harvester
   "meeting_intelligence_analyst", // runs synchronously inside extractMeetingIntelligence (transcript → facts)
   "call_question_engine", // runs synchronously inside generateCallQuestions (POST /api/org/[companyId]/questions)
+  "revision_specialist", // drives the architect inside reviseProposalFromInstruction (POST /api/proposals/[id]/revise)
 ];
 
 // Offer Validation Lab — each dimension agent runs as a synchronous subroutine of runOfferValidation
