@@ -128,11 +128,11 @@ export async function generateCallQuestions(companyId: string, deps: CallQuestio
 
   const first = await runProvider({ role: "call_questions", module: CALL_QUESTIONS_MODULE, messages, maxTokens: 2600, temperature: 0.5 });
   const parsed = await parseStructuredWithRepair(first.text, callQuestionSetSchema, {
-    repair: async (bad, error) => {
+    repair: async (bad, instruction) => {
       const r = await runProvider({
         role: "call_questions",
         module: CALL_QUESTIONS_MODULE,
-        messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: repairInstruction(error) }],
+        messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: instruction }],
         maxTokens: 2600,
         temperature: 0.2,
       });

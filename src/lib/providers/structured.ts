@@ -72,19 +72,67 @@ export function parseStructured<T>(text: string, schema: z.ZodType<T>): ParseRes
 export async function parseStructuredWithRepair<T>(
   text: string,
   schema: z.ZodType<T>,
-  opts: { repair?: (badText: string, error: string) => Promise<string> } = {},
+  opts: { repair?: (badText: string, instruction: string) => Promise<string>; shortenHint?: string } = {},
 ): Promise<ParseResult<T>> {
   const first = parseStructured(text, schema);
   if (first.ok || !opts.repair) return first;
   let repaired: string;
   try {
-    repaired = await opts.repair(text, first.error ?? "invalid output");
+    // A cut-off response and a malformed one need opposite instructions: one must be shortened, the
+    // other corrected. Sending "fix the JSON" to a model that ran out of room just burns the call.
+    const instruction = looksTruncated(text)
+      ? truncationInstruction(opts.shortenHint)
+      : repairInstruction(first.error ?? "invalid output");
+    repaired = await opts.repair(text, instruction);
   } catch (e) {
     return { ok: false, error: `repair attempt failed: ${e instanceof Error ? e.message : String(e)}` };
   }
   const second = parseStructured(repaired, schema);
   // If the repair also failed, surface the ORIGINAL error, it's the more informative one.
   return second.ok ? second : { ok: false, error: first.error };
+}
+
+/**
+ * Was this output cut off mid-sentence by the token ceiling?
+ *
+ * A truncated response is the single most common cause of "unparseable output", and it is the one where
+ * retrying at the SAME ceiling is guaranteed to fail again. It cost four Sonnet calls and produced
+ * nothing the first time a proposal was reviewed: the reviewer wrote 2,400 tokens against a 2,400 cap,
+ * so its JSON simply stopped mid-object.
+ *
+ * Detected structurally rather than by counting tokens, so it works for any provider: valid JSON that
+ * has been cut off has more opening braces or brackets than closing ones.
+ */
+export function looksTruncated(text: string): boolean {
+  const stripped = text.replace(/```[a-z]*|```/gi, "").trim();
+  if (!stripped) return false;
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  for (const ch of stripped) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === "]") depth -= 1;
+  }
+  return depth > 0 || inString;
+}
+
+/**
+ * The instruction for a response that was cut off rather than malformed.
+ *
+ * Telling a model to "fix the JSON" when it ran out of room produces the same overlong answer again.
+ * The only useful instruction is to say less.
+ */
+export function truncationInstruction(maxItemsHint?: string): string {
+  return [
+    "Your previous response was CUT OFF because it was too long. It was not wrong, it was unfinished.",
+    "Return the same answer, complete, but SHORTER. Keep only what matters most and write it tightly.",
+    maxItemsHint ? maxItemsHint : "Fewer, sharper items beat a long list that does not fit.",
+    "Return ONLY the JSON, no prose, no code fences.",
+  ].join("\n");
 }
 
 /** Build the standard repair instruction fed to a model when its structured output failed validation. */

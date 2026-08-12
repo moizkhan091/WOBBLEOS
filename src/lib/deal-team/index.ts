@@ -138,7 +138,7 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
 /** Run one deal-team agent: prompt, structured parse with one repair round, house style enforced. */
 async function runAgent<T>(
   deps: DealTeamDeps,
-  opts: { role: string; agentSlug: string; system: string; user: string; schema: Parameters<typeof parseStructuredWithRepair<T>>[1]; maxTokens: number; temperature: number },
+  opts: { role: string; agentSlug: string; system: string; user: string; schema: Parameters<typeof parseStructuredWithRepair<T>>[1]; maxTokens: number; temperature: number; shortenHint?: string },
 ): Promise<T> {
   const run = provider(deps);
   const messages: ProviderChatMessage[] = [
@@ -147,12 +147,15 @@ async function runAgent<T>(
   ];
   const first = await run({ role: opts.role, module: DEAL_TEAM_MODULE, messages, maxTokens: opts.maxTokens, temperature: opts.temperature, agentSlug: opts.agentSlug });
   const parsed = await parseStructuredWithRepair(first.text, opts.schema, {
-    repair: async (bad, error) => {
+    shortenHint: opts.shortenHint,
+    repair: async (bad, instruction) => {
       const r = await run({
         role: opts.role,
         module: DEAL_TEAM_MODULE,
-        messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: repairInstruction(error) }],
-        maxTokens: opts.maxTokens,
+        messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: instruction }],
+        // Half again as much room. A repair at the SAME ceiling that truncated the first answer is a
+        // call spent to fail identically, which is exactly what happened on the first real proposal.
+        maxTokens: Math.round(opts.maxTokens * 1.5),
         temperature: 0.2,
         agentSlug: opts.agentSlug,
       });
@@ -222,8 +225,11 @@ export async function draftFollowUp(companyId: string, opts: { channel: FollowUp
 }
 
 export interface ProposalReview {
-  critique: DealCritique;
-  pricing: PricingOpinion;
+  /** Null when that half failed. One half is worth far more than nothing. */
+  critique: DealCritique | null;
+  pricing: PricingOpinion | null;
+  /** What failed, said plainly, so a founder is not left wondering which agent went quiet. */
+  failures: string[];
 }
 
 /**
@@ -244,15 +250,19 @@ export async function reviewProposalBeforeSending(proposalId: string, deps: Deal
   if (!ctx.proposal) throw new Error("proposal could not be loaded into the review context");
 
   const rendered = renderContext(ctx);
-  const [critique, pricing] = await Promise.all([
+  // allSettled, not all: two Sonnet calls that both succeed and are then thrown away because a third
+  // thing failed is the worst possible outcome, and it is what happened on the first real proposal.
+  // Whatever lands gets saved.
+  const [critiqueResult, pricingResult] = await Promise.allSettled([
     runAgent<DealCritique>(deps, {
       role: "deal_review",
       agentSlug: DEAL_REVIEWER_AGENT,
       system: dealReviewSystemPrompt(),
       user: `${rendered}\n\nArgue this client's side of the proposal above. STRICT JSON only.`,
       schema: dealCritiqueSchema,
-      maxTokens: 2400,
+      maxTokens: 6000,
       temperature: 0.3,
+      shortenHint: "Keep the four or five issues that would actually stop this client signing. Drop the rest.",
     }),
     runAgent<PricingOpinion>(deps, {
       role: "pricing_analysis",
@@ -260,12 +270,22 @@ export async function reviewProposalBeforeSending(proposalId: string, deps: Deal
       system: pricingSystemPrompt(),
       user: `${rendered}\n\nSanity-check the quote above. STRICT JSON only.`,
       schema: pricingOpinionSchema,
-      maxTokens: 1600,
+      maxTokens: 3000,
       temperature: 0.2,
+      shortenHint: "Three notes at most, each with a number in it.",
     }),
   ]);
 
-  const metadata = { ...((proposal.metadata ?? {}) as Record<string, unknown>), preSendReview: { critique, pricing, reviewedAt: now.toISOString() } };
+  const critique = critiqueResult.status === "fulfilled" ? critiqueResult.value : null;
+  const pricing = pricingResult.status === "fulfilled" ? pricingResult.value : null;
+  const failures = [
+    critiqueResult.status === "rejected" ? `deal reviewer: ${critiqueResult.reason instanceof Error ? critiqueResult.reason.message : "failed"}` : null,
+    pricingResult.status === "rejected" ? `pricing analyst: ${pricingResult.reason instanceof Error ? pricingResult.reason.message : "failed"}` : null,
+  ].filter((x): x is string => Boolean(x));
+
+  if (!critique && !pricing) throw new Error(`the pre-send review produced nothing: ${failures.join("; ")}`);
+
+  const metadata = { ...((proposal.metadata ?? {}) as Record<string, unknown>), preSendReview: { critique, pricing, failures, reviewedAt: now.toISOString() } };
   await db.update(proposals).set({ metadata, updatedAt: now }).where(eq(proposals.id, proposalId));
 
   await audit(deps, {
@@ -274,10 +294,10 @@ export async function reviewProposalBeforeSending(proposalId: string, deps: Deal
     entityType: "proposal",
     entityId: proposalId,
     actor: deps.actor ?? DEAL_REVIEWER_AGENT,
-    metadata: { verdict: critique.verdict, blockers: critique.items.filter((i) => i.severity === "blocker").length, pricingVerdict: pricing.verdict },
+    metadata: { verdict: critique?.verdict ?? null, blockers: critique?.items.filter((i) => i.severity === "blocker").length ?? 0, pricingVerdict: pricing?.verdict ?? null, failures },
   });
 
-  return { critique, pricing };
+  return { critique, pricing, failures };
 }
 
 /** Read back whatever the deal team has already produced for a client, without running anything. */

@@ -8315,8 +8315,9 @@ function DealTeamPanel({ companyId }: { companyId: string }) {
 
 type CritiqueItem = { issue: string; severity: string; where: string; fix: string };
 type PreSendReview = {
-  critique: { verdict: string; headline: string; items: CritiqueItem[] };
-  pricing: { verdict: string; headline: string; affordability: string; notes: string[] };
+  critique: { verdict: string; headline: string; items: CritiqueItem[] } | null;
+  pricing: { verdict: string; headline: string; affordability: string; notes: string[] } | null;
+  failures?: string[];
 };
 
 const VERDICT_COLOR: Record<string, string> = { would_sign: C.lime, would_hesitate: C.blue, would_refuse: C.orange, consistent: C.lime, low: C.blue, high: C.orange, not_enough_history: C.gray };
@@ -8336,8 +8337,9 @@ function PreSendReviewButton({ proposalId, stored }: { proposalId: string; store
     setBusy(true); setErr(null);
     try {
       const r = await fetch(`/api/proposals/${proposalId}/pre-send-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; critique?: PreSendReview["critique"]; pricing?: PreSendReview["pricing"] };
-      if (r.ok && j.ok && j.critique && j.pricing) { setReview({ critique: j.critique, pricing: j.pricing }); setOpen(true); }
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; critique?: PreSendReview["critique"]; pricing?: PreSendReview["pricing"]; failures?: string[] };
+      // One half is worth having. Only a run where both agents failed is a failure.
+      if (r.ok && j.ok && (j.critique || j.pricing)) { setReview({ critique: j.critique ?? null, pricing: j.pricing ?? null, failures: j.failures ?? [] }); setOpen(true); }
       else setErr(String(j.error ?? r.status));
     } catch (e) { setErr(e instanceof Error ? e.message : "failed"); } finally { setBusy(false); }
   }
@@ -8350,8 +8352,8 @@ function PreSendReviewButton({ proposalId, stored }: { proposalId: string; store
         </button>
         {review ? (
           <>
-            <Tag text={review.critique.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.critique.verdict] ?? C.gray} />
-            <Tag text={"price " + review.pricing.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.pricing.verdict] ?? C.gray} />
+            {review.critique ? <Tag text={review.critique.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.critique.verdict] ?? C.gray} /> : null}
+            {review.pricing ? <Tag text={"price " + review.pricing.verdict.replace(/_/g, " ")} color={VERDICT_COLOR[review.pricing.verdict] ?? C.gray} /> : null}
             <button onClick={() => setOpen(!open)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11.5 }}>{open ? "hide" : "read it"}</button>
           </>
         ) : null}
@@ -8359,8 +8361,11 @@ function PreSendReviewButton({ proposalId, stored }: { proposalId: string; store
       {err ? <div style={{ fontSize: 11.5, color: C.orange }}>{err}</div> : null}
       {review && open ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "11px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
-          <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.critique.headline}</div>
-          {review.critique.items.map((it, i) => (
+          {review.failures?.length ? (
+            <div style={{ fontSize: 11.5, color: C.orange }}>Part of this review did not finish: {review.failures.join("; ")}. What is below still stands.</div>
+          ) : null}
+          {review.critique ? <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.critique.headline}</div> : null}
+          {(review.critique?.items ?? []).map((it, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3, paddingLeft: 10, borderLeft: "2px solid " + (SEVERITY_COLOR[it.severity] ?? C.gray) }}>
               <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
                 <Tag text={it.severity} color={SEVERITY_COLOR[it.severity] ?? C.gray} />
@@ -8370,11 +8375,13 @@ function PreSendReviewButton({ proposalId, stored }: { proposalId: string; store
               <div style={{ fontSize: 12, color: C.lime, lineHeight: 1.5 }}>fix: {it.fix}</div>
             </div>
           ))}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-            <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.pricing.headline}</div>
-            {review.pricing.affordability ? <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{review.pricing.affordability}</div> : null}
-            {review.pricing.notes.map((n, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{n}</div>)}
-          </div>
+          {review.pricing ? (
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{review.pricing.headline}</div>
+              {review.pricing.affordability ? <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{review.pricing.affordability}</div> : null}
+              {review.pricing.notes.map((n, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{n}</div>)}
+            </div>
+          ) : null}
           <div style={{ fontSize: 11, color: faint }}>Advisory. No price was changed and nothing was sent.</div>
         </div>
       ) : null}

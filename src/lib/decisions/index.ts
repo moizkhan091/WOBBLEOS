@@ -121,8 +121,8 @@ export async function scoreDecisionOptions(id: string, input: { actor?: string }
   // away the whole scoring pass — the model gets one chance to fix it against the exact validation error.
   const scoreSchema = zScoreArray;
   const parsed = await parseStructuredWithRepair(text, scoreSchema, {
-    repair: async (bad, error) => {
-      const r = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: repairInstruction(error) }], maxTokens: 900 });
+    repair: async (bad, instruction) => {
+      const r = await runProvider({ role: "decision_scorer", module: DECISION_MODULE, messages: [...messages, { role: "assistant", content: bad }, { role: "user", content: instruction }], maxTokens: 900 });
       return r.text;
     },
   });

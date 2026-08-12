@@ -7406,3 +7406,30 @@ It now renders in full: monthly upside, cost to build and payback as metrics, th
 area, every opportunity with its impact, difficulty, monthly value, hours saved, how it works, expected
 outcome and KPIs, each roadmap phase with its deliverables and outcome, then risks, next steps and the
 recommended stack. The link out remains, for editing and export.
+
+## 2026-08-12 - Running the two agents that had never run, and what it cost (Claude)
+
+Ran the pre-send review on a real Bright Smile Dental proposal. Both agents SUCCEEDED at the provider
+and the founder got nothing. Four Sonnet calls, $0.0297, no output.
+
+`model_runs` told the story: deal_review's first call wrote **2,400 output tokens against a 2,400 token
+ceiling**. Its JSON stopped mid-object. The repair round was then handed "fix the JSON" and retried at
+the SAME ceiling, so it failed identically. Same shape on the pricing analyst. Then, because the two ran
+under `Promise.all`, one rejection threw away the other's work as well.
+
+Three fixes, all of which generalise beyond this one feature:
+
+1. **A cut-off response is now told apart from a malformed one.** `looksTruncated` walks the text
+   counting unclosed braces, brackets and strings (ignoring escapes and braces inside strings), and the
+   repair round gets `truncationInstruction` ("you were CUT OFF, say it SHORTER") instead of
+   "fix the JSON". Telling a model that ran out of room to correct itself just buys the same overlong
+   answer twice. Every existing caller of `parseStructuredWithRepair` gets this for free.
+2. **The repair round gets 1.5x the room**, never the ceiling that truncated it.
+3. **`Promise.allSettled`, not `Promise.all`.** Whichever half lands is saved, the failure is named on
+   the review itself ("Part of this review did not finish: …"), and only a run where BOTH failed is an
+   error. Two expensive successful calls must never be discarded because a third thing failed.
+
+Ceilings raised to what the work actually needs: deal review 2400 → 6000, pricing 1600 → 3000,
+objections 2600 → 5000, follow-up 1200 → 2000.
+
+Gate: typecheck clean, 1754 tests pass, build clean.
