@@ -55,6 +55,7 @@ export async function GET(request: Request, context: { params: Promise<{ company
       referredHere,
       locations: sites,
       locationSummary: describeLocations(sites),
+      soloAuthorityCents: typeof metadata.soloAuthorityCents === "number" ? metadata.soloAuthorityCents : null,
     });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
@@ -64,6 +65,9 @@ export async function GET(request: Request, context: { params: Promise<{ company
 const postSchema = z.union([
   z.object({ action: z.literal("referral"), referral: referralSchema }),
   z.object({ action: z.literal("locations"), locations: locationsSchema }),
+  // What one person here can sign without asking anyone. It decides how big phase one of a quote may
+  // be, which is the difference between a deal that starts this week and one that waits for a meeting.
+  z.object({ action: z.literal("authority"), soloAuthorityCents: z.number().int().min(0) }),
 ]);
 
 export async function POST(request: Request, context: { params: Promise<{ companyId: string }> }) {
@@ -97,8 +101,10 @@ export async function POST(request: Request, context: { params: Promise<{ compan
         if (!found.length) return NextResponse.json({ ok: false, error: "the referring client does not exist" }, { status: 422 });
       }
       metadata.referral = { ...r, note: r.note ? sanitizeHouseStyle(r.note) : undefined, at: r.at ?? now.toISOString() };
-    } else {
+    } else if (parsed.data.action === "locations") {
       metadata.locations = parsed.data.locations.map((l) => ({ ...l, note: l.note ? sanitizeHouseStyle(l.note) : undefined }));
+    } else {
+      metadata.soloAuthorityCents = parsed.data.soloAuthorityCents;
     }
 
     await db.update(crmCompanies).set({ metadata, updatedAt: now }).where(eq(crmCompanies.id, companyId));

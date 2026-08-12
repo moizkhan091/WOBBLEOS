@@ -103,6 +103,9 @@ export async function GET(request: Request, context: { params: Promise<{ company
         // on its own rather than forcing an all-or-nothing decision.
         phases: ((p.metadata ?? {}) as Record<string, unknown>).phases ?? null,
         excludedFromQuote: ((p.metadata ?? {}) as Record<string, unknown>).excludedFromQuote ?? null,
+        // Whether the person you are talking to can actually sign phase one. The single fact that
+        // decides whether a deal starts this week or waits for a meeting you will not be in.
+        phaseOneAuthority: ((p.metadata ?? {}) as Record<string, unknown>).phaseOneAuthority ?? null,
       })),
       invoices: invoiceRows.map((i) => ({
         id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate,

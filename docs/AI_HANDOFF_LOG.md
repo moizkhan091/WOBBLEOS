@@ -7528,3 +7528,30 @@ Also `phaseOneWithinAuthority`: where the OS knows a contact's solo signing limi
 sending that phase one needs a joint decision the founder will not be in the room for.
 
 Gate: typecheck clean, 1799 tests pass, build clean.
+
+## 2026-08-12 - Sizing phase one to the person you are actually talking to (Claude)
+
+Rebuilt a real proposal through the new phasing and re-reviewed it. Measurable movement:
+
+| | before | after |
+|---|---|---|
+| price | USD 1,400,000 | PKR 4,500,000 (currency read from the report's own prose) |
+| line items | 18, one number | 12 quoted in 3 priced phases, 6 named as left out |
+| verdict | would_refuse | would_hesitate |
+
+The reviewer's remaining objection was the sharp one: "PKR 4.5M is 9x Sara's solo authority", and phase
+one at PKR 1.72M was still 3.4x what she can sign alone.
+
+So `phaseOpportunities` now takes the contact's solo signing limit and TRIMS phase one until it fits,
+down to a floor of two items. A founder records that limit on the client container ("What can your
+contact sign alone?"), and it comes straight off approved call findings.
+
+Where the total is simply too large for any subset to fit, it trims to the floor and SAYS so rather than
+shipping a phase one that cannot be signed: "Phase one is 3.4 times what your contact can sign off
+alone, so it needs a joint decision you will not be in the room for." That line now sits on the proposal
+in the container, before it goes out.
+
+This is the highest-leverage number in the file. A phase one your contact can approve alone is a deal
+that starts this week.
+
+Gate: typecheck clean, 1806 tests pass, build clean.

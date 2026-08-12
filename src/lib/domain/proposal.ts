@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { reportTextOf, resolveReportCurrency } from "@/lib/domain/report-currency";
-import { excludedFromQuote, phaseOpportunities, splitPrice, type PhasingOpportunity } from "@/lib/domain/proposal-phasing";
+import { excludedFromQuote, phaseOneWithinAuthority, phaseOpportunities, splitPrice, type PhasingOpportunity } from "@/lib/domain/proposal-phasing";
 import { newId } from "@/lib/ids";
 
 /**
@@ -114,6 +114,8 @@ interface AuditForProposal {
   country?: string | null;
   city?: string | null;
   market?: string | null;
+  /** What one person at the client can sign without asking anyone. Shapes how big phase one may be. */
+  soloAuthorityCents?: number | null;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -133,10 +135,11 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
   // purchase. WOBBLE's own deal reviewer refused it for exactly that, and found three line items the
   // findings did not support. So: rank by what the audit says each is worth against how fast it lands,
   // phase it, and drop the tail out of the quote instead of padding it.
-  const phases = phaseOpportunities(opps as PhasingOpportunity[]);
+  const totalCents = roi.estimatedImplementationCents ?? 0;
+  const phases = phaseOpportunities(opps as PhasingOpportunity[], { soloAuthorityCents: audit.soloAuthorityCents ?? null, totalCents });
   const quoted = phases.flatMap((ph) => ph.items);
   const excluded = excludedFromQuote(opps as PhasingOpportunity[]);
-  const priceByPhase = splitPrice(roi.estimatedImplementationCents ?? 0, phases);
+  const priceByPhase = splitPrice(totalCents, phases);
 
   const services: ProposalServiceItem[] = phases.flatMap((ph) =>
     ph.items.map((o) => ({
@@ -178,6 +181,8 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
       excludedFromQuote: excluded.map((o) => o.title),
       quotedItemCount: quoted.length,
       totalOpportunityCount: opps.length,
+      // The check a founder needs BEFORE sending: can the person they are talking to actually sign it?
+      phaseOneAuthority: phaseOneWithinAuthority(priceByPhase[0]?.priceCents ?? 0, audit.soloAuthorityCents ?? null),
       // The flag the UI reads. A price nobody can name the unit of must not go out.
       currencyUnverified: verdict.currency === null,
     },

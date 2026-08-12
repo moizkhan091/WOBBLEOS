@@ -59,6 +59,18 @@ export interface PhasingOptions {
   phaseTwoSize?: number;
   /** Anything beyond this many opportunities is an optional add-on, not part of the quote. */
   maxInQuote?: number;
+  /**
+   * What one person at the client can approve without going to anyone else, and the total being
+   * quoted. Given both, phase one is TRIMMED until it fits.
+   *
+   * This is the highest-leverage number in the whole file. WOBBLE's reviewer, on a real proposal:
+   * phase one at PKR 1.72M against a PKR 500,000 solo limit "needs a joint decision you will not be
+   * in the room for". A phase one your contact can sign alone is a deal that starts this week.
+   */
+  soloAuthorityCents?: number | null;
+  totalCents?: number;
+  /** Never trim below this: one line item is a favour, not a system. */
+  minPhaseOneSize?: number;
 }
 
 /**
@@ -80,9 +92,23 @@ export function phaseOpportunities(opportunities: PhasingOpportunity[], opts: Ph
   const totalWeight = ranked.reduce((n, o) => n + opportunityWeight(o), 0) || 1;
   const share = (items: PhasingOpportunity[]) => items.reduce((n, o) => n + opportunityWeight(o), 0) / totalWeight;
 
-  const one = ranked.slice(0, phaseOneSize);
-  const two = ranked.slice(phaseOneSize, phaseOneSize + phaseTwoSize);
-  const three = ranked.slice(phaseOneSize + phaseTwoSize);
+  // Trim phase one until one person can sign it. Each item removed drops phase one's share of the
+  // total, so this converges: it walks down from the intended size, stops the moment it fits, and
+  // never goes below the floor, because a single line item is a favour rather than a system.
+  const minSize = opts.minPhaseOneSize ?? 2;
+  let size = phaseOneSize;
+  if (opts.soloAuthorityCents && opts.soloAuthorityCents > 0 && opts.totalCents && opts.totalCents > 0) {
+    while (size > minSize) {
+      const candidate = ranked.slice(0, size);
+      const priced = (candidate.reduce((n, o) => n + opportunityWeight(o), 0) / totalWeight) * opts.totalCents;
+      if (priced <= opts.soloAuthorityCents) break;
+      size -= 1;
+    }
+  }
+
+  const one = ranked.slice(0, size);
+  const two = ranked.slice(size, size + phaseTwoSize);
+  const three = ranked.slice(size + phaseTwoSize);
 
   const phases: ProposalPhase[] = [
     {

@@ -7370,7 +7370,7 @@ type OrgAudit = {
   opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
   risks?: Array<string | { risk?: string; mitigation?: string }>; nextSteps?: unknown[]; successMetrics?: unknown[]; recommendedTechStack?: unknown[];
 };
-type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null; phases?: Array<{ number: number; name: string; rationale: string; items: string[]; priceCents: number }> | null; excludedFromQuote?: string[] | null };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null; phases?: Array<{ number: number; name: string; rationale: string; items: string[]; priceCents: number }> | null; excludedFromQuote?: string[] | null; phaseOneAuthority?: { ok: boolean; because: string } | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
@@ -8760,6 +8760,7 @@ type RelationshipsView = {
   referredHere: Array<{ id: string; name: string }>;
   locations: Array<{ name: string; city?: string; note?: string; headcount?: number }>;
   locationSummary: string;
+  soloAuthorityCents: number | null;
 };
 
 /**
@@ -8775,6 +8776,7 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
   const [referrer, setReferrer] = useState("");
   const [refNote, setRefNote] = useState("");
   const [site, setSite] = useState({ name: "", city: "", note: "" });
+  const [authority, setAuthority] = useState("");
 
   const v = state.data;
 
@@ -8825,6 +8827,14 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
           style={busy || !site.name.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}
         >Add</button>
         <span style={{ fontSize: 11, color: faint }}>Three clinics sharing one front desk is a different job from three independent branches, and the audit reads this.</span>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {v?.soloAuthorityCents ? (
+          <span style={{ fontSize: 11.5, color: C.lime }}>Your contact can sign up to {(v.soloAuthorityCents / 100).toLocaleString()} on their own.</span>
+        ) : null}
+        <input value={authority} onChange={(e) => setAuthority(e.target.value)} placeholder="What can your contact sign alone?" aria-label="Solo signing authority" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 200px)", fontSize: 11.5, padding: "5px 9px" }} />
+        <button onClick={() => post({ action: "authority", soloAuthorityCents: Math.round(Number(authority || 0) * 100) })} disabled={busy || !authority.trim()} style={busy || !authority.trim() ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>Set</button>
+        <span style={{ fontSize: 11, color: faint }}>Phase one of any quote is then sized to fit it, so they can say yes without calling a meeting.</span>
       </div>
       {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
     </div>
@@ -9119,6 +9129,9 @@ function OrgWorkspacePage() {
                           {ph.number === 1 ? <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{ph.rationale}</div> : null}
                         </div>
                       ))}
+                      {p.phaseOneAuthority ? (
+                        <div style={{ fontSize: 11.5, color: p.phaseOneAuthority.ok ? C.lime : C.orange, lineHeight: 1.5 }}>{p.phaseOneAuthority.because}</div>
+                      ) : null}
                       {p.excludedFromQuote?.length ? (
                         <div style={{ fontSize: 11, color: faint }}>Left out of the quote so it does not read as padded: {p.excludedFromQuote.join(", ")}.</div>
                       ) : null}

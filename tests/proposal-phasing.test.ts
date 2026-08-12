@@ -121,3 +121,57 @@ describe("can one person sign phase one?", () => {
     expect(r.because).toContain("cannot be checked");
   });
 });
+
+describe("phase one is sized to what one person can sign", () => {
+  const five = [
+    opp({ title: "No-show reduction", impact: "high", difficulty: "low", estimatedMonthlyValueCents: 270_000_000 }),
+    opp({ title: "Owner dashboard", impact: "high", difficulty: "low", estimatedMonthlyValueCents: 60_000_000 }),
+    opp({ title: "Booking agent", impact: "high", difficulty: "medium", estimatedMonthlyValueCents: 72_000_000 }),
+    opp({ title: "Receptionist", impact: "high", difficulty: "medium", estimatedMonthlyValueCents: 54_000_000 }),
+    opp({ title: "CRM", impact: "medium", difficulty: "medium", estimatedMonthlyValueCents: 30_000_000 }),
+  ];
+
+  it("leaves phase one alone when no authority is known", () => {
+    expect(phaseOpportunities(five, { totalCents: 450_000_000 })[0].items).toHaveLength(4);
+  });
+
+  it("trims phase one to fit when the total makes that possible", () => {
+    const phases = phaseOpportunities(five, { totalCents: 20_000_000, soloAuthorityCents: 10_000_000 });
+    const priced = splitPrice(20_000_000, phases);
+    expect(phases[0].items.length).toBeLessThan(4);
+    expect(priced[0].priceCents).toBeLessThanOrEqual(10_000_000);
+  });
+
+  it("trims as far as it can when the total is simply too big, and does not pretend otherwise", () => {
+    // Sara's real limit: PKR 500,000 against a PKR 4.5M quote. No subset of a 4.5M build fits inside
+    // 500k, so trimming reaches its floor and the honest answer is to SAY the deal needs a joint
+    // decision, not to quietly ship a phase one that cannot be signed.
+    const phases = phaseOpportunities(five, { totalCents: 450_000_000, soloAuthorityCents: 50_000_000 });
+    const priced = splitPrice(450_000_000, phases);
+    expect(phases[0].items).toHaveLength(2);
+    const verdict = phaseOneWithinAuthority(priced[0].priceCents, 50_000_000);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.because).toContain("joint decision");
+  });
+
+  it("does not trim below two items, since one line item is a favour not a system", () => {
+    const phases = phaseOpportunities(five, { totalCents: 450_000_000, soloAuthorityCents: 1 });
+    expect(phases[0].items).toHaveLength(2);
+  });
+
+  it("keeps the best items when it trims, not the leftovers", () => {
+    const phases = phaseOpportunities(five, { totalCents: 450_000_000, soloAuthorityCents: 50_000_000 });
+    expect(phases[0].items[0].title).toBe("No-show reduction");
+  });
+
+  it("moves whatever it trimmed into phase two rather than losing it", () => {
+    const trimmed = phaseOpportunities(five, { totalCents: 450_000_000, soloAuthorityCents: 50_000_000 });
+    const all = trimmed.flatMap((p) => p.items).map((i) => i.title);
+    expect(new Set(all).size).toBe(5);
+  });
+
+  it("still adds back to the whole after trimming", () => {
+    const phases = phaseOpportunities(five, { totalCents: 450_000_000, soloAuthorityCents: 50_000_000 });
+    expect(splitPrice(450_000_000, phases).reduce((n, x) => n + x.priceCents, 0)).toBe(450_000_000);
+  });
+});
