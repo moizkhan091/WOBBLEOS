@@ -162,3 +162,21 @@ describe("the margin at a price the founder types", () => {
     expect(marginAt({ oneOffCents: 100 }, cost).verdict).not.toMatch(/should charge|recommend/i);
   });
 });
+
+describe("a cost that is silently too small is worse than no cost", () => {
+  it("floors usage at a thousand a month, not at one", () => {
+    // `Math.max(1, volume)` made every usage line a thousandth of its real size when volume was
+    // unknown, so a build running on model calls and WhatsApp conversations looked like pennies.
+    const unknownVolume = computeDeliveryCost({ categories: ["speed_to_lead"], integrations: [], monthlyVolume: 0, currency: "USD" });
+    const oneThousand = computeDeliveryCost({ categories: ["speed_to_lead"], integrations: [], monthlyVolume: 1000, currency: "USD" });
+    expect(unknownVolume.monthlyCents).toBe(oneThousand.monthlyCents);
+    // WhatsApp alone is 800 cents per thousand conversations, so the usage lines must be real money.
+    const whatsapp = unknownVolume.lines.find((l) => l.label.includes("WhatsApp") && l.usageBased);
+    expect(whatsapp?.amountCents).toBe(800);
+  });
+
+  it("still says the volume is unknown, since a floor is an assumption not a fact", () => {
+    const unknownVolume = computeDeliveryCost({ categories: ["speed_to_lead"], integrations: [], monthlyVolume: 0, currency: "USD" });
+    expect(unknownVolume.unknowns.some((u) => u.includes("volume"))).toBe(true);
+  });
+});

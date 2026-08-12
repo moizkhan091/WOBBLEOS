@@ -153,7 +153,11 @@ export function computeDeliveryCost(input: CostInput): DeliveryCost {
   const toolKeys = [...new Set(input.categories.flatMap((c) => CATEGORY_TOOLS[c] ?? DEFAULT_TOOLS))];
   if (!input.categories.length) unknowns.push("No systems were named, so only the runtime floor is costed.");
 
-  const thousands = Math.max(1, input.monthlyVolume) / 1000;
+  // A FLOOR of a thousand a month, not a floor of one. `Math.max(1, volume)` made every usage line a
+  // thousandth of its real size when volume was unknown, so a build that runs on model calls and
+  // WhatsApp conversations looked like it cost pennies. A cost that is silently too small is worse
+  // than no cost at all, because it survives into a price.
+  const thousands = Math.max(1000, input.monthlyVolume) / 1000;
 
   for (const key of toolKeys) {
     const tool = TOOL_BY_KEY.get(key);

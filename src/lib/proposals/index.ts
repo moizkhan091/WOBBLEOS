@@ -312,8 +312,10 @@ function integrationsFromReport(report: Record<string, unknown>): IntegrationKey
 function monthlyVolumeFromReport(report: Record<string, unknown>): number {
   const text = JSON.stringify(report ?? {});
   // "240 appointments a week", "400 weekly WhatsApp enquiries": weekly numbers are the common form.
-  const weekly = [...text.matchAll(/(\d[\d,]{1,6})\s*(?:weekly|a week|per week)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
-  const monthly = [...text.matchAll(/(\d[\d,]{1,6})\s*(?:monthly|a month|per month)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
+  // Up to three words may sit between the number and the period: "400 weekly enquiries" and
+  // "240 appointments a week" are both how a real audit writes it, and the second used to be missed.
+  const weekly = [...text.matchAll(/(\d[\d,]{0,8})\s*(?:\w+\s+){0,3}(?:weekly|a week|per week|\/week)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
+  const monthly = [...text.matchAll(/(\d[\d,]{0,8})\s*(?:\w+\s+){0,3}(?:monthly|a month|per month|\/month|\/mo)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
   const fromWeekly = weekly.length ? Math.max(...weekly) * 4.3 : 0;
   const fromMonthly = monthly.length ? Math.max(...monthly) : 0;
   return Math.round(Math.max(fromWeekly, fromMonthly));
