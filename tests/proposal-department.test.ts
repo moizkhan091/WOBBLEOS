@@ -7,6 +7,7 @@ import type { ProposalRow } from "@/lib/domain/proposal";
 import type { ProposalStore } from "@/lib/proposals";
 import { proposalAction } from "@/lib/proposals";
 import { runProposalDepartment, defaultSynthesize, type SolutionSynthesis } from "@/lib/departments/verticals/proposal";
+import { decidePricing, type PricingState } from "@/lib/domain/pricing-gate";
 
 const now = new Date("2026-07-12T12:00:00.000Z");
 
@@ -82,6 +83,20 @@ function auditRow(id: string, opportunityId: string | null, companyId: string | 
   return { id, businessName: "Acme", companyId, opportunityId, report: AUDIT_REPORT };
 }
 
+/**
+ * Price a proposal the way a founder would, so a test that exercises approve/send/accept goes through
+ * the gate rather than around it. Nothing reaches a client unpriced, including in tests.
+ */
+async function priceIt(store: { getProposal: (id: string) => Promise<any>; updateProposal: (id: string, f: any) => Promise<void> }, id: string) {
+  const p = await store.getProposal(id);
+  const decided = decidePricing(
+    (p.metadata?.pricing ?? { status: "awaiting_decision", cost: null, decision: null }) as PricingState,
+    { oneOffCents: 600000, monthlyCents: 0, currency: "USD", reasoning: "Test price, chosen by a founder rather than inherited from a report.", decidedBy: "Moiz" },
+    new Date("2026-02-01T00:00:00.000Z"),
+  );
+  await store.updateProposal(id, { metadata: { ...(p.metadata ?? {}), pricing: decided }, pricingCents: 600000 });
+}
+
 describe("Proposal department vertical", () => {
   it("accepts the audit handoff → architect synthesizes → deterministic proposal is created from the audit", async () => {
     const { store } = makeHandoffStore();
@@ -108,7 +123,11 @@ describe("Proposal department vertical", () => {
     expect(proposalRows.get(proposal.id)).toBeTruthy();
     expect(proposal.auditId).toBe("aud_1");
     expect(proposal.services.map((s) => s.name)).toEqual(["P1: Missed-call text-back", "P1: AI intake concierge"]);
-    expect(proposal.pricingCents).toBe(480000);
+    // Unpriced by design: the audit's implementation figure is a guess, not a quote. It survives under
+    // metadata.pricing.auditEstimateCents for reference and the founder sets the actual price.
+    expect(proposal.pricingCents).toBe(0);
+    expect((proposal.metadata as { pricing?: { status?: string; auditEstimateCents?: number } }).pricing?.status).toBe("awaiting_decision");
+    expect((proposal.metadata as { pricing?: { auditEstimateCents?: number } }).pricing?.auditEstimateCents).toBe(480000);
     expect(proposal.opportunityId).toBe("opp_1");
     // The architect's synthesis is PERSISTED onto the artifact (metadata.solutionDesign) — the paid LLM
     // judgment is not computed-then-discarded.
@@ -140,6 +159,7 @@ describe("Proposal department vertical", () => {
     const proposalId = res.product!.proposal.id;
 
     // Founder-gated lifecycle: draft → approved → sent → accepted. Accept emits the outbox handoff.
+    await priceIt(proposalStore, proposalId); // the gate: nothing advances until a founder prices it
     await proposalAction(proposalId, "approve", { actor: "Moiz" }, proposalDeps);
     await proposalAction(proposalId, "send", { actor: "Moiz" }, proposalDeps);
     const accepted = await proposalAction(proposalId, "accept", { actor: "Moiz" }, proposalDeps);

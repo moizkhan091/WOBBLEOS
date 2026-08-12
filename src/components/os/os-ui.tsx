@@ -8900,6 +8900,126 @@ function RetainerControl({ invoiceId, retainer, onChanged }: { invoiceId: string
   );
 }
 
+
+type CostLineRow = { label: string; vendor?: string; cadence: string; amountCents: number; because: string; usageBased?: boolean };
+type PricingView = {
+  status: string;
+  cost: { currency: string; oneOffCents: number; monthlyCents: number; lines: CostLineRow[]; unknowns: string[] } | null;
+  decision: { oneOffCents: number; monthlyCents: number; currency: string; reasoning: string; decidedBy: string; decidedAt?: string } | null;
+  auditEstimateCents: number | null;
+  prompt: string;
+  checklist: string[];
+  currency: string;
+};
+
+/**
+ * The pricing gate, on one proposal.
+ *
+ * The OS says what the build costs us. The founder says what it is worth. Nothing here suggests a
+ * number, because a suggestion becomes the decision, and a suggested number is exactly how a rupee
+ * cost went out as a dollar price.
+ */
+function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPriced: () => void }) {
+  const state = useApi<PricingView>(`/api/proposals/${proposalId}/pricing`);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [form, setForm] = useState({ oneOff: "", monthly: "", reasoning: "" });
+
+  const v = state.data;
+  if (state.loading || !v) return null;
+
+  const money = (c: number) => `${v.currency} ${(c / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const priced = v.status === "decided" && v.decision;
+
+  // Live margin as you type. Arithmetic on what we already know, not advice.
+  const typedOneOff = Math.round(Number(form.oneOff || 0) * 100);
+  const typedMonthly = Math.round(Number(form.monthly || 0) * 100);
+  const setupMargin = v.cost && typedOneOff > 0 ? (typedOneOff - v.cost.oneOffCents) / typedOneOff : null;
+  const runMargin = v.cost && typedMonthly > 0 ? (typedMonthly - v.cost.monthlyCents) / typedMonthly : null;
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/proposals/${proposalId}/pricing`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oneOffCents: typedOneOff, monthlyCents: typedMonthly, currency: v!.currency, reasoning: form.reasoning.trim() }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setOpen(false); state.reload(); onPriced(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid " + (priced ? "rgba(184,255,44,0.28)" : "rgba(255,107,0,0.45)"), background: priced ? "rgba(184,255,44,0.05)" : "rgba(255,107,0,0.08)", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Tag text={priced ? "priced" : "you decide the price"} color={priced ? C.lime : C.orange} />
+          <span style={{ fontSize: 12, color: priced ? muted : C.white, flex: 1, minWidth: 200, lineHeight: 1.5 }}>{v.prompt}</span>
+          <button onClick={() => setOpen(!open)} style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "5px 11px", fontSize: 11.5 }}>
+            {open ? "close" : priced ? "change the price" : "set the price"}
+          </button>
+        </div>
+        {!priced ? (
+          <div style={{ fontSize: 11, color: faint }}>This proposal cannot be approved or sent until a price is set. That is deliberate.</div>
+        ) : null}
+      </div>
+
+      {open ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+          {v.cost ? (
+            <>
+              <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>What it costs us</div>
+              {v.cost.lines.map((l, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: C.white, flex: 1, minWidth: 170 }}>{l.label}{l.vendor ? ` (${l.vendor})` : ""}</span>
+                  <span style={{ fontSize: 12, color: C.orange }}>{money(l.amountCents)}{l.cadence === "monthly" ? "/mo" : ""}</span>
+                  {l.usageBased ? <Tag text="scales with volume" color={C.gray} /> : null}
+                  <span style={{ fontSize: 11, color: faint, width: "100%" }}>{l.because}</span>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: C.white }}>To build: {money(v.cost.oneOffCents)}</span>
+                <span style={{ fontSize: 12.5, color: C.white }}>To run: {money(v.cost.monthlyCents)}/mo</span>
+                <span style={{ fontSize: 11, color: faint }}>Our own time is not in this. It is not a cash cost, and pricing off a made-up hourly rate is how an agency ends up working for nothing.</span>
+              </div>
+              {v.cost.unknowns.map((u, i) => <div key={i} style={{ fontSize: 11.5, color: C.orange }}>{u}</div>)}
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: faint }}>Not enough detail to cost this yet.</div>
+          )}
+
+          <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Before you decide</div>
+          {v.checklist.map((c, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {c}</div>)}
+
+          <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Your price</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={form.oneOff} onChange={(e) => setForm({ ...form, oneOff: e.target.value })} placeholder={`One-off (${v.currency})`} aria-label="One-off price" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 170px)", fontSize: 12, padding: "6px 10px" }} />
+            <input value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} placeholder={`Monthly (${v.currency}, optional)`} aria-label="Monthly price" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 190px)", fontSize: 12, padding: "6px 10px" }} />
+          </div>
+          {setupMargin !== null || runMargin !== null ? (
+            <div style={{ fontSize: 12, color: (setupMargin ?? 1) < 0 || (runMargin ?? 1) < 0 ? C.orange : C.lime, lineHeight: 1.5 }}>
+              {setupMargin !== null ? `${Math.round(setupMargin * 100)}% margin on the build` : ""}
+              {setupMargin !== null && runMargin !== null ? " · " : ""}
+              {runMargin !== null ? `${Math.round(runMargin * 100)}% on the monthly` : ""}
+              {(setupMargin ?? 1) < 0 ? ". You would be paying part of this yourself." : ""}
+            </div>
+          ) : null}
+          <input value={form.reasoning} onChange={(e) => setForm({ ...form, reasoning: e.target.value })} placeholder="Why this number? (needed, and it is what you will say on the call)" aria-label="Reasoning" style={{ ...inputStyle, flex: 1, minWidth: "min(100%, 220px)", fontSize: 12, padding: "6px 10px" }} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={save} disabled={busy || typedOneOff <= 0 || form.reasoning.trim().length < 10} style={busy || typedOneOff <= 0 || form.reasoning.trim().length < 10 ? disabledBtn : { ...primaryBtn, padding: "7px 14px", fontSize: 12 }}>
+              {busy ? "Saving…" : "This is the price"}
+            </button>
+            {v.auditEstimateCents ? <span style={{ fontSize: 11, color: faint }}>The audit guessed {money(v.auditEstimateCents)}. It is a model's guess at a number it has no basis for, kept here only so you can see it.</span> : null}
+          </div>
+          {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -9137,6 +9257,8 @@ function OrgWorkspacePage() {
                       ) : null}
                     </div>
                   ) : null}
+                  {/* The OS costs it, a founder prices it, and nothing goes out until they do. */}
+                  <PricingGatePanel proposalId={p.id} onPriced={refreshAll} />
                   {/* Two agents argue with it before a client ever sees it. */}
                   <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
                   {/* A cheaper option, a fuller one, and every number that has been said out loud. */}

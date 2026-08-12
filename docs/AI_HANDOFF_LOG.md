@@ -7555,3 +7555,36 @@ This is the highest-leverage number in the file. A phase one your contact can ap
 that starts this week.
 
 Gate: typecheck clean, 1806 tests pass, build clean.
+
+## 2026-08-12 - The OS computes cost. Only a founder sets price. (Claude)
+
+Founder's call, and it fixes the root cause rather than the symptom. A model was guessing an
+implementation figure, the builder turned that guess into a quote, and a Karachi dental group was about
+to receive a bill 280 times too large. Nobody chose that number. It flowed downhill from a field in a
+report.
+
+The separation, now enforced in code:
+
+- **COST is arithmetic.** Which tools a system needs, each subscription, API usage at the client's
+  volume, what it takes to connect into what they already run. It has a right answer and it is OURS.
+  `src/lib/domain/delivery-cost.ts` computes it from a catalogue of 13 tools and 5 integration shapes,
+  converts into the client's currency, scales usage lines with their volume, and NAMES what it could
+  not cost rather than omitting it. A system never comes out looking free.
+  Deliberately excluded: WOBBLE's own time. It is not a cash cost, and pricing off a made-up hourly
+  rate is how an agency ends up working for nothing.
+- **PRICE is a decision.** `src/lib/domain/pricing-gate.ts`. A priced artifact starts
+  `awaiting_decision`. It can be drafted, reviewed, argued with and revised in that state, which is
+  exactly when the deal reviewer should be arguing with it. It CANNOT be approved, sent, or accepted.
+  `proposalAction` and `prepareProposalSend` both refuse, and the refusal says why.
+
+The founder sees the cost breakdown, a live margin as they type a number, and a checklist that puts
+"what this is worth to THEM" first. The reasoning field is required: a price with no stated reason
+cannot be defended on a call or repeated for the next client like them. Their name goes on it.
+
+Nothing in this system suggests an amount, and there is a test pinning that. A suggested price becomes
+the decision, which is the same failure wearing a different hat.
+
+The audit's own estimate is kept as `auditEstimateCents`, shown to the founder labelled as what it is:
+a model's guess at a number it has no basis for.
+
+Gate: typecheck clean, 1829 tests pass, build clean.

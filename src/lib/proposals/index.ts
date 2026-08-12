@@ -13,6 +13,9 @@ import {
   type ProposalStatus,
 } from "@/lib/domain/proposal";
 import { buildHandoffEnvelope, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
+import { canAdvance, type PricingState } from "@/lib/domain/pricing-gate";
+import { computeDeliveryCost, type IntegrationKey } from "@/lib/domain/delivery-cost";
+import { SERVICE_BY_SLUG } from "@/lib/domain/free-audit";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
 import { createInvoice } from "@/lib/finance";
@@ -172,7 +175,19 @@ export async function createProposalFromAudit(auditId: string, input: { createdB
       const raw = ((co?.metadata ?? {}) as Record<string, unknown>).soloAuthorityCents;
       soloAuthorityCents = typeof raw === "number" && raw > 0 ? raw : null;
     }
-    return { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report: a.report as unknown as Record<string, unknown>, country, city, soloAuthorityCents };
+    // What this build costs US: the tools each system needs, what we have to connect into on their
+    // side, and the volume it will carry. Arithmetic, not a guess, and never a price.
+    const report = a.report as unknown as Record<string, unknown>;
+    const categories: string[] = Array.isArray(report.opportunities)
+      ? [...new Set((report.opportunities as Array<{ service?: string }>).map((o) => SERVICE_BY_SLUG.get(o.service ?? "")?.category).filter((c): c is NonNullable<typeof c> => Boolean(c)))]
+      : [];
+    const deliveryCost = computeDeliveryCost({
+      categories,
+      integrations: integrationsFromReport(report),
+      monthlyVolume: monthlyVolumeFromReport(report),
+      currency: "USD",
+    });
+    return { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report, country, city, soloAuthorityCents, deliveryCost };
   });
   const auditRow = await getRow(auditId);
   if (!auditRow) return null;
@@ -239,6 +254,9 @@ export async function prepareProposalSend(id: string, opts: { preparedBy: string
   const prop = await store.getProposal(id);
   if (!prop) return null;
   if (prop.status !== "approved") return null; // only an approved proposal is eligible to be prepared for sending
+  // Belt and braces. A proposal cannot reach `approved` unpriced, but preparing a communication is the
+  // last step before a client actually reads a number, so the gate is checked again rather than assumed.
+  assertPriced(prop, "sent");
   const prepare = deps.prepareCommunication ?? (await import("@/lib/comms")).prepareCommunication;
   const result = await prepare(
     {
@@ -273,6 +291,66 @@ export type ProposalAction = "approve" | "send" | "accept" | "reject";
  * consumer processes the handoff (a running worker) rather than synchronously inside the accept call. An
  * OPP-LESS proposal has no deal to advance, so it keeps the inline invoice draft (unchanged edge case).
  */
+/**
+ * What the client's own words say we have to connect into.
+ *
+ * Read from the report's text rather than a structured field, because no audit has ever produced one:
+ * "paper diary" and "two spreadsheets" are in the prose, and that is the line that varies most between
+ * clients. Conservative on purpose, an integration we did not spot costs us money we did not price.
+ */
+function integrationsFromReport(report: Record<string, unknown>): IntegrationKey[] {
+  const text = JSON.stringify(report ?? {}).toLowerCase();
+  const found: IntegrationKey[] = [];
+  if (/paper (diary|diaries|record|book|file)/.test(text)) found.push("paper");
+  if (/spreadsheet|google sheet|excel/.test(text)) found.push("spreadsheets");
+  if (/(crm|practice management|dentrix|erp|legacy system|old system)/.test(text)) found.push("legacy_db");
+  if (/api|integrat/.test(text)) found.push("documented_api");
+  return [...new Set(found)];
+}
+
+/** Roughly how much this system will handle a month, from whatever volume the audit recorded. */
+function monthlyVolumeFromReport(report: Record<string, unknown>): number {
+  const text = JSON.stringify(report ?? {});
+  // "240 appointments a week", "400 weekly WhatsApp enquiries": weekly numbers are the common form.
+  const weekly = [...text.matchAll(/(\d[\d,]{1,6})\s*(?:weekly|a week|per week)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
+  const monthly = [...text.matchAll(/(\d[\d,]{1,6})\s*(?:monthly|a month|per month)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
+  const fromWeekly = weekly.length ? Math.max(...weekly) * 4.3 : 0;
+  const fromMonthly = monthly.length ? Math.max(...monthly) : 0;
+  return Math.round(Math.max(fromWeekly, fromMonthly));
+}
+
+/**
+ * The pricing state on a proposal, or null when it predates the gate.
+ *
+ * Read defensively: an artifact created before pricing was gated must not become unsendable, so an
+ * absent record on an already-approved proposal is left alone. The gate bites on the transition, not
+ * on history.
+ */
+function pricingStateOf(prop: ProposalRow): PricingState | null {
+  const raw = ((prop.metadata ?? {}) as Record<string, unknown>).pricing;
+  return raw ? (raw as PricingState) : null;
+}
+
+/**
+ * Refuse to advance a proposal whose price nobody has chosen.
+ *
+ * This is the safety net. A model guessed an implementation figure once, the builder turned it into a
+ * quote, and a client was nearly sent a bill 280 times too large. Nobody had decided that number; it
+ * flowed downhill from a field in a report. Drafting and reviewing stay open while a price is
+ * outstanding, because that is exactly when the reviewer should be arguing with it.
+ */
+function assertPriced(prop: ProposalRow, target: string): void {
+  const verdict = canAdvance(pricingStateOf(prop), target);
+  if (!verdict.allowed) throw new PricingNotDecidedError(verdict.because);
+}
+
+export class PricingNotDecidedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PricingNotDecidedError";
+  }
+}
+
 export async function proposalAction(id: string, action: ProposalAction, input: { actor: string; reason?: string }, deps: ProposalDeps = {}): Promise<{ proposal: ProposalRow; invoiceId?: string; handoffId?: string } | null> {
   const store = deps.store ?? defaultStore();
   const prop = await store.getProposal(id);
@@ -282,6 +360,7 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
   // ACCEPT + opportunity-linked → atomic accept + Sales/CRM outbox emit (the commercial chain owns the rest).
   if (action === "accept" && prop.opportunityId) {
     if (!canTransitionProposal(prop.status, "accepted")) return null;
+    assertPriced(prop, "accepted");
     const emit = deps.acceptAndEmit ?? defaultAcceptAndEmit;
     const result = await emit(id, (p) => buildProposalArtifactEnvelope(p, input.actor, now), now);
     if (!result) return null; // lost the atomic claim (already accepted / not `sent`) → no double-run
@@ -291,6 +370,7 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
 
   const target: ProposalStatus = action === "approve" ? "approved" : action === "send" ? "sent" : action === "accept" ? "accepted" : "rejected";
   if (!canTransitionProposal(prop.status, target)) return null;
+  assertPriced(prop, target);
 
   const fields: Partial<ProposalRow> = { status: target, updatedAt: now };
   if (action === "approve") fields.approvedBy = input.actor;

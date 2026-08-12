@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { reportTextOf, resolveReportCurrency } from "@/lib/domain/report-currency";
 import { excludedFromQuote, phaseOneWithinAuthority, phaseOpportunities, splitPrice, type PhasingOpportunity } from "@/lib/domain/proposal-phasing";
+import { awaitingPricing } from "@/lib/domain/pricing-gate";
 import { newId } from "@/lib/ids";
 
 /**
@@ -116,6 +117,8 @@ interface AuditForProposal {
   market?: string | null;
   /** What one person at the client can sign without asking anyone. Shapes how big phase one may be. */
   soloAuthorityCents?: number | null;
+  /** What this build costs WOBBLE, computed from the tools and integrations it needs. Never a price. */
+  deliveryCost?: import("@/lib/domain/delivery-cost").DeliveryCost | null;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -170,7 +173,10 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
     services,
     scope: scope || undefined,
     timeline,
-    pricingCents: roi.estimatedImplementationCents ?? 0,
+    // ZERO on purpose. The audit's implementation figure is a model's guess at a number it has no
+    // basis for, and letting it become the quote is exactly how a rupee cost went out as a dollar
+    // price. It is kept below for reference; the price stays empty until a founder sets one.
+    pricingCents: 0,
     currency: verdict.currency ?? undefined,
     metadata: {
       currencyEvidence: verdict.evidence,
@@ -183,6 +189,8 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
       totalOpportunityCount: opps.length,
       // The check a founder needs BEFORE sending: can the person they are talking to actually sign it?
       phaseOneAuthority: phaseOneWithinAuthority(priceByPhase[0]?.priceCents ?? 0, audit.soloAuthorityCents ?? null),
+      // The gate. Nothing goes to a client until a founder types a number and signs their name to it.
+      pricing: awaitingPricing(audit.deliveryCost ?? null, totalCents),
       // The flag the UI reads. A price nobody can name the unit of must not go out.
       currencyUnverified: verdict.currency === null,
     },

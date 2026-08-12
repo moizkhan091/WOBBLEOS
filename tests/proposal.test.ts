@@ -2,8 +2,23 @@ import { describe, expect, it } from "vitest";
 import { buildProposalRow, canTransitionProposal, proposalInputFromAudit, type ProposalRow } from "@/lib/domain/proposal";
 import { createProposalFromAudit, proposalAction, sweepExpiredProposals, PROPOSAL_EXPIRY_MS, type ProposalStore } from "@/lib/proposals";
 import type { HandoffEnvelope } from "@/lib/domain/handoff";
+import { decidePricing, type PricingState } from "@/lib/domain/pricing-gate";
 
 const now = new Date("2026-07-09T12:00:00Z");
+
+/**
+ * Price a proposal the way a founder would, so a test that exercises approve/send/accept goes through
+ * the gate rather than around it. Nothing reaches a client unpriced, including in tests.
+ */
+async function priceIt(store: { getProposal: (id: string) => Promise<any>; updateProposal: (id: string, f: any) => Promise<void> }, id: string) {
+  const p = await store.getProposal(id);
+  const decided = decidePricing(
+    (p.metadata?.pricing ?? { status: "awaiting_decision", cost: null, decision: null }) as PricingState,
+    { oneOffCents: 600000, monthlyCents: 0, currency: "USD", reasoning: "Test price, chosen by a founder rather than inherited from a report.", decidedBy: "Moiz" },
+    new Date("2026-02-01T00:00:00.000Z"),
+  );
+  await store.updateProposal(id, { metadata: { ...(p.metadata ?? {}), pricing: decided }, pricingCents: 600000 });
+}
 
 describe("proposal domain", () => {
   it("sums service prices into the total when no explicit price", () => {
@@ -32,7 +47,13 @@ describe("proposal domain", () => {
     // deal reviewer refused on a real proposal.
     expect(input.services?.[0].name).toBe("P1: Missed-call text-back");
     expect(input.timeline).toHaveLength(1);
-    expect(input.pricingCents).toBe(900000);
+    // ZERO on purpose. The audit's implementation figure is a model's guess at a number it has no
+    // basis for, and letting it become the quote is how a rupee cost went out as a dollar price.
+    // It is kept under metadata.pricing.auditEstimateCents for reference; the price stays empty until
+    // a founder sets one.
+    expect(input.pricingCents).toBe(0);
+    expect((input.metadata as { pricing?: { status?: string; auditEstimateCents?: number } }).pricing?.status).toBe("awaiting_decision");
+    expect((input.metadata as { pricing?: { auditEstimateCents?: number } }).pricing?.auditEstimateCents).toBe(900000);
     expect(input.auditId).toBe("audit_1");
     expect(input.scope).toContain("front desk");
   });
@@ -103,7 +124,7 @@ describe("proposal service", () => {
       getAuditRow: async () => ({ id: "audit_1", businessName: "Acme", companyId: "co_1", opportunityId: "opp_1", report: { opportunities: [{ title: "X" }], roi: { estimatedImplementationCents: 600000 } } }),
     });
     expect(prop?.title).toContain("Acme");
-    expect(prop?.pricingCents).toBe(600000);
+    expect(prop?.pricingCents).toBe(0); // unpriced until a founder decides, by design
     expect(prop?.auditId).toBe("audit_1");
   });
 
@@ -147,6 +168,7 @@ describe("proposal service", () => {
       return { proposal: { ...p, status: "accepted" as const }, handoffId: `h_${env.idempotencyKey}`, emitted: emit };
     };
     const deps = { store, now, recordAudit: async () => {}, acceptAndEmit };
+    await priceIt(store, prop!.id); // the gate: nothing advances until a founder has set a price
     await proposalAction(prop!.id, "approve", { actor: "Moiz" }, deps);
     await proposalAction(prop!.id, "send", { actor: "Moiz" }, deps);
     const res = await proposalAction(prop!.id, "accept", { actor: "Moiz" }, deps);
