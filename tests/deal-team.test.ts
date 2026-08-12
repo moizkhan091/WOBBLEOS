@@ -210,3 +210,63 @@ describe("a follow-up may not invent a case study", () => {
     expect(p).toContain("put a lie in a founder's");
   });
 });
+
+describe("a review is not thrown away over the spelling of one field", () => {
+  const item = { issue: "The price is 778 times her signing authority and nothing explains it.", where: "Header", fix: "Break it into phases, with phase one under her solo limit." };
+
+  it("accepts the severity words a reviewer actually writes", () => {
+    for (const [written, expected] of [["critical", "blocker"], ["HIGH", "blocker"], ["Major", "serious"], ["low", "minor"], ["blocker", "blocker"]] as const) {
+      const r = dealCritiqueSchema.safeParse({ verdict: "would_refuse", headline: "Priced with no reason", items: [{ ...item, severity: written }] });
+      expect(r.success, written).toBe(true);
+      if (r.success) expect(r.data.items[0].severity, written).toBe(expected);
+    }
+  });
+
+  it("accepts the verdict in any casing or spacing", () => {
+    for (const written of ["would_refuse", "Would Refuse", "WOULD-REFUSE", "refuse"]) {
+      const r = dealCritiqueSchema.safeParse({ verdict: written, headline: "Priced with no reason", items: [] });
+      expect(r.success, written).toBe(true);
+      if (r.success) expect(r.data.verdict, written).toBe("would_refuse");
+    }
+  });
+
+  it("falls back to the safe middle rather than failing on a word nobody planned for", () => {
+    const r = dealCritiqueSchema.safeParse({ verdict: "unclear", headline: "Priced with no reason", items: [{ ...item, severity: "spicy" }] });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.verdict).toBe("would_hesitate");
+      expect(r.data.items[0].severity).toBe("serious");
+    }
+  });
+
+  it("has room for a finding that shows its arithmetic", () => {
+    // The real run produced issues of 353 to 559 characters against a 400 cap, so six of eight failed.
+    const long = "a".repeat(559);
+    expect(dealCritiqueSchema.safeParse({ verdict: "would_refuse", headline: "x".repeat(252), items: [{ ...item, issue: long, severity: "blocker" }] }).success).toBe(true);
+  });
+
+  it("still refuses an item with no fix, since a complaint without a change is not useful", () => {
+    expect(dealCritiqueSchema.safeParse({ verdict: "would_refuse", headline: "Priced with no reason", items: [{ issue: item.issue, where: "Header", severity: "blocker" }] }).success).toBe(false);
+  });
+
+  it("normalises the pricing verdict and the objection likelihood the same way", () => {
+    const p = pricingOpinionSchema.safeParse({ verdict: "Overpriced", headline: "Three times the comparable quote" });
+    expect(p.success).toBe(true);
+    if (p.success) expect(p.data.verdict).toBe("high");
+
+    const o = objectionBriefSchema.safeParse({ objections: [{ objection: "too expensive for us here", rootedIn: "the quote", likelihood: "Certain", answer: "It is priced to the revenue we unlock, not to a template." }] });
+    expect(o.success).toBe(true);
+    if (o.success) expect(o.data.objections[0].likelihood).toBe("high");
+  });
+});
+
+describe("an absent label is still a failed answer", () => {
+  it("rejects a critique with no verdict at all, so the repair round asks for one", () => {
+    expect(dealCritiqueSchema.safeParse({ headline: "Priced with no reason given", items: [] }).success).toBe(false);
+  });
+
+  it("rejects an item with no severity, rather than quietly calling it serious", () => {
+    const item = { issue: "The price is 778 times her signing authority.", where: "Header", fix: "Break it into phases under her limit." };
+    expect(dealCritiqueSchema.safeParse({ verdict: "would_refuse", headline: "Priced with no reason given", items: [item] }).success).toBe(false);
+  });
+});

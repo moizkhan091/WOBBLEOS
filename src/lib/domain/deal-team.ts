@@ -23,13 +23,13 @@ export const PRICING_ANALYST_AGENT = "pricing_analyst";
 
 export const objectionSchema = z.object({
   /** The objection in the CLIENT's voice, not ours. */
-  objection: z.string().trim().min(10).max(400),
+  objection: z.string().trim().min(10).max(600),
   /** Where it comes from: which finding, price, or thing they said. */
   rootedIn: z.string().trim().min(5).max(300),
   /** How likely this one is, given what we know. */
-  likelihood: z.enum(["high", "medium", "low"]),
+  likelihood: normaliseLabel(["high", "medium", "low"] as const, { certain: "high", very_high: "high", likely: "high", moderate: "medium", possible: "medium", unlikely: "low", rare: "low" }, "medium"),
   /** The answer, in language they used, not ours. */
-  answer: z.string().trim().min(20).max(900),
+  answer: z.string().trim().min(20).max(1400),
   /** The one fact or number from their own context that settles it. */
   proof: z.string().trim().max(400).optional(),
 });
@@ -123,23 +123,48 @@ export function followUpSystemPrompt(channel: FollowUpChannel, tone: string): st
 
 // -------------------------------------------------------------------------- deal reviewer
 
+/**
+ * Normalising a label instead of rejecting the answer that carried it.
+ *
+ * The reviewer's first real run produced ten genuinely good findings and failed validation on letter
+ * case and on synonyms ("critical" for a blocker), forcing a second paid call every single time. A
+ * reviewer's findings must not be thrown away over the spelling of one field, so an unrecognised label
+ * lands on the safe middle value rather than failing the parse. Losing a shade of precision on one
+ * field beats losing the whole review.
+ */
+function normaliseLabel<T extends string>(allowed: readonly T[], synonyms: Record<string, T>, fallback: T) {
+  return z.preprocess((v) => {
+    // A MISSING field is a failed answer, not a misspelled one: pass it through so the enum rejects it
+    // and the repair round asks for it. Only a string that is present but unrecognised falls back.
+    if (typeof v !== "string") return v;
+    const key = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if ((allowed as readonly string[]).includes(key)) return key;
+    return synonyms[key] ?? fallback;
+  }, z.enum(allowed as unknown as [T, ...T[]]));
+}
+
+const SEVERITIES = ["blocker", "serious", "minor"] as const;
+const VERDICTS = ["would_sign", "would_hesitate", "would_refuse"] as const;
+
 export const dealCritiqueItemSchema = z.object({
   /** What is wrong, stated as the client would state it. */
-  issue: z.string().trim().min(10).max(400),
-  severity: z.enum(["blocker", "serious", "minor"]),
+  // 900, not 400. A finding that does the arithmetic ("778x her signing authority, and the system they
+  // abandoned cost PKR 400,000") is long, and it is the good kind of long.
+  issue: z.string().trim().min(10).max(900),
+  severity: normaliseLabel(SEVERITIES, { critical: "blocker", high: "blocker", severe: "blocker", major: "serious", medium: "serious", moderate: "serious", low: "minor", nit: "minor" }, "serious"),
   /** Which part of the proposal it lands on. */
-  where: z.string().trim().min(3).max(200),
+  where: z.string().trim().min(3).max(300),
   /** What to change. Concrete enough to act on without a follow-up question. */
-  fix: z.string().trim().min(10).max(600),
+  fix: z.string().trim().min(10).max(1200),
 });
 export type DealCritiqueItem = z.infer<typeof dealCritiqueItemSchema>;
 
 export const dealCritiqueSchema = z.object({
   /** Would this client sign this, as written? */
-  verdict: z.enum(["would_sign", "would_hesitate", "would_refuse"]),
+  verdict: normaliseLabel(VERDICTS, { refuse: "would_refuse", reject: "would_refuse", no: "would_refuse", hesitate: "would_hesitate", would_question: "would_hesitate", maybe: "would_hesitate", sign: "would_sign", accept: "would_sign", yes: "would_sign" }, "would_hesitate"),
   /** The single biggest reason for the verdict. */
-  headline: z.string().trim().min(10).max(400),
-  items: z.array(dealCritiqueItemSchema).max(10).default([]),
+  headline: z.string().trim().min(10).max(600),
+  items: z.array(dealCritiqueItemSchema).max(12).default([]),
 });
 export type DealCritique = z.infer<typeof dealCritiqueSchema>;
 
@@ -170,13 +195,13 @@ export function dealReviewSystemPrompt(): string {
 
 export const pricingOpinionSchema = z.object({
   /** How this quote sits against what WOBBLE has quoted before. */
-  verdict: z.enum(["consistent", "low", "high", "not_enough_history"]),
+  verdict: normaliseLabel(["consistent", "low", "high", "not_enough_history"] as const, { underpriced: "low", too_low: "low", overpriced: "high", too_high: "high", unknown: "not_enough_history", insufficient_history: "not_enough_history", no_history: "not_enough_history" }, "not_enough_history"),
   /** The comparison in one sentence, with the numbers. */
-  headline: z.string().trim().min(10).max(400),
+  headline: z.string().trim().min(10).max(600),
   /** What the client's own economics say they can carry. */
-  affordability: z.string().trim().max(600).default(""),
+  affordability: z.string().trim().max(1200).default(""),
   /** Specific, numbered suggestions. Advisory only. */
-  notes: z.array(z.string().trim().min(5).max(400)).max(6).default([]),
+  notes: z.array(z.string().trim().min(5).max(600)).max(8).default([]),
 });
 export type PricingOpinion = z.infer<typeof pricingOpinionSchema>;
 

@@ -7479,3 +7479,24 @@ output remains a ceiling. The same review now prices at about $0.09.
 
 Still an over-estimate, deliberately: a model rarely writes to its ceiling, and an in-flight call must
 never be able to cross the stop threshold. The guard is unchanged; only the arithmetic got honest.
+
+## 2026-08-12 - The reviewer paid twice for every run, and it was our schema (Claude)
+
+Instrumented the deal reviewer's first output rather than guessing. It was not truncated (8,737 chars,
+balanced JSON) and the findings were good. It failed validation on two things, both ours:
+
+- `issue` was capped at 400 characters. The real output ran 353 to 559, and six of eight items breached.
+  A finding that does the arithmetic ("778x her signing authority, and the system they abandoned cost
+  PKR 400,000") is long, and that is the good kind of long.
+- `severity` and `verdict` came back as words not in the enum ("critical" for a blocker, casing
+  variants). Ten genuinely useful findings were being discarded over the spelling of one field.
+
+So every run cost two Sonnet calls instead of one, forever.
+
+Fixed by making the schema describe reality: caps raised to what good output needs (issue 900, fix 1200,
+headline 600, objection answer 1400), and labels normalised through `normaliseLabel`, which lowercases,
+maps documented synonyms, and lands an unrecognised word on the safe middle value rather than failing
+the parse. The same treatment for the pricing verdict and the objection likelihood.
+
+One line matters and is tested: a MISSING field still fails. An absent verdict is a failed answer and
+should be repaired; a misspelled one should not destroy the review that carried it.
