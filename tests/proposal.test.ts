@@ -27,11 +27,50 @@ describe("proposal domain", () => {
     });
     expect(input.title).toContain("Acme Dental");
     expect(input.services).toHaveLength(2);
-    expect(input.services?.[0].name).toBe("Missed-call text-back");
+    // Line items carry their phase. A client reading the document can see what they would be
+    // committing to FIRST, rather than facing one number for everything, which is what WOBBLE's own
+    // deal reviewer refused on a real proposal.
+    expect(input.services?.[0].name).toBe("P1: Missed-call text-back");
     expect(input.timeline).toHaveLength(1);
     expect(input.pricingCents).toBe(900000);
     expect(input.auditId).toBe("audit_1");
     expect(input.scope).toContain("front desk");
+  });
+
+  it("phases the proposal and prices each phase, so phase one can be sold alone", () => {
+    const input = proposalInputFromAudit({
+      id: "audit_2",
+      businessName: "Acme Dental",
+      report: {
+        executiveSummary: "Acme leaks leads at the front desk. PKR 400,000 was spent on the last system.",
+        opportunities: [
+          { title: "No-show reduction", impact: "high", difficulty: "low", estimatedMonthlyValueCents: 27000000 },
+          { title: "Booking agent", impact: "high", difficulty: "medium", estimatedMonthlyValueCents: 7200000 },
+          { title: "Owner dashboard", impact: "high", difficulty: "low", estimatedMonthlyValueCents: 6000000 },
+          { title: "Receptionist", impact: "high", difficulty: "medium", estimatedMonthlyValueCents: 5400000 },
+          { title: "Nice to have", impact: "low", difficulty: "high", estimatedMonthlyValueCents: 100000 },
+        ],
+        roi: { estimatedImplementationCents: 1000000 },
+      },
+    });
+    const meta = input.metadata as { phases?: Array<{ number: number; priceCents: number; items: string[] }>; currencyEvidence?: string };
+    expect(meta.phases?.[0].items).toHaveLength(4);
+    expect(meta.phases?.[0].priceCents).toBeGreaterThan(0);
+    // The parts add back to the whole; a founder quoting phases must not lose or invent money.
+    expect(meta.phases?.reduce((n, p) => n + p.priceCents, 0)).toBe(1000000);
+    // Read from the report's own prose, not defaulted to dollars.
+    expect(input.currency).toBe("PKR");
+    expect(meta.currencyEvidence).toBe("report_text");
+  });
+
+  it("writes a timeline even when the audit had no roadmap, since a proposal without one gets refused", () => {
+    const input = proposalInputFromAudit({
+      id: "audit_3",
+      businessName: "Acme Dental",
+      report: { opportunities: [{ title: "No-show reduction", impact: "high", difficulty: "low" }], roi: { estimatedImplementationCents: 500000 } },
+    });
+    expect(input.timeline?.length).toBeGreaterThan(0);
+    expect(input.timeline?.[0].phase).toContain("Phase 1");
   });
 
   it("enforces the proposal status machine", () => {

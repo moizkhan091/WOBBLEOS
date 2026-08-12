@@ -99,6 +99,10 @@ export async function GET(request: Request, context: { params: Promise<{ company
         // currency, and defaulting to dollars once turned a rupee price into a 280x quote.
         currencyUnverified: ((p.metadata ?? {}) as Record<string, unknown>).currencyUnverified === true,
         currencyNote: (((p.metadata ?? {}) as Record<string, unknown>).currencyNote as string | undefined) ?? null,
+        // What each phase carries and what was left out of the quote, so a founder can offer phase one
+        // on its own rather than forcing an all-or-nothing decision.
+        phases: ((p.metadata ?? {}) as Record<string, unknown>).phases ?? null,
+        excludedFromQuote: ((p.metadata ?? {}) as Record<string, unknown>).excludedFromQuote ?? null,
       })),
       invoices: invoiceRows.map((i) => ({
         id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate,

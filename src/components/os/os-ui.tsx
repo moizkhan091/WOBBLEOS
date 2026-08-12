@@ -7370,7 +7370,7 @@ type OrgAudit = {
   opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
   risks?: Array<string | { risk?: string; mitigation?: string }>; nextSteps?: unknown[]; successMetrics?: unknown[]; recommendedTechStack?: unknown[];
 };
-type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null; phases?: Array<{ number: number; name: string; rationale: string; items: string[]; priceCents: number }> | null; excludedFromQuote?: string[] | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
@@ -9105,6 +9105,23 @@ function OrgWorkspacePage() {
                   {p.currencyUnverified ? (
                     <div style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.07)", fontSize: 11.5, color: C.orange, lineHeight: 1.5 }}>
                       This price has no confirmed currency. {p.currencyNote ?? "Set it before sending."}
+                    </div>
+                  ) : null}
+                  {p.phases?.length ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {p.phases.map((ph) => (
+                        <div key={ph.number} style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 10, borderLeft: "2px solid " + (ph.number === 1 ? C.lime : "rgba(255,255,255,0.15)") }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12.5, color: C.white }}>{ph.name}</span>
+                            {ph.priceCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(ph.priceCents, p.currency)}</span> : null}
+                            <span style={{ fontSize: 11.5, color: faint }}>{ph.items.join(", ")}</span>
+                          </div>
+                          {ph.number === 1 ? <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{ph.rationale}</div> : null}
+                        </div>
+                      ))}
+                      {p.excludedFromQuote?.length ? (
+                        <div style={{ fontSize: 11, color: faint }}>Left out of the quote so it does not read as padded: {p.excludedFromQuote.join(", ")}.</div>
+                      ) : null}
                     </div>
                   ) : null}
                   {/* Two agents argue with it before a client ever sees it. */}

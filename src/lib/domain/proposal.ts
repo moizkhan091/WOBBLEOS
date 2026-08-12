@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { reportTextOf, resolveReportCurrency } from "@/lib/domain/report-currency";
+import { excludedFromQuote, phaseOpportunities, splitPrice, type PhasingOpportunity } from "@/lib/domain/proposal-phasing";
 import { newId } from "@/lib/ids";
 
 /**
@@ -127,8 +128,30 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
   const roi = (report.roi ?? {}) as { estimatedImplementationCents?: number };
   const scope = (typeof report.executiveSummary === "string" && report.executiveSummary) || (typeof report.summary === "string" && report.summary) || undefined;
 
-  const services: ProposalServiceItem[] = opps.map((o) => ({ name: o.title ?? o.name ?? "AI system", description: o.description }));
-  const timeline: ProposalTimelineItem[] = roadmap.map((ph) => ({ phase: ph.title ?? "Phase", months: ph.months, focus: ph.focus }));
+  // Every opportunity used to become a line item. On a real proposal that was eighteen of them, quoted
+  // as one number, to a client who had already abandoned one system after a single all-or-nothing
+  // purchase. WOBBLE's own deal reviewer refused it for exactly that, and found three line items the
+  // findings did not support. So: rank by what the audit says each is worth against how fast it lands,
+  // phase it, and drop the tail out of the quote instead of padding it.
+  const phases = phaseOpportunities(opps as PhasingOpportunity[]);
+  const quoted = phases.flatMap((ph) => ph.items);
+  const excluded = excludedFromQuote(opps as PhasingOpportunity[]);
+  const priceByPhase = splitPrice(roi.estimatedImplementationCents ?? 0, phases);
+
+  const services: ProposalServiceItem[] = phases.flatMap((ph) =>
+    ph.items.map((o) => ({
+      // The phase is on the line item, so a client reading the document can see where it sits and what
+      // they would be committing to first.
+      name: `${ph.name.startsWith("Phase") ? `P${ph.number}` : ph.name}: ${o.title ?? "AI system"}`,
+      description: o.description,
+    })),
+  );
+
+  // The audit's own roadmap when it has one, otherwise the phases derived here, so a proposal is never
+  // sent without a timeline. The reviewer flagged a missing one against a stated client deadline.
+  const timeline: ProposalTimelineItem[] = roadmap.length
+    ? roadmap.map((ph) => ({ phase: ph.title ?? "Phase", months: ph.months, focus: ph.focus }))
+    : phases.map((ph) => ({ phase: ph.name, focus: ph.rationale }));
 
   // An audit's money fields carry no unit while its prose is written in the client's own currency. A
   // Karachi clinic's audit priced the build at 1,400,000 rupees and this builder stamped USD on it,
@@ -149,6 +172,12 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
     metadata: {
       currencyEvidence: verdict.evidence,
       currencyNote: verdict.because,
+      // What each phase carries, so a founder can quote phase one alone, and what was deliberately
+      // left out, so nothing is dropped silently.
+      phases: phases.map((ph) => ({ number: ph.number, name: ph.name, rationale: ph.rationale, items: ph.items.map((o) => o.title), priceCents: priceByPhase.find((x) => x.number === ph.number)?.priceCents ?? 0 })),
+      excludedFromQuote: excluded.map((o) => o.title),
+      quotedItemCount: quoted.length,
+      totalOpportunityCount: opps.length,
       // The flag the UI reads. A price nobody can name the unit of must not go out.
       currencyUnverified: verdict.currency === null,
     },

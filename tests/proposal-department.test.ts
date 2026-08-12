@@ -107,7 +107,7 @@ describe("Proposal department vertical", () => {
     const proposal = res.product!.proposal;
     expect(proposalRows.get(proposal.id)).toBeTruthy();
     expect(proposal.auditId).toBe("aud_1");
-    expect(proposal.services.map((s) => s.name)).toEqual(["Missed-call text-back", "AI intake concierge"]);
+    expect(proposal.services.map((s) => s.name)).toEqual(["P1: Missed-call text-back", "P1: AI intake concierge"]);
     expect(proposal.pricingCents).toBe(480000);
     expect(proposal.opportunityId).toBe("opp_1");
     // The architect's synthesis is PERSISTED onto the artifact (metadata.solutionDesign) — the paid LLM

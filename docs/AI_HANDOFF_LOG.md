@@ -7500,3 +7500,31 @@ the parse. The same treatment for the pricing verdict and the objection likeliho
 
 One line matters and is tested: a MISSING field still fails. An absent verdict is a failed answer and
 should be repaired; a misspelled one should not destroy the review that carried it.
+
+## 2026-08-12 - A proposal a client can say yes to (Claude)
+
+Acting on what WOBBLE's own deal reviewer said about a real proposal:
+
+> "A client burned by a PKR 400k all-or-nothing purchase will want the ability to start small and
+> expand, but this structure forces another all-in bet."
+
+The builder mapped every audit opportunity into a line item. Eighteen of them, one number, to a group
+that had already abandoned a system after exactly that kind of purchase. It also shipped three items the
+findings did not support, because everything the audit produced went in whether it was grounded or not.
+
+`src/lib/domain/proposal-phasing.ts` now ranks each opportunity by what the audit says it is worth
+against how quickly it lands (value is the anchor where the audit costed it, impact stands in where it
+did not; easier work wins ties, because proof delayed is proof disbelieved). Then:
+
+- **Phase 1 is four items**, deliberately the smallest set that puts money back on the table.
+- The single quoted price is split across phases **by the value each carries**, so the phase carrying
+  most of the return carries most of the cost, and the parts always add back to the whole.
+- Everything past twelve is **dropped from the quote and named**, rather than padding it.
+- Line items carry their phase (`P1: …`) so a client sees what they would commit to first.
+- A proposal with no roadmap now gets a timeline from its phases. The reviewer flagged a missing one
+  against a client's stated Ramadan deadline.
+
+Also `phaseOneWithinAuthority`: where the OS knows a contact's solo signing limit, it can say before
+sending that phase one needs a joint decision the founder will not be in the room for.
+
+Gate: typecheck clean, 1799 tests pass, build clean.
