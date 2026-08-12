@@ -16,8 +16,30 @@ import {
 
 /** Conservative WORST-CASE USD for a text call — deliberately pessimistic so the budget stop is never
  *  crossed by an in-flight call. Real cost is a fraction of this; it only gates cumulative spend. */
-function estimateTextWorstCaseUsd(maxTokens: number): number {
-  return Math.max(0.01, maxTokens * 2 * 0.0001); // ~$0.10/1k tokens, both directions
+/**
+ * What this call could cost, at worst, before it is allowed to run.
+ *
+ * The old estimate charged maxTokens in BOTH directions at a flat $0.10 per 1k. Against Sonnet 4.5's
+ * real prices ($3/M in, $15/M out) that is about 33 times too pessimistic on input and 7 times on
+ * output, and it charged the output ceiling for a prompt whose size is known exactly. Under a $2 daily
+ * cap it started REFUSING legitimate work: a 6,000-token proposal review was priced at $1.20 and
+ * blocked, so a founder's guard against overspending became a guard against working at all.
+ *
+ * Now it prices the prompt it actually has against the model's real listed rates, and only the output
+ * is a ceiling. Still an over-estimate (the model rarely writes to the ceiling), which is the correct
+ * direction for a guard: an in-flight call must never be able to cross the stop threshold.
+ */
+export function estimateTextWorstCaseUsd(
+  maxTokens: number,
+  opts: { promptChars?: number; usdPerMillionInput?: number; usdPerMillionOutput?: number } = {},
+): number {
+  // Roughly four characters per token across English and the mixed English/Urdu these prompts carry.
+  const promptTokens = Math.ceil((opts.promptChars ?? 0) / 4);
+  // The fallback rates are the most expensive model in the catalog, so an unknown model is still
+  // bounded generously rather than optimistically.
+  const inRate = (opts.usdPerMillionInput ?? 3) / 1_000_000;
+  const outRate = (opts.usdPerMillionOutput ?? 15) / 1_000_000;
+  return Math.max(0.005, promptTokens * inRate + maxTokens * outRate);
 }
 
 export interface ProviderMessage {
@@ -91,6 +113,9 @@ export type TextAdapterRegistry = Record<string, TextProviderAdapter>;
 
 export interface ProviderRegistryStore {
   getModelRoleMap(): Promise<ModelRoleMap>;
+  /** Real listed rates for a model, so the budget guard prices what it is about to buy. Optional: an
+   *  injected test store need not implement it, and a missing price falls back to the dearest model. */
+  getModelPricing?(modelId: string): Promise<{ usdPerMillionInput?: number; usdPerMillionOutput?: number } | null>;
   getProviderConnection(slug: string): Promise<ProviderConnectionConfig | null>;
   getCredential(credentialKeyName: string): Promise<string | null>;
   listProviderConnections(): Promise<ProviderConnectionConfig[]>;
@@ -261,7 +286,11 @@ export async function runTextProvider(
   if (budget && budgetActive) {
     const switches: KillSwitchRow[] = deps.loadKillSwitches ? await deps.loadKillSwitches() : await loadEngagedSwitches();
     assertNotKilled(switches, "provider", connection.slug); // throws KillSwitchEngagedError → 409 upstream
-    worstCaseCost = budget.unit === "usd" ? estimateTextWorstCaseUsd(input.maxTokens ?? 1600) : (input.maxTokens ?? 1600);
+    const promptChars = input.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
+    const priced = await store.getModelPricing?.(model).catch(() => null);
+    worstCaseCost = budget.unit === "usd"
+      ? estimateTextWorstCaseUsd(input.maxTokens ?? 1600, { promptChars, usdPerMillionInput: priced?.usdPerMillionInput, usdPerMillionOutput: priced?.usdPerMillionOutput })
+      : (input.maxTokens ?? 1600);
     try {
       await assertProviderAllowance(connection.slug, worstCaseCost, deps.budgetDeps);
     } catch (e) {
@@ -366,6 +395,14 @@ export function defaultStore(db: Db = getDb()): ProviderRegistryStore {
         .where(eq(settings.key, "model_roles"))
         .limit(1);
       return modelRoleMapSchema.parse(rows[0]?.value ?? {});
+    },
+    async getModelPricing(modelId) {
+      // The catalog is the same settings row Model Control edits, so a price a founder can see on that
+      // page is the price the budget guard uses. No separate source to drift.
+      const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, "model_catalog")).limit(1);
+      const models = ((rows[0]?.value ?? {}) as { models?: Array<{ id?: string; usdPerMillionInput?: number; usdPerMillionOutput?: number }> }).models ?? [];
+      const found = models.find((m) => m.id === modelId);
+      return found ? { usdPerMillionInput: found.usdPerMillionInput, usdPerMillionOutput: found.usdPerMillionOutput } : null;
     },
     async getProviderConnection(slug) {
       const rows = await db.select().from(providerConnections).where(eq(providerConnections.slug, slug)).limit(1);

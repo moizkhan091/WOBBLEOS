@@ -175,12 +175,16 @@ describe("provider registry service", () => {
     let called = false;
     await expect(
       runTextProvider(
-        { role: "ask_wobble", module: "ask_wobble", messages: [{ role: "user", content: "hi" }], maxTokens: 1600 },
+        { role: "ask_wobble", module: "ask_wobble", messages: [{ role: "user", content: "hi" }], maxTokens: 6000 },
         {
           store: fakeStore(),
           adapters: { openrouter: { ...adapter, generateText: async () => { called = true; return { text: "x" }; } } },
           modelRunDeps: fakeWriter().writer && { writer: fakeWriter().writer, recordAudit: async () => {} },
-          // spent 2.65 + worst-case 0.32 > 2.7 stop → rejected BEFORE the call
+          // spent 2.65 + worst-case ~0.09 > 2.7 stop → rejected BEFORE the call.
+          // The worst-case figure is smaller than it once was on purpose: it used to charge maxTokens in
+          // BOTH directions at a flat $0.10/1k, which priced this call at $1.20 and started refusing
+          // legitimate work under a small daily cap. It now prices the real prompt at the model's real
+          // listed rates. The guard is unchanged; only the arithmetic got honest.
           budgetDeps: { getSpent: async () => 2.65 },
         },
       ),

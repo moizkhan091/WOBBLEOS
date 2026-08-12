@@ -7461,3 +7461,21 @@ caused this. An unresolved proposal is flagged in the container in orange and ca
 
 Worth stating plainly: this is the first time an adversarial agent has caught a real money defect in
 this system. It paid for itself on its first run.
+
+## 2026-08-12 - The spend guard had become a guard against working (Claude)
+
+The deal reviewer's second run failed with "external budget for 'openrouter' would be exceeded: spent
+1.288 + worst-case 1.8 > stop 2.7". The cap did its job. The arithmetic did not.
+
+`estimateTextWorstCaseUsd` charged maxTokens in BOTH directions at a flat $0.10 per 1k. Against Sonnet
+4.5's real rates ($3/M in, $15/M out) that is about 33 times too pessimistic on input and 7 times on
+output, and it charged the OUTPUT ceiling for a prompt whose length is known exactly. A 6,000-token
+proposal review was priced at $1.20. Under a $2 daily cap, two of those exhaust the day, so a founder's
+guard against overspending had turned into a guard against doing any substantial work.
+
+It now prices the real prompt (chars/4) at the model's real listed rates, read from the same catalog row
+Model Control edits, so the price a founder sees on that page is the price the guard uses. Only the
+output remains a ceiling. The same review now prices at about $0.09.
+
+Still an over-estimate, deliberately: a model rarely writes to its ceiling, and an in-flight call must
+never be able to cross the stop threshold. The guard is unchanged; only the arithmetic got honest.
