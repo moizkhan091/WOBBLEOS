@@ -7433,3 +7433,31 @@ Ceilings raised to what the work actually needs: deal review 2400 → 6000, pric
 objections 2600 → 5000, follow-up 1200 → 2000.
 
 Gate: typecheck clean, 1754 tests pass, build clean.
+
+## 2026-08-12 - The pricing analyst earned its place on its first run (Claude)
+
+Ran the pre-send review on a real Bright Smile Dental proposal. The analyst's verdict:
+
+> "USD 1,400,000 is 290 times their solo signing authority, 7 times their annual reception payroll, and
+> 120 times their monthly revenue leakage."
+> "Sara has solo authority to PKR 500,000 (USD 1,785). This quote is USD 1,400,000 (PKR 392M). Previous
+> tech purchase was PKR 400,000; this is 980 times that. A credible quote should land 1-3x that
+> reference (USD 1,428-4,285). Arithmetically unaffordable."
+
+It was right, and the cause is a defect, not a judgement call.
+
+**An audit's money fields carry no currency.** The report reasons in the client's own currency throughout
+its prose ("losing PKR 1.5M monthly", "PKR 400k previous system") while `estimatedImplementationCents`
+and friends are bare numbers. `proposalInputFromAudit` read one and let `createProposal` default the
+proposal to USD, turning a PKR 1,400,000 build into a USD 1,400,000 quote. Roughly 280 times too much,
+to a three-clinic dental group in Karachi.
+
+Fixed in `src/lib/domain/report-currency.ts`. The currency is established from evidence, in order: the
+report's own prose (the reliable signal precisely because the numbers are not), then the client's
+country, then their stated market. A PKR figure glossed with a USD equivalent in brackets is read as
+PKR, since that is a conversion rather than a conflict; two genuinely different currencies REFUSE. And
+where nothing establishes it, it refuses rather than defaulting, because the silent default is what
+caused this. An unresolved proposal is flagged in the container in orange and cannot go out quietly.
+
+Worth stating plainly: this is the first time an adversarial agent has caught a real money defect in
+this system. It paid for itself on its first run.

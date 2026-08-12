@@ -7370,7 +7370,7 @@ type OrgAudit = {
   opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
   risks?: Array<string | { risk?: string; mitigation?: string }>; nextSteps?: unknown[]; successMetrics?: unknown[]; recommendedTechStack?: unknown[];
 };
-type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
@@ -9102,6 +9102,11 @@ function OrgWorkspacePage() {
                     {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
                     <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
                   </div>
+                  {p.currencyUnverified ? (
+                    <div style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.07)", fontSize: 11.5, color: C.orange, lineHeight: 1.5 }}>
+                      This price has no confirmed currency. {p.currencyNote ?? "Set it before sending."}
+                    </div>
+                  ) : null}
                   {/* Two agents argue with it before a client ever sees it. */}
                   <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
                   {/* A cheaper option, a fuller one, and every number that has been said out loud. */}

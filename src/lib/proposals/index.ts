@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { proposals as proposalsTable, handoffs as handoffsTable } from "@/db/schema";
+import { proposals as proposalsTable, handoffs as handoffsTable, crmCompanies } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -159,7 +159,17 @@ export interface ProposalEnrichment {
 export async function createProposalFromAudit(auditId: string, input: { createdBy?: string; enrichment?: ProposalEnrichment } = {}, deps: ProposalDeps = {}): Promise<ProposalRow | null> {
   const getRow = deps.getAuditRow ?? (async (id: string) => {
     const a = await getAudit(id);
-    return a ? { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report: a.report as unknown as Record<string, unknown> } : null;
+    if (!a) return null;
+    // Where the client is, so the audit's unit-less money figures get their real currency instead of a
+    // silent USD default. Best-effort: a missing company just means the report's own prose decides.
+    let country: string | null = null;
+    let city: string | null = null;
+    if (a.companyId && process.env.DATABASE_URL) {
+      const [co] = await getDb().select({ country: crmCompanies.country, city: crmCompanies.city }).from(crmCompanies).where(eq(crmCompanies.id, a.companyId)).limit(1);
+      country = co?.country ?? null;
+      city = co?.city ?? null;
+    }
+    return { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report: a.report as unknown as Record<string, unknown>, country, city };
   });
   const auditRow = await getRow(auditId);
   if (!auditRow) return null;
@@ -168,9 +178,12 @@ export async function createProposalFromAudit(auditId: string, input: { createdB
   // The architect's technical solution enriches the visible scope when the audit's own summary is thin,
   // and the full synthesis is persisted structurally under metadata.solutionDesign.
   const scope = proposalInput.scope || (enrichment?.technicalSolution ? enrichment.technicalSolution.slice(0, 4000) : undefined);
-  const metadata = enrichment && (enrichment.technicalSolution || enrichment.integrationDesign || enrichment.roiAssumptions || (enrichment.risks?.length ?? 0) > 0)
-    ? { solutionDesign: enrichment }
-    : undefined;
+  // The currency verdict comes from the builder and must not be dropped when an enrichment exists:
+  // it is the flag that stops an unpriceable quote going out.
+  const metadata = {
+    ...(proposalInput.metadata ?? {}),
+    ...(enrichment && (enrichment.technicalSolution || enrichment.integrationDesign || enrichment.roiAssumptions || (enrichment.risks?.length ?? 0) > 0) ? { solutionDesign: enrichment } : {}),
+  };
   return createProposal({ ...proposalInput, scope, metadata, createdBy: input.createdBy }, deps);
 }
 

@@ -95,6 +95,10 @@ export async function GET(request: Request, context: { params: Promise<{ company
       proposals: proposalRows.map((p) => ({
         id: p.id, title: p.title, status: p.status, version: p.version, totalCents: p.pricingCents ?? 0, currency: p.currency ?? "USD",
         preSendReview: ((p.metadata ?? {}) as Record<string, unknown>).preSendReview ?? null,
+        // A price whose unit nobody can name must not go out quietly. An audit's money fields carry no
+        // currency, and defaulting to dollars once turned a rupee price into a 280x quote.
+        currencyUnverified: ((p.metadata ?? {}) as Record<string, unknown>).currencyUnverified === true,
+        currencyNote: (((p.metadata ?? {}) as Record<string, unknown>).currencyNote as string | undefined) ?? null,
       })),
       invoices: invoiceRows.map((i) => ({
         id: i.id, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents ?? 0, amountPaidCents: i.amountPaidCents ?? 0, currency: i.currency ?? "USD", dueAt: i.dueDate,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reportTextOf, resolveReportCurrency } from "@/lib/domain/report-currency";
 import { newId } from "@/lib/ids";
 
 /**
@@ -108,6 +109,10 @@ interface AuditForProposal {
   companyId?: string | null;
   opportunityId?: string | null;
   report: Record<string, unknown>;
+  /** Where the client is, so the audit's unit-less money figures can be given their real currency. */
+  country?: string | null;
+  city?: string | null;
+  market?: string | null;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -125,6 +130,12 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
   const services: ProposalServiceItem[] = opps.map((o) => ({ name: o.title ?? o.name ?? "AI system", description: o.description }));
   const timeline: ProposalTimelineItem[] = roadmap.map((ph) => ({ phase: ph.title ?? "Phase", months: ph.months, focus: ph.focus }));
 
+  // An audit's money fields carry no unit while its prose is written in the client's own currency. A
+  // Karachi clinic's audit priced the build at 1,400,000 rupees and this builder stamped USD on it,
+  // quoting roughly 280 times too much. Money without a currency is not money, so it is established
+  // from evidence here and, when it cannot be, the proposal is marked rather than silently dollarised.
+  const verdict = resolveReportCurrency({ reportText: reportTextOf(report), country: audit.country, city: audit.city, market: audit.market });
+
   return {
     companyId: audit.companyId ?? undefined,
     opportunityId: audit.opportunityId ?? undefined,
@@ -134,6 +145,13 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
     scope: scope || undefined,
     timeline,
     pricingCents: roi.estimatedImplementationCents ?? 0,
+    currency: verdict.currency ?? undefined,
+    metadata: {
+      currencyEvidence: verdict.evidence,
+      currencyNote: verdict.because,
+      // The flag the UI reads. A price nobody can name the unit of must not go out.
+      currencyUnverified: verdict.currency === null,
+    },
   };
 }
 
