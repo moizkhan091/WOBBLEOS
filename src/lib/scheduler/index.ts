@@ -13,6 +13,7 @@ import { expireStaleReservations } from "@/lib/departments/budget";
 import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
+import { prepareDealTeam } from "@/lib/deal-team/prepare";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue, runOptimizerMonitoring } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
@@ -93,6 +94,10 @@ export interface SchedulerResult {
   proposalsExpired?: number;
   /** Retainer invoices raised this tick. Always drafts. */
   retainerInvoicesRaised?: number;
+  /** Objection briefs written ahead of the founder needing them. */
+  dealTeamPrepared?: number;
+  /** Clients that qualified for prep but sat under the cap. Named in the audit trail, never silent. */
+  dealTeamDeferred?: number;
   webstatsSnapshotted?: boolean;
   errors: string[];
 }
@@ -285,6 +290,17 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // approvals-due, delivery-risks, finance-alerts) and PERSIST it durably. The founder surface reads the
       // latest row. Best-effort — a provider failure degrades that one category, never the whole tick.
       await buildAndStoreDailyBrief({ type: "company", cadence: "daily" }, { now }).then(() => { result.dailyBriefGenerated = true; }).catch((e) => result.errors.push(`daily-brief: ${e?.message ?? e}`));
+      // Deal team prep: write the objection brief for the handful of clients a founder is about to
+      // speak to. Triaged before anything is spent, so a night with nothing due costs nothing: the
+      // model is only called for clients with approved findings, a conversation next, and a brief that
+      // is missing or older than what those calls turned up. Capped, and what was deferred is named.
+      await prepareDealTeam({ now })
+        .then((r) => {
+          result.dealTeamPrepared = r.prepared.length;
+          result.dealTeamDeferred = r.plan.deferred.length;
+          if (r.failed.length) result.errors.push(...r.failed.map((f) => `deal-team-prep ${f.companyId}: ${f.error}`));
+        })
+        .catch((e) => result.errors.push(`deal-team-prep: ${e?.message ?? e}`));
       // Continuous Research (Phase 5): analyse recent observations into insights + suggestions, VALIDATE them
       // through the research_validation QA gate, and propagate only released intelligence. Cost-safe (the
       // analyst returns early without an LLM call when there is nothing new to analyse). This is what makes

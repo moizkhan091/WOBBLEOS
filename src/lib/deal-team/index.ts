@@ -4,6 +4,7 @@ import { crmCompanies, crmContacts, meetingIntelligence, proposals, qualificatio
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import { getClientIntakeContext } from "@/lib/intake/context";
+import { getLossPattern } from "@/lib/loss-patterns";
 import { sanitizeDeep } from "@/lib/domain/house-style";
 import { WOBBLE_SERVICES } from "@/lib/domain/free-audit";
 import { parseStructuredWithRepair, repairInstruction } from "@/lib/providers/structured";
@@ -82,7 +83,7 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
   const rawAuthority = ((company.metadata ?? {}) as Record<string, unknown>).soloAuthorityCents;
   const soloAuthorityCents = typeof rawAuthority === "number" && rawAuthority > 0 ? rawAuthority : null;
 
-  const [{ auditBlock }, facts, quals, companyProposals, otherProposals, contacts] = await Promise.all([
+  const [{ auditBlock }, facts, quals, companyProposals, otherProposals, contacts, losses] = await Promise.all([
     getClientIntakeContext(companyId).catch(() => ({ auditBlock: "" })),
     db.select().from(meetingIntelligence).where(and(eq(meetingIntelligence.companyId, companyId), eq(meetingIntelligence.status, "approved"))).limit(60),
     db
@@ -99,6 +100,9 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
       .orderBy(desc(proposals.createdAt))
       .limit(25),
     db.select({ fullName: crmContacts.fullName, lastContactedAt: crmContacts.lastContactedAt, preferredChannel: crmContacts.preferredChannel }).from(crmContacts).where(eq(crmContacts.companyId, companyId)).limit(20),
+    // Why our deals die. Every agent here was arguing a fresh proposal with no idea what killed the
+    // last three, while the answer sat in a column nobody read.
+    getLossPattern({}, db).catch(() => null),
   ]);
 
   const chosen = proposalId ? companyProposals.find((p) => p.id === proposalId) : companyProposals[0];
@@ -157,6 +161,11 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
           costCents: pricing?.cost?.oneOffCents,
         };
       }),
+    // Only when there is enough of it to mean something. A pattern drawn from two sentences would
+    // have an agent lecturing a founder about their pricing on no evidence.
+    lossHistory: losses && !losses.thin
+      ? { headline: losses.headline, themes: losses.themes.slice(0, 4).map((t) => ({ label: t.label, count: t.count, examples: t.examples.slice(0, 2).map((e) => e.reason) })) }
+      : null,
     lastMessages: contacts
       .filter((c) => c.lastContactedAt)
       .map((c) => `${c.fullName} last contacted ${new Date(c.lastContactedAt as Date).toISOString().slice(0, 10)}${c.preferredChannel ? ` on ${c.preferredChannel}` : ""}`),

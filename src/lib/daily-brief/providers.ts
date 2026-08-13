@@ -17,6 +17,8 @@ import { listTasks } from "@/lib/tasks";
 import { isOverdue } from "@/lib/domain/task";
 import { listOpportunities } from "@/lib/crm";
 import { listIntelligenceItems } from "@/lib/intelligence";
+import { getWorklist, type WorklistEntry } from "@/lib/client-worklist";
+import { revenueSignals, type RevenueRow } from "@/lib/domain/revenue-signals";
 import type { BriefScope, BriefSignalDraft, ConfidenceLabel, SignalSeverity } from "@/lib/domain/daily-brief";
 import type { SignalFetcher } from "@/lib/daily-brief";
 
@@ -201,6 +203,68 @@ export const intelligenceProvider: SignalFetcher = async (scope) => {
   }];
 };
 
+/**
+ * CRM movement, from the client worklist rather than from one date field.
+ *
+ * The old provider read a single thing: an open opportunity whose `nextActionAt` had passed. Everything
+ * the worklist knows (who has gone quiet, whose proposal is out and unanswered, who filled the form and
+ * was never scored, who is worth waking up) never reached the brief, so it only helped a founder who
+ * remembered to open the Client Workspace.
+ *
+ * The stalled-deal signal is kept, because a missed commitment is a different fact from a quiet client
+ * and deserves saying separately. Rows the worklist already covers are not repeated.
+ */
+export const crmWorklistProvider: SignalFetcher = async (scope, ctx) => {
+  const worklist = await getWorklist({ now: ctx.now });
+  const rows: RevenueRow[] = worklist.entries
+    .filter((e: WorklistEntry) => scope.type !== "client" || e.companyId === scope.id)
+    .map((e: WorklistEntry) => ({
+      companyId: e.companyId,
+      name: e.name,
+      health: { score: e.health.score, band: e.health.band, headline: e.health.headline, daysSinceTouch: e.health.daysSinceTouch },
+      next: { kind: e.next.kind, label: e.next.label, because: e.next.because, urgency: e.next.urgency },
+      deal: e.deal ? { id: e.deal.id, name: e.deal.name, stage: e.deal.stage, valueCents: e.deal.valueCents, currency: e.deal.currency } : null,
+      qualification: e.qualification,
+    }));
+
+  const { signals, omitted } = revenueSignals(rows);
+  const drafts: BriefSignalDraft[] = signals.map((s) => ({
+    category: "crm_movement",
+    title: s.title,
+    summary: s.summary,
+    severity: s.severity as SignalSeverity,
+    confidence: conf("high", 0.85),
+    freshnessAt: ctx.now,
+    evidence: [{ kind: "company", ref: s.companyId, label: s.title, href: `/org?client=${s.companyId}` }],
+    scope: { type: scope.type, id: scope.id ?? null, label: scope.label, cadence: scope.cadence },
+    actionRequired: s.actionRequired,
+    metadata: { companyId: s.companyId, urgency: s.urgency },
+  }));
+
+  // A cap that hides its own existence reads as "that is everyone", which is the one thing a founder
+  // must not believe about a list of who needs them.
+  if (omitted > 0) {
+    drafts.push({
+      category: "crm_movement",
+      title: `${omitted} more client${omitted === 1 ? "" : "s"} also need something`,
+      summary: `Only the most urgent are listed here. Open the Client Workspace for the full ranked list.`,
+      severity: "low" as SignalSeverity,
+      confidence: conf("high", 0.9),
+      freshnessAt: ctx.now,
+      evidence: [{ kind: "company", ref: "worklist", label: "Client Workspace", href: "/org" }],
+      scope: { type: scope.type, id: scope.id ?? null, label: scope.label, cadence: scope.cadence },
+      actionRequired: false,
+      metadata: { omitted },
+    });
+  }
+
+  // A commitment the founder made and missed is a different fact from a client going quiet, so it is
+  // still said separately. Clients the worklist already named are not named twice.
+  const named = new Set(signals.map((s) => s.companyId));
+  const stalled = (await crmMovementProvider(scope, ctx)).filter((d) => !named.has(String((d.metadata as { companyId?: string })?.companyId ?? "")));
+  return [...drafts, ...stalled];
+};
+
 /** ALL brief providers — the four remaining categories are now wired to real stores (no more honest gaps). */
 export function defaultBriefProviders() {
   return {
@@ -210,7 +274,7 @@ export function defaultBriefProviders() {
     financeAlerts: financeAlertsProvider,
     providerHealth: providerHealthProvider,
     kpis: kpiProvider,
-    crmMovement: crmMovementProvider,
+    crmMovement: crmWorklistProvider,
     intelligence: intelligenceProvider,
   };
 }

@@ -275,6 +275,15 @@ export interface DealTeamContext {
    * logic holds for this client. A price with no reasoning is a data point nobody can argue with.
    */
   pastQuotes: Array<{ title: string; totalCents: number; currency: string; status: string; industry: string | null; reasoning?: string; costCents?: number }>;
+  /**
+   * Why WOBBLE's deals actually die, in the founders' own words.
+   *
+   * Every agent here was arguing a fresh proposal with no idea what killed the last three. The reviewer
+   * asked to find what would stop THIS client signing was working from first principles while the
+   * answer sat in a column nobody read. Empty when there is too little history to mean anything, which
+   * is the correct answer rather than a shrug dressed as a pattern.
+   */
+  lossHistory: { headline: string; themes: Array<{ label: string; count: number; examples: string[] }> } | null;
   lastMessages: string[];
 }
 
@@ -313,6 +322,13 @@ export function renderContext(ctx: DealTeamContext): string {
       if (q.reasoning) lines.push(`  the founder's reason: ${q.reasoning}`);
       if (q.costCents) lines.push(`  it cost us ${centsToMoney(q.costCents, q.currency)} to build, so the margin was ${Math.round(((q.totalCents - q.costCents) / q.totalCents) * 100)}%`);
     }
+  }
+  if (ctx.lossHistory) {
+    lines.push("", "WHY WOBBLE'S DEALS ACTUALLY DIE (the founders' own words on past losses):", ctx.lossHistory.headline);
+    for (const t of ctx.lossHistory.themes) {
+      lines.push(`- ${t.label}, ${t.count} time${t.count === 1 ? "" : "s"}: ${t.examples.join(" | ")}`);
+    }
+    lines.push("Treat this as the pattern to argue against for THIS client, not as a claim about them.");
   }
   if (ctx.lastMessages.length) lines.push("", "RECENT CONTACT:", ...ctx.lastMessages.map((m) => `- ${m}`));
   return lines.join("\n");

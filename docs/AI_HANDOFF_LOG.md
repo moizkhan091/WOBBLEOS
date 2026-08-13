@@ -7857,3 +7857,39 @@ newest: approved, priced by a founder at PKR 45,000, reviewed, phases re-split a
 scope cleared of the audit's price sentence.
 
 Gate: typecheck clean, 1929 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - Revenue stops waiting to be asked
+
+Three gaps, all the same shape: the module thought well and only when a founder opened a page.
+
+**1. The worklist never left the page.** The brief's CRM provider read exactly one thing, an open
+opportunity whose `nextActionAt` had passed. Everything the worklist knows (who has gone quiet, whose
+proposal is out unanswered, who filled the form and was never scored, who is worth waking) never
+reached the brief, which is the thing that actually runs nightly and persists. `crmWorklistProvider`
+turns worklist rows into signals: only rows above the urgency floor, one signal per client rather than
+one per symptom, and the worklist's own sentence travels with it because a name without a why is a nag.
+The stalled-deal signal is kept and de-duplicated against it, since a missed commitment is a different
+fact from a quiet client. The cap names what it left out: a cap that hides itself reads as "that is
+everyone who needs you", which is the one belief a founder must not take from that list.
+
+**2. Loss reasons went nowhere.** Captured on every dead deal, shown on one client, read by the
+reactivation check, never patterned. `loss-patterns.ts` groups them by what they are about and puts the
+founders' own sentences underneath. Deliberately not a model: clustering three sentences with an LLM
+buys a confident theme and pays to be wrong. Price beats timing when a reason mentions both, because
+"too expensive, maybe next year" is a pricing problem with a polite ending and filing it under timing is
+how a company convinces itself its pricing is fine. Currencies are never summed. Below three reasons it
+says so instead of calling an anecdote a pattern. It also now reaches the deal team's context, so the
+reviewer arguing a fresh proposal knows what killed the last three instead of working from first
+principles while the answer sat in a column nobody read.
+
+**3. Every deal-team agent was a manual click.** The only callers were two API routes behind buttons,
+so tomorrow's objection brief existed only if someone remembered. "Run them all nightly" is the obvious
+move and the wrong one: there are five dollars on the account and most clients are not being spoken to.
+So `deal-team-prep.ts` triages before anything is spent. A brief is written only when there are approved
+findings to read off, a conversation is genuinely next, and what exists is missing or older than the
+findings. Capped at three, deferrals named, per-client failures isolated. A night with nothing due makes
+no model call at all. Wired into the same daily maintenance block that already builds the brief.
+
+Gate: typecheck clean, 1966 tests pass, build clean.

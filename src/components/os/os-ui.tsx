@@ -8116,6 +8116,54 @@ function agoLabel(iso: string | null): string {
  * the one thing to do about it. Ranked server-side by the same rules that produce the reason text, so
  * the order is always arguable rather than mysterious.
  */
+type LossView = {
+  headline: string;
+  thin: boolean;
+  totalLost: number;
+  totalWon: number;
+  winRate: number | null;
+  themes: Array<{ theme: string; label: string; count: number; valueCents: number; currency: string; examples: Array<{ companyName: string; reason: string }> }>;
+};
+
+/**
+ * Why deals die, across all of them.
+ *
+ * The reason was captured on every lost deal and read on exactly one client at a time. Nothing ever
+ * said "three of your last four losses said the same thing", so the most expensive lesson a company
+ * has was the one it never got to learn twice.
+ *
+ * Folded shut by default with the conclusion on the fold, because this is something to read once a
+ * week, not every time you open a client.
+ */
+function LossPatternPanel() {
+  const s = useApi<LossView>("/api/revenue/losses");
+  const v = s.data;
+  if (s.loading || !v || v.totalLost === 0) return null;
+
+  return (
+    <OrgFold title="WHY WE LOSE" summary={v.headline} right={v.winRate !== null ? <Tag text={`${Math.round(v.winRate * 100)}% win rate`} color={v.winRate >= 0.5 ? C.lime : C.orange} /> : undefined}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {v.thin ? (
+          <div style={{ fontSize: 12, color: faint, lineHeight: 1.5 }}>Write a reason on every deal you close, won or lost. It is the only thing here that cannot be reconstructed later.</div>
+        ) : null}
+        {v.themes.map((t) => (
+          <div key={t.theme} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "9px 11px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.white, fontWeight: 600 }}>{t.label}</span>
+              <Tag text={`${t.count}×`} color={C.orange} />
+              {t.valueCents > 0 ? <span style={{ fontSize: 11.5, color: faint }}>{t.currency} {(t.valueCents / 100).toLocaleString()} walked out</span> : null}
+            </div>
+            {/* Their own sentences, never a paraphrase. The grouping is a lens; this is the evidence. */}
+            {t.examples.map((e, i) => (
+              <div key={i} style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{e.companyName}: {e.reason}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </OrgFold>
+  );
+}
+
 function WorklistPanel({ onPick, selectedId, state }: { onPick: (companyId: string) => void; selectedId: string; state: ReturnType<typeof useApi<WorklistView>> }) {
   const narrow = useIsNarrow(700);
   const [showAll, setShowAll] = useState(false);
@@ -9273,6 +9321,9 @@ function OrgWorkspacePage() {
       {/* Before any tool: who needs you, and the one thing to do about them. */}
       <OrgSection title="WHO NEEDS YOU TODAY" right={<span style={{ fontSize: 11, color: faint }}>ranked by what is blocking, not by name</span>} />
       <WorklistPanel selectedId={selectedId} onPick={setSelectedId} state={worklist} />
+
+      {/* The pattern across every deal that died. Folded, with the conclusion on the fold. */}
+      <LossPatternPanel />
 
       {/* Only renders when there is genuinely something to merge. */}
       <DuplicatesPanel onMerged={() => { companiesApi.reload(); org.reload(); }} />

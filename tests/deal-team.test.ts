@@ -27,6 +27,7 @@ const ctx: DealTeamContext = {
   services: ["AI OS Audit", "Workflow Build"],
   proposal: { title: "Front-desk AI OS", totalCents: 1_200_000, currency: "USD", scope: "Three clinics", services: [{ name: "Discovery", priceCents: 200_000 }], terms: "50% up front" },
   pastQuotes: [{ title: "Dental group OS", totalCents: 900_000, currency: "USD", status: "accepted", industry: "healthcare" }],
+  lossHistory: null,
   lastMessages: ["Sana Malik last contacted 2026-08-01 on whatsapp"],
 };
 
