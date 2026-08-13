@@ -8948,6 +8948,12 @@ type PricingView = {
   prompt: string;
   checklist: string[];
   currency: string;
+  /** What the cost was computed FROM, and whether each input was guessed or confirmed by a founder. */
+  inputs: { monthlyVolume: number; integrations: string[]; categories: string[]; volumeSource: string; integrationsSource: string } | null;
+  /** The questions worth asking on the next call to turn a guess into a fact. */
+  questions: string[];
+  integrationOptions: Array<{ key: string; label: string; because: string }>;
+  history: { headline: string; medianOneOffCents: number | null; winRate: number | null; comparables: Array<{ clientName: string; oneOffCents: number; currency: string; reasoning: string; outcome: string }> } | null;
 };
 
 /**
@@ -8963,6 +8969,8 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [form, setForm] = useState({ oneOff: "", monthly: "", reasoning: "" });
+  const [volume, setVolume] = useState("");
+  const [fixing, setFixing] = useState(false);
 
   const v = state.data;
   if (state.loading || !v) return null;
@@ -8975,6 +8983,17 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
   const typedMonthly = Math.round(Number(form.monthly || 0) * 100);
   const setupMargin = v.cost && typedOneOff > 0 ? (typedOneOff - v.cost.oneOffCents) / typedOneOff : null;
   const runMargin = v.cost && typedMonthly > 0 ? (typedMonthly - v.cost.monthlyCents) / typedMonthly : null;
+
+  /** Correct what the cost was computed from. The price decision, if any, is left alone. */
+  async function correct(body: Record<string, unknown>) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch(`/api/proposals/${proposalId}/pricing`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) { setVolume(""); setFixing(false); state.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
 
   async function save() {
     setBusy(true); setMsg(null);
@@ -9028,6 +9047,42 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
             <div style={{ fontSize: 12, color: faint }}>Not enough detail to cost this yet.</div>
           )}
 
+          {/* What the cost was computed from. Volume and integrations are read out of the audit's
+              prose, which makes them guesses, and a wrong guess is a wrong cost that survives into a
+              price. A founder who has been on the call can correct it once and have it stick. */}
+          {v.inputs ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: faint }}>Costed from:</span>
+                <Tag text={`${v.inputs.monthlyVolume ? v.inputs.monthlyVolume.toLocaleString() : "no"} a month`} color={v.inputs.volumeSource === "founder" ? C.lime : C.orange} />
+                <Tag text={v.inputs.integrations.length ? `${v.inputs.integrations.length} integration${v.inputs.integrations.length === 1 ? "" : "s"}` : "no integrations"} color={v.inputs.integrationsSource === "founder" ? C.lime : C.orange} />
+                <span style={{ fontSize: 11, color: faint }}>{v.inputs.volumeSource === "founder" ? "confirmed by you" : "read from the audit, so a guess"}</span>
+                <button onClick={() => setFixing(!fixing)} style={{ background: "transparent", border: "none", color: faint, cursor: "pointer", fontSize: 11.5 }}>{fixing ? "cancel" : "fix this"}</button>
+              </div>
+              {v.questions.map((q, i) => <div key={i} style={{ fontSize: 11.5, color: C.orange, lineHeight: 1.5 }}>{q}</div>)}
+              {fixing ? (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <input value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="Real volume a month" aria-label="Monthly volume" style={{ ...inputStyle, width: "auto", minWidth: "min(100%, 170px)", fontSize: 11.5, padding: "5px 9px" }} />
+                  <button onClick={() => correct({ monthlyVolume: Math.round(Number(volume || 0)) })} disabled={busy || !volume.trim()} style={busy || !volume.trim() ? disabledBtn : { ...primaryBtn, padding: "5px 12px", fontSize: 11.5 }}>Recost it</button>
+                  <span style={{ fontSize: 11, color: faint }}>Every usage line scales with this, so it is the number worth getting right.</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* What you have charged before. Reported, never recommended. */}
+          {v.history ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>What you have charged for work like this</div>
+              <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{v.history.headline}</div>
+              {v.history.comparables.slice(0, 4).map((c, i) => (
+                <div key={i} style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>
+                  {c.clientName}: {c.currency} {(c.oneOffCents / 100).toLocaleString()} [{c.outcome}] — {c.reasoning}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           <div style={{ fontSize: 10.5, color: faint, letterSpacing: "0.1em", textTransform: "uppercase" }}>Before you decide</div>
           {v.checklist.map((c, i) => <div key={i} style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>- {c}</div>)}
 
@@ -9054,6 +9109,38 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
           {msg ? <div style={{ fontSize: 11.5, color: C.orange }}>{msg}</div> : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+
+/**
+ * A section that folds to its answer.
+ *
+ * The client Overview ran to 3.3 screens, and most of that was two sections: eight qualification cards
+ * with a paragraph each, and the full timeline. Both are worth having and neither is worth reading
+ * every time you open a client.
+ *
+ * So each keeps a ONE LINE summary that carries the conclusion, and hides the working behind a click.
+ * The rule that makes this a simplification rather than merely a shortening: the summary must contain
+ * the thing you would have scrolled to find. A fold that hides the answer as well as the detail is
+ * worse than no fold, because now you scroll AND click.
+ */
+function OrgFold({ title, summary, defaultOpen = false, right, children }: { title: string; summary: string; defaultOpen?: boolean; right?: React.ReactNode; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: open ? 10 : 0 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{ display: "flex", alignItems: "baseline", gap: 10, width: "100%", padding: "9px 0 7px", background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,0.07)", cursor: "pointer", textAlign: "left", flexWrap: "wrap" }}
+      >
+        <span style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: faint }}>{title}</span>
+        <span style={{ fontSize: 12, color: muted, flex: 1, minWidth: 160 }}>{summary}</span>
+        {right}
+        <span style={{ fontSize: 11, color: faint }}>{open ? "hide" : "open"}</span>
+      </button>
+      {open ? children : null}
     </div>
   );
 }
@@ -9152,6 +9239,9 @@ function OrgWorkspacePage() {
   const invoiceItems = org.data?.invoices ?? [];
   const relLabel: Record<string, string> = { meeting_opp: "meeting → opportunity", opp_audit: "opportunity → audit", opp_proposal: "opportunity → proposal", audit_proposal: "audit → proposal", opp_project: "opportunity → project", proposal_project: "proposal → project" };
   const shown = filter.trim() ? companies.filter((c) => c.name.toLowerCase().includes(filter.trim().toLowerCase())) : companies;
+  // This client's row from the worklist: the header line and every fold summary read from it, so the
+  // page cannot say one thing at the top and another halfway down.
+  const qualEntry = (worklist.data?.entries ?? []).find((e) => e.companyId === selectedId);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -9185,7 +9275,7 @@ function OrgWorkspacePage() {
           {/* What is owed on this client, at the top. It used to be eight sections down, under the
               qualification council and the timeline, which is not where you look when you open a page. */}
           {(() => {
-            const entry = (worklist.data?.entries ?? []).find((e) => e.companyId === selectedId);
+            const entry = qualEntry;
             if (!entry) return null;
             return (
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 13px", borderRadius: 12, border: "1px solid " + (entry.next.urgency >= 100 ? "rgba(255,107,0,0.4)" : "rgba(184,255,44,0.25)"), background: entry.next.urgency >= 100 ? "rgba(255,107,0,0.07)" : "rgba(184,255,44,0.05)" }}>
@@ -9222,16 +9312,25 @@ function OrgWorkspacePage() {
               <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
               <OrgSection title="CONTACTS" />
               <ContactsPanel contacts={contacts} onChanged={refreshAll} />
-              <OrgSection title="WHO SENT THEM, AND WHERE THEY OPERATE" />
-              <RelationshipsPanel companyId={selectedId} onChanged={org.reload} />
+              <OrgFold title="WHO SENT THEM, AND WHERE THEY OPERATE" summary="Referral, sites, and what your contact can sign alone.">
+                <RelationshipsPanel companyId={selectedId} onChanged={refreshAll} />
+              </OrgFold>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "-"} tone={j.qualification ? C.lime : undefined} />
                 <OrgMetric label="calls given back" value={j.meetings.length} />
                 <OrgMetric label="approved findings" value={j.discoveryFactCount} />
                 <OrgMetric label="open deals" value={j.opportunities.length} />
               </div>
-              <OrgSection title="QUALIFICATION COUNCIL" />
-              <QualificationPanel companyId={selectedId} onScored={refreshAll} />
+              <OrgFold
+                title="QUALIFICATION COUNCIL"
+                summary={
+                  j.qualification
+                    ? `Grade ${j.qualification.grade}, ${j.qualification.overallScore}/100.${qualEntry?.qualification?.weakest ? ` Weakest: ${(QUAL_LABELS[qualEntry.qualification.weakest.role] ?? qualEntry.qualification.weakest.role).toLowerCase()} at ${qualEntry.qualification.weakest.score}.` : ""}`
+                    : "Not scored yet. Run the council before deciding whether this deal is worth an audit."
+                }
+              >
+                <QualificationPanel companyId={selectedId} onScored={refreshAll} />
+              </OrgFold>
 
               <OrgSection title="DEALS" />
               {j.opportunities.length ? j.opportunities.map((o) => (
@@ -9248,8 +9347,13 @@ function OrgWorkspacePage() {
                 </div>
               )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
 
-              <OrgSection title="WHAT HAS ACTUALLY HAPPENED" right={<span style={{ fontSize: 11, color: faint }}>newest first, with the gaps</span>} />
-              <ClientTimeline companyId={selectedId} />
+              <OrgFold
+                title="WHAT HAS ACTUALLY HAPPENED"
+                summary={qualEntry ? `Last touch ${agoLabel(qualEntry.lastTouchAt)}. ${qualEntry.counts.meetings} call(s), ${qualEntry.counts.audits} audit(s), ${qualEntry.counts.proposals} proposal(s).` : "The full history, newest first, with the silences marked."}
+                right={<span style={{ fontSize: 11, color: faint }}>newest first, with the gaps</span>}
+              >
+                <ClientTimeline companyId={selectedId} />
+              </OrgFold>
 
               <OrgSection title="DO SOMETHING FOR THIS CLIENT" />
               <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>

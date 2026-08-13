@@ -7707,3 +7707,25 @@ Missing a name costs a founder one manual entry. Inventing one puts a fictional 
 file, so everything here suggests and waits.
 
 Gate: typecheck clean, 1874 tests pass, build clean.
+
+## 2026-08-13 - The cost inputs you can finally see, and an Overview you can scan (Claude)
+
+**Correcting a cost was an API with no door.** The PATCH endpoint existed; nothing in the UI reached it,
+so a founder could see a wrong cost and had no way to fix it. The pricing panel now shows what the cost
+was computed FROM, marked green when a founder confirmed it and orange when it was read out of the
+audit's prose, with the questions worth asking on the next call. One field, one button, recosted. It
+also shows what you have charged for comparable work, with each past price's reasoning.
+
+**The Overview was 3.3 screens and the middle was a wall.** Two sections were most of it: eight
+qualification cards with a paragraph each, and the full timeline. `OrgFold` gives each a ONE LINE
+summary and hides the working.
+
+The rule that makes this a simplification rather than a shortening: **the summary must contain the thing
+you would have scrolled to find.** So the council folds to "Grade B, 79/100. Weakest: operational
+complexity at 55." and the timeline folds to "Last touch 2d ago. 3 calls, 2 audits, 5 proposals." A fold
+that hides the answer along with the detail is worse than no fold, because then you scroll AND click.
+
+Every fold summary reads from the same worklist row the header line uses, so the page cannot say one
+thing at the top and something else halfway down.
+
+Gate: typecheck clean, 1874 tests pass, build clean.
