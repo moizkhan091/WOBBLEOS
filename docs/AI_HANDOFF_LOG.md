@@ -7680,3 +7680,30 @@ lot, but each section earns its place, and the fix for length is putting the ans
 hiding the material.
 
 Gate: typecheck clean, 1861 tests pass, build clean.
+
+## 2026-08-13 - Two more facts the OS held and hid (Claude)
+
+**What kills each deal, on the row where you choose who to call.** The council computes the weakest
+scoring filter and writes "That is what kills this deal if anything does" inside the qualification
+panel, three clicks from the worklist. It now sits on the worklist row and under the client's name, with
+the grade beside it. The most actionable sentence the council produces was the hardest one to reach.
+
+**The co-owner who exists nowhere.** An approved finding says "Sara and Dr Faisal are co-owners; Sara has
+unilateral authority under PKR 500,000." Sara was a contact. Dr Faisal, the other person who has to
+agree, existed nowhere in the OS, so every "who else has to sign this" check was answering from half the
+picture. The container now names who the calls mentioned that the CRM does not have, quoting the finding.
+
+Name extraction from prose is the riskiest thing in this codebase, so it is narrow and it refuses when
+unsure. Two design notes worth keeping:
+
+- **Shape, not position.** A first attempt excluded any word starting a sentence, on the grounds that
+  everything there is capitalised. That threw away "Sara and Dr Faisal are co-owners", where the first
+  word IS the name. Names are now told from nouns by suffix (-ship, -tion, -ment, -ness, -ing, -ity),
+  which "Ownership" and "Approval" have and first names essentially never do.
+- **Stems, not whole words.** Matching "approve" and "authorise" missed "approval" and "authority",
+  which is how findings actually phrase it.
+
+Missing a name costs a founder one manual entry. Inventing one puts a fictional person in a client's
+file, so everything here suggests and waits.
+
+Gate: typecheck clean, 1874 tests pass, build clean.

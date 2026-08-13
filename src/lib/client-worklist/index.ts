@@ -11,6 +11,7 @@ import {
   meetingIntelligence,
   proposals,
   qualificationAssessments,
+  qualificationRoles,
 } from "@/db/schema";
 import { contactCanSayYes } from "@/lib/domain/crm";
 import { READINESS_FORM_SOURCE } from "@/lib/domain/intake";
@@ -46,6 +47,14 @@ export interface WorklistEntry {
   counts: { meetings: number; approvedFindings: number; proposals: number; audits: number; contacts: number };
   hasIntake: boolean;
   hasQuestions: boolean;
+  /**
+   * The council's grade, and the one filter that will kill this deal if anything does.
+   *
+   * It was computed, written down, and then only visible inside the qualification panel, three clicks
+   * from where a founder actually chooses who to call. The most actionable sentence the council
+   * produces belongs on the row.
+   */
+  qualification: { grade: string; score: number; weakest: { role: string; score: number } | null } | null;
 }
 
 export interface Worklist {
@@ -109,7 +118,7 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
     db.select().from(proposals).where(and(inArray(proposals.companyId, ids), isNull(proposals.archivedAt))),
     db.select({ id: audits.id, companyId: audits.companyId, kind: audits.kind, status: audits.status, createdAt: audits.createdAt }).from(audits).where(inArray(audits.companyId, ids)),
     db
-      .select({ subjectId: qualificationAssessments.subjectId, grade: qualificationAssessments.grade, version: qualificationAssessments.version })
+      .select({ id: qualificationAssessments.id, subjectId: qualificationAssessments.subjectId, grade: qualificationAssessments.grade, overallScore: qualificationAssessments.overallScore, version: qualificationAssessments.version })
       .from(qualificationAssessments)
       .where(and(eq(qualificationAssessments.subjectType, "company"), inArray(qualificationAssessments.subjectId, ids))),
     // A generated question set lives on the company's metadata, not its own table.
@@ -130,10 +139,25 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
   const intakeAt = new Map(intakeRows.map((r) => [r.companyId ?? "", new Date(r.at)]));
 
   // Keep only the newest qualification per company.
-  const bestQual = new Map<string, { grade: string; version: number }>();
+  const bestQual = new Map<string, { id: string; grade: string; overallScore: number; version: number }>();
   for (const q of qualRows) {
     const prev = bestQual.get(q.subjectId);
-    if (!prev || q.version > prev.version) bestQual.set(q.subjectId, { grade: q.grade, version: q.version });
+    if (!prev || q.version > prev.version) bestQual.set(q.subjectId, { id: q.id, grade: q.grade, overallScore: q.overallScore, version: q.version });
+  }
+
+  // The weakest scoring filter on each current assessment: the single most actionable thing the council
+  // produces, and until now it lived only inside a panel a founder had to go and open.
+  const assessmentIds = [...bestQual.values()].map((q) => q.id);
+  const roleRows = assessmentIds.length
+    ? await db
+        .select({ assessmentId: qualificationRoles.assessmentId, role: qualificationRoles.role, score: qualificationRoles.score })
+        .from(qualificationRoles)
+        .where(inArray(qualificationRoles.assessmentId, assessmentIds))
+    : [];
+  const weakestByAssessment = new Map<string, { role: string; score: number }>();
+  for (const r of roleRows) {
+    const prev = weakestByAssessment.get(r.assessmentId);
+    if (!prev || r.score < prev.score) weakestByAssessment.set(r.assessmentId, { role: r.role, score: r.score });
   }
 
   const entries: WorklistEntry[] = companies.map((c) => {
@@ -197,6 +221,10 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
       },
       hasIntake: intakeAt.has(c.id),
       hasQuestions: questionCompanies.has(c.id),
+      qualification: (() => {
+        const q = bestQual.get(c.id);
+        return q ? { grade: q.grade, score: q.overallScore, weakest: weakestByAssessment.get(q.id) ?? null } : null;
+      })(),
     };
   });
 

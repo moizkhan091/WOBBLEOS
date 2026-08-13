@@ -8090,6 +8090,7 @@ type WorklistEntryRow = {
   lastTouchAt: string | null;
   counts: { meetings: number; approvedFindings: number; proposals: number; audits: number; contacts: number };
   hasIntake: boolean; hasQuestions: boolean;
+  qualification: { grade: string; score: number; weakest: { role: string; score: number } | null } | null;
 };
 type WorklistView = {
   entries: WorklistEntryRow[];
@@ -8166,7 +8167,15 @@ function WorklistPanel({ onPick, selectedId, state }: { onPick: (companyId: stri
               <button onClick={() => onPick(e.companyId)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left", flex: 1, minWidth: stacked ? "60%" : 180 }}>
                 <div style={{ fontSize: 13.5, color: C.white }}>{e.name}</div>
                 <div style={{ fontSize: 11.5, color: faint, marginTop: 2 }}>{e.next.because}</div>
+                {/* The council already worked out what kills this deal. It belongs where you choose who
+                    to call, not three clicks away inside a panel. */}
+                {e.qualification?.weakest ? (
+                  <div style={{ fontSize: 11, color: C.orange, marginTop: 2 }}>
+                    Weakest: {(QUAL_LABELS[e.qualification.weakest.role] ?? e.qualification.weakest.role).toLowerCase()} ({e.qualification.weakest.score}/100)
+                  </div>
+                ) : null}
               </button>
+              {e.qualification ? <Tag text={`grade ${e.qualification.grade}`} color={e.qualification.grade === "A" ? C.lime : e.qualification.grade === "B" ? C.blue : C.gray} /> : null}
               <Tag text={BAND_LABEL[e.health.band] ?? e.health.band} color={BAND_COLOR[e.health.band] ?? C.gray} />
               {e.deal ? <Tag text={e.deal.stage.replace(/_/g, " ")} color={C.blue} /> : null}
               {e.deal && e.deal.valueCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(e.deal.valueCents, e.deal.currency)}</span> : null}
@@ -8757,6 +8766,7 @@ type RelationshipsView = {
   known?: {
     signingAuthority: { value: { amountCents: number; currency: string }; quote: string; source: string; confidence: string } | null;
     previousSpend: { value: { amountCents: number; currency: string }; quote: string; source: string; confidence: string } | null;
+    missingDeciders?: Array<{ name: string; quote: string; roleHint: string }>;
   } | null;
 };
 
@@ -8840,6 +8850,15 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
             >Use it</button>
           </div>
           <div style={{ fontSize: 11, color: faint, lineHeight: 1.5 }}>&ldquo;{v.known.signingAuthority.quote}&rdquo;</div>
+        </div>
+      ) : null}
+      {v?.known?.missingDeciders?.length ? (
+        <div style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid rgba(255,107,0,0.35)", background: "rgba(255,107,0,0.06)", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 12.5, color: C.white }}>
+            Your calls named {v.known.missingDeciders.map((p) => p.name + (p.roleHint ? ` (${p.roleHint})` : "")).join(", ")}, and {v.known.missingDeciders.length === 1 ? "they are" : "they are"} not in your contacts.
+          </div>
+          <div style={{ fontSize: 11, color: faint, lineHeight: 1.5 }}>&ldquo;{v.known.missingDeciders[0].quote}&rdquo;</div>
+          <div style={{ fontSize: 11, color: faint }}>Add them above, so &ldquo;who else has to agree&rdquo; is answered from the whole picture.</div>
         </div>
       ) : null}
       {v?.known?.previousSpend ? (
@@ -9174,6 +9193,11 @@ function OrgWorkspacePage() {
                 <span style={{ fontSize: 12, color: muted, flex: 1, minWidth: 180 }}>{entry.next.because}</span>
                 <span title={entry.health.headline} style={{ fontSize: 12.5, fontWeight: 600, color: BAND_COLOR[entry.health.band] ?? C.gray }}>{entry.health.score}/100</span>
                 <span style={{ fontSize: 11.5, color: faint }}>last touch {agoLabel(entry.lastTouchAt)}</span>
+                {entry.qualification?.weakest ? (
+                  <span style={{ fontSize: 11.5, color: C.orange, width: "100%" }}>
+                    What kills this if anything does: {(QUAL_LABELS[entry.qualification.weakest.role] ?? entry.qualification.weakest.role).toLowerCase()} at {entry.qualification.weakest.score}/100.
+                  </span>
+                ) : null}
               </div>
             );
           })()}
