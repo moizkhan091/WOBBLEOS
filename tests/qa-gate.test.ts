@@ -86,6 +86,7 @@ function makeEscalationStore() {
   const rows: EscalationRow[] = [];
   const store: EscalationStore = {
     findOpen: async (dept, wf, task, reason) => rows.find((r) => r.departmentSlug === dept && r.workflowId === wf && (r.taskId ?? null) === (task ?? null) && r.reason === reason && r.status === "open") ?? null,
+    findOpenRecurrence: async () => null,
     insert: async (row) => void rows.push(row),
     getById: async (id) => rows.find((r) => r.id === id) ?? null,
     transition: async () => true,

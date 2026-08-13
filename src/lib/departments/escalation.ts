@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { escalations as escalationsTable } from "@/db/schema";
 import { writeAuditEvent } from "@/lib/audit";
@@ -24,6 +24,18 @@ import type { HandoffStore } from "@/lib/handoff";
 
 export interface EscalationStore {
   findOpen(departmentSlug: string, workflowId: string | null, taskId: string | null, reason: string): Promise<EscalationRow | null>;
+  /**
+   * The same unresolved problem, raised again by a later run.
+   *
+   * `findOpen` keys on the task id, which is the RUN that noticed the problem, not the problem. A
+   * cadence job that re-runs every night gets a fresh task id every night, so the dedup never matched
+   * and one blocked QA board produced 52 identical open escalations in three days, burying every other
+   * signal in the founder's brief.
+   *
+   * The decision text is what makes two escalations the same: it names the thing that is blocked. Two
+   * genuinely different tasks blocked for different reasons write different sentences and stay separate.
+   */
+  findOpenRecurrence?(departmentSlug: string, workflowId: string | null, reason: string, requiredDecision: string): Promise<EscalationRow | null>;
   insert(row: EscalationRow): Promise<void>;
   getById(id: string): Promise<EscalationRow | null>;
   transition(id: string, fromStatuses: EscalationStatus[], fields: Partial<EscalationRow>): Promise<boolean>;
@@ -47,6 +59,25 @@ async function audit(deps: EscalationDeps, input: AuditEventInput): Promise<void
   await (deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i)))(input);
 }
 
+/** The one note that records recurrences, so it stays a single line however many times this happens. */
+const RECURRENCE_PREFIX = "recurred";
+
+/**
+ * Fold another occurrence into the recovery notes.
+ *
+ * A cadence job that stays blocked can recur nightly for months. Appending a line per occurrence would
+ * grow without limit and tell a founder nothing a single sentence could not, so the count and the
+ * latest time live in ONE entry and every other note is left exactly as it was.
+ */
+export function noteRecurrence(existing: string[], now: Date): { notes: string[]; count: number } {
+  const others = existing.filter((n) => !n.startsWith(RECURRENCE_PREFIX));
+  const current = existing.find((n) => n.startsWith(RECURRENCE_PREFIX));
+  const previous = current ? Number(/recurred (\d+)/.exec(current)?.[1] ?? 1) : 0;
+  const count = previous + 1;
+  const plural = count === 1 ? "time" : "times";
+  return { notes: [...others, `${RECURRENCE_PREFIX} ${count} ${plural}, most recently ${now.toISOString()}`], count };
+}
+
 /** Raise an escalation. Idempotent: if an OPEN escalation already exists for this blocked step, it is
  *  returned unchanged (deduped) rather than creating a duplicate. */
 export async function createEscalation(input: EscalationInput, deps: EscalationDeps = {}): Promise<{ escalation: EscalationRow; deduped: boolean }> {
@@ -55,6 +86,19 @@ export async function createEscalation(input: EscalationInput, deps: EscalationD
   const row = buildEscalationRow(input, { now });
   const existing = await store.findOpen(row.departmentSlug, row.workflowId, row.taskId, row.reason);
   if (existing) return { escalation: existing, deduped: true };
+
+  // The same blockage, noticed again by a later run. Counting it on the open row tells a founder
+  // something a 52nd identical row never could: this is not a blip, it has now happened 52 times.
+  // Optional on purpose. This is a refinement of the dedup, and an escalation is how a founder finds
+  // out something is blocked, so a store that does not implement it must still be able to raise one.
+  const recurring = store.findOpenRecurrence ? await store.findOpenRecurrence(row.departmentSlug, row.workflowId, row.reason, row.requiredDecision) : null;
+  if (recurring) {
+    const next = noteRecurrence(recurring.attemptedRecoveries ?? [], now);
+    await store.transition(recurring.id, ["open", "acknowledged"], { attemptedRecoveries: next.notes, updatedAt: now });
+    await audit(deps, { eventType: "escalation.recurred", module: "departments", entityType: "escalation", entityId: recurring.id, actor: "system", metadata: { departmentSlug: row.departmentSlug, reason: row.reason, occurrences: next.count } });
+    return { escalation: { ...recurring, attemptedRecoveries: next.notes }, deduped: true };
+  }
+
   try {
     await store.insert(row);
   } catch {
@@ -356,6 +400,20 @@ export function defaultStore(db: Db = getDb()): EscalationStore {
       conds.push(workflowId === null ? sql`${escalationsTable.workflowId} is null` : eq(escalationsTable.workflowId, workflowId));
       conds.push(taskId === null ? sql`${escalationsTable.taskId} is null` : eq(escalationsTable.taskId, taskId));
       const rows = await db.select().from(escalationsTable).where(and(...conds)).limit(1);
+      return (rows[0] as unknown as EscalationRow) ?? null;
+    },
+    async findOpenRecurrence(departmentSlug, workflowId, reason, requiredDecision) {
+      // Deliberately NOT keyed on the task id. The task is the run that noticed the problem; the
+      // decision sentence is the problem. Oldest first, so recurrences land on the row that carries
+      // the true first-seen date rather than starting a fresh clock every night.
+      const conds = [
+        eq(escalationsTable.departmentSlug, departmentSlug),
+        eq(escalationsTable.reason, reason),
+        eq(escalationsTable.requiredDecision, requiredDecision),
+        inArray(escalationsTable.status, ["open", "acknowledged"]),
+      ];
+      conds.push(workflowId === null ? sql`${escalationsTable.workflowId} is null` : eq(escalationsTable.workflowId, workflowId));
+      const rows = await db.select().from(escalationsTable).where(and(...conds)).orderBy(escalationsTable.createdAt).limit(1);
       return (rows[0] as unknown as EscalationRow) ?? null;
     },
     async insert(row) {

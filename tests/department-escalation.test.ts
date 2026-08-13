@@ -11,6 +11,7 @@ function makeStore(seed: EscalationRow[] = []) {
   const rows = new Map<string, EscalationRow>(seed.map((r) => [r.id, r]));
   const store: EscalationStore = {
     findOpen: async (dept, wf, task, reason) => [...rows.values()].find((r) => r.departmentSlug === dept && r.workflowId === wf && r.taskId === task && r.reason === reason && r.status === "open") ?? null,
+    findOpenRecurrence: async () => null,
     insert: async (row) => { rows.set(row.id, row); },
     getById: async (id) => rows.get(id) ?? null,
     transition: async (id, from, fields) => { const r = rows.get(id); if (!r || !from.includes(r.status)) return false; rows.set(id, { ...r, ...fields }); return true; },

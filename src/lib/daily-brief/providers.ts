@@ -33,19 +33,32 @@ function departmentFilter(scope: BriefScope): string | null {
 export const escalationsProvider: SignalFetcher = async (scope) => {
   const dept = departmentFilter(scope);
   const rows = await listEscalations({ status: "open", limit: 100 });
-  return rows
-    .filter((e) => !dept || e.departmentSlug === dept)
-    .map((e): BriefSignalDraft => ({
+  // One blocked QA board produced 52 identical open escalations in three days and filled the whole
+  // brief headline with the same sentence. A founder needs to know it is happening and how often, not
+  // to read it 52 times. Grouped on what makes them the same problem, oldest kept so the first-seen
+  // date survives.
+  const groups = new Map<string, typeof rows>();
+  for (const e of rows) {
+    if (dept && e.departmentSlug !== dept) continue;
+    const key = `${e.departmentSlug}|${e.reason}|${e.requiredDecision}`;
+    groups.set(key, [...(groups.get(key) ?? []), e]);
+  }
+  return [...groups.values()]
+    .map((all) => {
+      const sorted = [...all].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      return { e: sorted[0], repeats: sorted.length };
+    })
+    .map(({ e, repeats }): BriefSignalDraft => ({
       category: "escalation",
-      title: `Escalation: ${e.reason}`,
-      summary: `${e.departmentSlug} is blocked and needs a decision: ${e.requiredDecision}`,
+      title: `Escalation: ${e.reason}${repeats > 1 ? ` (${repeats} times)` : ""}`,
+      summary: `${e.departmentSlug} is blocked and needs a decision: ${e.requiredDecision}${repeats > 1 ? ` This has happened ${repeats} times since ${e.createdAt.toISOString().slice(0, 10)}, so it is not a blip.` : ""}`,
       severity: (["low", "medium", "high", "critical"].includes(e.severity) ? e.severity : "medium") as SignalSeverity,
       confidence: conf("high", 0.9),
       freshnessAt: e.createdAt,
       evidence: [{ kind: "escalation", ref: e.id, label: e.reason, href: `/command-centre?escalation=${e.id}` }],
       scope: { type: scope.type, id: scope.id ?? null, label: scope.label, cadence: scope.cadence },
       actionRequired: true,
-      metadata: { departmentSlug: e.departmentSlug, workflowId: e.workflowId },
+      metadata: { departmentSlug: e.departmentSlug, workflowId: e.workflowId, repeats },
     }));
 };
 

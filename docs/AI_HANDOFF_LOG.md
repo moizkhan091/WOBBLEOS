@@ -7893,3 +7893,34 @@ findings. Capped at three, deferrals named, per-client failures isolated. A nigh
 no model call at all. Wired into the same daily maintenance block that already builds the brief.
 
 Gate: typecheck clean, 1966 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - one blocked job was drowning the brief
+
+Having wired the client worklist into the daily brief, I read the brief and found the headline was five
+identical escalations. The database had **52 open rows, all `research_intelligence /
+downstream_rejection`, one per nightly run since Aug 10**. Every Revenue signal I had just added was
+below them.
+
+The dedup was not missing, it was keyed wrong: `findOpen` matches on department + workflow + TASK +
+reason, and the task id is the RUN that noticed the problem, not the problem. A cadence job mints a
+fresh task id every night, so the same unresolved blockage escalated forever.
+
+`findOpenRecurrence` keys on the decision sentence instead, which is the thing that is actually blocked.
+Two genuinely different tasks blocked for different reasons write different sentences and stay separate;
+the same one re-noticed folds into the existing row and bumps a count. The method is OPTIONAL on the
+store interface and the call is guarded, because an escalation is how a founder finds out something is
+blocked and a refinement of its dedup must never be able to stop one being raised. `noteRecurrence`
+keeps that count in ONE note rather than appending a line per occurrence, so a job blocked for six
+months does not accumulate 180 notes.
+
+The brief provider also groups now, so the rows already in the database stop burying everything: one
+signal per distinct problem, titled "(52 times)", carrying "This has happened 52 times since 2026-08-10,
+so it is not a blip". The oldest row is the one kept, so the first-seen date survives.
+
+`src/scripts/collapse-duplicate-escalations.ts` folds the existing duplicates: oldest stays open with
+the recurrence count replayed onto it, the rest are resolved as `dismissed` with a resolution naming the
+row they folded into. Nothing deleted, all reversible, audited.
+
+Gate: typecheck clean, 1971 tests pass, build clean.
