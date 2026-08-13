@@ -289,3 +289,33 @@ export function costQuestions(view: CostInputsView): string[] {
   }
   return out;
 }
+
+// -------------------------------------------------------------------------- reading volume from prose
+
+/**
+ * How much this system will actually handle in a month, read out of an audit's own words.
+ *
+ * Volume drives every usage line, so getting it wrong is not cosmetic. A first attempt allowed any
+ * three words between the number and the period, and on a real report that matched an unrelated "75"
+ * instead of the "400 weekly WhatsApp enquiries" the audit plainly stated, understating the running
+ * cost roughly fourfold.
+ *
+ * So the words between a number and its period must be a UNIT we recognise. "240 appointments a week"
+ * counts; "PKR 8,000 per appointment, and separately something weekly" does not.
+ */
+const VOLUME_UNITS = "appointments?|enquir(?:y|ies)|inquir(?:y|ies)|messages?|bookings?|leads?|calls?|patients?|customers?|clients?|conversations?|orders?|tickets?|visits?|jobs?|requests?|chats?";
+
+export function extractMonthlyVolume(text: string): number {
+  const weekly = [...text.matchAll(new RegExp(String.raw`(\d[\d,]{0,8})\s+(?:${VOLUME_UNITS})?\s*(?:per week|a week|weekly|/week)`, "gi"))]
+    .map((m) => Number(m[1].replace(/,/g, "")))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const monthly = [...text.matchAll(new RegExp(String.raw`(\d[\d,]{0,8})\s+(?:${VOLUME_UNITS})?\s*(?:per month|a month|monthly|/month|/mo)`, "gi"))]
+    .map((m) => Number(m[1].replace(/,/g, "")))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  // 4.3 weeks to a month. The LARGEST stated figure wins: an audit mentions several volumes and the
+  // system has to carry the busiest of them, not the most convenient.
+  const fromWeekly = weekly.length ? Math.max(...weekly) * 4.3 : 0;
+  const fromMonthly = monthly.length ? Math.max(...monthly) : 0;
+  return Math.round(Math.max(fromWeekly, fromMonthly));
+}

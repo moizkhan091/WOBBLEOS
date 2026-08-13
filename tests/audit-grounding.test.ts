@@ -48,7 +48,7 @@ describe("an opportunity must name where it came from", () => {
 
 describe("the prompt asks for grounding rather than coverage", () => {
   const prompt = buildOpportunityPrompt(
-    { businessName: "Zamzam Dental", industry: "healthcare", intakeNotes: "n" },
+    { businessName: "Zamzam Dental", industry: "healthcare", intakeNotes: "n", brain: [] },
     { situation: "s", acquisition: [], delivery: [], support: [], bottlenecks: [], keyMetrics: [] },
   );
   const system = prompt[0].content;

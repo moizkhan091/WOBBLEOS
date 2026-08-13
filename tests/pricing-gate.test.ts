@@ -7,7 +7,7 @@ import {
   pricingDecisionSchema,
   pricingPrompt,
 } from "@/lib/domain/pricing-gate";
-import { computeDeliveryCost, marginAt, TOOL_COSTS, INTEGRATION_COSTS } from "@/lib/domain/delivery-cost";
+import { computeDeliveryCost, extractMonthlyVolume, marginAt, TOOL_COSTS, INTEGRATION_COSTS } from "@/lib/domain/delivery-cost";
 
 const NOW = new Date("2026-08-12T10:00:00.000Z");
 const cost = computeDeliveryCost({ categories: ["speed_to_lead", "booking"], integrations: ["paper", "spreadsheets"], monthlyVolume: 1720, currency: "USD" });
@@ -178,5 +178,34 @@ describe("a cost that is silently too small is worse than no cost", () => {
   it("still says the volume is unknown, since a floor is an assumption not a fact", () => {
     const unknownVolume = computeDeliveryCost({ categories: ["speed_to_lead"], integrations: [], monthlyVolume: 0, currency: "USD" });
     expect(unknownVolume.unknowns.some((u) => u.includes("volume"))).toBe(true);
+  });
+});
+
+describe("reading volume out of an audit's own words", () => {
+  it("finds the figure the audit plainly states", () => {
+    expect(extractMonthlyVolume("managing 400 weekly WhatsApp enquiries")).toBe(1720);
+    expect(extractMonthlyVolume("240 appointments a week across three clinics")).toBe(1032);
+    expect(extractMonthlyVolume("3,000 messages per month")).toBe(3000);
+  });
+
+  it("does NOT match a number that is not a volume", () => {
+    // The first attempt allowed any three words between the number and the period, and on a real
+    // report that matched an unrelated 75 instead of the stated 400 weekly, understating running cost
+    // roughly fourfold.
+    expect(extractMonthlyVolume("PKR 8,000 per appointment, reviewed weekly")).toBe(0);
+    expect(extractMonthlyVolume("a 30% no-show rate, monthly reporting")).toBe(0);
+  });
+
+  it("takes the LARGEST stated figure, since the system carries the busiest", () => {
+    expect(extractMonthlyVolume("120 calls a week, and 400 enquiries a week")).toBe(1720);
+  });
+
+  it("prefers whichever period gives the bigger monthly number", () => {
+    expect(extractMonthlyVolume("100 leads a week and 200 leads a month")).toBe(430);
+  });
+
+  it("returns zero when the audit never says, rather than inventing one", () => {
+    expect(extractMonthlyVolume("the front desk is busy and reporting is manual")).toBe(0);
+    expect(extractMonthlyVolume("")).toBe(0);
   });
 });

@@ -14,7 +14,7 @@ import {
 } from "@/lib/domain/proposal";
 import { buildHandoffEnvelope, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { canAdvance, type PricingState } from "@/lib/domain/pricing-gate";
-import { computeDeliveryCost, type CostInputsView, type IntegrationKey } from "@/lib/domain/delivery-cost";
+import { computeDeliveryCost, extractMonthlyVolume, type CostInputsView, type IntegrationKey } from "@/lib/domain/delivery-cost";
 import { SERVICE_BY_SLUG } from "@/lib/domain/free-audit";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
@@ -316,16 +316,9 @@ function integrationsFromReport(report: Record<string, unknown>): IntegrationKey
 
 /** Roughly how much this system will handle a month, from whatever volume the audit recorded. */
 function monthlyVolumeFromReport(report: Record<string, unknown>): number {
-  const text = JSON.stringify(report ?? {});
-  // "240 appointments a week", "400 weekly WhatsApp enquiries": weekly numbers are the common form.
-  // Up to three words may sit between the number and the period: "400 weekly enquiries" and
-  // "240 appointments a week" are both how a real audit writes it, and the second used to be missed.
-  const weekly = [...text.matchAll(/(\d[\d,]{0,8})\s*(?:\w+\s+){0,3}(?:weekly|a week|per week|\/week)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
-  const monthly = [...text.matchAll(/(\d[\d,]{0,8})\s*(?:\w+\s+){0,3}(?:monthly|a month|per month|\/month|\/mo)/gi)].map((m) => Number(m[1].replace(/,/g, "")));
-  const fromWeekly = weekly.length ? Math.max(...weekly) * 4.3 : 0;
-  const fromMonthly = monthly.length ? Math.max(...monthly) : 0;
-  return Math.round(Math.max(fromWeekly, fromMonthly));
+  return extractMonthlyVolume(JSON.stringify(report ?? {}));
 }
+
 
 /**
  * The pricing state on a proposal, or null when it predates the gate.

@@ -7619,3 +7619,21 @@ quietly shrinks. If NOTHING is grounded the model ignored the field, and the aud
 thrown away.
 
 Gate: typecheck clean, 1840 tests pass, build clean.
+
+## 2026-08-13 - Proving the chain caught a fourth bug (Claude)
+
+Ran the whole pricing chain on the VPS: costed but unpriced, founder corrects volume, founder prices it,
+approve goes through, and it becomes history for the next quote. All four steps work.
+
+It also showed volume detected as **75** where the audit plainly says "400 weekly WhatsApp enquiries".
+The regex allowed any three words between a number and its period, so it matched an unrelated figure.
+Volume drives every usage line, so the running cost was roughly fourfold too low.
+
+The words between a number and its period must now be a UNIT we recognise (appointments, enquiries,
+messages, bookings, leads, calls, patients, conversations, orders, tickets, visits, jobs, requests,
+chats). "240 appointments a week" counts. "PKR 8,000 per appointment, reviewed weekly" does not. The
+extraction moved into the domain so it is testable, and the largest stated figure wins because the
+system has to carry the busiest number in the report, not the most convenient one.
+
+The correction path matters for exactly this reason: at the guessed 75 a month the build ran at 91.50,
+and at a corrected 8,000 a month it runs at 326. Same build, three and a half times the running cost.
