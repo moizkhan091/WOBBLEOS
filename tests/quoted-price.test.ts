@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proseAgreesWithPrice, quotedPricesIn } from "@/lib/domain/quoted-price";
+import { proseAgreesWithPrice, quotedPricesIn, stripQuotedPrices } from "@/lib/domain/quoted-price";
 
 /**
  * Verbatim from the approved Bright Smile Dental proposal on the live VPS. The priced field said PKR
@@ -98,5 +98,41 @@ describe("whether the words agree with the price a founder chose", () => {
     const v = proseAgreesWithPrice(["Clean scope with no numbers.", "Our fee is PKR 900,000."], decision);
     expect(v.agrees).toBe(false);
     expect(v.offenders).toHaveLength(1);
+  });
+});
+
+describe("taking the price sentences back out of a document", () => {
+  it("removes the whole sentence, not just the number", () => {
+    // "payback occurs in 2.5 months" leans entirely on the figure. Leaving it behind a corrected
+    // number would be a quieter lie than the one being fixed.
+    const out = stripQuotedPrices(REAL_SCOPE);
+    expect(out.text).not.toContain("PKR 4.5M");
+    expect(out.text).not.toContain("payback occurs");
+  });
+
+  it("keeps everything that was about the client", () => {
+    const out = stripQuotedPrices(REAL_SCOPE);
+    expect(out.text).toContain("hemorrhaging approximately PKR 2.5M monthly");
+    expect(out.text).toContain("recapture PKR 1.8M+ monthly");
+  });
+
+  it("hands back what it removed, so nothing disappears without a trace", () => {
+    expect(stripQuotedPrices(REAL_SCOPE).removed[0]).toContain("implementation investment");
+  });
+
+  it("leaves a clean document untouched", () => {
+    const clean = "We will connect WhatsApp to the booking diary across all three clinics.";
+    expect(stripQuotedPrices(clean)).toEqual({ text: clean, removed: [] });
+  });
+
+  it("survives empty and missing text", () => {
+    expect(stripQuotedPrices("")).toEqual({ text: "", removed: [] });
+    expect(stripQuotedPrices(null)).toEqual({ text: "", removed: [] });
+  });
+
+  it("leaves a document that was nothing but a price sentence empty rather than mangled", () => {
+    const out = stripQuotedPrices("Total investment is PKR 4.5M.");
+    expect(out.text).toBe("");
+    expect(out.removed).toHaveLength(1);
   });
 });

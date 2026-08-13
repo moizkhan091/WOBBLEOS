@@ -8,7 +8,7 @@ import { sanitizeHouseStyle } from "@/lib/domain/house-style";
 import { computeDeliveryCost, costCorrectionSchema, costQuestions, marginAt, INTEGRATION_COSTS, type CostInputsView } from "@/lib/domain/delivery-cost";
 import { decidePricing, pricingChecklist, pricingDecisionSchema, pricingPrompt, type PricingState } from "@/lib/domain/pricing-gate";
 import { phaseOneWithinAuthority, rephasePrice } from "@/lib/domain/proposal-phasing";
-import { proseAgreesWithPrice } from "@/lib/domain/quoted-price";
+import { proseAgreesWithPrice, stripQuotedPrices } from "@/lib/domain/quoted-price";
 import { historyFor } from "@/lib/pricing-memory";
 
 export const runtime = "nodejs";
@@ -85,6 +85,46 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   } catch {
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
+  // One click to take the price sentences out of a document that was built before this was checked.
+  // Deliberately its own action rather than something the GET does silently: removing a sentence from
+  // a client-facing document is a founder's call, and they see exactly which one first.
+  if ((body as { action?: string })?.action === "strip_prices") {
+    try {
+      const db = getDb();
+      const [proposal] = await db.select().from(proposals).where(eq(proposals.id, id)).limit(1);
+      if (!proposal) return NextResponse.json({ ok: false, error: "proposal not found" }, { status: 404 });
+      const scope = stripQuotedPrices(proposal.scope);
+      const terms = stripQuotedPrices(proposal.terms);
+      const removed = [...scope.removed, ...terms.removed];
+      if (!removed.length) return NextResponse.json({ ok: true, removed: [] });
+
+      const metadata = (proposal.metadata ?? {}) as Record<string, unknown>;
+      const now = new Date();
+      await db
+        .update(proposals)
+        .set({
+          scope: scope.text || null,
+          terms: terms.text || null,
+          // Kept, never dropped: a founder who wants the payback claim back writes it in their own
+          // words against the price they actually chose.
+          metadata: { ...metadata, priceSentencesRemoved: [...((metadata.priceSentencesRemoved as string[]) ?? []), ...removed] },
+          updatedAt: now,
+        })
+        .where(eq(proposals.id, id));
+      await writeAuditEvent({
+        eventType: "proposal.price_prose_removed",
+        module: "proposals",
+        entityType: "proposal",
+        entityId: id,
+        actor: auth,
+        metadata: { removed },
+      });
+      return NextResponse.json({ ok: true, removed });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });
+    }
+  }
+
   const parsed = costCorrectionSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message ?? "validation failed" }, { status: 422 });
 

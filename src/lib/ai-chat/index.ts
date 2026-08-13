@@ -4,6 +4,9 @@ import type { AuditEventInput } from "@/lib/domain/audit";
 import { runTextProvider, type ProviderChatMessage } from "@/lib/providers";
 import { retrieveMemoryContext } from "@/lib/memory";
 import { buildUserContent, type AttachmentInput } from "@/lib/domain/attachments";
+import { chatModelAllowed, chatModelOptions, type ChatModelOption } from "@/lib/domain/chat-models";
+import type { ModelCatalogEntry } from "@/lib/domain/model-registry";
+import { getModelCatalog, getModelRoleMap } from "@/lib/model-registry";
 
 /**
  * WOBBLE AI Chat — the universal "talk to the OS" surface. Any module that wants
@@ -15,13 +18,19 @@ import { buildUserContent, type AttachmentInput } from "@/lib/domain/attachments
 export const CHAT_MODULE = "ask_wobble"; // reuse the allowed module (provider allowlist)
 export const CHAT_ROLE = "ask_wobble";
 
-// Real, multimodal-capable OpenRouter models the chat picker may select. Empty/omitted → role default.
-export const CHAT_MODELS = [
-  { id: "openai/gpt-4o-mini", label: "Fast", description: "Quick everyday answers · vision" },
-  { id: "openai/gpt-4o", label: "Smart", description: "Stronger reasoning · vision" },
-  { id: "anthropic/claude-sonnet-4.5", label: "Deep", description: "Best for long/complex work · vision + PDF" },
-] as const;
-const CHAT_MODEL_IDS = CHAT_MODELS.map((m) => m.id) as unknown as [string, ...string[]];
+/**
+ * The picker's options come from Model Control, not from here.
+ *
+ * Three model ids used to sit in this file as a literal, which meant the Ask box ignored every switch
+ * a founder made on the Model Control page and kept offering GPT-4o one click from a five dollar
+ * balance. See chatModelOptions. The allowlist itself is not gone, it moved: a free-text model id
+ * would let anyone with a session point the chat at the dearest model on OpenRouter.
+ */
+export async function chatModelChoices(): Promise<ChatModelOption[]> {
+  const [catalog, roleMap] = await Promise.all([getModelCatalog().catch(() => []), getModelRoleMap().catch(() => ({}) as Record<string, { model?: string }>)]);
+  const current = roleMap[CHAT_ROLE]?.model ?? roleMap.default?.model ?? null;
+  return chatModelOptions(catalog, current);
+}
 
 const attachmentSchema = z.object({
   filename: z.string().trim().min(1),
@@ -38,7 +47,9 @@ export const chatSchema = z.object({
   history: z.array(turnSchema).max(30).optional(),
   founder: z.string().trim().min(1).optional(),
   useMemory: z.boolean().optional(),
-  model: z.enum(CHAT_MODEL_IDS).optional(),
+  // Validated against the live catalog inside chatWithWobble, not by a compile-time enum, because the
+  // list of allowed models is a founder decision that changes without a deploy.
+  model: z.string().trim().max(160).optional(),
   maxTokens: z.number().int().min(100).max(4000).optional(),
 });
 export type ChatInput = z.input<typeof chatSchema>;
@@ -53,6 +64,8 @@ export interface ChatDeps {
   runProvider?: (input: { role: string; module: string; messages: ProviderChatMessage[]; maxTokens?: number; plugins?: Array<Record<string, unknown>>; model?: string }) => Promise<{ text: string; run: { id: string } }>;
   retrieveMemory?: (query: string) => Promise<string[]>;
   recordAudit?: (input: AuditEventInput) => Promise<void>;
+  /** The catalog the model allowlist is checked against. Injectable so tests need no database. */
+  loadCatalog?: () => Promise<ModelCatalogEntry[]>;
 }
 
 export interface ChatResult {
@@ -70,6 +83,15 @@ export async function chatWithWobble(input: ChatInput, deps: ChatDeps = {}): Pro
 
   const runProvider = deps.runProvider ?? defaultRunProvider;
   const recordAudit = deps.recordAudit ?? ((i: AuditEventInput) => writeAuditEvent(i));
+
+  // The allowlist, checked against the live catalog. A session that can post JSON must not be able to
+  // name any model on OpenRouter and bill it to the house account.
+  if (parsed.model?.trim()) {
+    const catalog = await (deps.loadCatalog ?? (() => getModelCatalog().catch(() => [])))();
+    if (!chatModelAllowed(catalog, parsed.model)) {
+      throw new Error(`${parsed.model} is not a model this chat may use. Add it in Model Control first.`);
+    }
+  }
 
   const messages: ProviderChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
 

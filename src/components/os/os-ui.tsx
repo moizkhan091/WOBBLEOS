@@ -1818,9 +1818,10 @@ function AskPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file" style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: C.white, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="Plus" size={17} /></button>
           {models.length ? (
-            <select value={model} onChange={(e) => setModel(e.target.value)} title="Model" aria-label="Model" style={{ ...selectStyle, padding: "6px 9px", fontSize: 11.5 }}>
-              <option value="">Auto</option>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            /* The options come from Model Control and carry their own price, because a picker that
+               hides what a choice costs is how a five dollar balance disappears. */
+            <select value={model} onChange={(e) => setModel(e.target.value)} title={models.find((m) => m.id === model)?.description ?? "Model"} aria-label="Model" style={{ ...selectStyle, padding: "6px 9px", fontSize: 11.5 }}>
+              {models.map((m) => <option key={m.id || "auto"} value={m.id} title={m.description}>{m.label}{m.id ? ` · ${m.description.split(" · ")[0]}` : ""}</option>)}
             </select>
           ) : null}
           <span style={{ fontSize: 10.5, color: faint }}>Reads + drafts run straight away · anything that sends or deletes asks you first · Shift+Enter for newline</span>
@@ -9039,6 +9040,10 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
               <span style={{ color: "#ff8080" }}>{o.text}</span> in: {o.quote}
             </div>
           ))}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={() => correct({ action: "strip_prices" })} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "5px 12px", fontSize: 11.5 }}>Take that sentence out</button>
+            <span style={{ fontSize: 11, color: faint }}>The whole sentence goes, not just the number, because the rest of it leans on the number. It is kept on the record so you can rewrite it against the price you chose.</span>
+          </div>
           <div style={{ fontSize: 11, color: faint }}>This blocks approving and sending until the wording and the price agree.</div>
         </div>
       ) : null}

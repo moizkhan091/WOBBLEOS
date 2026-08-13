@@ -7812,3 +7812,34 @@ the split and the phase-one authority check whenever a price is recorded, and
 deliberately left alone: showing the audit's estimate is correct while nobody has chosen a price.
 
 Gate: typecheck clean, 1909 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - the Ask box was naming its own models
+
+Spotted in the browser, not in the code: the Ask WOBBLE model picker offered Fast / Smart / Deep, and
+the values behind them were three model ids written as a literal in `src/lib/ai-chat/index.ts`. That
+quietly broke the rule the whole cost story rests on. A founder switches models on Model Control and
+every code path is supposed to follow; this one did not. It offered GPT-4o whatever that page said, one
+click from a five dollar balance, and nothing on either page revealed the disagreement.
+
+`src/lib/domain/chat-models.ts` derives the list from the same catalog Model Control edits. Auto now
+NAMES what Model Control chose ("What Model Control chose: Gemini Flash Lite, $0.4 per million out")
+rather than saying only "Auto", options are ordered cheapest first so the dear one is a deliberate
+reach, and every option carries its own price. The allowlist did not go away, it moved: the zod enum
+became a runtime check against the live catalog, because a free-text model id would let anyone with a
+session point the chat at the dearest model on OpenRouter and bill the house.
+
+## And the price sentences come out at the source now
+
+The prose gate stops a contradiction reaching a client, but it fires because the audit's executive
+summary writes its own implementation guess into prose and the builder copies that into the scope. At
+build time nobody has decided a price, so any price in that text is by definition not one.
+`stripQuotedPrices` takes those sentences out when the proposal is assembled, and records what it
+removed rather than dropping it silently. The whole sentence goes, never just the number: leaving
+"payback occurs in 2.5 months" standing behind a corrected figure is a quieter lie than the one being
+fixed. For documents built before this, the pricing panel now has a one-click "Take that sentence out",
+which is its own explicit action rather than something the page does silently, because removing a
+sentence from a client-facing document is a founder's call.
+
+Gate: typecheck clean, 1929 tests pass, build clean.

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { reportTextOf, resolveReportCurrency } from "@/lib/domain/report-currency";
 import { excludedFromQuote, phaseOneWithinAuthority, phaseOpportunities, splitPrice, type PhasingOpportunity } from "@/lib/domain/proposal-phasing";
 import { awaitingPricing } from "@/lib/domain/pricing-gate";
+import { stripQuotedPrices } from "@/lib/domain/quoted-price";
 import { newId } from "@/lib/ids";
 
 /**
@@ -133,7 +134,13 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
   const opps = asArray<{ title?: string; name?: string; description?: string; service?: string }>(report.opportunities);
   const roadmap = asArray<{ title?: string; months?: string; focus?: string }>(report.roadmap);
   const roi = (report.roi ?? {}) as { estimatedImplementationCents?: number };
-  const scope = (typeof report.executiveSummary === "string" && report.executiveSummary) || (typeof report.summary === "string" && report.summary) || undefined;
+  const rawScope = (typeof report.executiveSummary === "string" && report.executiveSummary) || (typeof report.summary === "string" && report.summary) || undefined;
+  // The audit's summary writes its own implementation guess into prose ("With PKR 4.5M implementation
+  // investment, payback occurs in 2.5 months"). Copied into the scope, that becomes a price on a
+  // document nobody has priced, and the client reads the sentence, not the field. It comes out here,
+  // and what came out is recorded rather than dropped silently.
+  const scopeStrip = stripQuotedPrices(rawScope);
+  const scope = scopeStrip.text || undefined;
 
   // Every opportunity used to become a line item. On a real proposal that was eighteen of them, quoted
   // as one number, to a client who had already abandoned one system after a single all-or-nothing
@@ -182,6 +189,9 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
     currency: verdict.currency ?? undefined,
     metadata: {
       currencyEvidence: verdict.evidence,
+      // The price sentences taken out of the audit summary, kept so a founder can see what was
+      // removed and put it back in their own words once they have decided a number.
+      priceSentencesRemoved: scopeStrip.removed,
       currencyNote: verdict.because,
       // What each phase carries, so a founder can quote phase one alone, and what was deliberately
       // left out, so nothing is dropped silently.

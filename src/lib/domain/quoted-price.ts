@@ -132,6 +132,34 @@ function closest(positions: number[], at: number): number | null {
   return Math.min(...positions.map((p) => Math.abs(p - at)));
 }
 
+// -------------------------------------------------------------------------- taking them back out
+
+/**
+ * Remove the sentences that quote a price for the work, and say which ones went.
+ *
+ * Used where a proposal is BUILT. The audit's executive summary is copied into the scope, and that
+ * summary happily writes "With PKR 4.5M implementation investment, payback occurs in 2.5 months" from
+ * a figure the model guessed. At build time nobody has decided a price, so any price in that text is
+ * by definition not one, and it should not be sitting in the document waiting to be sent.
+ *
+ * The whole sentence goes, not just the number. Replacing PKR 4.5M with PKR 45,000 would leave
+ * "payback occurs in 2.5 months" standing behind a figure that no longer supports it, which is a
+ * quieter lie than the one being fixed.
+ */
+export function stripQuotedPrices(text: string | null | undefined): { text: string; removed: string[] } {
+  if (!text || !text.trim()) return { text: text ?? "", removed: [] };
+  const offending = new Set(quotedPricesIn(text).map((p) => p.quote));
+  if (!offending.size) return { text, removed: [] };
+
+  const kept: string[] = [];
+  const removed: string[] = [];
+  for (const sentence of splitSentences(text)) {
+    if (offending.has(sentence.trim())) removed.push(sentence.trim());
+    else kept.push(sentence.trim());
+  }
+  return { text: kept.join(" ").replace(/\s{2,}/g, " ").trim(), removed };
+}
+
 // -------------------------------------------------------------------------- agreement with the decision
 
 export interface ProseVerdict {
