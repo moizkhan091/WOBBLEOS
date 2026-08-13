@@ -165,6 +165,40 @@ export function splitPrice(totalCents: number, phases: ProposalPhase[]): Array<{
 }
 
 /**
+ * Re-split the phases across the price a founder actually decided.
+ *
+ * The phase money is worked out when the proposal is BUILT, from the audit's implementation estimate.
+ * That estimate is a model's guess, and the whole point of the pricing gate is that a founder decides
+ * the real number afterwards. Nothing was recomputing the phases when they did, so a proposal priced
+ * at PKR 45,000 went on displaying phases that added up to PKR 4.5M, which is the audit's guess wearing
+ * the founder's document. A client reading that sees the phases.
+ *
+ * The SHARES are the part worth keeping: phase one carries most of the return, so it carries most of
+ * the price, whatever the price turns out to be. Legacy rows have no stored share, so it is recovered
+ * from the proportions of what is already there, which is the same ratio by construction.
+ */
+export function rephasePrice<T extends { number: number; priceCents: number; valueShare?: number }>(phases: T[], totalCents: number): T[] {
+  if (!phases.length) return phases;
+  if (totalCents <= 0) return phases.map((p) => ({ ...p, priceCents: 0 }));
+
+  const shares = phases.map((p) => p.valueShare);
+  const haveShares = shares.every((s) => typeof s === "number" && s > 0);
+  const basis = haveShares
+    ? (shares as number[])
+    : (() => {
+        const sum = phases.reduce((n, p) => n + Math.max(0, p.priceCents), 0);
+        // No shares and no prices to infer them from: fall back to equal parts rather than to zero,
+        // because a phase priced at nothing reads as free.
+        return sum > 0 ? phases.map((p) => Math.max(0, p.priceCents) / sum) : phases.map(() => 1 / phases.length);
+      })();
+
+  const out = phases.map((p, i) => ({ ...p, priceCents: Math.round((totalCents * basis[i]) / 100) * 100 }));
+  // The parts must add back to the whole, or the document argues with itself.
+  out[out.length - 1].priceCents += totalCents - out.reduce((n, x) => n + x.priceCents, 0);
+  return out;
+}
+
+/**
  * Is phase one small enough for one person to approve?
  *
  * The reviewer's sharpest point was that a quote 778 times the contact's solo signing authority forces

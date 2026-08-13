@@ -185,7 +185,9 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
       currencyNote: verdict.because,
       // What each phase carries, so a founder can quote phase one alone, and what was deliberately
       // left out, so nothing is dropped silently.
-      phases: phases.map((ph) => ({ number: ph.number, name: ph.name, rationale: ph.rationale, items: ph.items.map((o) => o.title), priceCents: priceByPhase.find((x) => x.number === ph.number)?.priceCents ?? 0 })),
+      // valueShare is stored, not just the money, so the split can be recomputed against the price a
+      // founder actually decides. Without it the phases keep quoting the audit's guess forever.
+      phases: phases.map((ph) => ({ number: ph.number, name: ph.name, rationale: ph.rationale, items: ph.items.map((o) => o.title), valueShare: ph.valueShare, priceCents: priceByPhase.find((x) => x.number === ph.number)?.priceCents ?? 0 })),
       excludedFromQuote: excluded.map((o) => o.title),
       quotedItemCount: quoted.length,
       totalOpportunityCount: opps.length,

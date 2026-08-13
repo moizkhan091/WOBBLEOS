@@ -7,6 +7,7 @@ import { isAuthError, requireFounder } from "@/lib/auth/route";
 import { sanitizeHouseStyle } from "@/lib/domain/house-style";
 import { computeDeliveryCost, costCorrectionSchema, costQuestions, marginAt, INTEGRATION_COSTS, type CostInputsView } from "@/lib/domain/delivery-cost";
 import { decidePricing, pricingChecklist, pricingDecisionSchema, pricingPrompt, type PricingState } from "@/lib/domain/pricing-gate";
+import { phaseOneWithinAuthority, rephasePrice } from "@/lib/domain/proposal-phasing";
 import { proseAgreesWithPrice } from "@/lib/domain/quoted-price";
 import { historyFor } from "@/lib/pricing-memory";
 
@@ -158,13 +159,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const metadata = (proposal.metadata ?? {}) as Record<string, unknown>;
     const existing = (metadata.pricing ?? { status: "awaiting_decision", cost: null, decision: null }) as PricingState;
     const now = new Date();
+    // What the contact can sign alone lives on the company, and the authority check has to be redone
+    // against the new phase one or it keeps answering about the old number.
+    const [company2] = proposal.companyId
+      ? await db.select({ metadata: crmCompanies.metadata }).from(crmCompanies).where(eq(crmCompanies.id, proposal.companyId)).limit(1)
+      : [undefined];
+    const rawAuthority = ((company2?.metadata ?? {}) as Record<string, unknown>).soloAuthorityCents;
+    const soloAuthorityCents = typeof rawAuthority === "number" && rawAuthority > 0 ? rawAuthority : null;
     const decided = decidePricing(existing, { ...parsed.data, reasoning: sanitizeHouseStyle(parsed.data.reasoning) }, now);
+
+    // The phase money was worked out at build time from the audit's implementation guess. The moment a
+    // founder decides the real price, that guess is stale, and a proposal priced at PKR 45,000 was
+    // still showing phases adding up to PKR 4.5M. The shares survive; the money is redone.
+    const storedPhases = Array.isArray(metadata.phases) ? (metadata.phases as Array<{ number: number; name: string; rationale: string; items: string[]; valueShare?: number; priceCents: number }>) : null;
+    const rephased = storedPhases?.length ? rephasePrice(storedPhases, parsed.data.oneOffCents) : null;
 
     // The decision is the source of truth for the row's own price, so the document and the record can
     // never disagree about what the client was told.
     await db
       .update(proposals)
-      .set({ metadata: { ...metadata, pricing: decided }, pricingCents: parsed.data.oneOffCents, currency: parsed.data.currency, updatedAt: now })
+      .set({
+        metadata: {
+          ...metadata,
+          pricing: decided,
+          ...(rephased ? { phases: rephased, phaseOneAuthority: phaseOneWithinAuthority(rephased[0]?.priceCents ?? 0, soloAuthorityCents) } : {}),
+        },
+        pricingCents: parsed.data.oneOffCents,
+        currency: parsed.data.currency,
+        updatedAt: now,
+      })
       .where(eq(proposals.id, id));
 
     await writeAuditEvent({

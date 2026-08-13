@@ -7794,3 +7794,21 @@ and in the audit reports they were built from. Fixing the source stopped new one
 the rows a founder is about to send. Dry run by default, `--apply` to write, every change printed.
 
 Gate: typecheck clean, 1901 tests pass, build clean.
+
+**Follow-on found in the browser, not in the code.** With the prose warning rendering on the live
+client container, the phase table next to it was showing PKR 894,560 / 1,581,515 / 2,023,925 on a
+proposal priced at PKR 45,000. My first read was a units bug; checking the database showed every figure
+was correctly in cents and the arithmetic was right. The actual fault is worse: the phase split is
+computed when the proposal is BUILT, from the audit's implementation guess, and nothing recomputed it
+when a founder later set the real price. So the document kept quoting the audit's PKR 4.5M in its
+phases while the record said PKR 45,000, and the phases are what a client reads.
+
+`rephasePrice` keeps the SHARES (phase one carries the least because it carries the least return) and
+redoes the money against the decision, with the remainder landing on the last phase so the parts always
+add back to the whole. `valueShare` is now stored on each phase; legacy rows recover it from the
+proportions they already have, which is the same ratio by construction. The pricing route recomputes
+the split and the phase-one authority check whenever a price is recorded, and
+`src/scripts/backfill-phase-prices.ts` fixes the rows already decided. Undecided proposals are
+deliberately left alone: showing the audit's estimate is correct while nobody has chosen a price.
+
+Gate: typecheck clean, 1909 tests pass, build clean.
