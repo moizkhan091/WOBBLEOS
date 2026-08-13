@@ -7843,3 +7843,17 @@ which is its own explicit action rather than something the page does silently, b
 sentence from a client-facing document is a founder's call.
 
 Gate: typecheck clean, 1929 tests pass, build clean.
+
+**Cleaned up after myself.** The thirteen proposals my proof runs left on Bright Smile Dental are now
+one. `src/scripts/archive-proposals.ts` sets `archived_at`, which every listing and the deal-team
+context already filter on, and deletes nothing: all thirteen rows are still in the table with their
+metadata, pre-send reviews and pricing decisions intact, and clearing the column brings any of them
+back. Each archive writes an audit event saying why.
+
+The twelve read as a history of the build: five at USD 1,400,000 with 18 unphased line items (before
+the currency resolver and the phasing), two at PKR 4,500,000 (after the currency fix, before the gate),
+three at zero awaiting a decision (the gate working), and two approved duplicates. The one kept is the
+newest: approved, priced by a founder at PKR 45,000, reviewed, phases re-split against that decision,
+scope cleared of the audit's price sentence.
+
+Gate: typecheck clean, 1929 tests pass, build clean.
