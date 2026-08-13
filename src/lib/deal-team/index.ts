@@ -125,7 +125,7 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
           // Since the pricing gate landed, an undecided proposal carries zero. Passing that through as
           // a price told the analyst the client was being charged nothing, and it judged accordingly.
           const meta = (chosen.metadata ?? {}) as Record<string, unknown>;
-          const pricing = meta.pricing as { decision?: { oneOffCents?: number }; cost?: { oneOffCents?: number; monthlyCents?: number } } | undefined;
+          const pricing = meta.pricing as { decision?: { oneOffCents?: number }; cost?: { oneOffCents?: number; monthlyCents?: number; currency?: string } } | undefined;
           const decided = pricing?.decision?.oneOffCents;
           return {
             title: chosen.title,
@@ -136,6 +136,7 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
             terms: chosen.terms ?? null,
             costOneOffCents: pricing?.cost?.oneOffCents ?? null,
             costMonthlyCents: pricing?.cost?.monthlyCents ?? null,
+            costCurrency: pricing?.cost?.currency ?? null,
             soloAuthorityCents: soloAuthorityCents,
           };
         })()

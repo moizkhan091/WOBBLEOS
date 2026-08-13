@@ -309,3 +309,23 @@ describe("what the deal team is told once a price is a decision, not a field", (
     expect(out).not.toContain("WHAT THE CONTACT CAN APPROVE");
   });
 });
+
+describe("the cost and the quote never share a symbol they do not share", () => {
+  it("prints the cost in ITS currency, not the quote's", () => {
+    // Delivery cost comes from tool list prices in USD; the quote may be in rupees. Printing "PKR 800"
+    // for a USD 800 cost is the same units mistake that nearly sent a bill 280 times too large.
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, currency: "PKR", totalCents: 4_500_000, costOneOffCents: 80_000, costCurrency: "USD" } });
+    expect(out).toContain("USD 800");
+    expect(out).not.toContain("PKR 800");
+  });
+
+  it("says so explicitly when the two differ, so they are not compared naively", () => {
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, currency: "PKR", totalCents: 4_500_000, costOneOffCents: 80_000, costCurrency: "USD" } });
+    expect(out).toContain("convert before comparing");
+  });
+
+  it("stays quiet about conversion when they match", () => {
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, currency: "USD", totalCents: 4_500_000, costOneOffCents: 80_000, costCurrency: "USD" } });
+    expect(out).not.toContain("convert before comparing");
+  });
+});

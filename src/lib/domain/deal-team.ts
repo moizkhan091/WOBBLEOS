@@ -256,6 +256,14 @@ export interface DealTeamContext {
     /** What the build costs WOBBLE. The analyst was judging prices with no cost basis at all. */
     costOneOffCents?: number | null;
     costMonthlyCents?: number | null;
+    /**
+     * The currency the COST is in, which is not always the currency of the quote.
+     *
+     * Delivery cost is computed from tool list prices in USD; the quote may be in rupees. Printing the
+     * cost with the quote's symbol is the same units mistake that sent a client a bill 280 times too
+     * large, so the two are labelled separately and never silently share a symbol.
+     */
+    costCurrency?: string | null;
     /** What one person at the client can approve alone, when we know it. */
     soloAuthorityCents?: number | null;
   } | null;
@@ -284,8 +292,12 @@ export function renderContext(ctx: DealTeamContext): string {
       : centsToMoney(ctx.proposal.totalCents, ctx.proposal.currency);
     lines.push("", `PROPOSAL ON THE TABLE: ${ctx.proposal.title} — ${priceLine}`);
     if (ctx.proposal.costOneOffCents !== null && ctx.proposal.costOneOffCents !== undefined) {
-      const run = ctx.proposal.costMonthlyCents ? `, and ${centsToMoney(ctx.proposal.costMonthlyCents, ctx.proposal.currency)} a month to run` : "";
-      lines.push(`WHAT IT COSTS WOBBLE TO DELIVER: ${centsToMoney(ctx.proposal.costOneOffCents, ctx.proposal.currency)} to build${run}. This is OUR cost, not a price, and it excludes our own time.`);
+      // The cost carries its OWN currency. It is usually USD (tool list prices) while the quote may be
+      // in rupees, and printing one with the other's symbol is how a 280x error happens.
+      const cc = ctx.proposal.costCurrency ?? "USD";
+      const run = ctx.proposal.costMonthlyCents ? `, and ${centsToMoney(ctx.proposal.costMonthlyCents, cc)} a month to run` : "";
+      const note = cc !== ctx.proposal.currency ? ` Note the cost is in ${cc} and the quote is in ${ctx.proposal.currency}, so convert before comparing them.` : "";
+      lines.push(`WHAT IT COSTS WOBBLE TO DELIVER: ${centsToMoney(ctx.proposal.costOneOffCents, cc)} to build${run}. This is OUR cost, not a price, and it excludes our own time.${note}`);
     }
     if (ctx.proposal.soloAuthorityCents) {
       lines.push(`WHAT THE CONTACT CAN APPROVE ALONE: ${centsToMoney(ctx.proposal.soloAuthorityCents, ctx.proposal.currency)}. Anything above needs a joint decision nobody from WOBBLE will be in the room for.`);
