@@ -7663,3 +7663,20 @@ refused rather than assumed. Budget-shaped checks are read first so a money sent
 check cannot surface.
 
 Gate: typecheck clean, 1861 tests pass, build clean.
+
+## 2026-08-13 - What is owed, at the top of the client (Claude)
+
+Opening a client showed, in order: the form, contacts, referrals, the qualification council, the deals,
+the timeline, and only then "do something for this client". The one thing a founder actually needs on
+opening a page, what is owed and why, was eight sections down. The worklist above knew it; inside the
+client it was nowhere.
+
+The next action, its reason, the health score and the last touch now sit directly under the client's
+name, in orange when something is overdue. The worklist fetch moved up to the parent so the header and
+the list read the SAME data: two views of what is owed that could disagree would be worse than one.
+
+Measured before the change: the Overview tab is 3.3 screens of scrolling across 8 sections. It is a
+lot, but each section earns its place, and the fix for length is putting the answer first rather than
+hiding the material.
+
+Gate: typecheck clean, 1861 tests pass, build clean.

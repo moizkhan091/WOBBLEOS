@@ -8114,20 +8114,13 @@ function agoLabel(iso: string | null): string {
  * the one thing to do about it. Ranked server-side by the same rules that produce the reason text, so
  * the order is always arguable rather than mysterious.
  */
-function WorklistPanel({ onPick, selectedId, refreshToken = 0 }: { onPick: (companyId: string) => void; selectedId: string; refreshToken?: number }) {
-  const state = useApi<WorklistView>("/api/crm/worklist");
+function WorklistPanel({ onPick, selectedId, state }: { onPick: (companyId: string) => void; selectedId: string; state: ReturnType<typeof useApi<WorklistView>> }) {
   const narrow = useIsNarrow(700);
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ text: string; date: string }>({ text: "", date: "" });
   const [msg, setMsg] = useState<string | null>(null);
-
-  // Anything that changes a client (setting a deal's value, moving a stage, logging a call) changes the
-  // ranking and the pipeline total, so the worklist has to re-read. Without this the header kept
-  // reporting USD 0 after a value had just been typed into the deal below it.
-  const reload = state.reload;
-  useEffect(() => { if (refreshToken > 0) reload(); }, [refreshToken, reload]);
 
   if (state.loading) return <StateBlock kind="loading" message="Working out who needs you today…" />;
   if (state.error) return <StateBlock kind="error" message={state.error} />;
@@ -9069,6 +9062,11 @@ function OrgWorkspacePage() {
   // One signal every panel can bump so the whole page agrees after a change, rather than the container
   // updating while the worklist above it still shows the old numbers.
   const [changed, setChanged] = useState(0);
+  // The worklist is fetched HERE, not inside the panel, so the client header can show the same next
+  // action without a second request and the two can never disagree about what is owed.
+  const worklist = useApi<WorklistView>("/api/crm/worklist");
+  const reloadWorklist = worklist.reload;
+  useEffect(() => { if (changed > 0) reloadWorklist(); }, [changed, reloadWorklist]);
   const refreshAll = useCallback(() => { setChanged((n) => n + 1); org.reload(); }, [org]);
 
   async function runClientAudit() {
@@ -9140,7 +9138,7 @@ function OrgWorkspacePage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Before any tool: who needs you, and the one thing to do about them. */}
       <OrgSection title="WHO NEEDS YOU TODAY" right={<span style={{ fontSize: 11, color: faint }}>ranked by what is blocking, not by name</span>} />
-      <WorklistPanel selectedId={selectedId} onPick={setSelectedId} refreshToken={changed} />
+      <WorklistPanel selectedId={selectedId} onPick={setSelectedId} state={worklist} />
 
       {/* Only renders when there is genuinely something to merge. */}
       <DuplicatesPanel onMerged={() => { companiesApi.reload(); org.reload(); }} />
@@ -9165,6 +9163,20 @@ function OrgWorkspacePage() {
             <Tag text={"stage: " + j.stage.replace(/_/g, " ")} color={stageColor(j.stage)} />
             {j.company.industry ? <span style={{ fontSize: 12, color: faint }}>{j.company.industry}</span> : null}
           </div>
+          {/* What is owed on this client, at the top. It used to be eight sections down, under the
+              qualification council and the timeline, which is not where you look when you open a page. */}
+          {(() => {
+            const entry = (worklist.data?.entries ?? []).find((e) => e.companyId === selectedId);
+            if (!entry) return null;
+            return (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 13px", borderRadius: 12, border: "1px solid " + (entry.next.urgency >= 100 ? "rgba(255,107,0,0.4)" : "rgba(184,255,44,0.25)"), background: entry.next.urgency >= 100 ? "rgba(255,107,0,0.07)" : "rgba(184,255,44,0.05)" }}>
+                <span style={{ fontSize: 13.5, color: C.white }}>{entry.next.label}</span>
+                <span style={{ fontSize: 12, color: muted, flex: 1, minWidth: 180 }}>{entry.next.because}</span>
+                <span title={entry.health.headline} style={{ fontSize: 12.5, fontWeight: 600, color: BAND_COLOR[entry.health.band] ?? C.gray }}>{entry.health.score}/100</span>
+                <span style={{ fontSize: 11.5, color: faint }}>last touch {agoLabel(entry.lastTouchAt)}</span>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             {ORG_STAGE_ORDER.map((s, i) => {
               const reached = ORG_STAGE_ORDER.indexOf(j.stage) >= i;
