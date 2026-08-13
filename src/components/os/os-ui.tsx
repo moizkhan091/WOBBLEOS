@@ -8953,6 +8953,8 @@ type PricingView = {
   /** The questions worth asking on the next call to turn a guess into a fact. */
   questions: string[];
   integrationOptions: Array<{ key: string; label: string; because: string }>;
+  /** Whether the document's own sentences say the same price the founder decided. */
+  prose: { agrees: boolean; because: string; offenders: Array<{ text: string; quote: string }> } | null;
   history: { headline: string; medianOneOffCents: number | null; winRate: number | null; comparables: Array<{ clientName: string; oneOffCents: number; currency: string; reasoning: string; outcome: string }> } | null;
 };
 
@@ -9022,6 +9024,24 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
           <div style={{ fontSize: 11, color: faint }}>This proposal cannot be approved or sent until a price is set. That is deliberate.</div>
         ) : null}
       </div>
+
+      {/* A price hiding in a sentence. One real proposal said PKR 45,000 in its priced field and
+          "PKR 4.5M implementation investment" in its scope, and the gate passed it, because until now
+          the gate only ever read the field. The client reads the sentence. */}
+      {v.prose && !v.prose.agrees ? (
+        <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,80,80,0.45)", background: "rgba(255,80,80,0.08)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Tag text="the words say a different price" color="#ff5050" />
+            <span style={{ fontSize: 12, color: C.white, flex: 1, minWidth: 200, lineHeight: 1.5 }}>{v.prose.because}</span>
+          </div>
+          {v.prose.offenders.map((o, i) => (
+            <div key={i} style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>
+              <span style={{ color: "#ff8080" }}>{o.text}</span> in: {o.quote}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: faint }}>This blocks approving and sending until the wording and the price agree.</div>
+        </div>
+      ) : null}
 
       {open ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>

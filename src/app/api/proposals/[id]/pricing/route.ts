@@ -7,6 +7,7 @@ import { isAuthError, requireFounder } from "@/lib/auth/route";
 import { sanitizeHouseStyle } from "@/lib/domain/house-style";
 import { computeDeliveryCost, costCorrectionSchema, costQuestions, marginAt, INTEGRATION_COSTS, type CostInputsView } from "@/lib/domain/delivery-cost";
 import { decidePricing, pricingChecklist, pricingDecisionSchema, pricingPrompt, type PricingState } from "@/lib/domain/pricing-gate";
+import { proseAgreesWithPrice } from "@/lib/domain/quoted-price";
 import { historyFor } from "@/lib/pricing-memory";
 
 export const runtime = "nodejs";
@@ -51,6 +52,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       // says so rather than inventing a benchmark from a single deal.
       history: await historyFor({ industry: company?.industry ?? null, itemCount: (proposal.services ?? []).length, currency: proposal.currency }, id).catch(() => null),
       currency: proposal.currency,
+      // Prices the document quotes in its own sentences. Shown here rather than only thrown at the
+      // moment of approval, because a founder who finds out at the click has already lost the thread.
+      prose: proseAgreesWithPrice(
+        [proposal.title, proposal.scope, proposal.terms, ...(proposal.services ?? []).map((s: { description?: string }) => s.description ?? null)],
+        state?.decision ?? null,
+        [proposal.pricingCents, ...(proposal.services ?? []).map((s: { priceCents?: number }) => s.priceCents ?? 0)].filter((c) => c > 0),
+      ),
     });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "unknown error" }, { status: 500 });

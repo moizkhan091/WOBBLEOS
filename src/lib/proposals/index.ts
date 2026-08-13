@@ -341,7 +341,16 @@ function pricingStateOf(prop: ProposalRow): PricingState | null {
  * outstanding, because that is exactly when the reviewer should be arguing with it.
  */
 function assertPriced(prop: ProposalRow, target: string): void {
-  const verdict = canAdvance(pricingStateOf(prop), target);
+  // The words too, not only the priced field. An approved proposal on the live system said PKR 45,000
+  // in the field and "PKR 4.5M implementation investment" in its scope, and the client reads the
+  // sentence. Line-item prices a founder set are legitimate and are declared as such.
+  // Read defensively, for the same reason as the invoice gate: refusing is a founder fixing a
+  // sentence, throwing is a proposal that can never be sent.
+  const services = Array.isArray(prop.services) ? prop.services : [];
+  const verdict = canAdvance(pricingStateOf(prop), target, {
+    texts: [prop.title, prop.scope, prop.terms, ...services.map((s) => s.description ?? null)],
+    allowedCents: [prop.pricingCents, ...services.map((s) => s.priceCents ?? 0)].filter((c) => typeof c === "number" && c > 0),
+  });
   if (!verdict.allowed) throw new PricingNotDecidedError(verdict.because);
 }
 

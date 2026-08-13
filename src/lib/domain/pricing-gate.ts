@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { CostInputsView, DeliveryCost } from "@/lib/domain/delivery-cost";
+import { proseAgreesWithPrice } from "@/lib/domain/quoted-price";
 
 /**
  * No document leaves this system carrying a price a human did not choose.
@@ -87,7 +88,7 @@ export interface GateVerdict {
  * deal reviewer and the pricing analyst should be arguing with it. The gate closes at the moment the
  * document would become real.
  */
-export function canAdvance(state: PricingState | null | undefined, toStatus: string): GateVerdict {
+export function canAdvance(state: PricingState | null | undefined, toStatus: string, document?: PricedDocument): GateVerdict {
   if (!OUTWARD_STATUSES.has(toStatus)) return { allowed: true, because: "" };
   if (!state) {
     return { allowed: false, because: "This document has no pricing record at all, so nobody has decided what to charge. Set a price before it goes anywhere near a client." };
@@ -98,7 +99,25 @@ export function canAdvance(state: PricingState | null | undefined, toStatus: str
   if (state.decision.oneOffCents <= 0 && state.decision.monthlyCents <= 0) {
     return { allowed: false, because: "The recorded price is zero. If this is genuinely free, say so in the reasoning and set a token amount; a zero on a proposal reads as a mistake." };
   }
+  // The field is decided. Now the words. A real approved proposal carried PKR 45,000 in the field and
+  // "PKR 4.5M implementation investment" in its scope, and passed this gate, because until now the
+  // gate only ever looked at the number.
+  if (document) {
+    const prose = proseAgreesWithPrice(document.texts, state.decision, document.allowedCents ?? []);
+    if (!prose.agrees) return { allowed: false, because: prose.because };
+  }
   return { allowed: true, because: "" };
+}
+
+/**
+ * The words of the document, and any price a founder legitimately declared inside it.
+ *
+ * `allowedCents` exists because a phased quote genuinely says two numbers: "phase one is PKR 400,000"
+ * in the prose and the whole engagement in the decision. Both are true and neither is a contradiction.
+ */
+export interface PricedDocument {
+  texts: Array<string | null | undefined>;
+  allowedCents?: number[];
 }
 
 /**

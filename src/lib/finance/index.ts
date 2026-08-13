@@ -112,7 +112,15 @@ function assertInvoicePriced(inv: InvoiceRow, target: string): void {
   const state = ((inv.metadata ?? {}) as Record<string, unknown>).pricing as PricingState | undefined;
   // An invoice for a zero total is a different bug and the status machine already refuses it; this gate
   // is only about WHO chose the number.
-  const verdict = canAdvance(state ?? null, target === "approved" || target === "sent" || target === "paid" ? "sent" : target);
+  const lines = Array.isArray(inv.lineItems) ? inv.lineItems : [];
+  const verdict = canAdvance(state ?? null, target === "approved" || target === "sent" || target === "paid" ? "sent" : target, {
+    // An invoice states its money in line items and its conditions in payment terms. Either can carry
+    // a figure that contradicts what was actually agreed.
+    // Read defensively. This gate refusing is a founder fixing a sentence; this gate THROWING is a
+    // paid invoice that cannot be marked paid, so a row missing its line items must not break it.
+    texts: [inv.paymentTerms, inv.notes ?? null, ...lines.map((l) => l.description)],
+    allowedCents: [inv.totalCents, inv.subtotalCents, ...lines.map((l) => l.unitPriceCents * l.quantity)].filter((c) => typeof c === "number" && c > 0),
+  });
   if (!verdict.allowed) throw new InvoicePricingNotDecidedError(verdict.because);
 }
 

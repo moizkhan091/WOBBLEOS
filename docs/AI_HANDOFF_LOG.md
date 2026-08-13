@@ -7754,3 +7754,43 @@ field of **8 proposals** before anyone noticed. Now sanitised on the way in, so 
 remember, with a test pinning it.
 
 Gate: typecheck clean, 1882 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - the pricing gate watched the field, not the words
+
+I ran all four deal-team agents against Bright Smile Dental on the VPS, which is what the previous
+three context fixes were building towards: print the string, run the agents, read what they say. All
+four produced work worth reading. The pre-send reviewer opened with a blocker nobody had spotted.
+
+**The document quoted two different prices, a hundred times apart.**
+
+    pricing_cents = 4,500,000  ->  PKR 45,000
+    scope         = "With PKR 4.5M implementation investment, payback occurs in 2.5 months"
+
+Both in one approved proposal on the live system. The pricing gate passed it, because the gate reads
+the priced FIELD and this contradiction lives in a sentence. A client reads the sentence.
+
+`src/lib/domain/quoted-price.ts` closes it. The hard part is not finding money in prose, it is telling
+OUR price from THEIR economics: a good proposal is full of the client's own money ("hemorrhaging PKR
+2.5M monthly", "PKR 8,000 a check-up", "they spent PKR 400,000 on the system they abandoned") and
+flagging those would make the check useless inside a week. A figure counts as our price only when its
+own sentence describes it as something charged for the work, nearest-word wins on a mixed sentence, and
+a short list of phrases ("per patient", "they paid", "abandoned") settles it outright because
+nearest-word cannot break a tie that meaning can.
+
+Wired into `canAdvance` as an optional document argument, so both call sites (proposals, invoices) now
+hand the gate their title, scope, terms and line-item text along with the legitimate declared prices.
+Surfaced in the pricing panel with the offending sentence quoted, because finding out at the moment you
+click approve means you have already lost the thread.
+
+Two regressions caught by the suite and worth recording: the money regex read "covers 60 hours" as
+"Rs 60" without a lookbehind, and "PKR 8,000 monthly" as eight billion, because the m of monthly is a
+perfectly good million suffix. Both gates also read their line items defensively now: this refusing is
+a founder fixing a sentence, this throwing is an invoice that can never be marked paid.
+
+`src/scripts/backfill-house-style.ts` cleans the em dashes already sitting in the 8 affected proposals
+and in the audit reports they were built from. Fixing the source stopped new ones; it did nothing for
+the rows a founder is about to send. Dry run by default, `--apply` to write, every change printed.
+
+Gate: typecheck clean, 1901 tests pass, build clean.
