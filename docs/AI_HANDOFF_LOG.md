@@ -7637,3 +7637,29 @@ system has to carry the busiest number in the report, not the most convenient on
 
 The correction path matters for exactly this reason: at the guessed 75 a month the build ran at 91.50,
 and at a corrected 8,000 a month it runs at 326. Same build, three and a half times the running cost.
+
+## 2026-08-13 - Stop asking for what the OS already knows (Claude)
+
+The qualification council writes, in its own rationale: "Sara having unilateral authority for
+expenditures up to PKR 500,000". The client container then showed an empty box asking what the contact
+can sign alone. The system knew, and made a person retype it.
+
+That is the shape of most remaining friction in Revenue: a fact stated in one module's prose, needed as
+a number in another, and a human bridging the gap by hand. `src/lib/domain/known-facts.ts` closes the
+first two:
+
+- **The solo signing limit**, which decides how big phase one of every quote may be.
+- **What they last spent on something like this**, which is the founder's best pricing anchor and which
+  WOBBLE's own reviewer reached for twice ("980 times what they paid for the last system").
+
+The rule, and it is not negotiable: **suggest, never apply.** These readings come from model-written
+prose, and prose extraction has been wrong twice already in this codebase (a volume read as 75 instead
+of 1,720, a currency assumed to be dollars when it was rupees). The container offers the number, quotes
+the sentence it came from, names which check said it, and waits for one click.
+
+Two specific traps handled and tested: the SAME rationale mentions a previous PKR 400,000 purchase, so
+authority language and a money figure must appear in the same sentence, and a number with no currency is
+refused rather than assumed. Budget-shaped checks are read first so a money sentence from an unrelated
+check cannot surface.
+
+Gate: typecheck clean, 1861 tests pass, build clean.

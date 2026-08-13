@@ -7,6 +7,7 @@ import { writeAuditEvent } from "@/lib/audit";
 import { isAuthError, requireFounder } from "@/lib/auth/route";
 import { sanitizeHouseStyle } from "@/lib/domain/house-style";
 import { locationsSchema, referralSchema, describeLocations } from "@/lib/domain/client-relationships";
+import { knownFactsForCompany } from "@/lib/known-facts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,8 +49,13 @@ export async function GET(request: Request, context: { params: Promise<{ company
       if (r) referrerName = r.name;
     }
 
+    // What the OS already knows and was asking for anyway. Offered, never applied: these come from
+    // model-written prose, and prose extraction in this codebase has been wrong before.
+    const known = await knownFactsForCompany(companyId).catch(() => ({ signingAuthority: null, previousSpend: null }));
+
     const sites = locations.success ? locations.data : [];
     return NextResponse.json({
+      known,
       ok: true,
       referral: referral.success ? { ...referral.data, referredByName: referrerName ?? referral.data.referredByName } : null,
       referredHere,

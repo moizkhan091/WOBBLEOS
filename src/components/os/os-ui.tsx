@@ -8761,6 +8761,10 @@ type RelationshipsView = {
   locations: Array<{ name: string; city?: string; note?: string; headcount?: number }>;
   locationSummary: string;
   soloAuthorityCents: number | null;
+  known?: {
+    signingAuthority: { value: { amountCents: number; currency: string }; quote: string; source: string; confidence: string } | null;
+    previousSpend: { value: { amountCents: number; currency: string }; quote: string; source: string; confidence: string } | null;
+  } | null;
 };
 
 /**
@@ -8828,6 +8832,28 @@ function RelationshipsPanel({ companyId, onChanged }: { companyId: string; onCha
         >Add</button>
         <span style={{ fontSize: 11, color: faint }}>Three clinics sharing one front desk is a different job from three independent branches, and the audit reads this.</span>
       </div>
+      {/* The OS already worked this out. Offer it rather than asking, and quote where it came from so
+          it can be judged rather than trusted. One click, not a retype. */}
+      {!v?.soloAuthorityCents && v?.known?.signingAuthority ? (
+        <div style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid rgba(184,255,44,0.28)", background: "rgba(184,255,44,0.05)", display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, color: C.white }}>
+              {v.known.signingAuthority.source} says your contact can sign {v.known.signingAuthority.value.currency} {(v.known.signingAuthority.value.amountCents / 100).toLocaleString()} alone.
+            </span>
+            <button
+              onClick={() => post({ action: "authority", soloAuthorityCents: v.known!.signingAuthority!.value.amountCents })}
+              disabled={busy}
+              style={busy ? disabledBtn : { ...primaryBtn, padding: "4px 11px", fontSize: 11.5 }}
+            >Use it</button>
+          </div>
+          <div style={{ fontSize: 11, color: faint, lineHeight: 1.5 }}>&ldquo;{v.known.signingAuthority.quote}&rdquo;</div>
+        </div>
+      ) : null}
+      {v?.known?.previousSpend ? (
+        <div style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>
+          They last spent {v.known.previousSpend.value.currency} {(v.known.previousSpend.value.amountCents / 100).toLocaleString()} on something like this. Worth having in mind when you price.
+        </div>
+      ) : null}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {v?.soloAuthorityCents ? (
           <span style={{ fontSize: 11.5, color: C.lime }}>Your contact can sign up to {(v.soloAuthorityCents / 100).toLocaleString()} on their own.</span>
