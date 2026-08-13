@@ -5,6 +5,20 @@ import { selectApprovedIntelligenceForTask, buildIntelligenceContextPlan } from 
 
 // Regression: partial payments ACCUMULATE via the payments ledger (SUM), never overwrite, and the
 // cached invoice amount is capped at the total (audit money-flow finding).
+/**
+ * Price an invoice the way a founder would, so a lifecycle test goes THROUGH the gate rather than
+ * around it. An invoice is where a wrong number stops being embarrassing and becomes a debt.
+ */
+async function priceInvoice(store: { getInvoice: (id: string) => Promise<any>; updateInvoice: (id: string, f: any) => Promise<void> }, id: string) {
+  const inv = await store.getInvoice(id);
+  const pricing = decidePricing(
+    { status: "awaiting_decision", cost: null, decision: null },
+    { oneOffCents: inv.totalCents, monthlyCents: 0, currency: inv.currency, reasoning: "Test price, chosen by a founder rather than inherited.", decidedBy: "Moiz" },
+    new Date("2026-02-01T00:00:00.000Z"),
+  );
+  await store.updateInvoice(id, { metadata: { ...(inv.metadata ?? {}), pricing } });
+}
+
 describe("finance mark_paid accumulation", () => {
   function store(inv: InvoiceRow, seedPaidCents = 0): { store: FinanceStore; get: () => InvoiceRow } {
     let row = inv;
@@ -21,7 +35,19 @@ describe("finance mark_paid accumulation", () => {
       } as unknown as FinanceStore,
     };
   }
-  const base = { id: "inv_1", status: "sent", totalCents: 10000, amountPaidCents: 0, invoiceNumber: "INV-1" } as unknown as InvoiceRow;
+  // A SENT invoice has, by definition, already been priced by a founder: the gate would not have let it
+  // reach `sent` otherwise. The fixture carries that decision so these tests exercise payment
+  // accumulation rather than re-proving the gate.
+  const base = {
+    id: "inv_1", status: "sent", totalCents: 10000, amountPaidCents: 0, invoiceNumber: "INV-1",
+    metadata: {
+      pricing: decidePricing(
+        { status: "awaiting_decision", cost: null, decision: null },
+        { oneOffCents: 10000, monthlyCents: 0, currency: "USD", reasoning: "Fixture price, chosen by a founder.", decidedBy: "Moiz" },
+        new Date("2026-02-01T00:00:00.000Z"),
+      ),
+    },
+  } as unknown as InvoiceRow;
 
   it("adds a second partial payment to the first instead of replacing it", async () => {
     const { store: s, get } = store(base);
@@ -65,6 +91,7 @@ describe("intelligence client isolation", () => {
 // Regression: idempotency race — a unique-violation on insert must dedupe, not crash.
 import { enqueueJob, type JobStore } from "@/lib/jobs";
 import { runWorker } from "@/lib/workers/runtime";
+import { decidePricing } from "@/lib/domain/pricing-gate";
 
 describe("jobs idempotency race", () => {
   it("returns the winning job (deduped) when insert hits a unique violation", async () => {

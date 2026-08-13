@@ -89,7 +89,7 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
       .limit(1),
     db.select().from(proposals).where(and(eq(proposals.companyId, companyId), isNull(proposals.archivedAt))).orderBy(desc(proposals.createdAt)).limit(10),
     db
-      .select({ title: proposals.title, pricingCents: proposals.pricingCents, currency: proposals.currency, status: proposals.status, companyId: proposals.companyId })
+      .select({ title: proposals.title, pricingCents: proposals.pricingCents, currency: proposals.currency, status: proposals.status, companyId: proposals.companyId, metadata: proposals.metadata })
       .from(proposals)
       .where(and(ne(proposals.companyId, companyId), isNull(proposals.archivedAt)))
       .orderBy(desc(proposals.createdAt))
@@ -126,9 +126,22 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
           terms: chosen.terms ?? null,
         }
       : null,
+    // Only genuinely PRICED proposals count as history. A draft nobody decided on is not a benchmark,
+    // and since the pricing gate landed an undecided proposal carries zero, so this filter is exact.
     pastQuotes: otherProposals
       .filter((p) => p.pricingCents > 0)
-      .map((p) => ({ title: p.title, totalCents: p.pricingCents, currency: p.currency, status: p.status, industry: p.companyId ? industryById.get(p.companyId) ?? null : null })),
+      .map((p) => {
+        const pricing = ((p.metadata ?? {}) as Record<string, unknown>).pricing as { decision?: { reasoning?: string }; cost?: { oneOffCents?: number } } | undefined;
+        return {
+          title: p.title,
+          totalCents: p.pricingCents,
+          currency: p.currency,
+          status: p.status,
+          industry: p.companyId ? industryById.get(p.companyId) ?? null : null,
+          reasoning: pricing?.decision?.reasoning,
+          costCents: pricing?.cost?.oneOffCents,
+        };
+      }),
     lastMessages: contacts
       .filter((c) => c.lastContactedAt)
       .map((c) => `${c.fullName} last contacted ${new Date(c.lastContactedAt as Date).toISOString().slice(0, 10)}${c.preferredChannel ? ` on ${c.preferredChannel}` : ""}`),

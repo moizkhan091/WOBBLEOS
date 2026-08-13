@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { proposals as proposalsTable, handoffs as handoffsTable, crmCompanies } from "@/db/schema";
+import { proposals as proposalsTable, handoffs as handoffsTable, crmCompanies, invoices as invoicesTable } from "@/db/schema";
 import { getDb, type Db } from "@/db";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
@@ -14,7 +14,7 @@ import {
 } from "@/lib/domain/proposal";
 import { buildHandoffEnvelope, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { canAdvance, type PricingState } from "@/lib/domain/pricing-gate";
-import { computeDeliveryCost, type IntegrationKey } from "@/lib/domain/delivery-cost";
+import { computeDeliveryCost, type CostInputsView, type IntegrationKey } from "@/lib/domain/delivery-cost";
 import { SERVICE_BY_SLUG } from "@/lib/domain/free-audit";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
@@ -181,13 +181,19 @@ export async function createProposalFromAudit(auditId: string, input: { createdB
     const categories: string[] = Array.isArray(report.opportunities)
       ? [...new Set((report.opportunities as Array<{ service?: string }>).map((o) => SERVICE_BY_SLUG.get(o.service ?? "")?.category).filter((c): c is NonNullable<typeof c> => Boolean(c)))]
       : [];
-    const deliveryCost = computeDeliveryCost({
+    const integrations = integrationsFromReport(report);
+    const monthlyVolume = monthlyVolumeFromReport(report);
+    const deliveryCost = computeDeliveryCost({ categories, integrations, monthlyVolume, currency: "USD" });
+    // Both of these are read out of the audit's prose, which is a guess dressed as a fact. Saying so
+    // is what lets a founder correct it, and a founder who cannot correct a number stops trusting it.
+    const costInputs: CostInputsView = {
+      monthlyVolume,
+      integrations,
       categories,
-      integrations: integrationsFromReport(report),
-      monthlyVolume: monthlyVolumeFromReport(report),
-      currency: "USD",
-    });
-    return { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report, country, city, soloAuthorityCents, deliveryCost };
+      volumeSource: monthlyVolume > 0 ? "guessed" : "unknown",
+      integrationsSource: "guessed",
+    };
+    return { id: a.id, businessName: a.businessName, companyId: a.companyId, opportunityId: a.opportunityId, report, country, city, soloAuthorityCents, deliveryCost, costInputs };
   });
   const auditRow = await getRow(auditId);
   if (!auditRow) return null;
@@ -353,6 +359,15 @@ export class PricingNotDecidedError extends Error {
   }
 }
 
+/** Copy an accepted proposal's pricing decision onto the invoice raised from it. */
+async function inheritInvoicePricing(invoiceId: string, pricing: PricingState, db: Db = getDb()): Promise<void> {
+  const [inv] = await db.select({ metadata: invoicesTable.metadata }).from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1);
+  await db
+    .update(invoicesTable)
+    .set({ metadata: { ...((inv?.metadata ?? {}) as Record<string, unknown>), pricing }, updatedAt: new Date() })
+    .where(eq(invoicesTable.id, invoiceId));
+}
+
 export async function proposalAction(id: string, action: ProposalAction, input: { actor: string; reason?: string }, deps: ProposalDeps = {}): Promise<{ proposal: ProposalRow; invoiceId?: string; handoffId?: string } | null> {
   const store = deps.store ?? defaultStore();
   const prop = await store.getProposal(id);
@@ -386,6 +401,11 @@ export async function proposalAction(id: string, action: ProposalAction, input: 
   if (action === "accept" && prop.pricingCents > 0) {
     const draft = deps.draftInvoice ?? (async (i) => {
       const inv = await createInvoice({ companyId: i.companyId, opportunityId: i.opportunityId, proposalId: i.proposalId, lineItems: [{ description: i.description, quantity: 1, unitPriceCents: i.totalCents }], createdBy: i.createdBy }, {});
+      // The invoice INHERITS the proposal's pricing decision. A client who accepted a price a founder
+      // chose should not have their invoice blocked asking for that same decision again, and the name
+      // on the invoice stays the name of whoever actually set the number.
+      const pricing = ((prop.metadata ?? {}) as Record<string, unknown>).pricing;
+      if (pricing) await inheritInvoicePricing(inv.id, pricing as PricingState).catch(() => {});
       return { id: inv.id };
     });
     const inv = await draft({ companyId: prop.companyId ?? undefined, opportunityId: prop.opportunityId ?? undefined, proposalId: prop.id, totalCents: prop.pricingCents, description: prop.title, createdBy: input.actor });

@@ -7588,3 +7588,34 @@ The audit's own estimate is kept as `auditEstimateCents`, shown to the founder l
 a model's guess at a number it has no basis for.
 
 Gate: typecheck clean, 1829 tests pass, build clean.
+
+## 2026-08-13 - The four follow-ups, and the root cause at last (Claude)
+
+**1. The gate reaches invoices.** An invoice is where a wrong number stops being embarrassing and
+becomes a debt. `invoiceAction` refuses to approve, send or mark paid without a pricing decision.
+Cancelling is deliberately never blocked: stopping a wrong invoice must always be possible. An invoice
+raised from an accepted proposal INHERITS that proposal's decision, so the common path gains no extra
+step and the name on the invoice stays whoever actually chose the number.
+
+**2. A founder can correct what the cost was computed from.** Volume and integrations are read out of
+the audit's prose, which makes them guesses, and a wrong guess is a wrong cost that survives into a
+price. PATCH the pricing endpoint with the real numbers and it recomputes; the correction is marked as
+the founder's so nothing re-guesses over it. `costQuestions` turns whatever is still a guess into
+questions worth asking on the next call.
+
+**3. Pricing memory.** The analyst said `not_enough_history` on every real proposal because there was
+none. Now that a price is a decision with a reason and a name, those become the benchmark:
+`pricing-memory.ts` ranks past deals by industry, size and currency (currency must MATCH, since
+comparing a rupee quote to a dollar one is the mistake that started all this), reports the median and
+the win rate, and hands the analyst each past price WITH its reasoning. Below two comparables it says so
+rather than inventing a rate card from one deal.
+
+**4. The root cause, fixed at the audit.** The opportunity prompt said "identify a COMPREHENSIVE set,
+aim for 10 to 14, covering every system" and the user message asked for "the full opportunity set
+(12-20)". That is why a proposal carried complaint tracking for a business that had never mentioned a
+complaint. Every opportunity now has to name the bottleneck or the client statement it comes from, and
+`keepGroundedOpportunities` drops the ones that cannot, recording what it dropped so an audit never
+quietly shrinks. If NOTHING is grounded the model ignored the field, and the audit is kept rather than
+thrown away.
+
+Gate: typecheck clean, 1840 tests pass, build clean.

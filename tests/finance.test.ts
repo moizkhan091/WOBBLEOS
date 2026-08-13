@@ -10,6 +10,20 @@ import {
 
 const now = new Date("2026-07-09T12:00:00Z");
 
+/**
+ * Price an invoice the way a founder would, so a lifecycle test goes THROUGH the gate rather than
+ * around it. An invoice is where a wrong number stops being embarrassing and becomes a debt.
+ */
+async function priceInvoice(store: { getInvoice: (id: string) => Promise<any>; updateInvoice: (id: string, f: any) => Promise<void> }, id: string) {
+  const inv = await store.getInvoice(id);
+  const pricing = decidePricing(
+    { status: "awaiting_decision", cost: null, decision: null },
+    { oneOffCents: inv.totalCents, monthlyCents: 0, currency: inv.currency, reasoning: "Test price, chosen by a founder rather than inherited.", decidedBy: "Moiz" },
+    new Date("2026-02-01T00:00:00.000Z"),
+  );
+  await store.updateInvoice(id, { metadata: { ...(inv.metadata ?? {}), pricing } });
+}
+
 describe("finance domain", () => {
   it("computes invoice totals from line items + tax/discount", () => {
     const row = buildInvoiceRow(
@@ -70,6 +84,7 @@ describe("finance domain", () => {
 // ---------------------------------------------------------------- service
 
 import { createInvoice, invoiceAction, sweepOverdueInvoices, type FinanceStore } from "@/lib/finance";
+import { decidePricing } from "@/lib/domain/pricing-gate";
 
 function makeStore() {
   const invoices = new Map<string, InvoiceRow>();
@@ -144,32 +159,41 @@ describe("finance service", () => {
   it("walks the founder-gated lifecycle and records payment", async () => {
     const { store } = makeStore();
     const inv = await createInvoice({ lineItems: [{ description: "Audit", quantity: 1, unitPriceCents: 600000 }] }, { store, now, recordAudit: async () => {} });
+    await priceInvoice(store, inv.id);
     expect((await invoiceAction(inv.id, "approve", { actor: "Moiz" }, { store, now, recordAudit: async () => {} }))?.status).toBe("approved");
+    await priceInvoice(store, inv.id);
     expect((await invoiceAction(inv.id, "send", { actor: "Moiz" }, { store, now, recordAudit: async () => {} }))?.status).toBe("sent");
+    await priceInvoice(store, inv.id);
     const paid = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", paymentReference: "wire-123" }, { store, now, recordAudit: async () => {} });
     expect(paid?.status).toBe("paid");
     expect(paid?.amountPaidCents).toBe(600000);
     // cannot pay a paid invoice again via send
+    await priceInvoice(store, inv.id);
     expect(await invoiceAction(inv.id, "send", { actor: "Moiz" }, { store, now, recordAudit: async () => {} })).toBeNull();
   });
 
   it("partial payments are ledger-based, additive, and idempotent on paymentReference", async () => {
     const { store, payments } = makeStore();
     const inv = await createInvoice({ lineItems: [{ description: "Retainer", quantity: 1, unitPriceCents: 1000 }] }, { store, now, recordAudit: async () => {} });
+    await priceInvoice(store, inv.id);
     await invoiceAction(inv.id, "approve", { actor: "Moiz" }, { store, now, recordAudit: async () => {} });
+    await priceInvoice(store, inv.id);
     await invoiceAction(inv.id, "send", { actor: "Moiz" }, { store, now, recordAudit: async () => {} });
 
     // First partial: 400 of 1000.
+    await priceInvoice(store, inv.id);
     const p1 = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 400, paymentReference: "wire-A" }, { store, now, recordAudit: async () => {} });
     expect(p1?.status).toBe("partially_paid");
     expect(p1?.amountPaidCents).toBe(400);
 
     // Duplicate of wire-A (double-click / webhook retry): must NOT double-count.
+    await priceInvoice(store, inv.id);
     const dup = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 400, paymentReference: "wire-A" }, { store, now, recordAudit: async () => {} });
     expect(dup?.amountPaidCents).toBe(400); // unchanged — idempotent
     expect(payments.filter((p) => p.paymentReference === "wire-A")).toHaveLength(1);
 
     // Second DISTINCT partial: 600 -> fully paid (both summed, no lost update).
+    await priceInvoice(store, inv.id);
     const p2 = await invoiceAction(inv.id, "mark_paid", { actor: "Moiz", amountPaidCents: 600, paymentReference: "wire-B" }, { store, now, recordAudit: async () => {} });
     expect(p2?.amountPaidCents).toBe(1000);
     expect(p2?.status).toBe("paid");

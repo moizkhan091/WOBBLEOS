@@ -64,6 +64,15 @@ export const opportunitySchema = z.object({
         monthlyHoursSaved: z.number().min(0).optional(),
         estimatedMonthlyValueCents: z.number().int().min(0).optional(),
         kpis: z.array(z.string().trim().min(1)).default([]),
+        /**
+         * The bottleneck or the thing the client actually said that this comes from.
+         *
+         * WOBBLE's own deal reviewer found three line items on a real proposal that "appear nowhere in
+         * the audit findings", because the audit was told to be COMPREHENSIVE rather than grounded. An
+         * opportunity that cannot name its source is one the client never asked for, and it travels all
+         * the way into a quote.
+         */
+        groundedIn: z.string().trim().default(""),
       }),
     )
     .default([]),
@@ -154,10 +163,16 @@ export function buildDiscoveryPrompt(ctx: AuditContext): ProviderMessage[] {
 }
 
 export function buildOpportunityPrompt(ctx: AuditContext, discovery: Discovery): ProviderMessage[] {
-  const system = `You are the OPPORTUNITY partner. From the current-state map and bottlenecks, identify a COMPREHENSIVE set of AI/automation opportunities, aim for 10 to 14, covering every system (acquisition, delivery, support, ops, finance, marketing). For EACH: a description, how it works, the expected outcome, impact + difficulty, estimated monthly hours saved, estimated monthly value in INTEGER CENTS, and 1-3 KPIs to measure it. Keep each entry TIGHT (1-2 sentences per field) so the full JSON is complete and never truncated. Where a Wobble service fits, put its slug in "service" (only from the menu). Respond with STRICT JSON only:
-{"opportunities":[{"title":"...","area":"...","service":"wobble-slug-or-empty","description":"...","howItWorks":"...","expectedOutcome":"...","impact":"low|medium|high","difficulty":"low|medium|high","monthlyHoursSaved":0,"estimatedMonthlyValueCents":0,"kpis":["..."]}]}
+  const system = `You are the OPPORTUNITY partner. From the current-state map and bottlenecks, identify the AI/automation opportunities this business ACTUALLY has.
+
+The single rule that matters: EVERY opportunity must trace to a bottleneck above or to something the stakeholder said. Put that source, quoted or closely paraphrased, in "groundedIn". If you cannot fill "groundedIn" from the material, do not write the opportunity.
+
+This used to ask for a comprehensive set covering every system, and the result was a proposal carrying three things the client had never mentioned. A business that never raised a complaint does not need complaint tracking. Five grounded opportunities beat fourteen where a third are invented, because the invented ones are what stop a client trusting the rest.
+
+Write as many as the material genuinely supports. Fewer than five usually means the notes are thin, say so rather than padding. More than twelve almost never happens honestly. For EACH: a description, how it works, the expected outcome, impact + difficulty, estimated monthly hours saved, estimated monthly value in INTEGER CENTS, and 1-3 KPIs to measure it. Keep each entry TIGHT (1-2 sentences per field) so the full JSON is complete and never truncated. Where a Wobble service fits, put its slug in "service" (only from the menu). Respond with STRICT JSON only:
+{"opportunities":[{"title":"...","area":"...","service":"wobble-slug-or-empty","description":"...","howItWorks":"...","expectedOutcome":"...","impact":"low|medium|high","difficulty":"low|medium|high","monthlyHoursSaved":0,"estimatedMonthlyValueCents":0,"kpis":["..."],"groundedIn":"the bottleneck or the client's own words this comes from"}]}
 WOBBLE SERVICE MENU (use these slugs): ${SERVICE_MENU}`;
-  const user = `CURRENT STATE:\n${JSON.stringify(discovery)}\n\nBUSINESS: ${ctx.businessName}. Generate the full opportunity set (12-20).`;
+  const user = `CURRENT STATE:\n${JSON.stringify(discovery)}\n\nBUSINESS: ${ctx.businessName}. Write only the opportunities this material supports.`;
   return [{ role: "system", content: withHouseStyle(system) }, { role: "user", content: user }];
 }
 
@@ -230,4 +245,24 @@ export function assemblePaidAuditReport(input: {
     nextSteps: input.report.nextSteps,
     serviceCount: new Set(input.opportunities.opportunities.map((o) => o.service).filter(Boolean)).size,
   });
+}
+
+/**
+ * Drop opportunities that cannot name where they came from.
+ *
+ * The prompt asks for grounding; this enforces it, the same way the follow-up writer's invented case
+ * study is caught by a checker rather than trusted to instructions. An ungrounded opportunity is one
+ * the client never asked for, and it travels all the way into a quote.
+ *
+ * Returns what it dropped so an audit can say so rather than silently shrinking. If EVERYTHING is
+ * ungrounded the model ignored the field, and throwing the whole audit away would be worse than
+ * keeping it, so it is kept and the caller can see that nothing was grounded.
+ */
+export function keepGroundedOpportunities(set: OpportunitySet): { kept: OpportunitySet["opportunities"]; dropped: string[] } {
+  const grounded = set.opportunities.filter((o) => (o.groundedIn ?? "").trim().length >= 10);
+  if (!grounded.length) return { kept: set.opportunities, dropped: [] };
+  return {
+    kept: grounded,
+    dropped: set.opportunities.filter((o) => (o.groundedIn ?? "").trim().length < 10).map((o) => o.title),
+  };
 }

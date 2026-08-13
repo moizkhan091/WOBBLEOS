@@ -27,6 +27,7 @@ import {
   buildRoadmapPrompt,
   buildReportPrompt,
   discoverySchema,
+  keepGroundedOpportunities,
   opportunitySchema,
   parseJsonObject,
   prioritizationSchema,
@@ -158,6 +159,7 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
   const now = deps.now ?? new Date();
   const entityId = input.companyId ?? input.businessName;
   const modelRunIds: string[] = [];
+  const ungroundedDropped: string[] = [];
 
   await recordAudit({ eventType: "audit.paid_started", module: PAID_AUDIT_MODULE, entityType: "audit", entityId, actor, metadata: { businessName: input.businessName } });
 
@@ -258,7 +260,14 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
       checkpoint: bindNodeCheckpoint(cpCtx, "opportunity", 1),
     });
     if (oRun.runId) modelRunIds.push(oRun.runId);
-    const opportunities = oppParsed!;
+    // An opportunity that cannot name the bottleneck or the client statement it came from is one the
+    // client never asked for, and it travels all the way into a quote. WOBBLE's own deal reviewer found
+    // three such line items on a real proposal. The prompt asks for grounding; this enforces it.
+    const grounding = keepGroundedOpportunities(oppParsed!);
+    if (grounding.dropped.length) {
+      ungroundedDropped.push(...grounding.dropped);
+    }
+    const opportunities = { opportunities: grounding.kept };
     await advance(PAID_AUDIT_AGENTS.opportunity, PAID_AUDIT_AGENTS.prioritization, "prioritization", "rank opportunities by impact/difficulty", { opportunities });
 
     // Node 3 — Prioritization (impact / difficulty matrix). Soft: an unparseable result falls back to empty.
@@ -312,7 +321,9 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     };
     await (deps.persistAudit ?? defaultPersistAudit)(row);
 
-    await recordAudit({ eventType: "audit.paid_completed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { agentRunCount: 5, opportunities: fullReport.opportunities.length, phases: fullReport.roadmap.length, modelRunIds } });
+    // What was dropped for having no source is recorded, never silently discarded: an audit that
+    // quietly shrank is as hard to trust as one that quietly padded.
+    await recordAudit({ eventType: "audit.paid_completed", module: PAID_AUDIT_MODULE, entityType: "audit", entityId: row.id, actor, metadata: { agentRunCount: 5, opportunities: fullReport.opportunities.length, phases: fullReport.roadmap.length, modelRunIds, ungroundedDropped } });
 
     const auditResult: PaidAuditResult = { auditId: row.id, agentRunCount: 5, modelRunIds, report: fullReport };
 

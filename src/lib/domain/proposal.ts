@@ -119,6 +119,8 @@ interface AuditForProposal {
   soloAuthorityCents?: number | null;
   /** What this build costs WOBBLE, computed from the tools and integrations it needs. Never a price. */
   deliveryCost?: import("@/lib/domain/delivery-cost").DeliveryCost | null;
+  /** What the cost was computed from, and whether each input was guessed or given. */
+  costInputs?: import("@/lib/domain/delivery-cost").CostInputsView | null;
 }
 
 function asArray<T>(v: unknown): T[] {
@@ -190,7 +192,7 @@ export function proposalInputFromAudit(audit: AuditForProposal): CreateProposalI
       // The check a founder needs BEFORE sending: can the person they are talking to actually sign it?
       phaseOneAuthority: phaseOneWithinAuthority(priceByPhase[0]?.priceCents ?? 0, audit.soloAuthorityCents ?? null),
       // The gate. Nothing goes to a client until a founder types a number and signs their name to it.
-      pricing: awaitingPricing(audit.deliveryCost ?? null, totalCents),
+      pricing: awaitingPricing(audit.deliveryCost ?? null, totalCents, audit.costInputs ?? null),
       // The flag the UI reads. A price nobody can name the unit of must not go out.
       currencyUnverified: verdict.currency === null,
     },

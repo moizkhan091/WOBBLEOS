@@ -246,7 +246,14 @@ export interface DealTeamContext {
   qualification: string | null;
   services: string[];
   proposal: { title: string; totalCents: number; currency: string; scope: string | null; services: Array<{ name: string; priceCents?: number }>; terms: string | null } | null;
-  pastQuotes: Array<{ title: string; totalCents: number; currency: string; status: string; industry: string | null }>;
+  /**
+   * What WOBBLE has charged before, and WHY.
+   *
+   * The reasoning is the part that makes this a benchmark rather than a list of numbers: "three times
+   * what they abandoned" tells the analyst how the price was reached, so it can say whether the same
+   * logic holds for this client. A price with no reasoning is a data point nobody can argue with.
+   */
+  pastQuotes: Array<{ title: string; totalCents: number; currency: string; status: string; industry: string | null; reasoning?: string; costCents?: number }>;
   lastMessages: string[];
 }
 
@@ -263,8 +270,12 @@ export function renderContext(ctx: DealTeamContext): string {
     if (ctx.proposal.terms) lines.push(`Terms: ${ctx.proposal.terms}`);
   }
   if (ctx.pastQuotes.length) {
-    lines.push("", "WHAT WOBBLE HAS QUOTED OTHER CLIENTS:");
-    for (const q of ctx.pastQuotes) lines.push(`- ${q.title}${q.industry ? ` (${q.industry})` : ""}: ${centsToMoney(q.totalCents, q.currency)} [${q.status}]`);
+    lines.push("", "WHAT WOBBLE HAS CHARGED BEFORE, AND WHY:");
+    for (const q of ctx.pastQuotes) {
+      lines.push(`- ${q.title}${q.industry ? ` (${q.industry})` : ""}: ${centsToMoney(q.totalCents, q.currency)} [${q.status}]`);
+      if (q.reasoning) lines.push(`  the founder's reason: ${q.reasoning}`);
+      if (q.costCents) lines.push(`  it cost us ${centsToMoney(q.costCents, q.currency)} to build, so the margin was ${Math.round(((q.totalCents - q.costCents) / q.totalCents) * 100)}%`);
+    }
   }
   if (ctx.lastMessages.length) lines.push("", "RECENT CONTACT:", ...ctx.lastMessages.map((m) => `- ${m}`));
   return lines.join("\n");

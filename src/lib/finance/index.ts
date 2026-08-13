@@ -16,6 +16,7 @@ import {
   type RevenueSummary,
 } from "@/lib/domain/finance";
 import { listOpportunities } from "@/lib/crm";
+import { canAdvance, type PricingState } from "@/lib/domain/pricing-gate";
 
 /**
  * Finance-lite service (IO). Draft/track invoices, revenue rollups. Guardrail: approve/send/mark-paid
@@ -96,6 +97,32 @@ export async function getInvoice(id: string, deps: FinanceDeps = {}): Promise<In
 export type InvoiceAction = "approve" | "send" | "mark_paid" | "cancel";
 
 /** Founder-gated invoice lifecycle. mark_paid records the payment; never auto-moves money. */
+/**
+ * An invoice is where a wrong number stops being embarrassing and starts being a debt.
+ *
+ * The same gate as proposals: the OS may compute what delivery costs, only a founder sets the price.
+ * An invoice raised from an accepted proposal INHERITS that proposal's decision, so the common path
+ * needs no extra step. One drafted by hand, or a retainer whose price was never decided, is stopped
+ * before it is approved or sent.
+ *
+ * Cancelling is deliberately never blocked. Stopping a wrong invoice must always be possible.
+ */
+function assertInvoicePriced(inv: InvoiceRow, target: string): void {
+  if (target === "cancelled") return;
+  const state = ((inv.metadata ?? {}) as Record<string, unknown>).pricing as PricingState | undefined;
+  // An invoice for a zero total is a different bug and the status machine already refuses it; this gate
+  // is only about WHO chose the number.
+  const verdict = canAdvance(state ?? null, target === "approved" || target === "sent" || target === "paid" ? "sent" : target);
+  if (!verdict.allowed) throw new InvoicePricingNotDecidedError(verdict.because);
+}
+
+export class InvoicePricingNotDecidedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvoicePricingNotDecidedError";
+  }
+}
+
 export async function invoiceAction(id: string, action: InvoiceAction, input: { actor: string; paymentReference?: string; amountPaidCents?: number } , deps: FinanceDeps = {}): Promise<InvoiceRow | null> {
   const store = deps.store ?? defaultStore();
   const inv = await store.getInvoice(id);
@@ -103,6 +130,7 @@ export async function invoiceAction(id: string, action: InvoiceAction, input: { 
   const now = deps.now ?? new Date();
   const target: InvoiceStatus = action === "approve" ? "approved" : action === "send" ? "sent" : action === "cancel" ? "cancelled" : "paid";
   if (!canTransitionInvoice(inv.status, target)) return null;
+  assertInvoicePriced(inv, target);
 
   const fields: Partial<InvoiceRow> = { status: target, updatedAt: now };
   if (action === "approve") fields.approvedBy = input.actor;

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * What a build costs WOBBLE to deliver and to run. Not what to charge for it.
  *
@@ -122,6 +124,7 @@ export const INTEGRATION_COSTS = [
   { key: "legacy_db", label: "A legacy database", setupUsdCents: 50_000, because: "Access, schema archaeology, and usually a read-only mirror so nothing breaks." },
 ] as const;
 
+export const INTEGRATION_KEYS = INTEGRATION_COSTS.map((i) => i.key) as unknown as [IntegrationKey, ...IntegrationKey[]];
 export type IntegrationKey = (typeof INTEGRATION_COSTS)[number]["key"];
 export const INTEGRATION_BY_KEY = new Map(INTEGRATION_COSTS.map((i) => [i.key, i]));
 
@@ -244,4 +247,45 @@ export function marginAt(price: { oneOffCents: number; monthlyCents?: number }, 
     };
   }
   return { setupMargin, runMargin, runwayMonths, verdict: `${Math.round((setupMargin ?? 0) * 100)}% on the build, ${Math.round((runMargin ?? 0) * 100)}% on the monthly.` };
+}
+
+// -------------------------------------------------------------------------- correcting what we guessed
+
+/**
+ * What a founder can correct about a cost, and what the OS guessed.
+ *
+ * Volume and integrations are read out of the audit's prose, which is a guess dressed as a fact. When
+ * it guesses wrong the cost is wrong, and a founder who can see the number but not fix it will stop
+ * trusting the number. So both are editable, the guess is shown next to the correction, and the origin
+ * of every input is stated.
+ */
+export interface CostInputsView {
+  monthlyVolume: number;
+  integrations: IntegrationKey[];
+  categories: string[];
+  /** Where each came from, so a corrected input reads differently from a guessed one. */
+  volumeSource: "guessed" | "founder" | "unknown";
+  integrationsSource: "guessed" | "founder";
+}
+
+export const costCorrectionSchema = z.object({
+  monthlyVolume: z.number().int().min(0).max(10_000_000).optional(),
+  integrations: z.array(z.enum(INTEGRATION_KEYS)).max(10).optional(),
+}).refine((v) => v.monthlyVolume !== undefined || v.integrations !== undefined, { message: "nothing to correct" });
+export type CostCorrection = z.infer<typeof costCorrectionSchema>;
+
+/** The questions worth asking on the next call to make this cost real rather than assumed. */
+export function costQuestions(view: CostInputsView): string[] {
+  const out: string[] = [];
+  if (view.volumeSource !== "founder") {
+    out.push(view.volumeSource === "unknown"
+      ? "How many enquiries, messages or bookings do they handle in a month? Nothing in the audit said, so usage is costed at the floor."
+      : `We read their volume as about ${view.monthlyVolume.toLocaleString()} a month from what they told us. Worth confirming, since every usage line scales with it.`);
+  }
+  if (view.integrationsSource !== "founder") {
+    out.push(view.integrations.length
+      ? `We think we have to connect into: ${view.integrations.map((k) => INTEGRATION_BY_KEY.get(k)?.label ?? k).join(", ")}. Anything missing here is cost we have not priced.`
+      : "Nothing was identified on their side to integrate with. That is rarely true, and it is the line that varies most.");
+  }
+  return out;
 }

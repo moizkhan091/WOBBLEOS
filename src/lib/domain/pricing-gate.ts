@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DeliveryCost } from "@/lib/domain/delivery-cost";
+import type { CostInputsView, DeliveryCost } from "@/lib/domain/delivery-cost";
 
 /**
  * No document leaves this system carrying a price a human did not choose.
@@ -53,11 +53,18 @@ export interface PricingState {
   decision: PricingDecision | null;
   /** The audit's own implementation guess, kept for reference and never used as a price. */
   auditEstimateCents?: number | null;
+  /**
+   * The inputs the cost was computed from, and where each came from.
+   *
+   * Kept so a founder can correct a guess and have the cost recomputed, without re-reading the audit
+   * and without losing their correction the next time anything touches the proposal.
+   */
+  inputs?: CostInputsView | null;
 }
 
 /** A fresh artifact: costed if we can, priced by nobody. */
-export function awaitingPricing(cost: DeliveryCost | null, auditEstimateCents?: number | null): PricingState {
-  return { status: "awaiting_decision", cost, decision: null, auditEstimateCents: auditEstimateCents ?? null };
+export function awaitingPricing(cost: DeliveryCost | null, auditEstimateCents?: number | null, inputs?: CostInputsView | null): PricingState {
+  return { status: "awaiting_decision", cost, decision: null, auditEstimateCents: auditEstimateCents ?? null, inputs: inputs ?? null };
 }
 
 export function decidePricing(state: PricingState, decision: PricingDecision, now: Date): PricingState {

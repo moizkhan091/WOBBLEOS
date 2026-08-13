@@ -40,7 +40,7 @@ const phase = (title: string) => ({ title, months: "Month 1-3", focus: "focus", 
 function oppSet(n: number, grounded: number): PaidAuditReport["opportunities"] {
   return Array.from({ length: n }, (_, i) => ({
     title: `Opp ${i + 1}`, area: "acquisition", service: i < grounded ? REAL_SLUGS[i % REAL_SLUGS.length] : "",
-    description: "desc", howItWorks: "how", expectedOutcome: "outcome", impact: "high" as const, difficulty: "medium" as const, kpis: ["kpi"],
+    description: "desc", howItWorks: "how", expectedOutcome: "outcome", impact: "high" as const, difficulty: "medium" as const, groundedIn: "Fixture: traceable to a stated bottleneck.", kpis: ["kpi"],
   }));
 }
 function strongReport(): PaidAuditReport {

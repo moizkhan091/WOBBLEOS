@@ -26,7 +26,7 @@ const step = (s: string) => ({ step: s, detail: "d", tool: "t", pain: "p" });
 const phase = (title: string) => ({ title, months: "1-3", focus: "f", objectives: ["o1", "o2"], deliverables: ["d1"], items: ["Opp 1"], expectedOutcome: "o" });
 const REAL_SLUGS = ["speed-to-lead-system", "missed-call-text-back-system", "website-chat-booking-agent", "appointment-setter-system"];
 function oppSet(n: number, grounded: number): PaidAuditReport["opportunities"] {
-  return Array.from({ length: n }, (_, i) => ({ title: `Opp ${i + 1}`, area: "a", service: i < grounded ? REAL_SLUGS[i % REAL_SLUGS.length] : "", description: "d", howItWorks: "h", expectedOutcome: "e", impact: "high" as const, difficulty: "medium" as const, kpis: ["k"] }));
+  return Array.from({ length: n }, (_, i) => ({ title: `Opp ${i + 1}`, area: "a", service: i < grounded ? REAL_SLUGS[i % REAL_SLUGS.length] : "", description: "d", howItWorks: "h", expectedOutcome: "e", impact: "high" as const, difficulty: "medium" as const, kpis: ["k"], groundedIn: "Fixture: traceable to a stated bottleneck." }));
 }
 function strongReport(): PaidAuditReport {
   return {
