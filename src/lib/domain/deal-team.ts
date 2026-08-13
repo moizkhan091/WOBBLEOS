@@ -245,7 +245,20 @@ export interface DealTeamContext {
   approvedFindings: string[];
   qualification: string | null;
   services: string[];
-  proposal: { title: string; totalCents: number; currency: string; scope: string | null; services: Array<{ name: string; priceCents?: number }>; terms: string | null } | null;
+  proposal: {
+    title: string;
+    /** What the client is being charged. NULL when no founder has decided yet, which is not the same as zero. */
+    totalCents: number | null;
+    currency: string;
+    scope: string | null;
+    services: Array<{ name: string; priceCents?: number }>;
+    terms: string | null;
+    /** What the build costs WOBBLE. The analyst was judging prices with no cost basis at all. */
+    costOneOffCents?: number | null;
+    costMonthlyCents?: number | null;
+    /** What one person at the client can approve alone, when we know it. */
+    soloAuthorityCents?: number | null;
+  } | null;
   /**
    * What WOBBLE has charged before, and WHY.
    *
@@ -264,7 +277,19 @@ export function renderContext(ctx: DealTeamContext): string {
   if (ctx.qualification) lines.push("", `QUALIFICATION: ${ctx.qualification}`);
   if (ctx.services.length) lines.push("", "WOBBLE SERVICES IN PLAY:", ...ctx.services.map((s) => `- ${s}`));
   if (ctx.proposal) {
-    lines.push("", `PROPOSAL ON THE TABLE: ${ctx.proposal.title} — ${centsToMoney(ctx.proposal.totalCents, ctx.proposal.currency)}`);
+    // "Not priced yet" and "priced at zero" mean completely different things, and telling an agent the
+    // second when the first is true makes every judgement it offers worthless.
+    const priceLine = ctx.proposal.totalCents === null || ctx.proposal.totalCents <= 0
+      ? "NO PRICE SET YET. A founder has not decided what to charge, so do not comment on the number, comment on the shape, the scope and whether the cost basis supports a sensible one."
+      : centsToMoney(ctx.proposal.totalCents, ctx.proposal.currency);
+    lines.push("", `PROPOSAL ON THE TABLE: ${ctx.proposal.title} — ${priceLine}`);
+    if (ctx.proposal.costOneOffCents !== null && ctx.proposal.costOneOffCents !== undefined) {
+      const run = ctx.proposal.costMonthlyCents ? `, and ${centsToMoney(ctx.proposal.costMonthlyCents, ctx.proposal.currency)} a month to run` : "";
+      lines.push(`WHAT IT COSTS WOBBLE TO DELIVER: ${centsToMoney(ctx.proposal.costOneOffCents, ctx.proposal.currency)} to build${run}. This is OUR cost, not a price, and it excludes our own time.`);
+    }
+    if (ctx.proposal.soloAuthorityCents) {
+      lines.push(`WHAT THE CONTACT CAN APPROVE ALONE: ${centsToMoney(ctx.proposal.soloAuthorityCents, ctx.proposal.currency)}. Anything above needs a joint decision nobody from WOBBLE will be in the room for.`);
+    }
     if (ctx.proposal.scope) lines.push(`Scope: ${ctx.proposal.scope}`);
     if (ctx.proposal.services.length) lines.push("Line items:", ...ctx.proposal.services.map((s) => `- ${s.name}${s.priceCents ? ` — ${centsToMoney(s.priceCents, ctx.proposal!.currency)}` : ""}`));
     if (ctx.proposal.terms) lines.push(`Terms: ${ctx.proposal.terms}`);

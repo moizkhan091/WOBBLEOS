@@ -7729,3 +7729,28 @@ Every fold summary reads from the same worklist row the header line uses, so the
 thing at the top and something else halfway down.
 
 Gate: typecheck clean, 1874 tests pass, build clean.
+
+## 2026-08-13 - Auditing the deal team against everything built after it (Claude)
+
+The objection handler, follow-up writer, deal reviewer and pricing analyst were built before the pricing
+gate, the phasing and the delivery-cost model. Nobody had checked what they were being told since. Three
+findings, all real.
+
+**1. A price of zero is not "no price".** Since the gate landed, an undecided proposal carries zero, and
+the context passed that straight through. The pricing analyst was being told the client is being charged
+nothing and judging accordingly. The context now says "NO PRICE SET YET" and redirects the agent to what
+it CAN judge: the shape, the scope, and whether the cost basis supports a sensible number.
+
+**2. The analyst had no cost basis at all.** It was asked to sanity-check prices while having no idea
+what a build costs WOBBLE, which is the single number that question turns on. The context now carries
+the delivery cost, stated plainly as OURS and as excluding our own time so it is never mistaken for a
+floor price, plus what the contact can approve alone. The reviewer reasoned about that authority
+unprompted on a real proposal ("778 times her signing authority"), which is a strong sign it belonged in
+the context rather than being rediscovered each run.
+
+**3. Em dashes, which the founder banned outright.** The paid-audit graph was the one place producing
+prose that never passed through `sanitizeDeep`. Its executive summaries carried em dashes into the scope
+field of **8 proposals** before anyone noticed. Now sanitised on the way in, so nothing downstream has to
+remember, with a test pinning it.
+
+Gate: typecheck clean, 1882 tests pass, build clean.

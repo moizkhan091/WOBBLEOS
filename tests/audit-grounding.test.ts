@@ -73,3 +73,23 @@ describe("the prompt asks for grounding rather than coverage", () => {
     expect(prompt[1].content).toContain("only the opportunities this material supports");
   });
 });
+
+describe("the audit's own prose obeys the house style", () => {
+  it("strips the dashes the founder banned, at the source", async () => {
+    const { sanitizeDeep, containsBannedDash } = await import("@/lib/domain/house-style");
+    // Verbatim shape of what leaked: an audit executive summary with an em dash, which then flowed
+    // into eight proposals through the scope field before anyone noticed.
+    const report = {
+      executiveSummary: "An AI-first transformation—deploying WhatsApp automation—recovers the lost revenue.",
+      opportunities: [{ title: "No-show reduction", description: "Multi-touch reminders – three touches." }],
+    };
+    const clean = sanitizeDeep(report);
+    expect(containsBannedDash(JSON.stringify(clean))).toBe(false);
+    expect(clean.executiveSummary).toContain("AI-first transformation");
+  });
+
+  it("leaves a hyphen inside a compound word alone", async () => {
+    const { sanitizeDeep } = await import("@/lib/domain/house-style");
+    expect(sanitizeDeep({ t: "speed-to-lead system" }).t).toBe("speed-to-lead system");
+  });
+});

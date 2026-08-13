@@ -77,6 +77,10 @@ async function audit(deps: DealTeamDeps, input: AuditEventInput): Promise<void> 
 export async function loadDealTeamContext(companyId: string, proposalId?: string, db: Db = getDb()): Promise<DealTeamContext | null> {
   const [company] = await db.select().from(crmCompanies).where(eq(crmCompanies.id, companyId)).limit(1);
   if (!company) return null;
+  // The reviewer reasoned about this unprompted on a real proposal ("778 times her signing authority"),
+  // which is a strong sign it belongs in the context rather than being rediscovered each time.
+  const rawAuthority = ((company.metadata ?? {}) as Record<string, unknown>).soloAuthorityCents;
+  const soloAuthorityCents = typeof rawAuthority === "number" && rawAuthority > 0 ? rawAuthority : null;
 
   const [{ auditBlock }, facts, quals, companyProposals, otherProposals, contacts] = await Promise.all([
     getClientIntakeContext(companyId).catch(() => ({ auditBlock: "" })),
@@ -117,14 +121,24 @@ export async function loadDealTeamContext(companyId: string, proposalId?: string
     qualification: qual ? `grade ${qual.grade}, score ${qual.overallScore}. ${qual.recommendation}` : null,
     services: WOBBLE_SERVICES.map((s) => s.name),
     proposal: chosen
-      ? {
-          title: chosen.title,
-          totalCents: chosen.pricingCents,
-          currency: chosen.currency,
-          scope: chosen.scope ?? null,
-          services: (chosen.services ?? []).map((s: { name: string; priceCents?: number }) => ({ name: s.name, priceCents: s.priceCents })),
-          terms: chosen.terms ?? null,
-        }
+      ? (() => {
+          // Since the pricing gate landed, an undecided proposal carries zero. Passing that through as
+          // a price told the analyst the client was being charged nothing, and it judged accordingly.
+          const meta = (chosen.metadata ?? {}) as Record<string, unknown>;
+          const pricing = meta.pricing as { decision?: { oneOffCents?: number }; cost?: { oneOffCents?: number; monthlyCents?: number } } | undefined;
+          const decided = pricing?.decision?.oneOffCents;
+          return {
+            title: chosen.title,
+            totalCents: typeof decided === "number" && decided > 0 ? decided : chosen.pricingCents > 0 ? chosen.pricingCents : null,
+            currency: chosen.currency,
+            scope: chosen.scope ?? null,
+            services: (chosen.services ?? []).map((s: { name: string; priceCents?: number }) => ({ name: s.name, priceCents: s.priceCents })),
+            terms: chosen.terms ?? null,
+            costOneOffCents: pricing?.cost?.oneOffCents ?? null,
+            costMonthlyCents: pricing?.cost?.monthlyCents ?? null,
+            soloAuthorityCents: soloAuthorityCents,
+          };
+        })()
       : null,
     // Only genuinely PRICED proposals count as history. A draft nobody decided on is not a benchmark,
     // and since the pricing gate landed an undecided proposal carries zero, so this filter is exact.

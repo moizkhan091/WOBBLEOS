@@ -14,6 +14,7 @@ import { type HandoffStore } from "@/lib/handoff";
 import { runHandoffHop, HandoffAlreadyProcessedError, type HandoffTransportContext } from "@/lib/handoff-transport";
 import { runTextProvider, type ProviderMessage } from "@/lib/providers";
 import { newId } from "@/lib/ids";
+import { sanitizeDeep } from "@/lib/domain/house-style";
 import {
   PAID_AUDIT_AGENTS,
   PAID_AUDIT_JOB_TYPE,
@@ -305,7 +306,11 @@ export async function runPaidAuditGraph(input: RunPaidAuditInput, deps: PaidAudi
     if (rpRun.runId) modelRunIds.push(rpRun.runId);
     const report = reportParsed!;
 
-    const fullReport = assemblePaidAuditReport({ businessName: input.businessName, industry: input.industry, discovery, opportunities, prioritization, roadmap, report });
+    // The house style is not decoration: the founder banned em dashes outright, and this graph was the
+    // one place producing prose that never passed through the filter. Eight proposals inherited them
+    // from audit scope text before anyone noticed. Sanitised on the way IN, so nothing downstream has
+    // to remember.
+    const fullReport = sanitizeDeep(assemblePaidAuditReport({ businessName: input.businessName, industry: input.industry, discovery, opportunities, prioritization, roadmap, report }));
     const row: PaidAuditRow = {
       id: newId("audit"),
       kind: "paid",

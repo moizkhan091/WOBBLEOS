@@ -270,3 +270,42 @@ describe("an absent label is still a failed answer", () => {
     expect(dealCritiqueSchema.safeParse({ verdict: "would_refuse", headline: "Priced with no reason given", items: [item] }).success).toBe(false);
   });
 });
+
+describe("what the deal team is told once a price is a decision, not a field", () => {
+  const priced = { ...ctx.proposal!, totalCents: 4_500_000, costOneOffCents: 80_000, costMonthlyCents: 9_150, soloAuthorityCents: 50_000_000 };
+
+  it("says NO PRICE SET rather than showing zero", () => {
+    // Since the pricing gate landed, an undecided proposal carries zero. Telling an agent the client
+    // is being charged nothing makes every judgement it offers worthless.
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, totalCents: null } });
+    expect(out).toContain("NO PRICE SET YET");
+    expect(out).not.toMatch(/PROPOSAL ON THE TABLE.*USD 0/);
+  });
+
+  it("redirects the agent to what it CAN judge when there is no price", () => {
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, totalCents: null } });
+    expect(out).toContain("comment on the shape");
+  });
+
+  it("gives the analyst what the build costs us, which it had no way of knowing", () => {
+    const out = renderContext({ ...ctx, proposal: priced });
+    expect(out).toContain("WHAT IT COSTS WOBBLE TO DELIVER");
+    expect(out).toContain("USD 800");
+  });
+
+  it("says plainly that the cost is ours and excludes our time, so it is not mistaken for a floor price", () => {
+    expect(renderContext({ ...ctx, proposal: priced })).toContain("excludes our own time");
+  });
+
+  it("carries what the contact can approve alone, which the reviewer reasoned about unprompted", () => {
+    const out = renderContext({ ...ctx, proposal: priced });
+    expect(out).toContain("WHAT THE CONTACT CAN APPROVE ALONE");
+    expect(out).toContain("joint decision");
+  });
+
+  it("leaves all three out when we do not know them, rather than printing zeroes", () => {
+    const out = renderContext({ ...ctx, proposal: { ...ctx.proposal!, costOneOffCents: null, soloAuthorityCents: null } });
+    expect(out).not.toContain("WHAT IT COSTS WOBBLE");
+    expect(out).not.toContain("WHAT THE CONTACT CAN APPROVE");
+  });
+});
