@@ -306,12 +306,22 @@ export function costQuestions(view: CostInputsView): string[] {
 const VOLUME_UNITS = "appointments?|enquir(?:y|ies)|inquir(?:y|ies)|messages?|bookings?|leads?|calls?|patients?|customers?|clients?|conversations?|orders?|tickets?|visits?|jobs?|requests?|chats?";
 
 export function extractMonthlyVolume(text: string): number {
-  const weekly = [...text.matchAll(new RegExp(String.raw`(\d[\d,]{0,8})\s+(?:${VOLUME_UNITS})?\s*(?:per week|a week|weekly|/week)`, "gi"))]
-    .map((m) => Number(m[1].replace(/,/g, "")))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  const monthly = [...text.matchAll(new RegExp(String.raw`(\d[\d,]{0,8})\s+(?:${VOLUME_UNITS})?\s*(?:per month|a month|monthly|/month|/mo)`, "gi"))]
-    .map((m) => Number(m[1].replace(/,/g, "")))
-    .filter((n) => Number.isFinite(n) && n > 0);
+  // Both orders occur in real reports, and only handling one of them silently loses the number:
+  //   "240 appointments a week"          number, unit, period
+  //   "400 weekly WhatsApp enquiries"    number, period, unit
+  const forPeriod = (period: string): number[] => {
+    const unitThenPeriod = String.raw`(\d[\d,]{0,8})\s+(?:${VOLUME_UNITS})\s*(?:${period})`;
+    const periodThenUnit = String.raw`(\d[\d,]{0,8})\s+(?:${period})\s+(?:[\w-]+\s+){0,2}(?:${VOLUME_UNITS})`;
+    return [
+      ...text.matchAll(new RegExp(unitThenPeriod, "gi")),
+      ...text.matchAll(new RegExp(periodThenUnit, "gi")),
+    ]
+      .map((m) => Number(m[1].replace(/,/g, "")))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  };
+
+  const weekly = forPeriod(String.raw`per week|a week|weekly|/week`);
+  const monthly = forPeriod(String.raw`per month|a month|monthly|/month|/mo`);
 
   // 4.3 weeks to a month. The LARGEST stated figure wins: an audit mentions several volumes and the
   // system has to carry the busiest of them, not the most convenient.

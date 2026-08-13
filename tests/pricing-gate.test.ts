@@ -209,3 +209,21 @@ describe("reading volume out of an audit's own words", () => {
     expect(extractMonthlyVolume("")).toBe(0);
   });
 });
+
+describe("volume, whichever way round the audit writes it", () => {
+  it("reads number, period, unit", () => {
+    // The form a real audit used: "managing 400 weekly WhatsApp enquiries".
+    expect(extractMonthlyVolume("managing 400 weekly WhatsApp enquiries")).toBe(1720);
+    expect(extractMonthlyVolume("handles 500 monthly support tickets")).toBe(500);
+  });
+
+  it("reads number, unit, period", () => {
+    expect(extractMonthlyVolume("240 appointments a week")).toBe(1032);
+    expect(extractMonthlyVolume("3,000 messages per month")).toBe(3000);
+  });
+
+  it("still refuses a number that is not a volume", () => {
+    expect(extractMonthlyVolume("PKR 8,000 per appointment, reviewed weekly")).toBe(0);
+    expect(extractMonthlyVolume("a 30% no-show rate, monthly reporting")).toBe(0);
+  });
+})
