@@ -8010,3 +8010,45 @@ fired, so a concurrent invoice number would have 500ed instead of retrying, and 
 reference would not have been recognised as already recorded. Both now share one implementation.
 
 Gate: typecheck clean, 1986 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - cost means tools, and new clients score themselves
+
+**Cash and effort are no longer one number.** The founder was explicit that cost means tools, not dev
+cost. The doctrine in `delivery-cost.ts` already said our own time is excluded, and it was not quite
+true: integration setup lines ($150 documented API, $600 no API, $450 paper) are build EFFORT priced in
+cash, and they were inside `oneOffCents`. Every `CostLine` now carries `kind: "cash" | "effort"`,
+`oneOffCents` and `monthlyCents` are cash only, and `effortOneOffCents` sits beside them, never inside.
+A line with no kind predates the split and is read as cash, which is what it was.
+
+That made the honest picture visible for the first time: a WhatsApp and booking build with paper and
+spreadsheet integration is **zero cash to start, $81/mo to run, $650 of our own time**. Which broke two
+tests that had encoded the old meaning, and exposed something real: with our time out of the cost, most
+builds have NO cash setup cost, so "100% margin on the build" is arithmetically true and useless.
+`marginAt` now says the useful thing instead, which is how many months the one-off covers.
+
+I introduced a bug doing that and caught it in the suite: the friendlier zero-cash verdict was placed
+BEFORE the loss-making-monthly check, so a monthly price that loses money got swallowed by a reassuring
+sentence. A loss must always shout, so it is ordered first now.
+
+**A currency bug the subagent found and I verified.** `createProposalFromAudit` computes cost with
+`currency: "USD"` hardcoded, while `PricingGatePanel` rendered those lines with `proposal.currency`. On
+a Karachi client that is USD amounts wearing a PKR label, which is the same 280x class of error, sitting
+in the exact panel where cost and price are about to sit side by side. Cost now renders in its OWN
+currency with an explicit tag when the two differ, rather than inventing an exchange rate.
+
+**Auto-qualify.** `qualification-triage.ts` decides who the council scores without being asked, and
+`qualification/auto.ts` runs it from EVERY scheduler tick rather than the daily block, because a founder
+who has just added a client is looking at it now. Eight model calls per client, so: never twice, newest
+first, capped at three a pass, and skipped with a stated reason when there is nothing to read. A council
+with nothing to read does not score low, it invents, and a founder would make a real decision on that.
+
+**The ladder dead-ended, also verified by reading.** A client with a built, unpriced proposal fell
+through every rule in `suggestNextAction` to "Wait for their reply" at urgency 5: not overdue, not
+awaiting a reply because it was never sent, qualified, called, findings approved, audit done,
+proposalCount above zero. The most actionable state in the pipeline ranked as the least. Added
+`set_price` (urgency 92, above chasing, because it is blocked on US) and `send_proposal` (88), with the
+worklist reading the pricing state off the proposal metadata to feed them.
+
+Gate: typecheck clean, 2005 tests pass, build clean.

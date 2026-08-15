@@ -14,6 +14,7 @@ import { escalateDeadLetteredHandoffs } from "@/lib/departments/escalation";
 import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
 import { prepareDealTeam } from "@/lib/deal-team/prepare";
+import { autoQualifyNewClients } from "@/lib/qualification/auto";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue, runOptimizerMonitoring } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
@@ -94,6 +95,8 @@ export interface SchedulerResult {
   proposalsExpired?: number;
   /** Retainer invoices raised this tick. Always drafts. */
   retainerInvoicesRaised?: number;
+  /** Clients the council scored without being asked. */
+  clientsAutoQualified?: number;
   /** Objection briefs written ahead of the founder needing them. */
   dealTeamPrepared?: number;
   /** Clients that qualified for prep but sat under the cap. Named in the audit trail, never silent. */
@@ -137,6 +140,18 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
     result.stalledReclaimed = await (deps.reclaimStalled ?? ((n: Date) => reclaimStalledJobs({ now: n })))(now);
   } catch (e) {
     result.errors.push(`reclaim: ${e instanceof Error ? e.message : e}`);
+  }
+
+  // 0b. Score new clients without being asked. EVERY tick, not the daily block, because a founder who
+  // has just added a client is looking at it now and "not qualified, and nothing to click" was the
+  // complaint. The triage is free: a pass with nothing eligible makes no model call at all, and a
+  // client with nothing to read is skipped rather than given an invented grade.
+  try {
+    const q = await autoQualifyNewClients({ now });
+    result.clientsAutoQualified = q.qualified.length;
+    if (q.failed.length) result.errors.push(...q.failed.map((f) => `auto-qualify ${f.companyId}: ${f.error}`));
+  } catch (e) {
+    result.errors.push(`auto-qualify: ${e instanceof Error ? e.message : e}`);
   }
   // Crash recovery for the handoff backbone: reclaim leases whose consumer died mid-processing.
   try {

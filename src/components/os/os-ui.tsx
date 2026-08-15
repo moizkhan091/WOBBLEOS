@@ -9055,7 +9055,7 @@ function RetainerControl({ invoiceId, retainer, onChanged }: { invoiceId: string
 type CostLineRow = { label: string; vendor?: string; cadence: string; amountCents: number; because: string; usageBased?: boolean };
 type PricingView = {
   status: string;
-  cost: { currency: string; oneOffCents: number; monthlyCents: number; lines: CostLineRow[]; unknowns: string[] } | null;
+  cost: { currency: string; oneOffCents: number; monthlyCents: number; effortOneOffCents: number; lines: CostLineRow[]; unknowns: string[] } | null;
   decision: { oneOffCents: number; monthlyCents: number; currency: string; reasoning: string; decidedBy: string; decidedAt?: string } | null;
   auditEstimateCents: number | null;
   prompt: string;
@@ -9091,6 +9091,11 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
   if (state.loading || !v) return null;
 
   const money = (c: number) => `${v.currency} ${(c / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  // Cost is computed from tool LIST PRICES, which are published in dollars. The quote may be in
+  // rupees. Rendering a dollar figure with the quote's symbol is the same units mistake that nearly
+  // sent a client a bill 280 times too large, so the cost keeps its own currency and says so.
+  const costCurrency = v.cost?.currency ?? "USD";
+  const costMoney = (c: number) => `${costCurrency} ${(c / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const priced = v.status === "decided" && v.decision;
 
   // Live margin as you type. Arithmetic on what we already know, not advice.
@@ -9168,16 +9173,26 @@ function PricingGatePanel({ proposalId, onPriced }: { proposalId: string; onPric
               {v.cost.lines.map((l, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 12, color: C.white, flex: 1, minWidth: 170 }}>{l.label}{l.vendor ? ` (${l.vendor})` : ""}</span>
-                  <span style={{ fontSize: 12, color: C.orange }}>{money(l.amountCents)}{l.cadence === "monthly" ? "/mo" : ""}</span>
+                  <span style={{ fontSize: 12, color: C.orange }}>{costMoney(l.amountCents)}{l.cadence === "monthly" ? "/mo" : ""}</span>
                   {l.usageBased ? <Tag text="scales with volume" color={C.gray} /> : null}
                   <span style={{ fontSize: 11, color: faint, width: "100%" }}>{l.because}</span>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8 }}>
-                <span style={{ fontSize: 12.5, color: C.white }}>To build: {money(v.cost.oneOffCents)}</span>
-                <span style={{ fontSize: 12.5, color: C.white }}>To run: {money(v.cost.monthlyCents)}/mo</span>
-                <span style={{ fontSize: 11, color: faint }}>Our own time is not in this. It is not a cash cost, and pricing off a made-up hourly rate is how an agency ends up working for nothing.</span>
+              {/* Cash and effort, side by side and never added. Integration work is our own time, and
+                  a headline cost that quietly includes it overstates what the build costs us. */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8, alignItems: "baseline" }}>
+                <Tag text="cash out the door" color={C.lime} />
+                {costCurrency !== v.currency ? <Tag text={`costed in ${costCurrency}, quoted in ${v.currency}`} color={C.orange} /> : null}
+                <span style={{ fontSize: 13, color: C.white, fontWeight: 600 }}>{costMoney(v.cost.oneOffCents)} to build</span>
+                <span style={{ fontSize: 13, color: C.white, fontWeight: 600 }}>{costMoney(v.cost.monthlyCents)}/mo to run</span>
               </div>
+              {v.cost.effortOneOffCents > 0 ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <Tag text="our build time" color={C.gray} />
+                  <span style={{ fontSize: 12.5, color: muted }}>{costMoney(v.cost.effortOneOffCents)} of work, not counted above</span>
+                  <span style={{ fontSize: 11, color: faint, width: "100%" }}>Nobody invoices us for this. It is here so you can see the shape of the job, and it stays out of the cost so your margin is honest. Pricing off a made-up hourly rate is how an agency ends up working for nothing.</span>
+                </div>
+              ) : null}
               {v.cost.unknowns.map((u, i) => <div key={i} style={{ fontSize: 11.5, color: C.orange }}>{u}</div>)}
             </>
           ) : (

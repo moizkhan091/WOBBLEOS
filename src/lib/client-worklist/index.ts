@@ -191,6 +191,19 @@ export async function getWorklist(opts: { now?: Date; limit?: number } = {}, db:
       approvedFindingCount: approvedFindings,
       proposalCount: companyProposals.length,
       proposalAwaitingReply: companyProposals.some((p) => p.status === "sent" || p.status === "viewed"),
+      // A built proposal nobody has priced is the most actionable state in the pipeline and used to
+      // rank as the least: every rule fell through to "wait for their reply" at urgency 5, for a
+      // document that had never left the building.
+      hasUnpricedProposal: companyProposals.some((p) => {
+        if (p.status !== "draft" && p.status !== "needs_review") return false;
+        const pricing = ((p.metadata ?? {}) as Record<string, unknown>).pricing as { status?: string; decision?: unknown } | undefined;
+        return !pricing || pricing.status !== "decided" || !pricing.decision;
+      }),
+      hasUnsentPricedProposal: companyProposals.some((p) => {
+        if (p.status !== "approved") return false;
+        const pricing = ((p.metadata ?? {}) as Record<string, unknown>).pricing as { status?: string; decision?: unknown } | undefined;
+        return Boolean(pricing && pricing.status === "decided" && pricing.decision);
+      }),
       hasIntake: intakeAt.has(c.id),
       hasDecisionMaker: companyContacts.some((x) => contactCanSayYes({ relationshipType: x.relationshipType, metadata: x.metadata as Record<string, unknown> | null })),
       now,

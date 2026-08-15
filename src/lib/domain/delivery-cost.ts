@@ -24,10 +24,19 @@ import { z } from "zod";
 
 export type CostCadence = "one_off" | "monthly";
 
+/**
+ * Cash actually leaves the bank. Effort is our own build time, valued in cash for comparison only.
+ *
+ * They must never be added together. A founder pricing off a total that quietly includes their own
+ * labour is pricing off a number that overstates what the work costs them, which makes the margin look
+ * worse than it is and tempts a higher quote than the client's economics support.
+ */
+export type CostKind = "cash" | "effort";
+
 export interface CostLine {
   /** What it is, in the founder's words. */
   label: string;
-  /** The tool or account this is paid to. Empty for our own setup effort in cash terms. */
+  /** The tool or account this is paid to. Empty when it is our own build effort. */
   vendor?: string;
   cadence: CostCadence;
   amountCents: number;
@@ -35,14 +44,24 @@ export interface CostLine {
   because: string;
   /** True when the amount scales with the client's volume rather than being a flat subscription. */
   usageBased?: boolean;
+  /** Cash out of the door, or our own time. Absent on rows written before the split; treat as cash. */
+  kind?: CostKind;
 }
 
 export interface DeliveryCost {
   currency: string;
-  /** Paid once to get it live. */
+  /**
+   * Cash paid once to get it live. CASH ONLY: integration build effort is deliberately not in here,
+   * because founder hours are not a cash cost and the founder asked for tools, not dev cost.
+   */
   oneOffCents: number;
-  /** Paid every month it keeps running. */
+  /** Cash paid every month it keeps running. */
   monthlyCents: number;
+  /**
+   * What the build effort would be worth if we charged ourselves for it. Shown beside the cash cost,
+   * never inside it, so a founder can see the shape of the work without it distorting the margin.
+   */
+  effortOneOffCents: number;
   lines: CostLine[];
   /** Things we could not cost, named rather than silently omitted. */
   unknowns: string[];
@@ -166,10 +185,10 @@ export function computeDeliveryCost(input: CostInput): DeliveryCost {
     const tool = TOOL_BY_KEY.get(key);
     if (!tool) continue;
     if (tool.setupUsdCents > 0) {
-      lines.push({ label: `${tool.label} setup`, vendor: tool.vendor, cadence: "one_off", amountCents: toLocal(tool.setupUsdCents), because: tool.note });
+      lines.push({ label: `${tool.label} setup`, vendor: tool.vendor, cadence: "one_off", amountCents: toLocal(tool.setupUsdCents), because: tool.note, kind: "cash" });
     }
     if (tool.monthlyUsdCents > 0) {
-      lines.push({ label: tool.label, vendor: tool.vendor, cadence: "monthly", amountCents: toLocal(tool.monthlyUsdCents), because: tool.note });
+      lines.push({ label: tool.label, vendor: tool.vendor, cadence: "monthly", amountCents: toLocal(tool.monthlyUsdCents), because: tool.note, kind: "cash" });
     }
     if (tool.perThousandUsdCents > 0) {
       lines.push({
@@ -179,6 +198,7 @@ export function computeDeliveryCost(input: CostInput): DeliveryCost {
         amountCents: toLocal(Math.round(tool.perThousandUsdCents * thousands)),
         because: `${tool.note} Costed at about ${Math.round(input.monthlyVolume).toLocaleString()} a month.`,
         usageBased: true,
+        kind: "cash",
       });
     }
   }
@@ -186,7 +206,9 @@ export function computeDeliveryCost(input: CostInput): DeliveryCost {
   for (const key of [...new Set(input.integrations)]) {
     const integration = INTEGRATION_BY_KEY.get(key);
     if (!integration) continue;
-    lines.push({ label: `Integration: ${integration.label}`, cadence: "one_off", amountCents: toLocal(integration.setupUsdCents), because: integration.because });
+    // Effort, not cash. Nobody invoices us for connecting to a documented API; it costs time. The
+    // founder was explicit that cost means tools, not dev cost, so it is shown and not counted.
+    lines.push({ label: `Integration: ${integration.label}`, cadence: "one_off", amountCents: toLocal(integration.setupUsdCents), because: integration.because, kind: "effort" });
   }
   if (!input.integrations.length) {
     unknowns.push("Nothing was named on the client's side to integrate with, so no integration cost is included. That is rarely true, and it is the line that varies most.");
@@ -195,10 +217,13 @@ export function computeDeliveryCost(input: CostInput): DeliveryCost {
     unknowns.push("No monthly volume given, so usage-based lines are costed at the floor of 1,000 a month. Ask them how many enquiries they actually handle.");
   }
 
+  // A line with no kind predates the split and is treated as cash, which is what it was.
+  const isCash = (l: CostLine) => (l.kind ?? "cash") === "cash";
   return {
     currency: input.currency,
-    oneOffCents: lines.filter((l) => l.cadence === "one_off").reduce((n, l) => n + l.amountCents, 0),
-    monthlyCents: lines.filter((l) => l.cadence === "monthly").reduce((n, l) => n + l.amountCents, 0),
+    oneOffCents: lines.filter((l) => isCash(l) && l.cadence === "one_off").reduce((n, l) => n + l.amountCents, 0),
+    monthlyCents: lines.filter((l) => isCash(l) && l.cadence === "monthly").reduce((n, l) => n + l.amountCents, 0),
+    effortOneOffCents: lines.filter((l) => !isCash(l)).reduce((n, l) => n + l.amountCents, 0),
     lines,
     unknowns,
   };
@@ -237,6 +262,18 @@ export function marginAt(price: { oneOffCents: number; monthlyCents?: number }, 
   }
   if (runMargin !== null && runMargin < 0) {
     return { setupMargin, runMargin, runwayMonths, verdict: "The setup covers itself but the monthly price does not cover the monthly cost, so this loses money the longer it runs." };
+  }
+  // Once our own time is out of the cost, most builds have NO cash setup cost at all: no vendor charges
+  // us to start. A "100% margin on the build" would be arithmetically true and useless, so it says the
+  // real thing instead, which is how long the one-off covers the running cost.
+  if (cost.oneOffCents === 0 && cost.monthlyCents > 0) {
+    const effort = cost.effortOneOffCents > 0 ? ` It is about ${Math.round(cost.effortOneOffCents / 100).toLocaleString()} ${cost.currency} of our own build time, which is not a cash cost and is not in this.` : "";
+    return {
+      setupMargin,
+      runMargin,
+      runwayMonths,
+      verdict: `Nothing is paid out to start this build, so the one-off is all yours.${effort} It covers ${runwayMonths} month${runwayMonths === 1 ? "" : "s"} of running cost${runMargin !== null ? `, and the monthly price leaves ${Math.round(runMargin * 100)}%` : " and there is no recurring price against it"}.`,
+    };
   }
   if (runMargin === null && cost.monthlyCents > 0) {
     return {

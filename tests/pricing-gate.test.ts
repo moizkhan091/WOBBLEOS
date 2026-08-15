@@ -95,8 +95,10 @@ describe("what a build actually costs us", () => {
   it("costs the tools each kind of system needs", () => {
     expect(cost.lines.some((l) => l.label.includes("WhatsApp"))).toBe(true);
     expect(cost.lines.some((l) => l.label.includes("Calendar"))).toBe(true);
-    expect(cost.oneOffCents).toBeGreaterThan(0);
+    // Cash one-off is legitimately ZERO on most builds: no vendor charges us to start. The real
+    // running cost and our own build time are both non-zero, and are reported separately.
     expect(cost.monthlyCents).toBeGreaterThan(0);
+    expect(cost.effortOneOffCents).toBeGreaterThan(0);
   });
 
   it("charges paper records more than a documented API, because they are more work", () => {
@@ -141,10 +143,24 @@ describe("the margin at a price the founder types", () => {
     expect(marginAt({ oneOffCents: 0 }, cost).verdict).toContain("No price set");
   });
 
-  it("shouts when the price is below what the build costs", () => {
-    const m = marginAt({ oneOffCents: 100 }, cost);
+  it("shouts when the price is below what the build costs in cash", () => {
+    // Needs a build that actually has a cash setup line, since most do not once our time is excluded.
+    const withSetup = computeDeliveryCost({ categories: ["ads"], integrations: [], monthlyVolume: 1000, currency: "USD" });
+    expect(withSetup.oneOffCents).toBeGreaterThan(0);
+    const m = marginAt({ oneOffCents: 100 }, withSetup);
     expect(m.setupMargin).toBeLessThan(0);
     expect(m.verdict).toContain("BELOW what the build costs");
+  });
+
+  it("does not claim a 100 percent margin when nothing is paid out to start", () => {
+    // Arithmetically true, and useless. What a founder needs is how long the one-off actually lasts.
+    const m = marginAt({ oneOffCents: 50_000_000 }, cost);
+    expect(m.verdict).toContain("Nothing is paid out to start");
+    expect(m.verdict).toMatch(/covers \d+ months?/);
+  });
+
+  it("names our build time in that verdict without adding it to the cost", () => {
+    expect(marginAt({ oneOffCents: 50_000_000 }, cost).verdict).toContain("not a cash cost");
   });
 
   it("warns when the monthly price does not cover the monthly cost", () => {
@@ -227,3 +243,41 @@ describe("volume, whichever way round the audit writes it", () => {
     expect(extractMonthlyVolume("a 30% no-show rate, monthly reporting")).toBe(0);
   });
 })
+
+describe("cash out of the door, kept apart from our own build time", () => {
+  const input = { categories: ["booking"], integrations: ["no_api" as const], monthlyVolume: 4000, currency: "USD" };
+
+  it("keeps integration work out of the cash cost", () => {
+    // The founder was explicit: cost means tools, not dev cost. Nobody invoices us for connecting to
+    // a tool with no API; it costs time.
+    const cost = computeDeliveryCost(input);
+    const integrationLine = cost.lines.find((l) => l.label.startsWith("Integration:"));
+    expect(integrationLine?.kind).toBe("effort");
+    expect(cost.lines.filter((l) => (l.kind ?? "cash") === "cash" && l.cadence === "one_off").reduce((n, l) => n + l.amountCents, 0)).toBe(cost.oneOffCents);
+  });
+
+  it("reports the build effort separately rather than hiding it", () => {
+    const cost = computeDeliveryCost(input);
+    expect(cost.effortOneOffCents).toBeGreaterThan(0);
+  });
+
+  it("never adds effort into the cash totals", () => {
+    const cost = computeDeliveryCost(input);
+    const everyOneOff = cost.lines.filter((l) => l.cadence === "one_off").reduce((n, l) => n + l.amountCents, 0);
+    expect(cost.oneOffCents).toBeLessThan(everyOneOff);
+    expect(cost.oneOffCents + cost.effortOneOffCents).toBe(everyOneOff);
+  });
+
+  it("marks every vendor line as cash", () => {
+    const cost = computeDeliveryCost(input);
+    for (const l of cost.lines.filter((x) => x.vendor)) expect(l.kind).toBe("cash");
+  });
+
+  it("reports no effort at all when nothing needs integrating", () => {
+    expect(computeDeliveryCost({ ...input, integrations: [] }).effortOneOffCents).toBe(0);
+  });
+
+  it("still charges monthly running cost as cash", () => {
+    expect(computeDeliveryCost(input).monthlyCents).toBeGreaterThan(0);
+  });
+});

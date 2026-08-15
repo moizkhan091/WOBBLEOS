@@ -159,6 +159,8 @@ export type NextActionKind =
   | "mine_call"
   | "send_questions"
   | "build_proposal"
+  | "set_price"
+  | "send_proposal"
   | "chase_proposal"
   | "run_audit"
   | "reactivate"
@@ -182,6 +184,18 @@ export interface NextActionInput extends ClientHealthInput {
   /** Why we lost, when we did. Decides whether a dead client is worth waking. */
   lostReason?: string | null;
   hasProposal?: boolean;
+  /**
+   * A proposal exists, and nobody has decided what to charge for it.
+   *
+   * Without this the ladder dead-ends. Trace a client with a fresh draft: not overdue, not awaiting a
+   * reply because it was never sent, qualified, called, findings approved, audit done, proposalCount
+   * above zero. Every rule falls through and the answer is "Wait for their reply" at urgency 5, for a
+   * document that has never left the building and has no price on it. That is the single most
+   * actionable state in the whole pipeline being ranked as the least.
+   */
+  hasUnpricedProposal?: boolean;
+  /** Priced and still sitting in a drawer. */
+  hasUnsentPricedProposal?: boolean;
 }
 
 /**
@@ -235,6 +249,14 @@ export function suggestNextAction(input: NextActionInput): NextActionSuggestion 
   }
   if (input.hasAudit && input.proposalCount === 0) {
     return { kind: "build_proposal", label: "Build the proposal", because: "The audit is done and no proposal exists.", urgency: 68 };
+  }
+  // Above chasing a sent proposal, because this one is waiting on US, not on them. Nothing else in the
+  // pipeline is blocked purely by a decision a founder has not made yet.
+  if (input.hasUnpricedProposal) {
+    return { kind: "set_price", label: "Decide what to charge", because: "The proposal is built and nobody has set a price, so it cannot be sent.", urgency: 92 };
+  }
+  if (input.hasUnsentPricedProposal) {
+    return { kind: "send_proposal", label: "Send the proposal", because: "It is priced and still sitting here.", urgency: 88 };
   }
   if ((silent ?? 99) >= 7) {
     return { kind: "contact", label: "Check in", because: `It has been ${silent} days with nothing said.`, urgency: 50 + Math.min(30, silent ?? 0) };
