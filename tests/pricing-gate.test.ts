@@ -65,8 +65,24 @@ describe("no document leaves carrying a price a human did not choose", () => {
 describe("what the founder is shown while it is outstanding", () => {
   it("names the cost, and says the decision is theirs", () => {
     const p = pricingPrompt(awaitingPricing(cost, null), "USD");
-    expect(p).toContain("Costs us");
+    // Most builds have no cash setup cost once our own time is excluded, so it says that plainly
+    // rather than printing "costs us USD 0", which reads as free.
+    expect(p).toContain("Nothing is paid out to start");
+    expect(p).toContain("a month to run");
     expect(p).toContain("your decision");
+  });
+
+  it("prints the cost in ITS currency, not the currency of the quote", () => {
+    // Found on the live system with a real client: a USD 70 monthly cost rendered as "PKR 70 a month",
+    // which a founder reads as a rounding error. Same units mistake as the 280x quote.
+    const p = pricingPrompt(awaitingPricing(cost, null), "PKR");
+    expect(p).toContain("USD");
+    expect(p).not.toMatch(/PKR \d/);
+    expect(p).toContain("That cost is in USD; your price is in PKR");
+  });
+
+  it("says our build time is behind it without adding it to the cost", () => {
+    expect(pricingPrompt(awaitingPricing(cost, null), "USD")).toContain("not a cash cost");
   });
 
   it("never suggests an amount, since a suggestion becomes the decision", () => {

@@ -127,18 +127,25 @@ export interface PricedDocument {
  * decision is theirs. Never suggests an amount.
  */
 export function pricingPrompt(state: PricingState, currency: string): string {
-  const money = (c: number) => `${currency} ${(c / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  const money = (c: number, cur: string) => `${cur} ${(c / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   if (state.status === "decided" && state.decision) {
     const d = state.decision;
-    return `Priced by ${d.decidedBy} at ${money(d.oneOffCents)}${d.monthlyCents > 0 ? ` plus ${money(d.monthlyCents)} a month` : ""}. ${d.reasoning}`;
+    return `Priced by ${d.decidedBy} at ${money(d.oneOffCents, currency)}${d.monthlyCents > 0 ? ` plus ${money(d.monthlyCents, currency)} a month` : ""}. ${d.reasoning}`;
   }
   if (!state.cost) {
     return "This needs a price before it can be approved or sent, and there is not enough detail yet to work out what it costs us. Fill in what it connects to and how much volume it handles.";
   }
-  const { oneOffCents, monthlyCents } = state.cost;
-  const parts = [`Costs us ${money(oneOffCents)} to build`];
-  if (monthlyCents > 0) parts.push(`${money(monthlyCents)} a month to run`);
-  return `${parts.join(" and ")}. What you charge is your decision, and nothing goes out until you make it.`;
+  // The cost carries its OWN currency and the quote carries the founder's. Tool list prices are
+  // published in dollars; a Karachi client's proposal is in rupees. Printing "PKR 70 a month" for a
+  // USD 70 cost is how a founder reads a real cost as a rounding error, and it is the same units
+  // mistake that nearly sent a client a bill 280 times too large.
+  const cur = state.cost.currency || "USD";
+  const { oneOffCents, monthlyCents, effortOneOffCents } = state.cost;
+  const parts = oneOffCents > 0 ? [`Costs us ${money(oneOffCents, cur)} to build`] : ["Nothing is paid out to start this build"];
+  if (monthlyCents > 0) parts.push(`${money(monthlyCents, cur)} a month to run`);
+  const effort = effortOneOffCents > 0 ? ` About ${money(effortOneOffCents, cur)} of our own build time sits behind it, which is not a cash cost.` : "";
+  const note = cur !== currency ? ` That cost is in ${cur}; your price is in ${currency}.` : "";
+  return `${parts.join(" and ")}.${effort}${note} What you charge is your decision, and nothing goes out until you make it.`;
 }
 
 /** Anything a founder should see before typing a number. */

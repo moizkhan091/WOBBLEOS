@@ -8207,3 +8207,40 @@ reference missed the pill. It was not broken. Clicking by coordinate switched cl
 whole ladder repopulated. A missed click is not a bug, and I should verify before naming one.
 
 Gate: typecheck clean, 2015 tests pass, build clean.
+
+---
+
+## 2026-08-15 (Claude) - a real lead, end to end, and the browser found the bug
+
+Ran the whole flow on a genuine prospect (Pakistan Cables, a premium cable manufacturer with roughly
+1000 dealers across 250 towns) using the founder's real recorded call: filled the public readiness form
+at wobblepk.com in the browser, then attached the 126KB Hindi and English transcript at the transcript
+rung.
+
+Everything downstream worked without being asked:
+
+- The form built the container. Lead scored **100, high intent**, company created, contact filed.
+- **Auto-qualify** graded it **B, 76/100** off the form alone, `created_by: auto_qualify`.
+- The transcript extractor read a **mixed Hindi and English** call and returned **11 findings in
+  English**, each carrying its original Hindi sentence as the evidence quote. Nothing it found
+  duplicated the form: the form said "we do not come up in AI" at symptom level, the call gave the
+  mechanism (customers using ChatGPT to compare, then messaging to ask for a discount), the objection
+  ("buyers will dismiss our own site as biased"), the budget worry, and who actually decides.
+- The paid audit ran on the 11 approved findings and produced 7 opportunities.
+- The ladder tracked all of it: rung 3 honestly reads "Nothing prepared yet" because we skipped
+  straight to the call, and rung 7 stayed locked behind the price.
+
+**The bug, found only because this was done in a browser rather than with curl.** Rung 6 read:
+
+    Costs us PKR 0 to build and PKR 70 a month to run.
+
+That is a USD 70 cost wearing a rupee label. I had fixed this for the cost LINE ITEMS and missed
+`pricingPrompt`, which builds its sentence server-side from `proposal.currency` and knows nothing about
+the cost's own. A founder reads "PKR 70 a month" as a rounding error rather than a real cost. Same
+units mistake as the 280x quote, third time it has appeared in a different place.
+
+Fixed: the prompt prints the cost in ITS currency, says explicitly when the two differ, says "Nothing
+is paid out to start this build" rather than "costs us USD 0" which reads as free, and names the build
+effort behind it without adding it in. Three tests pin it, one of them the exact live string.
+
+Gate: typecheck clean, 2017 tests pass, build clean.
