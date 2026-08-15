@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { jobs } from "@/db/schema";
+import { newId } from "@/lib/ids";
 
 /**
  * What is running right now, so nothing gets generated twice.
@@ -24,6 +25,14 @@ import { jobs } from "@/db/schema";
  */
 
 export const LIVE_OPS_QUEUE = "live_operation";
+
+/** Postgres unique_violation. The one error that means "somebody else already holds this key". */
+function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  if (code === "23505") return true;
+  const msg = error instanceof Error ? error.message.toLowerCase() : "";
+  return msg.includes("unique") || msg.includes("duplicate key");
+}
 
 export interface OperationKey {
   /** What is being done, e.g. "qualify" or "questions". */
@@ -68,6 +77,9 @@ export async function beginOperation(k: OperationKey, opts: { label: string; mod
     const [row] = await db
       .insert(jobs)
       .values({
+        // `jobs.id` is a text primary key with no default, so an insert without one is rejected. The
+        // first live proof of this guard "passed" twice because that rejection was being swallowed.
+        id: newId("job"),
         queue: LIVE_OPS_QUEUE,
         type: k.operation,
         // active, not pending: this work is happening in the request that just claimed it, and a
@@ -84,13 +96,15 @@ export async function beginOperation(k: OperationKey, opts: { label: string; mod
       } as never)
       .returning({ id: jobs.id });
     return { started: true, id: row.id, since: null, because: "" };
-  } catch {
-    // The unique index rejected it, which means a live row already holds this key. Read it so the
-    // answer names what is running rather than just refusing.
+  } catch (error) {
+    // ONLY a unique violation means "already running". Anything else means this guard is broken, and it
+    // must be loud. An earlier version swallowed every error and reported success, so the very first
+    // live proof showed two concurrent claims both starting and nobody noticed until the numbers were
+    // read. A guard that silently does nothing is worse than no guard, because nothing reveals it.
+    if (!isUniqueViolation(error)) throw error;
     const existing = await findLive(k, db);
     if (!existing) {
-      // The insert failed for some other reason and nothing is actually running. Refusing here would
-      // block real work over a transient fault, so the caller is allowed to proceed.
+      // The key was taken and freed between the insert and this read. Nothing is running, so proceed.
       return { started: true, id: null, since: null, because: "" };
     }
     return {
