@@ -297,3 +297,41 @@ describe("cash out of the door, kept apart from our own build time", () => {
     expect(computeDeliveryCost(input).monthlyCents).toBeGreaterThan(0);
   });
 });
+
+describe("an SEO and AEO build is costed from what it is actually made of", () => {
+  /**
+   * A real audit for a cable manufacturer costed a search visibility system at an analytics tool plus
+   * hosting: USD 70 a month. The client's whole ask was for AI assistants to recommend them, which is
+   * built out of keyword data, crawling and repeatedly asking the models what they say. None of those
+   * had a cost line, so the three inputs the work is made of were priced at zero.
+   */
+  const seo = computeDeliveryCost({ categories: ["seo"], integrations: [], monthlyVolume: 0, currency: "USD" });
+
+  it("pays DataForSEO, because every keyword and SERP lookup is billed", () => {
+    expect(seo.lines.some((l) => l.vendor === "DataForSEO")).toBe(true);
+  });
+
+  it("pays for crawling their site and their competitors", () => {
+    expect(seo.lines.some((l) => l.vendor === "Apify")).toBe(true);
+  });
+
+  it("pays for asking the models what they say about the brand", () => {
+    // Measuring answer engine visibility means running real completions, over and over.
+    expect(seo.lines.some((l) => l.label.includes("Answer engine"))).toBe(true);
+  });
+
+  it("includes both the automation runtime and the box it runs on", () => {
+    expect(seo.lines.some((l) => l.label.includes("Automation runtime"))).toBe(true);
+    expect(seo.lines.some((l) => l.label.includes("App and database hosting"))).toBe(true);
+  });
+
+  it("costs far more than the analytics build it used to be filed as", () => {
+    const analytics = computeDeliveryCost({ categories: ["analytics"], integrations: [], monthlyVolume: 0, currency: "USD" });
+    expect(seo.monthlyCents).toBeGreaterThan(analytics.monthlyCents * 3);
+  });
+
+  it("embeds the documents for anything that answers from a company's own knowledge", () => {
+    const ops = computeDeliveryCost({ categories: ["ops"], integrations: [], monthlyVolume: 0, currency: "USD" });
+    expect(ops.lines.some((l) => l.label.includes("Embeddings"))).toBe(true);
+  });
+});

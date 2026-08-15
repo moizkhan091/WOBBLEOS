@@ -8244,3 +8244,35 @@ is paid out to start this build" rather than "costs us USD 0" which reads as fre
 effort behind it without adding it in. Three tests pin it, one of them the exact live string.
 
 Gate: typecheck clean, 2017 tests pass, build clean.
+
+---
+
+## 2026-08-15 (Claude) - an SEO build was costed as if it needed no SEO data
+
+Ran the real thing end to end: filled the live readiness form as Pakistan Cables, attached a 126KB
+Hindi and English discovery transcript, approved the 11 extracted facts, ran the paid audit.
+
+The extraction and the audit both did their job. The audit produced seven systems and all three streams
+the client actually asked for on the call are in there: search visibility for the AEO ask, agency data
+liberation for the media buying ask, and a content library. It even produced a technical spec library
+for AI buyers, which maps to a pain buried in the transcript that I had not read myself.
+
+The COSTING was wrong, and badly. `search-visibility-system` was filed as `category: "analytics"`, and
+analytics buys exactly two things: a stats tool and hosting. So a build whose entire purpose is getting
+AI assistants to recommend a brand was costed with **no keyword data, no crawling, and no answer engine
+checks**. The three inputs the work is made of were priced at zero. USD 70 a month against a real USD
+209.
+
+Added the tools WOBBLE genuinely pays for and the model had never heard of: DataForSEO for keyword,
+rank and SERP lookups; Apify for crawling their site and competitors; embeddings for anything answering
+from a client's own documents; voice synthesis for when that is really in scope. And **answer engine
+visibility checks**, which is the one I would have missed without the founder pushing: measuring
+whether the models recommend you means asking them repeatedly, and every check is a paid completion.
+
+`seo` is now its own category rather than a flavour of analytics. `n8n_hosting` was also missing from
+analytics, content and ads, so the automation runtime went unpriced on every build in those categories.
+
+The general lesson: a service catalogue category is not a label, it is the thing that decides what a
+build costs. Filing something under a near-enough category prices it as that other thing.
+
+Gate: typecheck clean, 2017 tests pass, build clean.

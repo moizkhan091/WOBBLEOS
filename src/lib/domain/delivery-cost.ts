@@ -100,6 +100,14 @@ export const TOOL_COSTS: ToolCost[] = [
   { key: "analytics", vendor: "Plausible / GA", label: "Analytics and tracking", monthlyUsdCents: 900, setupUsdCents: 0, perThousandUsdCents: 0, note: "Traffic-tier dependent." },
   { key: "media_generation", vendor: "fal / OpenRouter", label: "Image and video generation", monthlyUsdCents: 0, setupUsdCents: 0, perThousandUsdCents: 9000, note: "Per generated asset. The single most expensive line when creative volume is high." },
   { key: "email_sending", vendor: "Resend / SES", label: "Email sending", monthlyUsdCents: 0, setupUsdCents: 0, perThousandUsdCents: 100, note: "Per thousand emails, plus domain warm-up on a new sender." },
+  // Added after a real audit for a cable manufacturer costed a search visibility build at an analytics
+  // tool plus hosting. WOBBLE pays DataForSEO for every keyword, rank and SERP lookup, and an SEO
+  // system is mostly those lookups. Costing it without them prices the one input the work is made of.
+  { key: "seo_data", vendor: "DataForSEO", label: "Keyword, rank and SERP data", monthlyUsdCents: 5000, setupUsdCents: 0, perThousandUsdCents: 200, note: "Minimum top-up plus per-request. A tracked keyword set and regular SERP pulls are the bulk of it." },
+  { key: "answer_engine_checks", vendor: "OpenRouter", label: "Answer engine visibility checks", monthlyUsdCents: 0, setupUsdCents: 0, perThousandUsdCents: 2500, note: "Asking the models themselves what they say about the brand, repeatedly, is the only way to measure AEO. Every check is a paid completion." },
+  { key: "embeddings", vendor: "OpenAI / OpenRouter", label: "Embeddings and vector storage", monthlyUsdCents: 500, setupUsdCents: 0, perThousandUsdCents: 300, note: "Anything that answers from a company's own documents has to embed them first, and re-embed when they change." },
+  { key: "web_scraping", vendor: "Apify", label: "Site crawling and competitor data", monthlyUsdCents: 4900, setupUsdCents: 0, perThousandUsdCents: 500, note: "Crawling their own site for a technical audit, and competitors for comparison. Priced per compute unit above the plan." },
+  { key: "voice_synthesis", vendor: "ElevenLabs", label: "Voice generation", monthlyUsdCents: 2200, setupUsdCents: 0, perThousandUsdCents: 0, note: "Only when voiceover or a voice agent is genuinely in scope." },
   { key: "integration_build", vendor: "", label: "Integration into their existing tools", monthlyUsdCents: 0, setupUsdCents: 0, perThousandUsdCents: 0, note: "Costed per integration below, since it is the part that varies most between clients." },
 ];
 
@@ -115,15 +123,20 @@ const CATEGORY_TOOLS: Record<string, string[]> = {
   speed_to_lead: ["whatsapp_business_api", "twilio_sms", "llm_usage", "n8n_hosting"],
   booking: ["whatsapp_business_api", "calendar_sync", "llm_usage", "n8n_hosting"],
   sales_followup: ["whatsapp_business_api", "email_sending", "llm_usage", "n8n_hosting"],
-  ops: ["llm_usage", "n8n_hosting", "app_hosting"],
+  // Anything that answers from the client's own documents has to embed them first.
+  ops: ["llm_usage", "embeddings", "n8n_hosting", "app_hosting"],
   retention: ["email_sending", "whatsapp_business_api", "llm_usage", "n8n_hosting"],
   reputation: ["review_platform", "whatsapp_business_api", "n8n_hosting"],
   support: ["whatsapp_business_api", "llm_usage", "n8n_hosting"],
-  content: ["media_generation", "llm_usage", "app_hosting"],
-  ads: ["ads_platform", "analytics", "llm_usage"],
-  analytics: ["analytics", "app_hosting"],
+  content: ["media_generation", "llm_usage", "app_hosting", "n8n_hosting"],
+  ads: ["ads_platform", "analytics", "llm_usage", "n8n_hosting"],
+  analytics: ["analytics", "app_hosting", "n8n_hosting"],
   lead_capture: ["analytics", "llm_usage", "n8n_hosting"],
   ecommerce: ["email_sending", "llm_usage", "n8n_hosting", "analytics"],
+  // Search visibility used to be filed under analytics, so an SEO and AEO build was costed as a stats
+  // tool plus hosting: no keyword data, no crawling, no answer engine checks. The inputs the work is
+  // actually made of were priced at zero.
+  seo: ["seo_data", "web_scraping", "answer_engine_checks", "llm_usage", "app_hosting", "n8n_hosting"],
 };
 
 /** Anything uncategorised still costs the floor: a runtime and some model usage. */

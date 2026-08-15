@@ -24,7 +24,9 @@ export const FREE_AUDIT_MODULE = "free_audit";
 export interface WobbleService {
   slug: string;
   name: string;
-  category: "lead_capture" | "speed_to_lead" | "booking" | "sales_followup" | "retention" | "reputation" | "ads" | "content" | "ops" | "support" | "ecommerce" | "analytics";
+  // "seo" is its own category, not a flavour of analytics. Search visibility is built out of keyword
+  // and SERP data and answer engine checks, none of which an analytics build pays for.
+  category: "lead_capture" | "speed_to_lead" | "booking" | "sales_followup" | "retention" | "reputation" | "ads" | "content" | "ops" | "support" | "ecommerce" | "analytics" | "seo";
   solves: string[]; // problem-signal keywords
   quickWin: boolean; // low-effort, fast ROI — surfaced first
 }
@@ -57,7 +59,7 @@ export const WOBBLE_SERVICES: WobbleService[] = [
   { slug: "customer-support-agent-system", name: "AI Customer Support Agent", category: "support", solves: ["support_overload", "slow_support", "repetitive_tickets"], quickWin: false },
   { slug: "ai-email-sms-flows", name: "AI Email / SMS Flows", category: "retention", solves: ["no_nurture", "no_email", "low_repeat"], quickWin: true },
   { slug: "landing-page-cro", name: "Landing Page CRO", category: "lead_capture", solves: ["low_conversion", "website_no_booking", "visitors_leave"], quickWin: false },
-  { slug: "search-visibility-system", name: "Search Visibility (SEO/GEO)", category: "analytics", solves: ["low_traffic", "not_found_online", "no_seo"], quickWin: false },
+  { slug: "search-visibility-system", name: "Search Visibility (SEO/GEO)", category: "seo", solves: ["low_traffic", "not_found_online", "no_seo"], quickWin: false },
   { slug: "ai-invoice-chaser", name: "AI Invoice Chaser", category: "ops", solves: ["unpaid_invoices", "manual_followup", "cashflow"], quickWin: true },
   { slug: "ai-data-entry", name: "AI Data Entry", category: "ops", solves: ["manual_data_entry", "admin_overload"], quickWin: true },
   { slug: "ai-workflow-automation", name: "AI Workflow Automation", category: "ops", solves: ["manual_process", "admin_overload", "repetitive_tasks"], quickWin: false },
