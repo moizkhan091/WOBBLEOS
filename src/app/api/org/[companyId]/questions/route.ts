@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
+import { withOperation } from "@/lib/live-ops";
 import { generateCallQuestions, getStoredQuestionSet } from "@/lib/call-questions";
 
 export const runtime = "nodejs";
@@ -35,8 +36,15 @@ export async function POST(request: Request, context: { params: Promise<{ compan
   if (isAuthError(auth)) return auth;
   const { companyId } = await context.params;
   try {
-    const set = await generateCallQuestions(companyId, { actor: auth });
-    return NextResponse.json({ ok: true, set }, { status: 201 });
+    // Refreshing the page used to bring the button back while a run was still going, so the same set
+    // got written twice and paid for twice. The claim is in the database, where a second tab can see it.
+    const claimed = await withOperation(
+      { operation: "questions", entityType: "crm_company", entityId: companyId },
+      { label: "The call question set", module: "call_questions", actor: auth },
+      () => generateCallQuestions(companyId, { actor: auth }),
+    );
+    if (!claimed.ok) return NextResponse.json({ ok: false, error: claimed.because, running: true, since: claimed.since }, { status: 409 });
+    return NextResponse.json({ ok: true, set: claimed.value }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     const status = /not found/i.test(message) ? 404 : 500;

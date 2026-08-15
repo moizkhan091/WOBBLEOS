@@ -86,6 +86,49 @@ function useApi<T = unknown>(url: string | null): ApiState<T> & { reload: () => 
   return { ...s, reload: () => setTick((t) => t + 1) };
 }
 
+type LiveOperation = { operation: string; entityType: string; entityId: string; label: string; startedAt: string };
+
+/**
+ * What the OS is doing for this client right now, read from the server rather than remembered.
+ *
+ * Every expensive button used to hold its "busy" flag in component state, which lasts exactly as long
+ * as the page does. Refresh mid-run and the button came back enabled, so you could not tell whether the
+ * AI was still working and would set it going a second time. Two tabs never knew about each other at all.
+ *
+ * Polls while something is running and stops when nothing is, so an idle client costs one request.
+ */
+function useLiveOps(entityId: string | null) {
+  const [ops, setOps] = useState<LiveOperation[]>([]);
+  useEffect(() => {
+    if (!entityId) { setOps([]); return; }
+    let on = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      try {
+        const r = await fetch(`/api/operations?entity=${encodeURIComponent(entityId)}`);
+        const j = (await r.json().catch(() => ({}))) as { operations?: LiveOperation[] };
+        if (!on) return;
+        const live = j.operations ?? [];
+        setOps(live);
+        // Only keep polling while there is something to watch.
+        timer = setTimeout(read, live.length ? 3000 : 20000);
+      } catch {
+        if (on) timer = setTimeout(read, 20000);
+      }
+    };
+    read();
+    return () => { on = false; if (timer) clearTimeout(timer); };
+  }, [entityId]);
+  return ops;
+}
+
+/** How long a run has been going, in the words a founder would use. */
+function runningFor(startedAt: string): string {
+  const secs = Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
+  if (secs < 60) return `${secs}s`;
+  return `${Math.round(secs / 60)}m`;
+}
+
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return <div style={{ ...glass, padding: "22px 24px", ...style }}>{children}</div>;
 }
@@ -7430,11 +7473,14 @@ function ContactsPanel({ contacts, onChanged }: { contacts: OrgContact[]; onChan
  * Pre-call questions, generated fresh for this client — never drawn from a bank. The website form's
  * own answer combinations run past six figures, so a recycled list is instantly recognisable on a call.
  */
-function QuestionsPanel({ companyId, initial, onGenerated }: { companyId: string; initial: CallQuestionSetRow | null; onGenerated: () => void }) {
+function QuestionsPanel({ companyId, initial, onGenerated, live }: { companyId: string; initial: CallQuestionSetRow | null; onGenerated: () => void; live: LiveOperation[] }) {
   const [set, setSet] = useState<CallQuestionSetRow | null>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { setSet(initial); }, [initial]);
+  // The server's answer outranks this component's memory: it survives a refresh and sees other tabs.
+  const running = live.find((o) => o.operation === "questions") ?? null;
+  const locked = busy || Boolean(running);
 
   async function generate() {
     setBusy(true); setErr(null);
@@ -7450,7 +7496,7 @@ function QuestionsPanel({ companyId, initial, onGenerated }: { companyId: string
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-        <button onClick={generate} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busy ? "Writing questions…" : set ? "Regenerate questions" : "Generate questions for the first call"}</button>
+        <button onClick={generate} disabled={locked} style={locked ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{running ? `Writing questions… (${runningFor(running.startedAt)})` : busy ? "Writing questions…" : set ? "Regenerate questions" : "Generate questions for the first call"}</button>
         {set?.round === "follow_up" ? <Tag text="follow-up call" color={C.blue} /> : null}
         <span style={{ fontSize: 11, color: faint }}>
           {set?.round === "follow_up"
@@ -7727,10 +7773,18 @@ const gradeColor = (g: string) => (g === "A" ? C.lime : g === "B" ? C.blue : g =
  * data with an evidence-grounded LLM read, then weighted into one grade. The weakest filter is called
  * out because that, not the average, is what actually kills a deal.
  */
-function QualificationPanel({ companyId, onScored }: { companyId: string; onScored: () => void }) {
+function QualificationPanel({ companyId, onScored, live }: { companyId: string; onScored: () => void; live: LiveOperation[] }) {
   const state = useApi<{ latest: QualAssessment | null; roles: QualRole[]; assessments: QualAssessment[] }>(`/api/org/${companyId}/qualify`);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const running = live.find((o) => o.operation === "qualify") ?? null;
+  const locked = busy || Boolean(running);
+  // A run that finished in another tab should land here without a manual refresh.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !running) { state.reload(); onScored(); }
+    wasRunning.current = Boolean(running);
+  });
 
   async function run() {
     setBusy(true); setErr(null);
@@ -7749,8 +7803,8 @@ function QualificationPanel({ companyId, onScored }: { companyId: string; onScor
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-        <button onClick={run} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
-          {busy ? "8 agents scoring…" : latest ? "Re-qualify" : "Qualify this client"}
+        <button onClick={run} disabled={locked} style={locked ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>
+          {running ? `8 agents scoring… (${runningFor(running.startedAt)})` : busy ? "8 agents scoring…" : latest ? "Re-qualify" : "Qualify this client"}
         </button>
         <span style={{ fontSize: 11, color: faint }}>
           8 specialists score budget, urgency, access, complexity, problem, learning, phasing and first workflow from their form answers and approved call findings
@@ -9325,6 +9379,8 @@ function OrgWorkspacePage() {
   // This client's row from the worklist: the header line and every fold summary read from it, so the
   // page cannot say one thing at the top and another halfway down.
   const qualEntry = (worklist.data?.entries ?? []).find((e) => e.companyId === selectedId);
+  // What the OS is doing for this client right now, so a refresh cannot invite a second run.
+  const liveOps = useLiveOps(selectedId || null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -9414,8 +9470,12 @@ function OrgWorkspacePage() {
                     ? `Grade ${j.qualification.grade}, ${j.qualification.overallScore}/100.${qualEntry?.qualification?.weakest ? ` Weakest: ${(QUAL_LABELS[qualEntry.qualification.weakest.role] ?? qualEntry.qualification.weakest.role).toLowerCase()} at ${qualEntry.qualification.weakest.score}.` : ""}`
                     : "Not scored yet. Run the council before deciding whether this deal is worth an audit."
                 }
+                // Folding this hid the ONLY button that scores a client, so the page said "not scored
+                // yet" and offered no way to fix it. A fold may hide the working; it must never hide
+                // the action the summary is asking for. Open by default until it has been run.
+                defaultOpen={!j.qualification}
               >
-                <QualificationPanel companyId={selectedId} onScored={refreshAll} />
+                <QualificationPanel companyId={selectedId} onScored={refreshAll} live={liveOps} />
               </OrgFold>
 
               <OrgSection title="DEALS" />
@@ -9454,7 +9514,7 @@ function OrgWorkspacePage() {
           ) : tab === "callprep" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <OrgSection title="QUESTIONS FOR THE FIRST CALL" />
-              <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} />
+              <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} live={liveOps} />
               <OrgSection title="AFTER THE CALL, GIVE IT BACK" />
               <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
             </div>

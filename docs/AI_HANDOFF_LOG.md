@@ -7954,3 +7954,40 @@ Worth recording: I overwrote that layout file instead of reading it first and si
 Read before you overwrite.
 
 Gate: typecheck clean, 1977 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - nothing knew what was already running
+
+Three founder reports, one root cause.
+
+**1. The qualify button was hidden by my own fold.** Adding a client showed "Not scored yet. Run the
+council…" and no way to run it. When I folded the Overview I wrote the rule myself, that a fold may hide
+the working but never the answer, and then broke it: the summary asks for an action whose only button
+was behind the click. The section is now `defaultOpen` until the council has actually run.
+
+**2 and 3. "Busy" lived in React state.** Generate questions, refresh, and the button is enabled again,
+because component state lasts exactly as long as the page. So a founder could not tell whether the AI
+was still working, clicked again, and paid for the same model calls twice. Two tabs never knew about
+each other at all. Every expensive button in the OS had this shape.
+
+A UI flag can never be the guarantee: two tabs will always race and the second wins by accident. So the
+claim moved to the database, and NOT to a new table. `jobs` already carries exactly the right constraint:
+
+    uniqueIndex("jobs_idempotency_live_idx").on(idempotencyKey).where(status in ('pending','active'))
+
+`src/lib/live-ops/index.ts` claims a row for the duration of a synchronous operation. A second attempt
+loses the insert race against Postgres and is told what is running and since when, as a 409 rather than
+an error, because "start it again" already has a correct answer. Rows are inserted `active`, not
+`pending`, so no worker picks them up and runs the work a second time. Release is in a `finally`: an
+operation that throws while holding its key would lock a founder out of retrying the very thing that
+just failed, which is worse than the double-run this prevents. Stale claims reuse the existing
+five-minute `reclaimStalledJobs` window rather than inventing a second definition of stale.
+
+`GET /api/operations?entity=` and `useLiveOps` make a refresh honest: the page asks what is in flight
+instead of remembering, buttons read "Writing questions… (2m)", and a run finishing in another tab
+refreshes this one. Polls every 3s while something runs, every 20s when nothing does.
+
+Wired into qualification and call questions. The same three lines fit any other expensive button.
+
+Gate: typecheck clean, 1982 tests pass, build clean.
