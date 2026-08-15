@@ -9454,6 +9454,14 @@ function OrgWorkspacePage() {
     } catch (e) { setActionMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusyKey(null); }
   }
 
+  // What the OS is doing for this client right now, so a refresh cannot invite a second run.
+  //
+  // ABOVE the early returns on purpose. This sat below them, so on the first render (while the client
+  // list was still loading) the component returned before reaching it and React counted one fewer hook
+  // than on the render after. That is error #310, and it took the whole Revenue and CRM page down with
+  // "This page couldn't load". A hook cannot sit behind a conditional return, ever.
+  const liveOps = useLiveOps(selectedId || null);
+
   if (companiesApi.loading) return <StateBlock kind="loading" message="Loading clients…" />;
   if (companiesApi.error) return <StateBlock kind="error" message={companiesApi.error} />;
   if (!companies.length) return <StateBlock kind="empty" message="No clients yet, they arrive automatically from the website readiness form, or add one in Pipeline / CRM." />;
@@ -9469,8 +9477,6 @@ function OrgWorkspacePage() {
   // This client's row from the worklist: the header line and every fold summary read from it, so the
   // page cannot say one thing at the top and another halfway down.
   const qualEntry = (worklist.data?.entries ?? []).find((e) => e.companyId === selectedId);
-  // What the OS is doing for this client right now, so a refresh cannot invite a second run.
-  const liveOps = useLiveOps(selectedId || null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

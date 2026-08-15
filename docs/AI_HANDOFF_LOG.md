@@ -8108,3 +8108,22 @@ clients that need attention. The ladder gets the founder's ordering without that
 change can be discussed on its own.
 
 Gate: typecheck clean, 2005 tests pass, build clean.
+
+**And then I took the whole page down.** The founder logged in, clicked Revenue and CRM, and got
+"This page couldn't load". Every check I had run said the deploy was fine: page 200, every endpoint
+200, ladder code present in the served bundle, no server errors. All true, and all useless, because the
+failure was a client-side React crash and I had never once looked at the rendered page.
+
+Driving the founder's own Chrome found it in one console read: **React error #310**, rendered more
+hooks than during the previous render. `const liveOps = useLiveOps(...)` sat BELOW three early returns
+in `OrgWorkspacePage`. While the client list was loading the component returned early and never reached
+the hook; on the next render it did. Different hook count, and React tears the tree down.
+
+It came from the run-claims work, not the ladder, and it had been live since that deploy. A hook cannot
+sit behind a conditional return, ever. Moved above them, with the reason written at the call site, and
+swept the file for the same shape elsewhere: none.
+
+The real lesson is not about hooks. Status codes and bundle greps are not verification of a user
+interface. Nothing I checked could have caught this, and the founder found it in one click.
+
+Gate: typecheck clean, 2005 tests pass, build clean.
