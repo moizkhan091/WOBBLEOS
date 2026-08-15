@@ -207,8 +207,18 @@ function ProfileMenu() {
   const s = useApi<{ authenticated: boolean; founder?: string }>("/api/auth/session");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const founder = s.data?.founder ?? (s.loading ? "…" : "Guest");
-  const initial = founder && founder !== "…" && founder !== "Guest" ? founder[0].toUpperCase() : "?";
+  // A session that is gone must send you to the login page, not label you "Guest" and leave you sitting
+  // inside the OS shell. Nothing was ever readable in that state, because every API verifies against the
+  // database on each request, but it looked exactly like a breach and a founder was right to call it one.
+  // The server layout is the real gate; this closes the window where a session dies mid-visit.
+  // 401 specifically, not any error: a network blip or a 500 must not bounce a working founder out to
+  // the login page, and useApi reports an unauthenticated call as status 401 with no data.
+  useEffect(() => {
+    if (!s.loading && s.status === 401) window.location.href = "/login";
+  }, [s.loading, s.status]);
+
+  const founder = s.data?.founder ?? (s.loading ? "…" : "signed out");
+  const initial = founder && founder !== "…" && founder !== "signed out" ? founder[0].toUpperCase() : "?";
   async function logout() {
     setBusy(true);
     try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* proceed to login anyway */ }

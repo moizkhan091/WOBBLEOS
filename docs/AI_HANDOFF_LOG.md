@@ -7924,3 +7924,33 @@ the recurrence count replayed onto it, the rest are resolved as `dismissed` with
 row they folded into. Nothing deleted, all reversible, audited.
 
 Gate: typecheck clean, 1971 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - a revoked session still got the page rendered
+
+The founder rotated their password, opened a tab, and saw the OS shell with "Guest" in the corner. They
+called it a breach. It was not one, and the distinction matters less than the fact that they could not
+tell.
+
+Reproduced properly rather than reasoned about: minted a JWT for a REVOKED session row using the live
+signing secret and curled the site. `/org`, `/brief` and `/crm` all returned **200**. Every API returned
+401, and grepping the returned HTML for client names, emails and prices found nothing, so no data was
+served. But the page loaded.
+
+Cause: the edge proxy calls `verifyJwtOnly`, which checks signature and expiry only, because the edge
+runtime has no database. Revocation lives in Postgres. A session revoked by logout or a password
+rotation therefore kept a signature-valid cookie for the rest of its 30-day life and sailed through the
+gate. Only the Node route handlers ran the real `verifySession`.
+
+Fixed in two places. `src/app/[module]/layout.tsx` is a server component and now runs the DB-backed
+`verifySession` before rendering, so the page itself honours revocation, expiry, token-hash mismatch and
+a disabled account. `ProfileMenu` redirects to /login on a 401 rather than labelling the founder "Guest"
+and leaving them sitting in the shell, which closes the window where a session dies mid-visit. It keys on
+401 specifically, so a network blip or a 500 never bounces a working founder out.
+
+Worth recording: I overwrote that layout file instead of reading it first and silently dropped its
+`<Shell>` wrapper, which would have broken the entire UI. Caught by `git diff` before it went anywhere.
+Read before you overwrite.
+
+Gate: typecheck clean, 1977 tests pass, build clean.
