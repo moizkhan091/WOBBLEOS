@@ -8276,3 +8276,19 @@ The general lesson: a service catalogue category is not a label, it is the thing
 build costs. Filing something under a near-enough category prices it as that other thing.
 
 Gate: typecheck clean, 2017 tests pass, build clean.
+
+**Then I reintroduced the units bug while fixing the costs.** Recomputing Pakistan Cables' cost sheet
+made the panel read "PKR 78 a month" for a USD 78 cost. The PATCH recompute passed
+`currency: proposal.currency` into `computeDeliveryCost`, which does not convert anything, so dollar
+amounts were relabelled as rupees. Same 280x family, third appearance, this time caused by me. Cost is
+computed in USD always, because the tool list prices are published in dollars and nothing converts
+them; the panel already prints the mismatch tag.
+
+And the recompute was reading a STALE snapshot. Categories were derived at build time and frozen into
+the row, so when `search-visibility-system` moved from analytics to seo, every proposal already built
+kept costing an SEO system as an analytics one. `costCategoriesFor` is now one shared function and the
+recompute re-derives from the audit, so a correction to the service catalogue reaches existing
+proposals rather than only new ones. The durable fact is which service was proposed; the category is
+derived from it.
+
+Gate: typecheck clean, 2023 tests pass, build clean.

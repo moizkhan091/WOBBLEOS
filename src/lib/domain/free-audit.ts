@@ -70,6 +70,19 @@ export const WOBBLE_SERVICES: WobbleService[] = [
 
 export const SERVICE_BY_SLUG = new Map(WOBBLE_SERVICES.map((s) => [s.slug, s]));
 
+/**
+ * The cost categories a set of audit opportunities implies.
+ *
+ * One place, because the proposal builder and the cost recompute both need it and they drifted: the
+ * builder derived categories from the audit, the recompute reused a snapshot stored months earlier,
+ * and when `search-visibility-system` moved from analytics to seo the stored snapshot kept costing an
+ * SEO build as analytics. The durable fact is which SERVICE was proposed; the category is derived from
+ * it, so a correction to the catalogue reaches every proposal rather than only new ones.
+ */
+export function costCategoriesFor(opportunities: Array<{ service?: string }>): string[] {
+  return [...new Set(opportunities.map((o) => SERVICE_BY_SLUG.get(o.service ?? "")?.category).filter((c): c is NonNullable<typeof c> => Boolean(c)))];
+}
+
 // ---------------------------------------------------------------- intake + diagnosis
 
 export const AUDIT_SIGNALS = [

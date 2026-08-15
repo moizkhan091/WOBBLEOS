@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { crmCompanies, proposals } from "@/db/schema";
+import { audits, crmCompanies, proposals } from "@/db/schema";
 import { writeAuditEvent } from "@/lib/audit";
 import { isAuthError, requireFounder } from "@/lib/auth/route";
 import { sanitizeHouseStyle } from "@/lib/domain/house-style";
@@ -9,6 +9,7 @@ import { computeDeliveryCost, costCorrectionSchema, costQuestions, marginAt, INT
 import { decidePricing, pricingChecklist, pricingDecisionSchema, pricingPrompt, type PricingState } from "@/lib/domain/pricing-gate";
 import { phaseOneWithinAuthority, rephasePrice } from "@/lib/domain/proposal-phasing";
 import { proseAgreesWithPrice, stripQuotedPrices } from "@/lib/domain/quoted-price";
+import { costCategoriesFor } from "@/lib/domain/free-audit";
 import { historyFor } from "@/lib/pricing-memory";
 
 export const runtime = "nodejs";
@@ -138,15 +139,31 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const previous = state?.inputs;
     if (!previous) return NextResponse.json({ ok: false, error: "this proposal has no recorded cost inputs to correct" }, { status: 422 });
 
+    // Re-derive the categories from the audit rather than trusting the snapshot stored at build time.
+    // When `search-visibility-system` moved out of "analytics" into its own "seo" category, every
+    // proposal already built kept costing an SEO system as an analytics one, because the derived label
+    // had been frozen into the row. The durable fact is which service the audit proposed.
+    let freshCategories = previous.categories;
+    if (proposal.auditId) {
+      const [auditRow] = await db.select({ report: audits.report }).from(audits).where(eq(audits.id, proposal.auditId)).limit(1);
+      const opps = (auditRow?.report as Record<string, unknown> | undefined)?.opportunities;
+      if (Array.isArray(opps) && opps.length) freshCategories = costCategoriesFor(opps as Array<{ service?: string }>);
+    }
+
     // A founder's correction outranks a guess, and stays marked as theirs so it is never re-guessed.
     const inputs: CostInputsView = {
       ...previous,
       monthlyVolume: parsed.data.monthlyVolume ?? previous.monthlyVolume,
       integrations: parsed.data.integrations ?? previous.integrations,
+      categories: freshCategories,
       volumeSource: parsed.data.monthlyVolume !== undefined ? "founder" : previous.volumeSource,
       integrationsSource: parsed.data.integrations !== undefined ? "founder" : previous.integrationsSource,
     };
-    const cost = computeDeliveryCost({ categories: inputs.categories, integrations: inputs.integrations, monthlyVolume: inputs.monthlyVolume, currency: proposal.currency });
+    // USD, always, and never the proposal's currency. Tool list prices are published in dollars and
+    // nothing here converts them, so passing PKR would relabel dollar amounts as rupees and print
+    // "PKR 78 a month" for a USD 78 cost. That is the same units mistake that nearly sent a client a
+    // bill 280 times too large, and it reappeared here the first time a cost was recomputed.
+    const cost = computeDeliveryCost({ categories: inputs.categories, integrations: inputs.integrations, monthlyVolume: inputs.monthlyVolume, currency: "USD" });
     const now = new Date();
     // The price decision, if one exists, is left alone. Correcting a cost changes the margin a founder
     // sees, not the number they told a client.

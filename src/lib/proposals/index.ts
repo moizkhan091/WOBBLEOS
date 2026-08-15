@@ -15,7 +15,7 @@ import {
 import { buildHandoffEnvelope, validateHandoff, type HandoffEnvelope } from "@/lib/domain/handoff";
 import { canAdvance, type PricingState } from "@/lib/domain/pricing-gate";
 import { computeDeliveryCost, extractMonthlyVolume, type CostInputsView, type IntegrationKey } from "@/lib/domain/delivery-cost";
-import { SERVICE_BY_SLUG } from "@/lib/domain/free-audit";
+import { costCategoriesFor, SERVICE_BY_SLUG } from "@/lib/domain/free-audit";
 import { buildHandoffRow } from "@/lib/domain/handoff-delivery";
 import { getAudit } from "@/lib/free-audit";
 import { createInvoice } from "@/lib/finance";
@@ -178,9 +178,7 @@ export async function createProposalFromAudit(auditId: string, input: { createdB
     // What this build costs US: the tools each system needs, what we have to connect into on their
     // side, and the volume it will carry. Arithmetic, not a guess, and never a price.
     const report = a.report as unknown as Record<string, unknown>;
-    const categories: string[] = Array.isArray(report.opportunities)
-      ? [...new Set((report.opportunities as Array<{ service?: string }>).map((o) => SERVICE_BY_SLUG.get(o.service ?? "")?.category).filter((c): c is NonNullable<typeof c> => Boolean(c)))]
-      : [];
+    const categories = costCategoriesFor(Array.isArray(report.opportunities) ? (report.opportunities as Array<{ service?: string }>) : []);
     const integrations = integrationsFromReport(report);
     const monthlyVolume = monthlyVolumeFromReport(report);
     const deliveryCost = computeDeliveryCost({ categories, integrations, monthlyVolume, currency: "USD" });
