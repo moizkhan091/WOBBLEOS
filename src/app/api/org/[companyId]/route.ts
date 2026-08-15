@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { requireFounder, isAuthError } from "@/lib/auth/route";
 import { getCommercialJourney, getArtifactLineage } from "@/lib/commercial-journey";
 import { getClientIntakeContext } from "@/lib/intake/context";
@@ -39,10 +39,14 @@ export async function GET(request: Request, context: { params: Promise<{ company
       getClientIntakeContext(companyId).catch(() => ({ snapshots: [] })),
       getStoredQuestionSet(companyId).catch(() => null),
       db.select({ website: crmCompanies.website, socialLinks: crmCompanies.socialLinks, notes: crmCompanies.notes }).from(crmCompanies).where(eq(crmCompanies.id, companyId)).limit(1),
-      db.select().from(crmContacts).where(eq(crmContacts.companyId, companyId)).limit(50),
+      // Archived rows are archived. Contacts, proposals and invoices did not filter on it, so the
+      // container showed everything ever created: twelve archived proposals came back as "3 priced
+      // proposals" on the ladder and rendered a pricing panel for each. Audits have no archived_at,
+      // which typecheck caught when I assumed they did. Archiving is worth nothing if it does not hide.
+      db.select().from(crmContacts).where(and(eq(crmContacts.companyId, companyId), isNull(crmContacts.archivedAt))).limit(50),
       db.select().from(audits).where(eq(audits.companyId, companyId)).orderBy(desc(audits.createdAt)).limit(20),
-      db.select().from(proposals).where(eq(proposals.companyId, companyId)).orderBy(desc(proposals.createdAt)).limit(20),
-      db.select().from(invoices).where(eq(invoices.companyId, companyId)).orderBy(desc(invoices.createdAt)).limit(20),
+      db.select().from(proposals).where(and(eq(proposals.companyId, companyId), isNull(proposals.archivedAt))).orderBy(desc(proposals.createdAt)).limit(20),
+      db.select().from(invoices).where(and(eq(invoices.companyId, companyId), isNull(invoices.archivedAt))).orderBy(desc(invoices.createdAt)).limit(20),
     ]);
 
     return NextResponse.json({

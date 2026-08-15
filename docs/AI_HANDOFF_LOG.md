@@ -8191,3 +8191,19 @@ decision, their name on it, and an audit trail. Nothing changes anything on its 
 daily block, and on demand from the Revenue desk.
 
 Gate: typecheck clean, 2015 tests pass, build clean.
+
+**Walking the ladder in the browser found an archiving bug.** Bright Smile's rung 7 read "3 priced
+proposal(s)" when exactly ONE proposal is unarchived. `/api/org/[companyId]` never filtered
+`archived_at` on contacts, proposals or invoices, so the container returned all thirteen rows and the
+ladder counted archived documents. Rung 6 would have rendered a pricing panel for each of them.
+
+Archiving is worth nothing if the thing does not then go away, and I had archived twelve proposals two
+days earlier believing they were gone. Filtered now on the three tables that have the column. I
+assumed `audits` had one too and typecheck caught that it does not, which is the second time this
+session a quick structural assumption was wrong and the compiler was right.
+
+Also worth recording honestly: I first reported the client picker as broken because clicking a
+reference missed the pill. It was not broken. Clicking by coordinate switched clients correctly and the
+whole ladder repopulated. A missed click is not a bug, and I should verify before naming one.
+
+Gate: typecheck clean, 2015 tests pass, build clean.
