@@ -7424,7 +7424,7 @@ type OrgAudit = {
   opportunities?: AuditOpportunityRow[]; roadmap?: AuditRoadmapPhase[]; roi?: AuditRoi | null;
   risks?: Array<string | { risk?: string; mitigation?: string }>; nextSteps?: unknown[]; successMetrics?: unknown[]; recommendedTechStack?: unknown[];
 };
-type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null; phases?: Array<{ number: number; name: string; rationale: string; items: string[]; priceCents: number }> | null; excludedFromQuote?: string[] | null; phaseOneAuthority?: { ok: boolean; because: string } | null };
+type OrgProposalRow = { id: string; title: string; status: string; version: number; totalCents: number; currency: string; pricingDecided?: boolean; preSendReview?: PreSendReview | null; currencyUnverified?: boolean; currencyNote?: string | null; phases?: Array<{ number: number; name: string; rationale: string; items: string[]; priceCents: number }> | null; excludedFromQuote?: string[] | null; phaseOneAuthority?: { ok: boolean; because: string } | null };
 type OrgInvoiceRow = { id: string; number: string; status: string; totalCents: number; amountPaidCents: number; currency: string; dueAt: string | null; retainer?: { cadence: string; nextIssueAt: string; active: boolean; issued: string[]; dueInDays: number } | null };
 type CallQuestionItem = { question: string; why: string; coverage: string; tier: string; basedOn?: string };
 type CallQuestionSetRow = { opening: string; questions: CallQuestionItem[]; doNotAsk: string[]; generatedAt: string; gaps: string[]; round?: "first" | "follow_up" };
@@ -9297,6 +9297,81 @@ function OrgFold({ title, summary, defaultOpen = false, right, children }: { tit
   );
 }
 
+
+/** The steps of one client, in the order the work actually happens. */
+type OrgStep = "who" | "worth" | "questions" | "call" | "found" | "charge" | "proposal" | "money";
+
+/**
+ * One rung of the client ladder.
+ *
+ * The container used to be five tabs plus a row of buttons headed "DO SOMETHING FOR THIS CLIENT",
+ * which offered Run Paid Audit, Build Proposal and Write a Quick Pitch side by side. That is a menu of
+ * documents, and it asks the founder to know which document he wants before he can start. His words:
+ * "i did get confused by seeing audit, quick pitch and etc all that stuff."
+ *
+ * A ladder asks a different question. Not "which document?" but "what is the next step for this
+ * client?", which is a question the OS already answers: `suggestNextAction` has ranked it all along.
+ *
+ * `done` is computed from real state, never from a flag someone remembered to set. `locked` is used
+ * exactly once, on the proposal, because a document that quotes a price nobody chose is the failure
+ * this whole pricing gate exists to prevent.
+ */
+function OrgRung({
+  n,
+  title,
+  summary,
+  done,
+  locked,
+  lockedBecause,
+  open,
+  onToggle,
+  isNext,
+  children,
+}: {
+  n: number;
+  title: string;
+  summary: string;
+  done: boolean;
+  locked?: boolean;
+  lockedBecause?: string;
+  open: boolean;
+  onToggle: () => void;
+  isNext?: boolean;
+  children: React.ReactNode;
+}) {
+  const ring = done ? C.lime : isNext ? C.orange : "rgba(255,255,255,0.14)";
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: open ? 12 : 0,
+        padding: "11px 13px",
+        borderRadius: 12,
+        border: "1px solid " + (isNext && !done ? "rgba(255,107,0,0.4)" : "rgba(255,255,255,0.07)"),
+        background: isNext && !done ? "rgba(255,107,0,0.05)" : "rgba(255,255,255,0.015)",
+        opacity: locked ? 0.55 : 1,
+      }}
+    >
+      <button
+        onClick={() => !locked && onToggle()}
+        aria-expanded={open}
+        disabled={locked}
+        style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "transparent", border: "none", cursor: locked ? "default" : "pointer", textAlign: "left", padding: 0, flexWrap: "wrap" }}
+      >
+        <span style={{ width: 23, height: 23, flex: "none", borderRadius: "50%", background: done ? C.lime : "transparent", border: "1.5px solid " + ring, color: done ? "#0b0b0d" : ring, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>
+          {done ? "✓" : n}
+        </span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: C.white }}>{title}</span>
+        {isNext && !done ? <Tag text="do this next" color={C.orange} /> : null}
+        <span style={{ fontSize: 11.5, color: faint, flex: 1, minWidth: 150 }}>{locked ? lockedBecause ?? "Finish the step before this one." : summary}</span>
+        {!locked ? <span style={{ fontSize: 11, color: faint }}>{open ? "hide" : "open"}</span> : null}
+      </button>
+      {open && !locked ? children : null}
+    </div>
+  );
+}
+
 function OrgWorkspacePage() {
   const companiesApi = useApi<{ companies: Array<{ id: string; name: string; industry: string | null; status: string | null }> }>("/api/crm/companies?limit=500");
   const companies = companiesApi.data?.companies ?? [];
@@ -9309,7 +9384,7 @@ function OrgWorkspacePage() {
     const wanted = new URLSearchParams(window.location.search).get("client");
     setSelectedId(wanted && companies.some((c) => c.id === wanted) ? wanted : companies[0].id);
   }, [companies, selectedId]);
-  const [tab, setTab] = useState<"overview" | "callprep" | "dealteam" | "artifacts" | "head">("overview");
+  const [tab, setTab] = useState<OrgStep>("who");
   const org = useApi<{
     journey: OrgJourney; lineage: OrgLineage; intake?: { snapshots: IntakeSnap[] }; questions?: CallQuestionSetRow | null;
     contacts?: OrgContact[]; audits?: OrgAudit[]; proposals?: OrgProposalRow[]; invoices?: OrgInvoiceRow[];
@@ -9458,159 +9533,211 @@ function OrgWorkspacePage() {
             })}
           </div>
 
-          <div style={{ display: "flex", gap: 6, borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap" }}>
-            {([["overview", "Overview"], ["callprep", "Call prep"], ["dealteam", "Deal team"], ["artifacts", "Artifacts & Lineage"], ["head", "Ask the Head"]] as const).map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 14px", background: "transparent", border: "none", borderBottom: "2px solid " + (tab === t ? C.lime : "transparent"), color: tab === t ? C.white : muted, cursor: "pointer", fontSize: 13, fontWeight: tab === t ? 600 : 500 }}>{label}</button>
-            ))}
-          </div>
+          {/* THE LADDER. One client, one step at a time, in the order the work happens.
+              Replaces five tabs and a row of three document buttons. `done` is computed from real
+              state; the only lock in the whole thing is the proposal behind the price. */}
+          {(() => {
+            const hasIntake = (org.data?.intake?.snapshots ?? []).length > 0;
+            const hasQuestions = Boolean(org.data?.questions);
+            const hasCall = j.meetings.length > 0;
+            const hasFindings = j.discoveryFactCount > 0;
+            const hasAudit = auditItems.length > 0;
+            const priced = proposalItems.filter((p) => p.pricingDecided);
+            const unpriced = proposalItems.filter((p) => !p.pricingDecided);
+            const hasProposalDoc = priced.length > 0;
+            // The rung the OS thinks you should be on, straight from the worklist so the ladder and
+            // the banner above it can never disagree about what is next.
+            const nextByKind: Record<string, OrgStep> = {
+              qualify: "worth", send_questions: "questions", book_call: "questions",
+              mine_call: "call", run_audit: "found", build_proposal: "charge",
+              set_price: "charge", send_proposal: "proposal", chase_proposal: "proposal",
+            };
+            const nextStep = qualEntry ? nextByKind[qualEntry.next.kind] : undefined;
+            const rung = (id: OrgStep) => ({ open: tab === id, onToggle: () => setTab(tab === id ? ("who" as OrgStep) : id), isNext: nextStep === id });
 
-          {tab === "overview" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
-              <OrgSection title="CONTACTS" />
-              <ContactsPanel contacts={contacts} onChanged={refreshAll} />
-              <OrgFold title="WHO SENT THEM, AND WHERE THEY OPERATE" summary="Referral, sites, and what your contact can sign alone.">
-                <RelationshipsPanel companyId={selectedId} onChanged={refreshAll} />
-              </OrgFold>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <OrgMetric label="qualification" value={j.qualification ? `${j.qualification.grade} · ${j.qualification.overallScore}` : "-"} tone={j.qualification ? C.lime : undefined} />
-                <OrgMetric label="calls given back" value={j.meetings.length} />
-                <OrgMetric label="approved findings" value={j.discoveryFactCount} />
-                <OrgMetric label="open deals" value={j.opportunities.length} />
-              </div>
-              <OrgFold
-                title="QUALIFICATION COUNCIL"
-                summary={
-                  j.qualification
-                    ? `Grade ${j.qualification.grade}, ${j.qualification.overallScore}/100.${qualEntry?.qualification?.weakest ? ` Weakest: ${(QUAL_LABELS[qualEntry.qualification.weakest.role] ?? qualEntry.qualification.weakest.role).toLowerCase()} at ${qualEntry.qualification.weakest.score}.` : ""}`
-                    : "Not scored yet. Run the council before deciding whether this deal is worth an audit."
-                }
-                // Folding this hid the ONLY button that scores a client, so the page said "not scored
-                // yet" and offered no way to fix it. A fold may hide the working; it must never hide
-                // the action the summary is asking for. Open by default until it has been run.
-                defaultOpen={!j.qualification}
-              >
-                <QualificationPanel companyId={selectedId} onScored={refreshAll} live={liveOps} />
-              </OrgFold>
-
-              <OrgSection title="DEALS" />
-              {j.opportunities.length ? j.opportunities.map((o) => (
-                <div key={o.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
-                    <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
-                    <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={refreshAll} />
-                    {o.nextAction ? <span style={{ fontSize: 11.5, color: faint }}>next: {o.nextAction}</span> : null}
-                    <a href="/crm" style={{ fontSize: 11, color: faint, textDecoration: "none" }}>open in pipeline →</a>
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <OrgRung n={1} title="What they told us" summary={hasIntake ? "Their own words from the website form." : "No form answers. Add what you know by hand."} done={hasIntake} {...rung("who")}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <IntakeCard snaps={org.data?.intake?.snapshots ?? []} />
+                    <OrgSection title="CONTACTS" />
+                    <ContactsPanel contacts={contacts} onChanged={refreshAll} />
+                    <OrgFold title="WHO SENT THEM, AND WHERE THEY OPERATE" summary="Referral, sites, and what your contact can sign alone.">
+                      <RelationshipsPanel companyId={selectedId} onChanged={refreshAll} />
+                    </OrgFold>
+                    <OrgFold
+                      title="WHAT HAS ACTUALLY HAPPENED"
+                      summary={qualEntry ? `Last touch ${agoLabel(qualEntry.lastTouchAt)}. ${qualEntry.counts.meetings} call(s), ${qualEntry.counts.audits} audit(s), ${qualEntry.counts.proposals} proposal(s).` : "The full history, newest first, with the silences marked."}
+                    >
+                      <ClientTimeline companyId={selectedId} />
+                    </OrgFold>
                   </div>
-                  {/* Move it here rather than in another tab; closing it demands a reason. */}
-                  <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={refreshAll} />
-                </div>
-              )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
+                </OrgRung>
 
-              <OrgFold
-                title="WHAT HAS ACTUALLY HAPPENED"
-                summary={qualEntry ? `Last touch ${agoLabel(qualEntry.lastTouchAt)}. ${qualEntry.counts.meetings} call(s), ${qualEntry.counts.audits} audit(s), ${qualEntry.counts.proposals} proposal(s).` : "The full history, newest first, with the silences marked."}
-                right={<span style={{ fontSize: 11, color: faint }}>newest first, with the gaps</span>}
-              >
-                <ClientTimeline companyId={selectedId} />
-              </OrgFold>
+                <OrgRung
+                  n={2}
+                  title="Are they worth it?"
+                  summary={j.qualification ? `Grade ${j.qualification.grade}, ${j.qualification.overallScore}/100.${qualEntry?.qualification?.weakest ? ` Weakest: ${(QUAL_LABELS[qualEntry.qualification.weakest.role] ?? qualEntry.qualification.weakest.role).toLowerCase()} at ${qualEntry.qualification.weakest.score}.` : ""}` : "Not scored yet. The council runs itself on a new client, or press the button."}
+                  done={Boolean(j.qualification)}
+                  {...rung("worth")}
+                >
+                  <QualificationPanel companyId={selectedId} onScored={refreshAll} live={liveOps} />
+                </OrgRung>
 
-              <OrgSection title="DO SOMETHING FOR THIS CLIENT" />
-              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                <button onClick={runClientAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busyKey === "audit" ? "Running audit…" : "Run Paid Audit"}</button>
-                <button onClick={buildProposalFromLatestAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "proposal" ? "Building…" : "Build Proposal from the audit"}</button>
-                <button onClick={runQuickPitch} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "pitch" ? "Writing pitch…" : "Write a Quick Pitch"}</button>
-                <a href="/invoices" style={{ ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12, textDecoration: "none", display: "inline-block" }}>Invoices</a>
-              </div>
-              <div style={{ fontSize: 11, color: faint }}>The audit and the pitch both inherit their form answers, approved call findings and services — nothing is re-typed. An invoice is drafted automatically when a proposal is accepted.</div>
-              {actionMsg ? <div style={{ fontSize: 12.5, color: actionMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{actionMsg}</div> : null}
-            </div>
-          ) : tab === "callprep" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <OrgSection title="QUESTIONS FOR THE FIRST CALL" />
-              <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} live={liveOps} />
-              <OrgSection title="AFTER THE CALL, GIVE IT BACK" />
-              <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
-            </div>
-          ) : tab === "dealteam" ? (
-            <DealTeamPanel companyId={selectedId} />
-          ) : tab === "head" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <OrgSection title="HEAD OF REVENUE AND CRM" />
-              <RevenueHeadPanel companyId={selectedId} companyName={j.company.name} onActed={org.reload} />
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <OrgMetric label="audits" value={auditItems.length} tone={auditItems.length ? C.lime : undefined} />
-                <OrgMetric label="proposals" value={proposalItems.length} />
-                <OrgMetric label="invoices" value={invoiceItems.length} />
-                <OrgMetric label="projects" value={j.projects.length} />
-              </div>
-              <OrgSection title="AUDITS" />
-              <AuditsPanel items={auditItems} />
-              <OrgSection title="PROPOSALS" />
-              {proposalItems.length ? proposalItems.map((p) => (
-                <div key={p.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} />
-                    <a href="/docs" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{p.title}</a>
-                    {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
-                    <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
-                  </div>
-                  {p.currencyUnverified ? (
-                    <div style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.07)", fontSize: 11.5, color: C.orange, lineHeight: 1.5 }}>
-                      This price has no confirmed currency. {p.currencyNote ?? "Set it before sending."}
+                <OrgRung n={3} title="Questions for the call" summary={hasQuestions ? "Written from their own answers, with a do-not-ask list." : "Nothing prepared yet."} done={hasQuestions} {...rung("questions")}>
+                  <QuestionsPanel companyId={selectedId} initial={org.data?.questions ?? null} onGenerated={org.reload} live={liveOps} />
+                </OrgRung>
+
+                <OrgRung
+                  n={4}
+                  title="The call, given back"
+                  summary={hasFindings ? `${j.discoveryFactCount} approved finding(s) from ${j.meetings.length} call(s).` : hasCall ? "A call happened and nothing was turned into findings yet." : "Paste the transcript when you have had the call."}
+                  done={hasFindings}
+                  {...rung("call")}
+                >
+                  <TranscriptPanel companyId={selectedId} onChanged={org.reload} />
+                </OrgRung>
+
+                <OrgRung
+                  n={5}
+                  title="What we found"
+                  summary={hasAudit ? `${auditItems.length} audit(s) built on the approved findings.` : "Run the audit once the findings are approved."}
+                  done={hasAudit}
+                  {...rung("found")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                      <button onClick={runClientAudit} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busyKey === "audit" ? "Running audit…" : hasAudit ? "Run it again" : "Run the audit"}</button>
+                      <button onClick={runQuickPitch} disabled={busyKey !== null} style={busyKey ? disabledBtn : { ...disabledBtn, opacity: 1, cursor: "pointer", padding: "8px 14px", fontSize: 12 }}>{busyKey === "pitch" ? "Writing pitch…" : "Quick pitch instead"}</button>
                     </div>
-                  ) : null}
-                  {p.phases?.length ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {p.phases.map((ph) => (
-                        <div key={ph.number} style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 10, borderLeft: "2px solid " + (ph.number === 1 ? C.lime : "rgba(255,255,255,0.15)") }}>
-                          <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 12.5, color: C.white }}>{ph.name}</span>
-                            {ph.priceCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(ph.priceCents, p.currency)}</span> : null}
-                            <span style={{ fontSize: 11.5, color: faint }}>{ph.items.join(", ")}</span>
-                          </div>
-                          {ph.number === 1 ? <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{ph.rationale}</div> : null}
+                    <div style={{ fontSize: 11, color: faint }}>Both inherit the form answers, the approved findings and the services. Nothing is re-typed. A quick pitch is the shortcut for a client you have not had a call with.</div>
+                    <AuditsPanel items={auditItems} />
+                  </div>
+                </OrgRung>
+
+                <OrgRung
+                  n={6}
+                  title="What it costs, and what to charge"
+                  summary={hasProposalDoc ? "Priced. Change it here if you need to." : unpriced.length ? "Costed. Your number is the only thing missing." : hasAudit ? "Work out the cost from the audit, then set your price." : "Needs an audit first."}
+                  done={hasProposalDoc}
+                  {...rung("charge")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {!proposalItems.length ? (
+                      <>
+                        <button onClick={buildProposalFromLatestAudit} disabled={busyKey !== null || !hasAudit} style={busyKey !== null || !hasAudit ? disabledBtn : { ...primaryBtn, padding: "8px 14px", fontSize: 12 }}>{busyKey === "proposal" ? "Working out the cost…" : "Work out what this costs us"}</button>
+                        <div style={{ fontSize: 11, color: faint }}>This costs the build from the tools it needs. It does not write a document and it does not set a price. You do that below, and only then does the proposal get written.</div>
+                      </>
+                    ) : null}
+                    {proposalItems.map((p) => (
+                      <div key={p.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <PricingGatePanel proposalId={p.id} onPriced={refreshAll} />
+                      </div>
+                    ))}
+                  </div>
+                </OrgRung>
+
+                <OrgRung
+                  n={7}
+                  title="The proposal"
+                  summary={hasProposalDoc ? `${priced.length} priced proposal(s).` : "Locked until you have set a price."}
+                  done={priced.some((p) => p.status === "sent" || p.status === "accepted")}
+                  locked={!proposalItems.length || (!hasProposalDoc && unpriced.length > 0)}
+                  lockedBecause={proposalItems.length ? "Set the price in step 6 first. A document that quotes a price nobody chose is exactly what this gate exists to stop." : "Nothing to show until a cost sheet exists in step 6."}
+                  {...rung("proposal")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {proposalItems.map((p) => (
+                      <div key={p.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <Tag text={p.status} color={p.status === "accepted" ? C.lime : C.gray} />
+                          <a href="/docs" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{p.title}</a>
+                          {p.totalCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(p.totalCents, p.currency)}</span> : null}
+                          <span style={{ fontSize: 11, color: faint }}>v{p.version}</span>
                         </div>
-                      ))}
-                      {p.phaseOneAuthority ? (
-                        <div style={{ fontSize: 11.5, color: p.phaseOneAuthority.ok ? C.lime : C.orange, lineHeight: 1.5 }}>{p.phaseOneAuthority.because}</div>
-                      ) : null}
-                      {p.excludedFromQuote?.length ? (
-                        <div style={{ fontSize: 11, color: faint }}>Left out of the quote so it does not read as padded: {p.excludedFromQuote.join(", ")}.</div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {/* The OS costs it, a founder prices it, and nothing goes out until they do. */}
-                  <PricingGatePanel proposalId={p.id} onPriced={refreshAll} />
-                  {/* Two agents argue with it before a client ever sees it. */}
-                  <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
-                  {/* A cheaper option, a fuller one, and every number that has been said out loud. */}
-                  <ProposalCommercialsPanel proposalId={p.id} currency={p.currency} />
-                </div>
-              )) : <div style={{ fontSize: 12.5, color: faint }}>No proposals yet — build one from a completed audit on the Overview tab.</div>}
-              <OrgSection title="INVOICES" />
-              {invoiceItems.length ? invoiceItems.map((i) => (
-                <div key={i.id} style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Tag text={i.status} color={i.status === "paid" ? C.lime : C.orange} />
-                    <a href="/invoices" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{i.number}</a>
-                    <span style={{ fontSize: 12, color: muted }}>{orgMoney(i.amountPaidCents, i.currency)} / {orgMoney(i.totalCents, i.currency)}</span>
+                        {p.currencyUnverified ? (
+                          <div style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,107,0,0.4)", background: "rgba(255,107,0,0.07)", fontSize: 11.5, color: C.orange, lineHeight: 1.5 }}>
+                            This price has no confirmed currency. {p.currencyNote ?? "Set it before sending."}
+                          </div>
+                        ) : null}
+                        {p.phases?.length ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {p.phases.map((ph) => (
+                              <div key={ph.number} style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 10, borderLeft: "2px solid " + (ph.number === 1 ? C.lime : "rgba(255,255,255,0.15)") }}>
+                                <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 12.5, color: C.white }}>{ph.name}</span>
+                                  {ph.priceCents ? <span style={{ fontSize: 12, color: C.lime }}>{orgMoney(ph.priceCents, p.currency)}</span> : null}
+                                  <span style={{ fontSize: 11.5, color: faint }}>{ph.items.join(", ")}</span>
+                                </div>
+                                {ph.number === 1 ? <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>{ph.rationale}</div> : null}
+                              </div>
+                            ))}
+                            {p.phaseOneAuthority ? <div style={{ fontSize: 11.5, color: p.phaseOneAuthority.ok ? C.lime : C.orange, lineHeight: 1.5 }}>{p.phaseOneAuthority.because}</div> : null}
+                            {p.excludedFromQuote?.length ? <div style={{ fontSize: 11, color: faint }}>Left out of the quote so it does not read as padded: {p.excludedFromQuote.join(", ")}.</div> : null}
+                          </div>
+                        ) : null}
+                        {/* Two agents argue with it before a client ever sees it. */}
+                        <PreSendReviewButton proposalId={p.id} stored={p.preSendReview ?? null} />
+                        {/* A cheaper option, a fuller one, and every number that has been said out loud. */}
+                        <ProposalCommercialsPanel proposalId={p.id} currency={p.currency} />
+                      </div>
+                    ))}
+                    <OrgFold title="THE DEAL TEAM" summary="Objections they will raise, and the follow-up written from their own words.">
+                      <DealTeamPanel companyId={selectedId} />
+                    </OrgFold>
                   </div>
-                  {/* Retainer vs one-off: the same invoice, raised again on a schedule, always as a draft. */}
-                  <RetainerControl invoiceId={i.id} retainer={i.retainer ?? null} onChanged={refreshAll} />
-                </div>
-              )) : <div style={{ fontSize: 12.5, color: faint }}>No invoices yet.</div>}
-              <OrgSection title={`PROVENANCE (${l?.edges.length ?? 0} derivation edges)`} />
-              {l && l.edges.length ? l.edges.map((e, i) => {
-                const from = l.nodes.find((n) => n.id === e.from), to = l.nodes.find((n) => n.id === e.to);
-                return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted, flexWrap: "wrap" }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
-              }) : <div style={{ fontSize: 12.5, color: faint }}>No derivation edges yet — these appear once an audit or proposal is produced from this client&apos;s deal.</div>}
-            </div>
-          )}
+                </OrgRung>
+
+                <OrgRung
+                  n={8}
+                  title="Getting paid"
+                  summary={invoiceItems.length ? `${invoiceItems.length} invoice(s).` : "An invoice is drafted automatically when a proposal is accepted."}
+                  done={invoiceItems.some((i) => i.status === "paid")}
+                  {...rung("money")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {invoiceItems.length ? invoiceItems.map((i) => (
+                      <div key={i.id} style={{ display: "flex", flexDirection: "column", gap: 7, padding: "9px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <Tag text={i.status} color={i.status === "paid" ? C.lime : C.orange} />
+                          <a href="/invoices" style={{ fontSize: 12.5, color: C.white, flex: 1, textDecoration: "none" }}>{i.number}</a>
+                          <span style={{ fontSize: 12, color: muted }}>{orgMoney(i.amountPaidCents, i.currency)} / {orgMoney(i.totalCents, i.currency)}</span>
+                        </div>
+                        <RetainerControl invoiceId={i.id} retainer={i.retainer ?? null} onChanged={refreshAll} />
+                      </div>
+                    )) : <div style={{ fontSize: 12.5, color: faint }}>No invoices yet.</div>}
+                    <OrgFold title="THE DEALS BEHIND THIS" summary={`${j.opportunities.length} open deal(s), and where each one sits.`}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {j.opportunities.length ? j.opportunities.map((o) => (
+                          <div key={o.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
+                              <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
+                              <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={refreshAll} />
+                            </div>
+                            <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={refreshAll} />
+                          </div>
+                        )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
+                      </div>
+                    </OrgFold>
+                    <OrgFold title={`HOW EACH THING WAS DERIVED (${l?.edges.length ?? 0} edges)`} summary="Every artifact, and what it was built from.">
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {l && l.edges.length ? l.edges.map((e, i) => {
+                          const from = l.nodes.find((n) => n.id === e.from), to = l.nodes.find((n) => n.id === e.to);
+                          return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted, flexWrap: "wrap" }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
+                        }) : <div style={{ fontSize: 12.5, color: faint }}>Nothing derived yet.</div>}
+                      </div>
+                    </OrgFold>
+                  </div>
+                </OrgRung>
+
+                <OrgFold title="ASK THE HEAD OF REVENUE" summary="A question about this client, answered from everything above.">
+                  <RevenueHeadPanel companyId={selectedId} companyName={j.company.name} onActed={org.reload} />
+                </OrgFold>
+                {actionMsg ? <div style={{ fontSize: 12.5, color: actionMsg.startsWith("Error") ? C.orange : C.lime, lineHeight: 1.5 }}>{actionMsg}</div> : null}
+              </div>
+            );
+          })()}
         </>
       ) : <StateBlock kind="empty" message="Select a client above." />}
     </div>

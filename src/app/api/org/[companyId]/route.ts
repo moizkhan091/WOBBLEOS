@@ -95,6 +95,13 @@ export async function GET(request: Request, context: { params: Promise<{ company
       proposals: proposalRows.map((p) => ({
         id: p.id, title: p.title, status: p.status, version: p.version, totalCents: p.pricingCents ?? 0, currency: p.currency ?? "USD",
         preSendReview: ((p.metadata ?? {}) as Record<string, unknown>).preSendReview ?? null,
+        // Has a founder actually decided what to charge? The ladder locks the proposal document behind
+        // this, so it is read from the pricing record rather than inferred from a non-zero total: a
+        // proposal can carry the audit's guess in pricingCents and still have nobody's decision on it.
+        pricingDecided: (() => {
+          const pricing = ((p.metadata ?? {}) as Record<string, unknown>).pricing as { status?: string; decision?: unknown } | undefined;
+          return Boolean(pricing && pricing.status === "decided" && pricing.decision);
+        })(),
         // A price whose unit nobody can name must not go out quietly. An audit's money fields carry no
         // currency, and defaulting to dollars once turned a rupee price into a 280x quote.
         currencyUnverified: ((p.metadata ?? {}) as Record<string, unknown>).currencyUnverified === true,

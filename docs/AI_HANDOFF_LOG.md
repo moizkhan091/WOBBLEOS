@@ -8052,3 +8052,59 @@ proposalCount above zero. The most actionable state in the pipeline ranked as th
 worklist reading the pricing state off the proposal metadata to feed them.
 
 Gate: typecheck clean, 2005 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - the OS never knew what it was already running
+
+Founder, on a real client: "when i clicked generate question and i refreshed it again showed button so
+i cant know if the ai already generating or not so i wont double generate. same can be everywhere,
+double generation, not knowing if things running or not."
+
+He is right and it was everywhere. Every generate button in the container kept its "am I running"
+state in a React `useState`. Refresh the page, navigate away, open a second tab, and the OS forgets.
+Two clicks, two runs, two bills, and on the qualification council that is sixteen model calls.
+
+`src/lib/run-claims/index.ts` moves the claim into the database, reusing the unique index `jobs`
+already has on `idempotency_key` rather than adding a table. One row per (kind, subject), inserted on
+start, deleted on finish. The API returns what is running and for how long, so a button that was
+pressed in another tab five minutes ago still reads "Writing questions… (5m)" here.
+
+TWO of my own attempts at that guard silently did nothing and reported success:
+
+1. The first used `onConflictDoNothing().returning()` and treated an empty array as "somebody else has
+   it". Drizzle returns an empty array for a no-op insert AND for a conflict, so the claim never held
+   and the guard was decorative. Caught by running it twice against the live database, not by reading.
+2. The second checked `err.code === "23505"` on the caught error. Drizzle wraps the driver error, so the
+   code sits on `err.cause`, and the branch never fired. Caught the same way.
+
+The second bug had a sibling worth recording: `isUniqueViolation` in `src/lib/finance/index.ts` had the
+identical unwrapping flaw, which means invoice-number retries and duplicate-payment detection would
+never have fired either. Both now share one implementation.
+
+Also put the qualify button back within reach. Folding the Overview to save vertical space hid the ONLY
+control that scores a client, so the page said "not scored yet" and offered no way to fix it. A fold may
+hide the working; it must never hide the action its own summary is asking for.
+
+## And the container is a ladder now
+
+The tabs are gone. "DO SOMETHING FOR THIS CLIENT" offering Run Paid Audit, Build Proposal and Write a
+Quick Pitch side by side is gone. That row asked the founder to know which DOCUMENT he wanted before he
+could start, which is exactly what confused him.
+
+Eight rungs in the order the work happens: what they told us, are they worth it, questions, the call,
+what we found, what it costs and what to charge, the proposal, getting paid. Every `done` tick is
+computed from real state rather than a flag someone remembered to set. The rung the worklist says is
+next is marked "do this next", so the ladder and the banner above it cannot disagree.
+
+There is exactly ONE lock in the whole thing: the proposal document sits behind the price. `pricingDecided`
+is read from the pricing record rather than inferred from a non-zero total, because a proposal can carry
+the audit's guess in `pricingCents` and still have nobody's decision on it.
+
+Deliberately NOT done yet: the `costed` proposal status the design work recommended. The same analysis
+flagged that a `costed` row would still count in `proposalRows`, which feeds `proposalCount` into
+`suggestNextAction`, and would therefore suppress `build_proposal` and silently demote exactly the
+clients that need attention. The ladder gets the founder's ordering without that risk, so the status
+change can be discussed on its own.
+
+Gate: typecheck clean, 2005 tests pass, build clean.
