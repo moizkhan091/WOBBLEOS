@@ -15,6 +15,7 @@ import { runDepartmentConsumerTick } from "@/lib/departments/consumer";
 import { proposeDecisionPolicies } from "@/lib/decision-learning";
 import { prepareDealTeam } from "@/lib/deal-team/prepare";
 import { autoQualifyNewClients } from "@/lib/qualification/auto";
+import { proposeSalesLesson } from "@/lib/sales-lessons";
 import { buildAndStoreDailyBrief } from "@/lib/daily-brief";
 import { runOptimizerCycle, optimizerCycleDue, runOptimizerMonitoring } from "@/lib/optimizer";
 import { purgeExpiredWebhookReplayClaims } from "@/lib/webhook-replay";
@@ -95,6 +96,8 @@ export interface SchedulerResult {
   proposalsExpired?: number;
   /** Retainer invoices raised this tick. Always drafts. */
   retainerInvoicesRaised?: number;
+  /** A change to how we sell, proposed from the losses and awaiting a founder's decision. */
+  salesLessonProposed?: boolean;
   /** Clients the council scored without being asked. */
   clientsAutoQualified?: number;
   /** Objection briefs written ahead of the founder needing them. */
@@ -309,6 +312,11 @@ export async function runScheduledTick(deps: SchedulerDeps = {}): Promise<Schedu
       // speak to. Triaged before anything is spent, so a night with nothing due costs nothing: the
       // model is only called for clients with approved findings, a conversation next, and a brief that
       // is missing or older than what those calls turned up. Capped, and what was deferred is named.
+      // What the losses are trying to tell us, as ONE change to how we sell, awaiting your approval.
+      // Free: it reads the loss reasons and picks a lever deterministically, no model call at all.
+      await proposeSalesLesson()
+        .then((r) => { result.salesLessonProposed = Boolean(r.approvalId); })
+        .catch((e) => result.errors.push(`sales-lesson: ${e?.message ?? e}`));
       await prepareDealTeam({ now })
         .then((r) => {
           result.dealTeamPrepared = r.prepared.length;

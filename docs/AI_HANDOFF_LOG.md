@@ -8156,3 +8156,38 @@ A nav test asserted `crm` sits in REVENUE / CRM. Updated to the new grouping rat
 and strengthened: it now pins BOTH front doors as well as the tools drawer.
 
 Gate: typecheck clean, 2005 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - the losses now propose a change, and a founder decides
+
+The loss pattern was descriptive: "three of your last four were price". That says what happened. It
+does not say what to do differently, and the founder asked for exactly that gap to be closed: "it adds
+those over there too for us to improve our strategy or approach or whatever it analyzed might have
+caused us to lose it".
+
+`sales-lessons.ts` turns a theme into ONE change to how WOBBLE sells.
+
+**It is deliberately not a model call, and that is the whole design.** A model asked "what should
+WOBBLE change about its sales approach" will always produce something confident. It cannot know which
+levers WOBBLE can actually pull, it cannot tell a real pattern from three sentences that happen to
+rhyme, and a founder reading fluent advice about their own business will tend to believe it. The
+failure mode is not a wrong sentence, it is a plausible one that quietly changes how a team sells.
+
+So the LEVER is derived from the theme deterministically, from seven moves the OS can genuinely make
+(phase one under the contact's signing authority for a price loss, get the other decider in the room
+for an authority loss, a small live build for a trust loss, and so on), and the EVIDENCE is the
+founders' own sentences quoted underneath. `other` has no lever on purpose: saying nothing is the right
+output rather than inventing a move.
+
+Three rules that keep it useful: ONE at a time, because a list of five changes to how a team sells is a
+list nobody actions and makes it impossible to tell which one moved anything. Never the same lesson
+twice, keyed on theme AND count, so it can be raised again when the evidence genuinely grows and never
+merely because a day has passed. And every lesson carries a MEASURE, so it can be judged later rather
+than believed.
+
+Stored as an approval rather than a new table, because the approval machinery already gives a founder's
+decision, their name on it, and an audit trail. Nothing changes anything on its own. Proposed from the
+daily block, and on demand from the Revenue desk.
+
+Gate: typecheck clean, 2015 tests pass, build clean.

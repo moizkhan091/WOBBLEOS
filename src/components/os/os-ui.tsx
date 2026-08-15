@@ -9381,6 +9381,59 @@ function OrgRung({
  * than from a general impression, and it opens on the loss pattern because that is the question a
  * founder should be asked more often than they ask it.
  */
+type LessonRow = { id: string; status: string; change: string; because: string; measure: string; theme: string; losses: number; evidence: Array<{ clientName: string; reason: string }>; createdAt: string };
+
+/**
+ * What the losses are trying to tell us, as one change to how we sell.
+ *
+ * The pattern panel says what happened. This says what to do differently, and it is the thing a
+ * founder asked for: the OS analysing why deals were lost and proposing an improvement we approve.
+ *
+ * Every word of the change is picked deterministically from the theme, and the founders' own
+ * sentences are quoted underneath, so the suggestion can be argued with rather than believed.
+ */
+function SalesLessonsPanel() {
+  const s = useApi<{ lessons: LessonRow[] }>("/api/revenue/lessons");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function propose() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/revenue/lessons", { method: "POST" });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; approvalId?: string | null; because?: string; error?: string };
+      if (r.ok && j.ok) { setMsg(j.approvalId ? "Proposed. Approve or reject it below." : j.because ?? "Nothing new to propose."); s.reload(); }
+      else setMsg("Error: " + String(j.error ?? r.status));
+    } catch (e) { setMsg("Error: " + (e instanceof Error ? e.message : "failed")); } finally { setBusy(false); }
+  }
+
+  const lessons = s.data?.lessons ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <OrgSection title="WHAT THE LOSSES ARE TELLING US" right={<span style={{ fontSize: 11, color: faint }}>one change at a time, yours to approve</span>} />
+      <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={propose} disabled={busy} style={busy ? disabledBtn : { ...primaryBtn, padding: "7px 13px", fontSize: 12 }}>{busy ? "Reading the losses…" : "Look at the losses now"}</button>
+        <span style={{ fontSize: 11, color: faint }}>Costs nothing. It reads the reasons you wrote and picks the move, it does not ask a model what to think.</span>
+      </div>
+      {msg ? <div style={{ fontSize: 12, color: msg.startsWith("Error") ? C.orange : muted, lineHeight: 1.5 }}>{msg}</div> : null}
+      {lessons.map((l) => (
+        <div key={l.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "11px 13px", borderRadius: 11, border: "1px solid " + (l.status === "approved" ? "rgba(184,255,44,0.3)" : "rgba(255,255,255,0.07)") }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Tag text={l.status} color={l.status === "approved" ? C.lime : l.status === "rejected" ? C.gray : C.orange} />
+            <Tag text={`${l.losses} lost to ${l.theme}`} color={C.orange} />
+          </div>
+          <div style={{ fontSize: 13, color: C.white, lineHeight: 1.5, fontWeight: 600 }}>{l.change}</div>
+          <div style={{ fontSize: 12, color: muted, lineHeight: 1.5 }}>{l.because}</div>
+          {l.evidence.map((e, i) => <div key={i} style={{ fontSize: 11.5, color: faint, lineHeight: 1.5 }}>{e.clientName}: {e.reason}</div>)}
+          <div style={{ fontSize: 11.5, color: C.blue, lineHeight: 1.5 }}>How we would know it worked: {l.measure}</div>
+          {l.status === "pending" ? <a href="/approvals" style={{ fontSize: 11.5, color: C.lime, textDecoration: "none" }}>approve or reject it →</a> : null}
+        </div>
+      ))}
+      {!lessons.length && !s.loading ? <div style={{ fontSize: 12, color: faint }}>Nothing proposed yet. It needs at least three closed deals with a reason written on them before a pattern means anything.</div> : null}
+    </div>
+  );
+}
+
 function RevenueDeskPage() {
   const companies = useApi<{ companies: Array<{ id: string; name: string }> }>("/api/crm/companies?limit=500");
   const [selected, setSelected] = useState("");
@@ -9393,6 +9446,7 @@ function RevenueDeskPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <LossPatternPanel />
+      <SalesLessonsPanel />
       <OrgSection title="ASK THE HEAD OF REVENUE AND CRM" right={<span style={{ fontSize: 11, color: faint }}>answers from records, never from an impression</span>} />
       {rows.length ? (
         <>
