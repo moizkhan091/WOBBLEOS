@@ -51,7 +51,8 @@ export const MODULES: Record<string, ModuleDef> = {
 
   // REVENUE (Wobble ERP Control Layer)
   model_control: { id: "model_control", label: "Model Control", title: "Model Control", icon: "SlidersHorizontal", status: "wired", api: "/api/model-control", tagline: "Every model decision in the OS on one page: what each part is running, what it has cost, how busy it is, and today's spend against the cap. Switch one role, a whole department, or everything with a preset. A change is live on the next call, nothing restarts." },
-  org: { id: "org", label: "Clients", title: "Client Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "Start here. One client, everything about them, in one place, what they told us on the website form, their qualification, discovery meetings, and every artifact (audits, proposals, projects) with the provenance graph that shows how each was derived. Pick a client; the rest assembles itself." },
+  org: { id: "org", label: "Clients", title: "Client Workspace", icon: "Building2", status: "wired", api: "/api/org", tagline: "Start here. One client at a time, one step at a time. Everything from what they told us on the form through to getting paid, in the order the work actually happens. Nothing to choose between: the OS tells you which step is next." },
+  revenue_desk: { id: "revenue_desk", label: "Ask Revenue", title: "Head of Revenue and CRM", icon: "MessagesSquare", status: "wired", api: "/api/org", tagline: "Talk to the Revenue and CRM department. Ask it anything about the pipeline, a client, why deals are being lost, or what to do next. It answers from everything the OS actually knows, and never invents a number." },
   crm: { id: "crm", label: "Pipeline / CRM", title: "Pipeline & CRM", icon: "Kanban", status: "wired", api: "/api/crm", tagline: "The connected business backbone, companies, contacts, leads and the Wobble sales pipeline. Every stage move is audited; leads convert into the whole chain." },
   audit_workspace: { id: "audit_workspace", label: "Audit Workspace", title: "Audit Workspace", icon: "FolderKanban", status: "wired", api: "/api/audit/workspace", tagline: "Run a client through the whole audit in one place, Doc 1 pitch → Doc 2 internal interview roadmap → record findings → Doc 3 final McKinsey deck. Each client's data stays isolated." },
   free_audit: { id: "free_audit", label: "Quick Pitch", title: "Free AI Audit / Pitch", icon: "ClipboardCheck", status: "wired", api: "/api/audit/free", tagline: "The fast top-of-funnel: map a prospect's gaps to the full Wobble service menu + generate a niche-customized pitch. The full 3-stage flow lives in Audit Workspace." },
@@ -95,7 +96,13 @@ export const NAV_GROUPS: NavGroup[] = [
   { label: "WORKSPACE", items: ["ask", "brief", "command", "cockpit", "departments", "agents"] },
   { label: "INTELLIGENCE & SOURCES", items: ["radar", "sources", "intelligence", "learning", "brain", "memory"] },
   { label: "CONTENT STUDIO", items: ["topics", "content", "library", "media", "social", "seo", "webstats"] },
-  { label: "REVENUE / CRM", items: ["org", "crm", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
+  // TWO doors, not seven. Five of the old seven were DOCUMENT types, which asked a founder to know
+  // which document he wanted before he could start: "i did get confused by seeing audit, quick pitch
+  // and etc all that stuff". Clients is the ladder and does everything through to the invoice. Ask
+  // Revenue is the conversation with the department. The document pages still exist and are still
+  // routable and searchable; they are just no longer the front door.
+  { label: "REVENUE / CRM", items: ["org", "revenue_desk"] },
+  { label: "REVENUE TOOLS", items: ["crm", "free_audit", "paid_audit", "audit_workspace", "docs", "invoices"] },
   { label: "DELIVERY & OPS", items: ["projects", "meetings", "tasks", "automations", "comms"] },
   { label: "WOBBLE HQ", items: ["decision", "offers", "taste", "optimizer"] },
   { label: "SYSTEM", items: ["model_control","approvals", "security", "connections", "skills", "workers", "handoff", "costs", "audit", "backup", "settings"] },

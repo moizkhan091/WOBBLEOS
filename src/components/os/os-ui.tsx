@@ -9299,7 +9299,7 @@ function OrgFold({ title, summary, defaultOpen = false, right, children }: { tit
 
 
 /** The steps of one client, in the order the work actually happens. */
-type OrgStep = "who" | "worth" | "questions" | "call" | "found" | "charge" | "proposal" | "money";
+type OrgStep = "who" | "worth" | "questions" | "call" | "found" | "charge" | "proposal" | "money" | "ended";
 
 /**
  * One rung of the client ladder.
@@ -9368,6 +9368,45 @@ function OrgRung({
         {!locked ? <span style={{ fontSize: 11, color: faint }}>{open ? "hide" : "open"}</span> : null}
       </button>
       {open && !locked ? children : null}
+    </div>
+  );
+}
+
+/**
+ * Talk to the Revenue and CRM department.
+ *
+ * The second of the two doors. Clients is the ladder, for moving ONE client forward. This is for the
+ * questions that are not about one client: what is the pipeline doing, why are we losing, who should I
+ * call. It picks a client to scope the conversation because the head answers from real records rather
+ * than from a general impression, and it opens on the loss pattern because that is the question a
+ * founder should be asked more often than they ask it.
+ */
+function RevenueDeskPage() {
+  const companies = useApi<{ companies: Array<{ id: string; name: string }> }>("/api/crm/companies?limit=500");
+  const [selected, setSelected] = useState("");
+  const rows = companies.data?.companies ?? [];
+  const active = rows.find((c) => c.id === selected) ?? rows[0];
+
+  const guard = offlineIf(companies);
+  if (guard) return guard;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <LossPatternPanel />
+      <OrgSection title="ASK THE HEAD OF REVENUE AND CRM" right={<span style={{ fontSize: 11, color: faint }}>answers from records, never from an impression</span>} />
+      {rows.length ? (
+        <>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, color: faint }}>About:</span>
+            <select value={active?.id ?? ""} onChange={(e) => setSelected(e.target.value)} aria-label="Client" style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "5px 9px" }}>
+              {rows.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          {active ? <RevenueHeadPanel companyId={active.id} companyName={active.name} onActed={() => companies.reload()} /> : null}
+        </>
+      ) : (
+        <StateBlock kind="empty" message="No clients yet. They arrive automatically from the website readiness form." />
+      )}
     </div>
   );
 }
@@ -9712,20 +9751,6 @@ function OrgWorkspacePage() {
                         <RetainerControl invoiceId={i.id} retainer={i.retainer ?? null} onChanged={refreshAll} />
                       </div>
                     )) : <div style={{ fontSize: 12.5, color: faint }}>No invoices yet.</div>}
-                    <OrgFold title="THE DEALS BEHIND THIS" summary={`${j.opportunities.length} open deal(s), and where each one sits.`}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {j.opportunities.length ? j.opportunities.map((o) => (
-                          <div key={o.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                              <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={C.blue} />
-                              <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
-                              <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={refreshAll} />
-                            </div>
-                            <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={refreshAll} />
-                          </div>
-                        )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
-                      </div>
-                    </OrgFold>
                     <OrgFold title={`HOW EACH THING WAS DERIVED (${l?.edges.length ?? 0} edges)`} summary="Every artifact, and what it was built from.">
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {l && l.edges.length ? l.edges.map((e, i) => {
@@ -9733,6 +9758,39 @@ function OrgWorkspacePage() {
                           return <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: muted, flexWrap: "wrap" }}><span style={{ color: C.white }}>{from?.label ?? e.from}</span><span style={{ color: C.lime, fontSize: 10 }}>─ {relLabel[e.relation] ?? e.relation} →</span><span style={{ color: C.white }}>{to?.label ?? e.to}</span></div>;
                         }) : <div style={{ fontSize: 12.5, color: faint }}>Nothing derived yet.</div>}
                       </div>
+                    </OrgFold>
+                  </div>
+                </OrgRung>
+
+                <OrgRung
+                  n={9}
+                  title="How it ended"
+                  summary={
+                    j.opportunities.some((o) => o.stage === "won") ? "Won. The reason is on the record."
+                      : j.opportunities.some((o) => o.stage === "lost") ? "Lost. The reason is on the record and feeds the pattern."
+                      : "Say won or lost when you know. The reason is the only part worth keeping."
+                  }
+                  done={j.opportunities.some((o) => o.stage === "won" || o.stage === "lost")}
+                  {...rung("ended")}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.5 }}>
+                      Closing a deal without saying why teaches the OS nothing. The reason you type here is
+                      what "Why we lose" reads, so three deals from now it can tell you the same thing killed
+                      all of them. It will not let you close without one.
+                    </div>
+                    {j.opportunities.length ? j.opportunities.map((o) => (
+                      <div key={o.id} style={{ display: "flex", flexDirection: "column", gap: 7, padding: "10px 13px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <Tag text={(o.stage ?? "").replace(/_/g, " ") || "no stage"} color={o.stage === "won" ? C.lime : o.stage === "lost" ? C.orange : C.blue} />
+                          <span style={{ fontSize: 13, color: C.white, flex: 1 }}>{o.name}</span>
+                          <DealValueEditor opportunityId={o.id} valueCents={o.valueCents ?? 0} currency="USD" onSaved={refreshAll} />
+                        </div>
+                        <DealStageControl opportunityId={o.id} stage={o.stage ?? "new_lead"} onMoved={refreshAll} />
+                      </div>
+                    )) : <div style={{ fontSize: 12.5, color: faint }}>No deals on this client yet.</div>}
+                    <OrgFold title="WHY WE LOSE, ACROSS EVERY DEAL" summary="What this one will be compared against.">
+                      <LossPatternPanel />
                     </OrgFold>
                   </div>
                 </OrgRung>
@@ -10005,6 +10063,7 @@ function DailyBriefPage() {
 
 const WIRED: Record<string, React.ComponentType> = {
   org: OrgWorkspacePage,
+  revenue_desk: RevenueDeskPage,
   brief: DailyBriefPage,
   topics: TopicBankPage,
   cockpit: CockpitPage,

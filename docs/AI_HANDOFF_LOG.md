@@ -8127,3 +8127,32 @@ The real lesson is not about hooks. Status codes and bundle greps are not verifi
 interface. Nothing I checked could have caught this, and the founder found it in one click.
 
 Gate: typecheck clean, 2005 tests pass, build clean.
+
+---
+
+## 2026-08-13 (Claude) - two doors instead of seven
+
+With the ladder in, the sidebar was the remaining confusion: REVENUE / CRM listed seven items and FIVE
+of them were document types (Quick Pitch, Paid Audit, Audit Workspace, Proposals, Invoices). The ladder
+now does all of that in order, so the sidebar was offering a second, worse way to do the same work, and
+asking a founder to pick a document before starting.
+
+Two doors now. **Clients** is the ladder and goes from the form answers through to getting paid.
+**Ask Revenue** is the department: a conversation scoped to a client, opening on the loss pattern,
+answering from records rather than an impression. The five document pages moved to a REVENUE TOOLS
+drawer. Nothing is deleted, everything is still routable and still in the command palette; they are
+just no longer the front door.
+
+**Won and lost is now a rung of its own.** Worth being precise: the control already existed and already
+REFUSED to close a deal without a reason ("Say what actually decided it, it is the only part worth
+keeping"). It was buried inside a fold inside the old artifacts tab, which is why the founder had never
+seen it. This was a placement problem, not a missing feature, and the fix is placement.
+
+Rung 9, "How it ended", carries the won/lost control, states plainly why the reason matters (it is what
+"Why we lose" reads, so three deals from now the pattern is there), and shows the current cross-deal
+pattern underneath so a founder can see what this deal will be compared against.
+
+A nav test asserted `crm` sits in REVENUE / CRM. Updated to the new grouping rather than worked around,
+and strengthened: it now pins BOTH front doors as well as the tools drawer.
+
+Gate: typecheck clean, 2005 tests pass, build clean.

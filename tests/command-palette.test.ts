@@ -121,7 +121,12 @@ describe("listNavModules", () => {
       expect(entry.group.length).toBeGreaterThan(0);
       expect(MODULES[entry.mod.id]).toBe(entry.mod);
     }
-    expect(nav.find((n) => n.mod.id === "crm")?.group).toBe("REVENUE / CRM");
+    // The client ladder is the front door for revenue work; the document pages moved to a tools
+    // drawer so a founder is not asked to pick a document before he can start. Both stay in the
+    // palette, which is the point of asserting the group is non-empty above.
+    expect(nav.find((n) => n.mod.id === "org")?.group).toBe("REVENUE / CRM");
+    expect(nav.find((n) => n.mod.id === "revenue_desk")?.group).toBe("REVENUE / CRM");
+    expect(nav.find((n) => n.mod.id === "crm")?.group).toBe("REVENUE TOOLS");
   });
 
   it("has no duplicate ids — a duplicated palette row would be a registry bug", () => {
