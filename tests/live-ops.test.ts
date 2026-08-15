@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keyFor, STALE_AFTER_MS } from "@/lib/live-ops";
+import { isUniqueViolation } from "@/lib/db-errors";
 
 /**
  * A founder clicked "Generate questions", refreshed the page, and the button came back enabled, so
@@ -40,5 +41,34 @@ describe("the key that makes two runs of the same thing impossible", () => {
   it("frees a claim a crashed worker left behind, rather than locking the button forever", () => {
     // Matches the existing reclaimStalledJobs window, so there is one rule about what stale means.
     expect(STALE_AFTER_MS).toBe(5 * 60_000);
+  });
+});
+
+describe("reading a unique violation through the driver's wrapper", () => {
+  it("sees the 23505 that Drizzle buried on .cause", () => {
+    // Verbatim shape from the live VPS: the outer message is "Failed query: insert into ..." with no
+    // code at all, and the real error is one level down. A top-level-only check reads this as an
+    // unknown failure, which is how the guard against double-runs ended up being a no-op.
+    const pg = Object.assign(new Error('duplicate key value violates unique constraint "jobs_idempotency_live_idx"'), { code: "23505" });
+    const wrapped = Object.assign(new Error("Failed query: insert into \"jobs\" ..."), { cause: pg });
+    expect(isUniqueViolation(wrapped)).toBe(true);
+  });
+
+  it("still sees an unwrapped one", () => {
+    expect(isUniqueViolation(Object.assign(new Error("nope"), { code: "23505" }))).toBe(true);
+  });
+
+  it("does not call an unrelated failure a duplicate", () => {
+    // A NOT NULL violation is what actually broke this, and treating it as "already running" would
+    // have hidden it a second time.
+    expect(isUniqueViolation(Object.assign(new Error('null value in column "id" violates not-null constraint'), { code: "23502" }))).toBe(false);
+    expect(isUniqueViolation(new Error("connection refused"))).toBe(false);
+    expect(isUniqueViolation(null)).toBe(false);
+  });
+
+  it("does not spin on an error that points at itself", () => {
+    const e: Error & { cause?: unknown } = new Error("loop");
+    e.cause = e;
+    expect(isUniqueViolation(e)).toBe(false);
   });
 });

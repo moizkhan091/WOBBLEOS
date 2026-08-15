@@ -1,6 +1,10 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { invoices as invoicesTable, payments as paymentsTable } from "@/db/schema";
 import { getDb, type Db } from "@/db";
+// Drizzle wraps the pg error, so the 23505 lives on `.cause`. This read-through check is shared:
+// the local copy that only looked at the top level never fired, which would have stopped invoice-number
+// retries and duplicate-payment detection from working at all.
+import { isUniqueViolation } from "@/lib/db-errors";
 import { writeAuditEvent } from "@/lib/audit";
 import type { AuditEventInput } from "@/lib/domain/audit";
 import {
@@ -51,13 +55,7 @@ function invoiceNumber(seq: number, now: Date): string {
   return `INV-${now.getFullYear()}-${String(seq).padStart(4, "0")}`;
 }
 
-/** True for a Postgres unique-constraint violation (code 23505) — used to retry invoice numbering. */
-function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string })?.code;
-  if (code === "23505") return true;
-  const msg = error instanceof Error ? error.message.toLowerCase() : "";
-  return msg.includes("unique") || msg.includes("duplicate key");
-}
+
 
 /** Draft an invoice (from an opportunity/proposal or standalone). Starts in draft — needs approval to send. */
 export async function createInvoice(input: CreateInvoiceInput, deps: FinanceDeps = {}): Promise<InvoiceRow> {

@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { jobs } from "@/db/schema";
 import { newId } from "@/lib/ids";
+import { isUniqueViolation } from "@/lib/db-errors";
 
 /**
  * What is running right now, so nothing gets generated twice.
@@ -25,14 +26,6 @@ import { newId } from "@/lib/ids";
  */
 
 export const LIVE_OPS_QUEUE = "live_operation";
-
-/** Postgres unique_violation. The one error that means "somebody else already holds this key". */
-function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string })?.code;
-  if (code === "23505") return true;
-  const msg = error instanceof Error ? error.message.toLowerCase() : "";
-  return msg.includes("unique") || msg.includes("duplicate key");
-}
 
 export interface OperationKey {
   /** What is being done, e.g. "qualify" or "questions". */

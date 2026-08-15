@@ -7991,3 +7991,22 @@ refreshes this one. Polls every 3s while something runs, every 20s when nothing 
 Wired into qualification and call questions. The same three lines fit any other expensive button.
 
 Gate: typecheck clean, 1982 tests pass, build clean.
+
+**The guard was itself a no-op, twice over.** Proving it on the VPS is the only reason this is not still
+broken. Two failures, one after the other:
+
+1. `jobs.id` is a text primary key with **no database default**, so every claim insert was rejected. The
+   catch swallowed it and returned `started: true`, so the first live proof showed two concurrent claims
+   both starting and reported success. A guard that silently does nothing is worse than no guard,
+   because nothing reveals it until you are reading the bill. Only a unique violation is now treated as
+   "already running"; every other error throws.
+2. With the id fixed the index fired correctly and the code STILL did not recognise it, because Drizzle
+   wraps the pg error: the outer `DrizzleQueryError` says "Failed query: insert into ..." and carries no
+   code, while `code: '23505'` sits on `.cause`.
+
+`src/lib/db-errors.ts` walks the cause chain, bounded against a self-referencing loop. The identical
+top-level-only check in `src/lib/finance/index.ts` had the same latent bug on money: it would never have
+fired, so a concurrent invoice number would have 500ed instead of retrying, and a duplicate payment
+reference would not have been recognised as already recorded. Both now share one implementation.
+
+Gate: typecheck clean, 1986 tests pass, build clean.
